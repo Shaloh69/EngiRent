@@ -132,7 +132,7 @@ class HybridVerifier:
             for kiosk in kiosk_sources:
                 score = phash_similarity(orig, kiosk)
                 phash_scores.append(score)
-                if is_obvious_mismatch(orig, kiosk, settings.phash_obvious_mismatch_threshold):
+                if score < settings.phash_obvious_mismatch_threshold:
                     obvious_mismatch_count += 1
 
         total_pairs = len(original_sources) * len(kiosk_sources)

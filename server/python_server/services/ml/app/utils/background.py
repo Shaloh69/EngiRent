@@ -35,6 +35,11 @@ def remove_background_grabcut(image: np.ndarray, iterations: int = 5) -> tuple[n
     """
     h, w = image.shape[:2]
 
+    # Skip GrabCut on very small images (< 50px either dimension)
+    if h < 50 or w < 50:
+        fg_mask = np.ones((h, w), np.uint8) * 255
+        return image.copy(), fg_mask
+
     # Initial rectangle: center 70% of the image
     margin_x = int(w * 0.15)
     margin_y = int(h * 0.15)

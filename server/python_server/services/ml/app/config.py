@@ -15,15 +15,15 @@ class Settings(BaseSettings):
     threshold_manual_review: float = 60.0
     max_retry_attempts: int = 10
 
-    # Traditional CV feature weights (must sum to ~1.0)
-    # Rebalanced for improved feature set: HSV color, spatial, shape, texture, HOG, ORB
-    weight_color: float = 0.22
-    weight_spatial: float = 0.13
+    # Traditional CV feature weights (must sum to 1.0)
+    # These 6 weights are used in SimilarityCalculator.compare_traditional()
+    # SSIM is a separate channel in the hybrid verifier, not here
+    weight_color: float = 0.25
+    weight_spatial: float = 0.15
     weight_shape: float = 0.12
-    weight_texture: float = 0.13
-    weight_hog: float = 0.18
-    weight_orb: float = 0.12
-    weight_ssim: float = 0.10
+    weight_texture: float = 0.15
+    weight_hog: float = 0.20
+    weight_orb: float = 0.13
 
     # Hybrid method weights (Phase 3)
     weight_traditional: float = 0.30

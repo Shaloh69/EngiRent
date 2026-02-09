@@ -15,7 +15,7 @@ from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr
 
 from ..config import settings
-from ..utils.image import load_image, preprocess
+from ..utils.image import preprocess
 
 
 class SimilarityCalculator:
@@ -28,7 +28,6 @@ class SimilarityCalculator:
         self.weight_orb = settings.weight_orb
         self.weight_hog = settings.weight_hog
         self.weight_spatial = settings.weight_spatial
-        self.weight_ssim = settings.weight_ssim
 
         # ORB uses Hamming distance (binary descriptors)
         self.bf_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
