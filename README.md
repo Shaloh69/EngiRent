@@ -188,10 +188,10 @@ EngiRent Hub provides a **secure, automated, and cashless** rental platform that
 │  │  • Solenoid Locks                                        │   │
 │  │  • Stepper Motor (Conveyor)                              │   │
 │  └──────────────────────────────────────────────────────────┘   │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │           PYTHON ML SERVICE (YOLOv8)                    │   │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │           PYTHON ML SERVICE (YOLOv8)                    │    │
 │  │  • Object Detection                                      │   │
 │  │  • Feature Extraction                                    │   │
 │  │  • Similarity Matching                                   │   │
