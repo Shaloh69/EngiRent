@@ -5,14 +5,27 @@ from pydantic import BaseModel, Field
 
 class MethodScores(BaseModel):
     traditional_best: float = Field(description="Best traditional CV score across all image pairs")
-    traditional_avg: float = Field(description="Average traditional CV score")
-    sift_best: float = Field(description="Best SIFT keypoint match ratio")
-    deep_learning_best: float = Field(description="Best deep learning similarity score")
+    traditional_aggregated: float = Field(description="Aggregated traditional CV score (trimmed mean)")
+    sift_best_match: float = Field(description="Best SIFT match ratio")
+    sift_best_inlier: float = Field(description="Best SIFT RANSAC inlier ratio")
+    sift_combined: float = Field(description="Combined SIFT score (70% inlier + 30% match)")
+    ssim_aggregated: float = Field(description="Aggregated SSIM structural similarity")
+    deep_learning_aggregated: float = Field(description="Aggregated deep learning similarity")
+    phash_best: float = Field(description="Best perceptual hash similarity")
 
 
 class OCRResult(BaseModel):
     match: bool = Field(description="Whether serial numbers matched")
     details: dict | None = Field(default=None, description="OCR match details")
+
+
+class QualityIssue(BaseModel):
+    image_index: int = Field(description="Index of the problematic image")
+    passed: bool = Field(description="Whether the image passed quality check")
+    blur_score: float = Field(description="Laplacian blur score (higher = sharper)")
+    brightness: float = Field(description="Mean brightness (0-255)")
+    coverage_percent: float = Field(description="Foreground coverage percentage")
+    issues: list[str] = Field(description="List of quality issues")
 
 
 class VerificationResponse(BaseModel):
@@ -23,6 +36,8 @@ class VerificationResponse(BaseModel):
     attempt_number: int = Field(description="Current attempt number")
     method_scores: MethodScores
     ocr: OCRResult
+    quality_issues: list[QualityIssue] = Field(default_factory=list, description="Image quality problems")
+    good_pair_count: int = Field(default=0, description="Number of image pairs above manual review threshold")
     all_traditional_scores: list[float] = Field(description="All pairwise traditional CV scores")
     sift_all_ratios: list[float] = Field(description="All pairwise SIFT match ratios")
 

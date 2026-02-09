@@ -36,6 +36,29 @@ def normalize_lighting(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(normalized, cv2.COLOR_LAB2BGR)
 
 
+def white_balance(image: np.ndarray) -> np.ndarray:
+    """
+    P3: Gray-world white balance correction.
+
+    Corrects color temperature shifts (warm home lamps vs cool kiosk LEDs)
+    by assuming the average color in the scene should be neutral gray.
+    """
+    result = image.copy().astype(np.float64)
+    avg_b = result[:, :, 0].mean()
+    avg_g = result[:, :, 1].mean()
+    avg_r = result[:, :, 2].mean()
+    avg_all = (avg_b + avg_g + avg_r) / 3
+
+    if avg_b > 0:
+        result[:, :, 0] *= avg_all / avg_b
+    if avg_g > 0:
+        result[:, :, 1] *= avg_all / avg_g
+    if avg_r > 0:
+        result[:, :, 2] *= avg_all / avg_r
+
+    return np.clip(result, 0, 255).astype(np.uint8)
+
+
 def resize_image(image: np.ndarray, target_size: tuple[int, int] = (640, 640)) -> np.ndarray:
     """Resize image while maintaining aspect ratio with padding."""
     h, w = image.shape[:2]
@@ -58,10 +81,14 @@ def resize_image(image: np.ndarray, target_size: tuple[int, int] = (640, 640)) -
 def preprocess(
     source: str | bytes | np.ndarray,
     normalize: bool = True,
+    apply_white_balance: bool = True,
     target_size: tuple[int, int] | None = None,
 ) -> np.ndarray:
-    """Full preprocessing pipeline: load, normalize lighting, resize."""
+    """Full preprocessing pipeline: load, white balance, normalize lighting, resize."""
     img = load_image(source)
+
+    if apply_white_balance:
+        img = white_balance(img)
 
     if normalize:
         img = normalize_lighting(img)
