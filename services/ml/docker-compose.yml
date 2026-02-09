@@ -1,0 +1,13 @@
+services:
+  ml-service:
+    build: .
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      - upload-data:/tmp/engirent_uploads
+    restart: unless-stopped
+
+volumes:
+  upload-data:

@@ -1,0 +1,32 @@
+# FastAPI
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Computer Vision
+opencv-python-headless==4.10.0.84
+scikit-image==0.24.0
+numpy==1.26.4
+scipy==1.14.1
+
+# Deep Learning (Phase 3)
+torch==2.5.1
+torchvision==0.20.1
+
+# OCR (Phase 3)
+pytesseract==0.3.13
+
+# ML Utilities
+scikit-learn==1.6.0
+Pillow==11.0.0
+
+# Configuration
+pydantic-settings==2.7.0
+
+# Logging
+structlog==24.4.0
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1
