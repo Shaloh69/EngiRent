@@ -1,0 +1,128 @@
+# ==============================
+
+# GLOBAL IGNORES (ROOT)
+
+# ==============================
+
+# ======== OS & Editor ========
+
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# ======== Environment Files ========
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+*.env
+.env.*
+
+# ======== NODE / NEXT.JS ========
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp*
+.pnp.js
+
+# Next.js
+
+.next/
+out/
+build/
+dist/
+.cache/
+.vercel/
+
+# ======== PYTHON ========
+
+**pycache**/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.env/
+.envvenv/
+.venv/
+env/
+ENV/
+virtualenv/
+*.egg-info/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+coverage/
+htmlcov/
+.pytest_cache/
+
+# ======== FLUTTER ========
+
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+android/.gradle/
+android/app/build/
+android/local.properties
+flutter_*.log
+
+# ======== RASPBERRY PI / SCRIPTS ========
+
+# (since your entire "scripts" folder is Raspi code, ignore build/log/temp files inside it)
+
+scripts/**/**pycache**/
+scripts/**/*.pyc
+scripts/**/*.log
+scripts/**/*.pid
+scripts/**/*.tmp
+scripts/**/.env
+scripts/**/venv/
+scripts/**/.venv/
+scripts/**/env/
+scripts/**/ENV/
+
+# ======== DATABASE / LOCAL DATA ========
+
+*.sqlite
+*.db
+*.sqlite3
+*.rdb
+dump.rdb
+
+# ======== IDE & TOOLS ========
+
+.idea/
+*.iml
+*.log
+*.history
+*.coverage
+
+# ======== OTHER ========
+
+coverage.xml
+*.tgz
+*.tar.gz
+*.zip
+*.rar
+*.7z
