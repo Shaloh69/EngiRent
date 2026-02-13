@@ -1,0 +1,419 @@
+// EngiRent Hub Database Schema
+// Prisma ORM configuration for MySQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - Students who use the system
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String
+  studentId         String    @unique
+  firstName         String
+  lastName          String
+  phoneNumber       String
+  profileImage      String?
+
+  // Parent/Guardian information
+  parentName        String?
+  parentContact     String?
+
+  // Account status
+  isVerified        Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  emailVerifiedAt   DateTime?
+
+  // Security
+  refreshToken      String?   @db.Text
+  lastLogin         DateTime?
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  itemsOwned        Item[]           @relation("ItemOwner")
+  rentalsAsRenter   Rental[]         @relation("RentalRenter")
+  rentalsAsOwner    Rental[]         @relation("RentalOwner")
+  transactions      Transaction[]
+  notifications     Notification[]
+  reviews           Review[]         @relation("ReviewAuthor")
+  reviewsReceived   Review[]         @relation("ReviewRecipient")
+
+  @@index([email])
+  @@index([studentId])
+  @@map("users")
+}
+
+// Item model - Items available for rent
+model Item {
+  id                String    @id @default(uuid())
+  ownerId           String
+
+  // Item details
+  title             String
+  description       String    @db.Text
+  category          ItemCategory
+  condition         ItemCondition
+
+  // Pricing
+  pricePerDay       Float
+  pricePerWeek      Float?
+  pricePerMonth     Float?
+  securityDeposit   Float
+
+  // Images (JSON array of URLs)
+  images            Json      // ["url1", "url2", "url3"]
+
+  // ML Features (stored for faster verification)
+  mlFeatures        Json?     // Extracted features from ML service
+  serialNumber      String?   // For items with serial numbers
+
+  // Availability
+  isAvailable       Boolean   @default(true)
+  isActive          Boolean   @default(true)
+
+  // Location
+  campusLocation    String?   // UCLM Lapu-Lapu or Mandaue
+
+  // Statistics
+  totalRentals      Int       @default(0)
+  averageRating     Float     @default(0)
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  owner             User      @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  rentals           Rental[]
+  reviews           Review[]
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([isAvailable])
+  @@map("items")
+}
+
+// Rental model - Rental transactions
+model Rental {
+  id                String        @id @default(uuid())
+  itemId            String
+  renterId          String
+  ownerId           String
+
+  // Rental period
+  startDate         DateTime
+  endDate           DateTime
+  actualReturnDate  DateTime?
+
+  // Status tracking
+  status            RentalStatus  @default(PENDING)
+
+  // Pricing
+  totalPrice        Float
+  securityDeposit   Float
+
+  // Kiosk integration
+  depositLockerId   String?
+  claimLockerId     String?
+  returnLockerId    String?
+
+  // Verification
+  verificationId    String?       @unique
+  verificationScore Float?
+  verificationStatus VerificationStatus?
+
+  // Timestamps
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  depositedAt       DateTime?
+  claimedAt         DateTime?
+  returnedAt        DateTime?
+
+  // Relations
+  item              Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  renter            User          @relation("RentalRenter", fields: [renterId], references: [id])
+  owner             User          @relation("RentalOwner", fields: [ownerId], references: [id])
+  transactions      Transaction[]
+  verification      Verification? @relation(fields: [verificationId], references: [id])
+  depositLocker     Locker?       @relation("DepositLocker", fields: [depositLockerId], references: [id])
+  claimLocker       Locker?       @relation("ClaimLocker", fields: [claimLockerId], references: [id])
+  returnLocker      Locker?       @relation("ReturnLocker", fields: [returnLockerId], references: [id])
+
+  @@index([itemId])
+  @@index([renterId])
+  @@index([ownerId])
+  @@index([status])
+  @@map("rentals")
+}
+
+// Transaction model - Payment records
+model Transaction {
+  id                String            @id @default(uuid())
+  rentalId          String
+  userId            String
+
+  // Payment details
+  type              TransactionType
+  amount            Float
+  status            TransactionStatus @default(PENDING)
+
+  // GCash integration
+  gcashReferenceNo  String?           @unique
+  gcashTransactionId String?          @unique
+
+  // Payment gateway response
+  paymentMethod     String            @default("GCash")
+  paymentDetails    Json?             // Additional payment info
+
+  // Timestamps
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  paidAt            DateTime?
+
+  // Relations
+  rental            Rental            @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  user              User              @relation(fields: [userId], references: [id])
+
+  @@index([rentalId])
+  @@index([userId])
+  @@index([gcashReferenceNo])
+  @@map("transactions")
+}
+
+// Verification model - AI verification logs
+model Verification {
+  id                String    @id @default(uuid())
+
+  // Images
+  originalImages    Json      // Array of original item image URLs
+  kioskImages       Json      // Array of kiosk capture image URLs
+
+  // Verification results
+  decision          VerificationDecision
+  confidenceScore   Float
+  attemptNumber     Int       @default(1)
+
+  // Method scores (from ML service)
+  traditionalScore  Float?
+  siftScore         Float?
+  deepLearningScore Float?
+  ocrMatch          Boolean?
+  ocrDetails        Json?
+
+  // Status
+  status            VerificationStatus @default(PENDING)
+  reviewedBy        String?   // Admin ID if manually reviewed
+  reviewNotes       String?   @db.Text
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  rental            Rental?
+
+  @@index([decision])
+  @@index([status])
+  @@map("verifications")
+}
+
+// Locker model - Physical locker units
+model Locker {
+  id                String        @id @default(uuid())
+
+  // Locker identification
+  lockerNumber      String        @unique
+  kioskId           String
+
+  // Physical properties
+  size              LockerSize    @default(MEDIUM)
+
+  // Status
+  status            LockerStatus  @default(AVAILABLE)
+  isOperational     Boolean       @default(true)
+
+  // Current rental
+  currentRentalId   String?
+
+  // Timestamps
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  lastUsedAt        DateTime?
+
+  // Relations
+  depositRentals    Rental[]      @relation("DepositLocker")
+  claimRentals      Rental[]      @relation("ClaimLocker")
+  returnRentals     Rental[]      @relation("ReturnLocker")
+
+  @@index([kioskId])
+  @@index([status])
+  @@map("lockers")
+}
+
+// Notification model - User notifications
+model Notification {
+  id                String            @id @default(uuid())
+  userId            String
+
+  // Notification content
+  title             String
+  message           String            @db.Text
+  type              NotificationType
+
+  // Related entity
+  relatedEntityId   String?           // Rental ID, Item ID, etc.
+  relatedEntityType String?           // "rental", "item", "transaction"
+
+  // Status
+  isRead            Boolean           @default(false)
+  readAt            DateTime?
+
+  // Timestamps
+  createdAt         DateTime          @default(now())
+
+  // Relations
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// Review model - User reviews
+model Review {
+  id                String    @id @default(uuid())
+  itemId            String
+  authorId          String
+  recipientId       String
+
+  // Review content
+  rating            Int       // 1-5 stars
+  comment           String?   @db.Text
+
+  // Type
+  reviewType        ReviewType // ITEM or USER
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  item              Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author            User      @relation("ReviewAuthor", fields: [authorId], references: [id])
+  recipient         User      @relation("ReviewRecipient", fields: [recipientId], references: [id])
+
+  @@index([itemId])
+  @@index([authorId])
+  @@index([recipientId])
+  @@map("reviews")
+}
+
+// Enums
+enum ItemCategory {
+  SCHOOL_ATTIRE
+  ACADEMIC_TOOLS
+  ELECTRONICS
+  DEVELOPMENT_KITS
+  MEASUREMENT_TOOLS
+  AUDIO_VISUAL
+  SPORTS_EQUIPMENT
+  OTHER
+}
+
+enum ItemCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  ACCEPTABLE
+}
+
+enum RentalStatus {
+  PENDING           // Initial booking created
+  AWAITING_DEPOSIT  // Waiting for owner to deposit item
+  DEPOSITED         // Item deposited in locker
+  AWAITING_CLAIM    // Waiting for renter to claim
+  ACTIVE            // Item claimed and in use
+  AWAITING_RETURN   // Rental period ended, waiting for return
+  VERIFICATION      // Item returned, under AI verification
+  COMPLETED         // Successfully completed
+  CANCELLED         // Cancelled by either party
+  DISPUTED          // Issue reported
+}
+
+enum TransactionType {
+  RENTAL_PAYMENT
+  SECURITY_DEPOSIT
+  DEPOSIT_REFUND
+  LATE_FEE
+  DAMAGE_FEE
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum VerificationDecision {
+  APPROVED
+  PENDING
+  RETRY
+  REJECTED
+}
+
+enum VerificationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  MANUAL_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum LockerSize {
+  SMALL
+  MEDIUM
+  LARGE
+  EXTRA_LARGE
+}
+
+enum LockerStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  DEPOSIT_REMINDER
+  ITEM_READY_FOR_CLAIM
+  CLAIM_REMINDER
+  RENTAL_STARTED
+  RETURN_REMINDER
+  RETURN_OVERDUE
+  VERIFICATION_SUCCESS
+  VERIFICATION_FAILED
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  REVIEW_REQUEST
+  SYSTEM_ANNOUNCEMENT
+}
+
+enum ReviewType {
+  ITEM
+  USER
+}
