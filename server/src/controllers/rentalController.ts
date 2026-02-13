@@ -201,7 +201,7 @@ export const getRentalById = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const rental = await prisma.rental.findUnique({
       where: { id },
@@ -261,7 +261,7 @@ export const updateRentalStatus = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { status, lockerId } = req.body;
 
     const rental = await prisma.rental.findUnique({
@@ -361,7 +361,7 @@ export const cancelRental = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const rental = await prisma.rental.findUnique({
       where: { id },

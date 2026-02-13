@@ -3,7 +3,6 @@ import { AuthRequest } from '../middleware/auth';
 import prisma from '../config/database';
 import { NotFoundError, ForbiddenError, ValidationError } from '../utils/errors';
 import logger from '../utils/logger';
-import axios from 'axios';
 import env from '../config/env';
 
 export const createPayment = async (
@@ -200,7 +199,7 @@ export const refundPayment = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { transactionId } = req.params;
+    const transactionId = req.params.transactionId as string;
 
     const transaction = await prisma.transaction.findUnique({
       where: { id: transactionId },

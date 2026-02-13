@@ -153,7 +153,7 @@ export const getItemById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const item = await prisma.item.findUnique({
       where: { id },
@@ -207,7 +207,7 @@ export const updateItem = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const item = await prisma.item.findUnique({
       where: { id },
@@ -290,7 +290,7 @@ export const deleteItem = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const item = await prisma.item.findUnique({
       where: { id },

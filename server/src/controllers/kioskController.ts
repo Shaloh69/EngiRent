@@ -267,8 +267,8 @@ export const returnItem = async (
     // Create verification record
     const verification = await prisma.verification.create({
       data: {
-        originalImages: rental.item.images,
-        kioskImages: images || [],
+        originalImages: rental.item.images as any,
+        kioskImages: (images || []) as any,
         decision: verificationResult?.decision || 'PENDING',
         confidenceScore: verificationResult?.confidence || 0,
         attemptNumber: 1,
@@ -276,7 +276,7 @@ export const returnItem = async (
         siftScore: verificationResult?.method_scores?.sift_best,
         deepLearningScore: verificationResult?.method_scores?.deep_learning_best,
         ocrMatch: verificationResult?.ocr?.match,
-        ocrDetails: verificationResult?.ocr?.details || {},
+        ocrDetails: verificationResult?.ocr?.details as any || {},
         status: verificationResult?.decision === 'APPROVED' ? 'APPROVED' : 'PENDING',
       },
     });

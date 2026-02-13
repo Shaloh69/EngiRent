@@ -70,7 +70,7 @@ export const markAsRead = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     await prisma.notification.update({
       where: {
@@ -132,7 +132,7 @@ export const deleteNotification = async (
       throw new ForbiddenError('Authentication required');
     }
 
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     await prisma.notification.delete({
       where: {
