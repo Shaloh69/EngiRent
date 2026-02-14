@@ -9,7 +9,7 @@ import notificationRoutes from './notificationRoutes';
 const router = Router();
 
 // Health check
-router.get('/health', (req, res) => {
+router.get('/health', (_req, res) => {
   res.json({
     success: true,
     message: 'EngiRent API is running',

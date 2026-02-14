@@ -10,8 +10,6 @@ import {
   TableRow,
   TableCell,
   Chip,
-  Select,
-  SelectItem,
 } from '@heroui/react';
 import api from '@/lib/api';
 import type { Rental } from '@/types';
@@ -66,18 +64,17 @@ export default function RentalsPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Rental Management</h1>
-          <Select
-            placeholder="Filter by status"
-            className="max-w-xs"
+          <select
+            className="px-3 py-2 border rounded-lg max-w-xs bg-white"
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <SelectItem key="" value="">All Statuses</SelectItem>
+            <option value="">All Statuses</option>
             {statuses.map((status) => (
-              <SelectItem key={status} value={status}>
+              <option key={status} value={status}>
                 {status.replace(/_/g, ' ')}
-              </SelectItem>
+              </option>
             ))}
-          </Select>
+          </select>
         </div>
 
         <Table aria-label="Rentals table">

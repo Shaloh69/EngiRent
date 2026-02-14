@@ -3,7 +3,7 @@ import { validationResult, ValidationChain } from 'express-validator';
 import { ValidationError } from '../utils/errors';
 
 export const validate = (validations: ValidationChain[]) => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     for (const validation of validations) {
       await validation.run(req);
     }

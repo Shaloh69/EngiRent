@@ -12,8 +12,6 @@ import {
   Chip,
   Button,
   Input,
-  Select,
-  SelectItem,
 } from '@heroui/react';
 import { Search, Eye, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
@@ -74,18 +72,17 @@ export default function ItemsPage() {
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Item Management</h1>
           <div className="flex gap-4">
-            <Select
-              placeholder="Category"
-              className="max-w-xs"
+            <select
+              className="px-3 py-2 border rounded-lg max-w-xs bg-white"
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
-              <SelectItem key="" value="">All Categories</SelectItem>
+              <option value="">All Categories</option>
               {categories.map((cat) => (
-                <SelectItem key={cat} value={cat}>
+                <option key={cat} value={cat}>
                   {cat.replace(/_/g, ' ')}
-                </SelectItem>
+                </option>
               ))}
-            </Select>
+            </select>
             <Input
               placeholder="Search items..."
               startContent={<Search size={18} />}
