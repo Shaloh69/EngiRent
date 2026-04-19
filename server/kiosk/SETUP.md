@@ -5,7 +5,7 @@
 | Component | Qty | Notes |
 |---|---|---|
 | Raspberry Pi 5 (4 GB+) | 1 | RP1 GPIO chip |
-| L298N H-bridge motor driver | 4 | One per locker (trapdoor actuator) |
+| L298N dual-channel H-bridge motor driver | 2 | 2 channels each → 4 lockers total |
 | 12V linear actuator | 4 | One per locker trapdoor |
 | 5V relay module (4-ch) | 3 | 12 channels total for solenoids |
 | 12V solenoid lock | 12 | 3 per locker (main, trapdoor, bottom) |
@@ -132,20 +132,30 @@ Each relay module is driven by a Pi GPIO pin (active-LOW by default):
 | 4 | Trapdoor | 0 |
 | 4 | Bottom door | 5 |
 
-### L298N Actuator Connections (per locker)
+### L298N Actuator Connections (2× dual-channel driver)
 
-| Locker | PWM Pin (speed) | DIR Pin (direction) |
-|---|---|---|
-| 1 | GPIO 12 | GPIO 16 |
-| 2 | GPIO 20 | GPIO 21 |
-| 3 | GPIO 19 | GPIO 26 |
-| 4 | GPIO 13 | GPIO 6 |
+Each L298N has two independent H-bridge channels (A and B), one driver handles two lockers.
 
-L298N wiring per module:
-- `IN1` → DIR pin, `IN2` → GND (via 10 kΩ pull-down)
-- `ENA` → PWM pin
-- `OUT1/OUT2` → Actuator terminals
+**Driver 1 — Lockers 1 & 2**
+
+| Channel | Locker | ENA/ENB (PWM) | IN1/IN3 (DIR) | IN2/IN4 | OUT |
+|---|---|---|---|---|---|
+| A | 1 | GPIO 12 | GPIO 16 | GND | OUT1/OUT2 → Actuator 1 |
+| B | 2 | GPIO 20 | GPIO 21 | GND | OUT3/OUT4 → Actuator 2 |
+
+**Driver 2 — Lockers 3 & 4**
+
+| Channel | Locker | ENA/ENB (PWM) | IN1/IN3 (DIR) | IN2/IN4 | OUT |
+|---|---|---|---|---|---|
+| A | 3 | GPIO 19 | GPIO 26 | GND | OUT1/OUT2 → Actuator 3 |
+| B | 4 | GPIO 13 | GPIO 6  | GND | OUT3/OUT4 → Actuator 4 |
+
+**Per-driver wiring (apply to both drivers):**
+- `ENA` / `ENB` → PWM pins (speed control, jumper removed)
+- `IN1` / `IN3` → DIR pins (direction)
+- `IN2` / `IN4` → GND (via 10 kΩ pull-down, or tie LOW)
 - `12V` → 12V supply, `GND` → common ground with Pi
+- `OUT1/OUT2`, `OUT3/OUT4` → Actuator motor terminals
 
 ### Camera Connections
 
@@ -260,6 +270,6 @@ sudo systemctl restart engirent-kiosk.service
 | `lgpio` not found | `sudo apt install python3-lgpio` |
 | Camera not detected | `vcgencmd get_camera`, re-enable in raspi-config |
 | Relay not triggering | Check `RELAY_ACTIVE_LEVEL` in `.env` (0 = active-LOW) |
-| Actuator runs one way only | Swap OUT1/OUT2 on L298N, or flip DIR_PIN logic in `config.py` |
+| Actuator runs one way only | Swap the two motor wires on OUT1/OUT2 (or OUT3/OUT4), or flip DIR_PIN logic in `config.py` |
 | WiFi provisioning portal unreachable | Ensure Pi is not already connected to WiFi, check `nmcli dev wifi` |
 | Kiosk browser black screen | `systemctl status engirent-kiosk.service` — ensure Flask UI started on port 8080 |
