@@ -19,7 +19,7 @@
 
 ## 1. OS Setup
 
-Flash **Raspberry Pi OS Bookworm (64-bit, full desktop)** using Raspberry Pi Imager.
+Flash **Raspberry Pi OS Trixie (64-bit, full desktop)** using Raspberry Pi Imager.
 
 Before booting, in Imager settings:
 - Set hostname: `engirent-kiosk`
@@ -41,7 +41,7 @@ sudo apt install -y python3-lgpio python3-gpiozero
 sudo apt install -y python3-picamera2 python3-opencv
 
 # System utils
-sudo apt install -y git python3-pip python3-venv chromium-browser unclutter
+sudo apt install -y git python3-pip python3-venv chromium unclutter
 
 # NetworkManager (already installed on Bookworm desktop)
 sudo systemctl enable NetworkManager
