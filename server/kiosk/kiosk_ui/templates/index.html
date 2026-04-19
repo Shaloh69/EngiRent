@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EngiRent Hub – Kiosk</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <span class="brand-icon">ER</span>
+        <div>
+          <p class="brand-sub">Smart Kiosk</p>
+          <h1 class="brand-name">EngiRent Hub</h1>
+        </div>
+      </div>
+      <div id="connection-badge" class="badge badge-offline">Offline</div>
+    </header>
+
+    <!-- Main panel -->
+    <main class="main">
+      <!-- Status card -->
+      <div id="status-card" class="status-card status-idle">
+        <div id="status-icon" class="status-icon">⬤</div>
+        <p id="status-message" class="status-message">Initialising…</p>
+      </div>
+
+      <!-- Locker grid -->
+      <section class="lockers-grid">
+        <div class="lockers-title">Locker Status</div>
+        <div class="lockers-row">
+          <div class="locker-card" id="locker-1">
+            <div class="locker-number">01</div>
+            <div class="locker-doors">
+              <span class="door-pill" id="l1-main">Main ●</span>
+              <span class="door-pill" id="l1-trap">Trap ●</span>
+              <span class="door-pill" id="l1-bot">Bot ●</span>
+            </div>
+          </div>
+          <div class="locker-card" id="locker-2">
+            <div class="locker-number">02</div>
+            <div class="locker-doors">
+              <span class="door-pill" id="l2-main">Main ●</span>
+              <span class="door-pill" id="l2-trap">Trap ●</span>
+              <span class="door-pill" id="l2-bot">Bot ●</span>
+            </div>
+          </div>
+          <div class="locker-card" id="locker-3">
+            <div class="locker-number">03</div>
+            <div class="locker-doors">
+              <span class="door-pill" id="l3-main">Main ●</span>
+              <span class="door-pill" id="l3-trap">Trap ●</span>
+              <span class="door-pill" id="l3-bot">Bot ●</span>
+            </div>
+          </div>
+          <div class="locker-card" id="locker-4">
+            <div class="locker-number">04</div>
+            <div class="locker-doors">
+              <span class="door-pill" id="l4-main">Main ●</span>
+              <span class="door-pill" id="l4-trap">Trap ●</span>
+              <span class="door-pill" id="l4-bot">Bot ●</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Face scan overlay -->
+      <div id="face-overlay" class="face-overlay hidden">
+        <div class="face-box">
+          <div class="face-ring">
+            <div class="face-pulse"></div>
+            <span class="face-icon">👤</span>
+          </div>
+          <p id="face-instruction" class="face-instruction">Look directly at the camera</p>
+          <div class="face-progress">
+            <div id="face-bar" class="face-bar"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Success overlay -->
+      <div id="success-overlay" class="success-overlay hidden">
+        <div class="success-box">
+          <div class="success-icon">✓</div>
+          <p id="success-message" class="success-message">Verified</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>University of Cebu Lapu-Lapu and Mandaue · Engineering Thesis 2026</span>
+      <span id="clock" class="clock"></span>
+    </footer>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

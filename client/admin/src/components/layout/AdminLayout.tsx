@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   Button,
   Dropdown,
@@ -9,7 +9,7 @@ import {
   DropdownMenu,
   DropdownItem,
   Chip,
-} from '@heroui/react';
+} from "@heroui/react";
 import {
   LayoutDashboard,
   Users,
@@ -22,29 +22,36 @@ import {
   Menu,
   X,
   Bell,
-} from 'lucide-react';
-import Link from 'next/link';
+  MonitorSpeaker,
+} from "lucide-react";
+import Link from "next/link";
 
 const menuItems = [
-  { name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-  { name: 'Users', icon: Users, href: '/users' },
-  { name: 'Items', icon: Package, href: '/items' },
-  { name: 'Rentals', icon: Receipt, href: '/rentals' },
-  { name: 'Verifications', icon: CheckCircle2, href: '/verifications' },
-  { name: 'Reports', icon: BarChart3, href: '/reports' },
+  { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+  { name: "Users", icon: Users, href: "/users" },
+  { name: "Items", icon: Package, href: "/items" },
+  { name: "Rentals", icon: Receipt, href: "/rentals" },
+  { name: "Verifications", icon: CheckCircle2, href: "/verifications" },
+  { name: "Reports", icon: BarChart3, href: "/reports" },
+  { name: "Kiosk", icon: MonitorSpeaker, href: "/kiosk" },
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    router.push('/login');
+    localStorage.removeItem("admin_token");
+    router.push("/login");
   };
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <div className="min-h-screen">
@@ -64,8 +71,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 ER
               </span>
               <div className="leading-tight">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">Control</p>
-                <p className="text-base font-extrabold text-[var(--color-ink)]">EngiRent Admin</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                  Control
+                </p>
+                <p className="text-base font-extrabold text-[var(--color-ink)]">
+                  EngiRent Admin
+                </p>
               </div>
             </Link>
           </div>
@@ -81,12 +92,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </Chip>
             <Dropdown>
               <DropdownTrigger>
-                <Button isIconOnly variant="flat" className="bg-[var(--color-surface-soft)]">
+                <Button
+                  isIconOnly
+                  variant="flat"
+                  className="bg-[var(--color-surface-soft)]"
+                >
                   <UserIcon size={18} />
                 </Button>
               </DropdownTrigger>
               <DropdownMenu aria-label="Profile actions">
-                <DropdownItem key="logout" onClick={handleLogout} startContent={<LogOut size={16} />} color="danger">
+                <DropdownItem
+                  key="logout"
+                  onClick={handleLogout}
+                  startContent={<LogOut size={16} />}
+                  color="danger"
+                >
                   Logout
                 </DropdownItem>
               </DropdownMenu>
@@ -104,8 +124,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 href={item.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                   isActive(item.href)
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-soft)] hover:text-[var(--color-ink)]'
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "text-[var(--color-muted)] hover:bg-[var(--color-surface-soft)] hover:text-[var(--color-ink)]"
                 }`}
               >
                 <item.icon size={18} />
@@ -125,8 +145,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   onClick={() => setMenuOpen(false)}
                   className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                     isActive(item.href)
-                      ? 'bg-[var(--color-primary)] text-white'
-                      : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-soft)] hover:text-[var(--color-ink)]'
+                      ? "bg-[var(--color-primary)] text-white"
+                      : "text-[var(--color-muted)] hover:bg-[var(--color-surface-soft)] hover:text-[var(--color-ink)]"
                   }`}
                 >
                   <item.icon size={18} />

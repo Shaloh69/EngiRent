@@ -1,0 +1,200 @@
+/* ── Reset & base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0a0f1e;
+  --surface:  #111827;
+  --border:   #1e2d45;
+  --primary:  #2563eb;
+  --success:  #10b981;
+  --warning:  #f59e0b;
+  --danger:   #ef4444;
+  --text:     #f1f5f9;
+  --muted:    #64748b;
+  --radius:   14px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand { display: flex; align-items: center; gap: 14px; }
+
+.brand-icon {
+  width: 48px; height: 48px;
+  background: var(--primary);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 18px;
+}
+
+.brand-sub  { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+.brand-name { font-size: 22px; font-weight: 700; }
+
+/* ── Badges ────────────────────────────────────────────────────────────────── */
+.badge {
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.badge-online  { background: rgba(16,185,129,.2); color: var(--success); border: 1px solid var(--success); }
+.badge-offline { background: rgba(239,68,68,.2);  color: var(--danger);  border: 1px solid var(--danger);  }
+.badge-connecting { background: rgba(245,158,11,.2); color: var(--warning); border: 1px solid var(--warning); }
+
+/* ── Main ──────────────────────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 32px;
+  position: relative;
+}
+
+/* ── Status card ───────────────────────────────────────────────────────────── */
+.status-card {
+  width: 100%;
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  transition: border-color .3s;
+}
+.status-card.status-idle       { border-color: var(--border); }
+.status-card.status-online     { border-color: var(--success); }
+.status-card.status-door_open  { border-color: var(--primary); }
+.status-card.status-face_scan  { border-color: var(--warning); }
+.status-card.status-verified   { border-color: var(--success); }
+.status-card.status-dropping   { border-color: var(--warning); }
+.status-card.status-error      { border-color: var(--danger); }
+.status-card.status-offline    { border-color: var(--danger); }
+
+.status-icon { font-size: 40px; margin-bottom: 12px; }
+.status-message {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* ── Locker grid ───────────────────────────────────────────────────────────── */
+.lockers-grid { width: 100%; max-width: 740px; }
+.lockers-title { font-size: 12px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+.lockers-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+.locker-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 12px;
+  text-align: center;
+  transition: border-color .3s, box-shadow .3s;
+}
+.locker-card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 20px rgba(37,99,235,.35);
+}
+
+.locker-number {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.locker-doors { display: flex; flex-direction: column; gap: 4px; }
+
+.door-pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  background: rgba(100,116,139,.15);
+  color: var(--muted);
+  transition: background .3s, color .3s;
+}
+.door-pill.locked   { background: rgba(100,116,139,.15); color: var(--muted); }
+.door-pill.unlocked { background: rgba(16,185,129,.2);   color: var(--success); }
+
+/* ── Face overlay ──────────────────────────────────────────────────────────── */
+.face-overlay {
+  position: absolute; inset: 0;
+  background: rgba(10,15,30,.92);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 20;
+}
+.face-box { text-align: center; }
+.face-ring {
+  width: 180px; height: 180px;
+  border: 3px solid var(--warning);
+  border-radius: 50%;
+  margin: 0 auto 24px;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.face-pulse {
+  position: absolute; inset: -12px;
+  border: 2px solid var(--warning);
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+  opacity: .5;
+}
+@keyframes pulse {
+  0%,100% { transform: scale(1); opacity:.5; }
+  50%      { transform: scale(1.08); opacity:.15; }
+}
+.face-icon { font-size: 64px; }
+.face-instruction { font-size: 20px; font-weight: 600; color: var(--warning); margin-bottom: 20px; }
+.face-progress { width: 200px; height: 6px; background: var(--border); border-radius: 3px; margin: 0 auto; }
+.face-bar { height: 100%; width: 0; background: var(--warning); border-radius: 3px; transition: width .3s; }
+
+/* ── Success overlay ───────────────────────────────────────────────────────── */
+.success-overlay {
+  position: absolute; inset: 0;
+  background: rgba(10,15,30,.92);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 20;
+}
+.success-box { text-align: center; }
+.success-icon {
+  font-size: 80px;
+  color: var(--success);
+  animation: pop .4s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+.success-message { font-size: 28px; font-weight: 700; color: var(--success); margin-top: 16px; }
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 28px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.clock { font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; color: var(--text); }
+
+.hidden { display: none !important; }

@@ -8,7 +8,7 @@ services:
     plan: free
     buildCommand: npm install --production=false && npm run build
     startCommand: npm start
-    preDeployCommand: npx prisma migrate deploy
+    preDeployCommand: npx prisma db push
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
@@ -30,7 +30,7 @@ services:
       - key: SUPABASE_STORAGE_BUCKET
         value: media
       - key: ML_SERVICE_URL
-        value: http://localhost:8001  # Update when ML service is hosted
+        value: https://engirent-ml.onrender.com
       - key: CLIENT_WEB_URL
         value: https://engirent-web.onrender.com
       - key: CLIENT_MOBILE_URL
@@ -71,3 +71,16 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         value: https://engirent-api.onrender.com/api/v1
+
+  # ─── Python ML Verification Service ─────────────────────────────────────────
+  - type: web
+    name: engirent-ml
+    runtime: docker
+    dockerfilePath: server/python_server/services/ml/Dockerfile
+    dockerContext: server/python_server/services/ml
+    region: singapore
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: ENVIRONMENT
+        value: production

@@ -1,0 +1,22 @@
+[Unit]
+Description=EngiRent Kiosk Controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/engirent/server/kiosk
+EnvironmentFile=/home/pi/engirent/server/kiosk/.env
+ExecStart=/home/pi/engirent/server/kiosk/venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=engirent-kiosk
+
+# Allow GPIO access
+SupplementaryGroups=gpio dialout video
+
+[Install]
+WantedBy=multi-user.target

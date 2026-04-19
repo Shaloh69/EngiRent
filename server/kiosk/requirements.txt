@@ -1,0 +1,29 @@
+# Core
+python-dotenv==1.0.1
+structlog==24.4.0
+
+# Socket.io client (communicate with Node.js backend)
+python-socketio[asyncio_client]==5.11.4
+aiohttp==3.11.10
+
+# GPIO (Raspberry Pi 5 — uses lgpio backend)
+gpiozero==2.0.1
+lgpio==0.2.2
+
+# Camera
+picamera2==0.3.22
+opencv-python-headless==4.10.0.84
+
+# Face detection
+mediapipe==0.10.18
+
+# Image upload to Supabase
+supabase==2.10.0
+pillow==11.0.0
+
+# Local kiosk UI server
+flask==3.1.0
+flask-socketio==5.4.1
+
+# WiFi provisioning
+flask-cors==5.0.0
