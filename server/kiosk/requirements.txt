@@ -6,16 +6,13 @@ structlog==24.4.0
 python-socketio[asyncio_client]==5.11.4
 aiohttp==3.11.10
 
-# GPIO (Raspberry Pi 5 — uses lgpio backend)
-gpiozero==2.0.1
-lgpio==0.2.2
+# GPIO (installed system-wide via apt — imported here for venv awareness)
+# gpiozero and lgpio are provided by python3-gpiozero / python3-lgpio (apt)
+# venv must be created with --system-site-packages
 
 # Camera
-picamera2==0.3.22
-opencv-python-headless==4.10.0.84
-
-# Face detection
-mediapipe==0.10.18
+# picamera2 and opencv are provided by python3-picamera2 / python3-opencv (apt)
+# do NOT pip-install these — they conflict with system packages on Pi OS Trixie
 
 # Image upload to Supabase
 supabase==2.10.0

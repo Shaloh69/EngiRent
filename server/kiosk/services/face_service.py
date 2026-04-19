@@ -1,7 +1,7 @@
 """
 Face detection + verification.
 
-  1. Use MediaPipe to detect a face is present in the frame.
+  1. Use OpenCV Haar cascade (built-in, no extra install) to detect a face.
   2. Send the image to the ML service /api/v1/verify-face for identity check.
   3. Return (detected: bool, confidence: float, face_url: str | None)
 """
@@ -10,44 +10,58 @@ import io
 import logging
 
 import aiohttp
-import mediapipe as mp
-import numpy as np
 import cv2
+import numpy as np
 
 from config import ML_SERVICE_URL
 from services.image_uploader import upload_face_image
 
 log = logging.getLogger(__name__)
 
-mp_face = mp.solutions.face_detection
-_detector = mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.6)
+# Haar cascade — ships with every OpenCV install, no download needed
+_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
 
 
 def detect_face_in_frame(jpeg_bytes: bytes) -> tuple[bool, float]:
     """
-    Returns (face_found, confidence) from MediaPipe.
+    Returns (face_found, confidence) using OpenCV Haar cascade.
     Quick local check before sending to ML service.
+    Confidence is estimated from relative face size (larger = more confident).
     """
     try:
         nparr = np.frombuffer(jpeg_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = _detector.process(rgb)
-        if results.detections:
-            score = results.detections[0].score[0]
-            return True, float(score)
-        return False, 0.0
+        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        faces = _cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(80, 80),
+        )
+
+        if len(faces) == 0:
+            return False, 0.0
+
+        # Estimate confidence from the largest detected face area vs frame area
+        h, w = frame.shape[:2]
+        frame_area = w * h
+        x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+        face_ratio   = (fw * fh) / frame_area
+        confidence   = min(0.5 + face_ratio * 2.0, 0.99)   # scale 0.5–0.99
+        return True, round(confidence, 3)
+
     except Exception as e:
         log.error("Face detection error: %s", e)
         return False, 0.0
 
 
-async def verify_face(
-    jpeg_bytes: bytes, reference_face_url: str
-) -> dict:
+async def verify_face(jpeg_bytes: bytes, reference_face_url: str) -> dict:
     """
     Full verification pipeline:
-      1. Detect face locally with MediaPipe
+      1. Detect face locally with OpenCV Haar cascade
       2. Upload captured image to Supabase
       3. Send both images to ML service for identity comparison
 
@@ -83,7 +97,6 @@ async def verify_face(
             "error": "Image upload failed",
         }
 
-    # Send to ML service for identity verification
     try:
         async with aiohttp.ClientSession() as session:
             data = aiohttp.FormData()
@@ -108,9 +121,9 @@ async def verify_face(
                     "face_url": face_url,
                     "error": None,
                 }
+
     except aiohttp.ClientConnectorError:
         log.warning("ML service unreachable – using local confidence %.2f", local_conf)
-        # Fall back: accept if local MediaPipe confidence is high enough
         return {
             "detected": True,
             "verified": local_conf >= 0.80,
