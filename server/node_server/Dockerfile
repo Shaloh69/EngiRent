@@ -2,6 +2,9 @@
 
 FROM node:20-alpine AS builder
 
+# OpenSSL required by Prisma engine on Alpine
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy package files
