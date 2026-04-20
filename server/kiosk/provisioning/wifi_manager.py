@@ -11,7 +11,7 @@ import logging
 import subprocess
 import time
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.wifi")
 
 
 def is_wifi_connected() -> bool:

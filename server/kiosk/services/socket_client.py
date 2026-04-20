@@ -25,7 +25,7 @@ from hardware.camera_manager import CameraManager
 from services.image_uploader import upload_locker_images
 from services.face_service import verify_face
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.socket")
 
 sio = socketio.AsyncClient(reconnection=True, reconnection_attempts=0, logger=False)
 

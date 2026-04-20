@@ -10,7 +10,7 @@ from io import BytesIO
 
 from config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_STORAGE_BUCKET, SUPABASE_URL
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.uploader")
 
 
 def _get_client():

@@ -2,11 +2,12 @@
 EngiRent Kiosk – main entry point.
 
 Start order:
-  1. Logging setup
+  1. Logging setup (colored terminal + file)
   2. Load .env
   3. Check WiFi → if missing, run AP provisioning mode (blocks until reboot)
-  4. Start local HDMI UI server (daemon thread)
-  5. Start Socket.io client loop (blocks forever, reconnects on disconnect)
+  4. Init hardware (GPIO, actuators, cameras)
+  5. Start local HDMI UI server (daemon thread)
+  6. Start Socket.io client loop (blocks forever, reconnects on disconnect)
 """
 
 import asyncio
@@ -19,99 +20,219 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s – %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/var/log/engirent-kiosk.log", encoding="utf-8"),
-    ],
-)
+# ── Colored terminal formatter ─────────────────────────────────────────────────
+
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
+RED    = "\033[91m"
+GREEN  = "\033[92m"
+YELLOW = "\033[93m"
+BLUE   = "\033[94m"
+CYAN   = "\033[96m"
+WHITE  = "\033[97m"
+
+LEVEL_COLORS = {
+    "DEBUG":    DIM + WHITE,
+    "INFO":     GREEN,
+    "WARNING":  YELLOW,
+    "ERROR":    RED,
+    "CRITICAL": BOLD + RED,
+}
+
+MODULE_COLORS = {
+    "kiosk.main":          BOLD + CYAN,
+    "kiosk.socket":        BOLD + BLUE,
+    "kiosk.gpio":          BOLD + YELLOW,
+    "kiosk.actuator":      BOLD + YELLOW,
+    "kiosk.camera":        BOLD + GREEN,
+    "kiosk.face":          BOLD + GREEN,
+    "kiosk.uploader":      BLUE,
+    "kiosk.ui":            CYAN,
+    "kiosk.wifi":          YELLOW,
+    "kiosk.ap":            YELLOW,
+}
+
+
+class ColorFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        lc = LEVEL_COLORS.get(record.levelname, WHITE)
+        mc = MODULE_COLORS.get(record.name, DIM + WHITE)
+
+        ts   = self.formatTime(record, "%H:%M:%S")
+        lvl  = f"{lc}{record.levelname:<8}{RESET}"
+        name = f"{mc}{record.name}{RESET}"
+        msg  = record.getMessage()
+
+        if record.levelno >= logging.ERROR:
+            msg = f"{RED}{msg}{RESET}"
+        elif record.levelno == logging.WARNING:
+            msg = f"{YELLOW}{msg}{RESET}"
+
+        line = f"{DIM}{ts}{RESET}  {lvl}  {name}  {msg}"
+
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
+
+
+def _setup_logging():
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    # Terminal handler – colored
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setLevel(logging.DEBUG)
+    sh.setFormatter(ColorFormatter())
+
+    # File handler – plain text
+    fh = logging.FileHandler("/var/log/engirent-kiosk.log", encoding="utf-8")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter(
+        "%(asctime)s  %(levelname)-8s  %(name)s – %(message)s"
+    ))
+
+    root.addHandler(sh)
+    root.addHandler(fh)
+
+    # Silence noisy third-party loggers
+    for noisy in ("engineio", "socketio", "urllib3", "werkzeug"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+_setup_logging()
 log = logging.getLogger("kiosk.main")
 
-# ── Provisioning ───────────────────────────────────────────────────────────────
-from provisioning.wifi_manager import is_wifi_connected
-from provisioning.ap_portal import (
-    AP_SSID, AP_PASSWORD, AP_IP,
-    run_portal, start_ap_mode,
-)
 
+def _banner():
+    kiosk_id   = os.getenv("KIOSK_ID", "kiosk-1")
+    server_url = os.getenv("SERVER_URL", "?")
+    ui_port    = os.getenv("UI_PORT", "8080")
+    mock_gpio  = os.getenv("MOCK_GPIO", "false").lower() == "true"
+    mock_cam   = os.getenv("MOCK_CAMERA", "false").lower() == "true"
+
+    print(f"\n{BOLD}{CYAN}{'=' * 56}{RESET}")
+    print(f"{BOLD}{CYAN}   EngiRent Hub – Kiosk Controller{RESET}")
+    print(f"{BOLD}{CYAN}{'=' * 56}{RESET}")
+    print(f"  {DIM}Kiosk ID  :{RESET}  {WHITE}{kiosk_id}{RESET}")
+    print(f"  {DIM}Server    :{RESET}  {WHITE}{server_url}{RESET}")
+    print(f"  {DIM}UI Port   :{RESET}  {WHITE}{ui_port}{RESET}")
+    print(f"  {DIM}GPIO Mock :{RESET}  {YELLOW if mock_gpio else GREEN}{'ON (simulated)' if mock_gpio else 'OFF (real hardware)'}{RESET}")
+    print(f"  {DIM}Cam Mock  :{RESET}  {YELLOW if mock_cam else GREEN}{'ON (simulated)' if mock_cam else 'OFF (real cameras)'}{RESET}")
+    print(f"{BOLD}{CYAN}{'=' * 56}{RESET}\n")
+
+
+# ── Imports (after logging is configured) ─────────────────────────────────────
+from provisioning.wifi_manager import is_wifi_connected
+from provisioning.ap_portal import AP_SSID, AP_PASSWORD, AP_IP, run_portal, start_ap_mode
+from kiosk_ui.server import start_ui_server_thread
+from services.socket_client import KioskSocketClient
+from hardware.gpio_controller import SolenoidController
+from hardware.actuator_controller import ActuatorController
+from hardware.camera_manager import CameraManager
+
+
+# ── WiFi provisioning ──────────────────────────────────────────────────────────
 
 def maybe_provision():
-    """If no WiFi, start hotspot + captive portal and block (Pi reboots after connect)."""
+    log.info("Checking WiFi connection…")
     if is_wifi_connected():
-        log.info("WiFi connected – skipping provisioning.")
+        log.info("WiFi connected ✓")
         return
 
-    log.warning("No WiFi connection detected – entering provisioning mode.")
-
+    log.warning("No WiFi — entering AP provisioning mode")
     ap_ssid = os.getenv("AP_SSID", AP_SSID)
     ap_pass = os.getenv("AP_PASSWORD", AP_PASSWORD)
     ap_ip   = os.getenv("AP_IP", AP_IP)
 
     if not start_ap_mode(ssid=ap_ssid, password=ap_pass, ip=ap_ip):
-        log.error("Could not start AP hotspot – skipping provisioning (will retry next boot).")
+        log.error("Could not start AP hotspot — skipping (retry next boot)")
         return
 
-    log.info(
-        "Hotspot active.  Connect to '%s' (pw: %s) and open http://%s",
-        ap_ssid, ap_pass, ap_ip,
-    )
-
-    # This call blocks until the Pi reboots (reboot() is called inside the portal
-    # after a successful WiFi connect, so this loop never returns normally).
+    log.info("Hotspot '%s' active  pw='%s'  portal=http://%s", ap_ssid, ap_pass, ap_ip)
     run_portal(host="0.0.0.0", port=80)
 
-    # Fallback: if portal exits without rebooting, wait and retry
-    log.error("Portal exited unexpectedly – sleeping 10 s then retrying.")
+    log.error("Portal exited unexpectedly — retrying in 10 s")
     time.sleep(10)
     maybe_provision()
 
 
-# ── UI server ──────────────────────────────────────────────────────────────────
-from kiosk_ui.server import start_ui_server_thread
+# ── Hardware init ──────────────────────────────────────────────────────────────
+
+def init_hardware():
+    log.info("── Hardware init ──────────────────────────────")
+    log.info("[GPIO]     Initialising solenoid controller…")
+    solenoid = SolenoidController()
+    log.info("[GPIO]     SolenoidController ready (12 relays)")
+
+    log.info("[ACTUATOR] Initialising actuator controller…")
+    actuator = ActuatorController()
+    log.info("[ACTUATOR] ActuatorController ready (4 channels)")
+
+    log.info("[CAMERA]   Initialising camera manager…")
+    camera = CameraManager()
+    log.info("[CAMERA]   CameraManager ready")
+    log.info("── Hardware ready ─────────────────────────────")
+    return solenoid, actuator, camera
 
 
-# ── Socket.io client ───────────────────────────────────────────────────────────
-from services.socket_client import KioskSocketClient
+# ── Socket.io client loop ──────────────────────────────────────────────────────
 
-
-async def run_socket_client():
+async def run_socket_client(solenoid, actuator, camera):
     server_url = os.getenv("SERVER_URL", "http://localhost:3001")
     kiosk_id   = os.getenv("KIOSK_ID", "kiosk-1")
 
-    client = KioskSocketClient(server_url=server_url, kiosk_id=kiosk_id)
+    client = KioskSocketClient(
+        server_url=server_url,
+        kiosk_id=kiosk_id,
+        solenoid=solenoid,
+        actuator=actuator,
+        camera=camera,
+    )
 
     backoff = 5
+    attempt = 0
     while True:
+        attempt += 1
+        log.info("[SOCKET] Connecting to %s (attempt #%d)…", server_url, attempt)
         try:
-            log.info("Connecting to server: %s", server_url)
             await client.connect()
-            await client.wait()          # blocks until disconnect
-            log.warning("Socket disconnected – reconnecting in %ss…", backoff)
+            log.info("[SOCKET] Connected ✓  kiosk_id=%s", kiosk_id)
+            backoff = 5             # reset on successful connect
+            await client.wait()
+            log.warning("[SOCKET] Disconnected — reconnecting in %d s…", backoff)
         except Exception as exc:
-            log.error("Socket error: %s", exc)
+            log.error("[SOCKET] Error: %s", exc)
         await asyncio.sleep(backoff)
-        backoff = min(backoff * 2, 60)   # exponential back-off, cap 60 s
+        backoff = min(backoff * 2, 60)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
-def main():
-    log.info("EngiRent Kiosk starting…")
 
-    # 1. WiFi check / provisioning (blocks if no WiFi)
+def main():
+    _banner()
+    log.info("Starting EngiRent Kiosk…")
+
+    # 1. WiFi / provisioning
     maybe_provision()
 
-    # 2. Local HDMI UI (daemon thread – dies with main process)
-    start_ui_server_thread()
-    log.info("HDMI UI server started on port %s", os.getenv("UI_PORT", "8080"))
+    # 2. Hardware
+    solenoid, actuator, camera = init_hardware()
 
-    # 3. Socket.io event loop (runs forever)
+    # 3. Local HDMI UI (daemon thread)
+    log.info("[UI]     Starting HDMI UI server on port %s…", os.getenv("UI_PORT", "8080"))
+    start_ui_server_thread()
+    log.info("[UI]     UI server started ✓  → http://localhost:%s", os.getenv("UI_PORT", "8080"))
+
+    # 4. Socket.io event loop
+    log.info("[SOCKET] Starting Socket.io client loop…")
     try:
-        asyncio.run(run_socket_client())
+        asyncio.run(run_socket_client(solenoid, actuator, camera))
     except KeyboardInterrupt:
-        log.info("Kiosk stopped by user.")
+        log.info("Kiosk stopped by user (Ctrl+C)")
+        solenoid.lock_all()
+        solenoid.cleanup()
+        log.info("All solenoids locked. Goodbye.")
 
 
 if __name__ == "__main__":

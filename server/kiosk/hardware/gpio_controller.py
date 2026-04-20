@@ -15,7 +15,7 @@ import logging
 
 from config import LOCKER_PINS, MOCK_GPIO, RELAY_ACTIVE_LOW
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.gpio")
 
 DOOR_KEYS = ("main_door", "trapdoor", "bottom_door")
 
@@ -88,9 +88,10 @@ class SolenoidController:
     async def unlock_for(self, locker_id: int, door: str, seconds: float):
         """Unlock, hold for `seconds`, then re-lock."""
         self.unlock(locker_id, door)
+        log.info("Holding unlock locker=%s door=%s for %.1f s…", locker_id, door, seconds)
         await asyncio.sleep(seconds)
         self.lock(locker_id, door)
-        log.info("AUTO-LOCK locker=%s door=%s after=%.1fs", locker_id, door, seconds)
+        log.info("AUTO-LOCKED locker=%s door=%s after %.1f s", locker_id, door, seconds)
 
     def lock_all(self):
         """Emergency: lock every solenoid immediately."""

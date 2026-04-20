@@ -15,7 +15,7 @@ import logging
 
 from config import LOCKER_PINS, MOCK_GPIO
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.actuator")
 
 PWM_FREQUENCY = 1000  # Hz
 

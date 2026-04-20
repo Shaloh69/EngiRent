@@ -18,7 +18,7 @@ from PIL import Image
 
 from config import LOCKER_PINS, MOCK_CAMERA
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.camera")
 
 # USB camera device paths – adjust if Linux assigns different indices
 # On Pi 5 with 2 CSI cameras, USB cams usually start at /dev/video4

@@ -16,7 +16,7 @@ from flask import Flask, jsonify, redirect, render_template_string, request, url
 
 from .wifi_manager import connect_wifi, get_available_networks, reboot
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.ap")
 
 AP_SSID     = "EngiRent-Kiosk-Setup"
 AP_PASSWORD = "engirent123"   # env-override in main.py

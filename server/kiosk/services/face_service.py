@@ -16,7 +16,7 @@ import numpy as np
 from config import ML_SERVICE_URL
 from services.image_uploader import upload_face_image
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.face")
 
 # Haar cascade — ships with every OpenCV install, no download needed
 _cascade = cv2.CascadeClassifier(

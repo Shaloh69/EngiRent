@@ -21,7 +21,7 @@ from flask_socketio import SocketIO, emit
 from config import UI_PORT
 from services.socket_client import get_ui_state
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("kiosk.ui")
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["SECRET_KEY"] = "kiosk-local-ui-secret"
