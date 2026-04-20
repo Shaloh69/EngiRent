@@ -88,15 +88,35 @@ except Exception as e:
 # ── 6. Test USB camera nodes with OpenCV GStreamer ────────────────────────────
 # Only test even-numbered nodes 0–10; Pi ISP nodes (video19+) stall GStreamer.
 section("Camera open test  (OpenCV GStreamer, USB nodes only)")
-import cv2 as _cv2, os as _os, numpy as _np
-USB_TEST_NODES = [f"/dev/video{i}" for i in range(0, 11, 2)]  # 0,2,4,6,8,10
+import cv2 as _cv2, os as _os, numpy as _np, re as _re, subprocess as _sp
+
+# Detect USB capture nodes from v4l2-ctl (first /dev/videoX under each USB device)
+def _usb_capture_nodes() -> list[str]:
+    try:
+        out = _sp.run(["v4l2-ctl", "--list-devices"], capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return [f"/dev/video{i}" for i in [0, 2, 4, 6, 9]]  # safe fallback
+    nodes, in_usb, seen_first = [], False, False
+    for line in out.splitlines():
+        stripped = line.strip()
+        if not line.startswith("\t"):
+            # device header line — USB if it mentions "usb"
+            in_usb = "usb" in line.lower()
+            seen_first = False
+        elif in_usb and not seen_first and stripped.startswith("/dev/video"):
+            nodes.append(stripped)
+            seen_first = True  # only take the first node per USB device
+    return nodes
+
+USB_TEST_NODES = _usb_capture_nodes()
 _CAMERA_LABELS = {
     "/dev/video0": "Face Cam  (A4tech FHD)",
     "/dev/video2": "Locker 3  (Web Camera)",
     "/dev/video4": "Locker 4  (Web Camera)",
     "/dev/video6": "Extra Cam 1",
     "/dev/video8": "Extra Cam 2",
-    "/dev/video10": "Extra Cam 3",
+    "/dev/video9": "Extra Cam 3",
+    "/dev/video10": "Extra Cam 4",
 }
 _working_cameras: list[str] = []
 
