@@ -12,7 +12,7 @@ import logging
 import os
 import tempfile
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile 
 
 from ..comparison.hybrid import HybridVerifier
 from ..config import settings
