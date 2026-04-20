@@ -88,8 +88,18 @@ except Exception as e:
 # ── 6. Test USB camera nodes with OpenCV GStreamer ────────────────────────────
 # Only test even-numbered nodes 0–10; Pi ISP nodes (video19+) stall GStreamer.
 section("Camera open test  (OpenCV GStreamer, USB nodes only)")
-import cv2 as _cv2, os as _os
+import cv2 as _cv2, os as _os, numpy as _np
 USB_TEST_NODES = [f"/dev/video{i}" for i in range(0, 11, 2)]  # 0,2,4,6,8,10
+_CAMERA_LABELS = {
+    "/dev/video0": "Face Cam  (A4tech FHD)",
+    "/dev/video2": "Locker 3  (Web Camera)",
+    "/dev/video4": "Locker 4  (Web Camera)",
+    "/dev/video6": "Extra Cam 1",
+    "/dev/video8": "Extra Cam 2",
+    "/dev/video10": "Extra Cam 3",
+}
+_working_cameras: list[str] = []
+
 for device in USB_TEST_NODES:
     if not _os.path.exists(device):
         continue
@@ -98,18 +108,83 @@ for device in USB_TEST_NODES:
         f"videoconvert ! video/x-raw,format=BGR ! "
         f"appsink max-buffers=1 drop=true sync=false"
     )
-    import warnings
     cap = _cv2.VideoCapture(gst, _cv2.CAP_GSTREAMER)
     if cap.isOpened():
         ret, frame = cap.read()
         if ret and frame is not None:
             h, w = frame.shape[:2]
-            ok(f"{device}  →  frame captured ({w}x{h})")
+            label = _CAMERA_LABELS.get(device, device)
+            ok(f"{device}  [{label}]  →  {w}x{h} ✓")
+            _working_cameras.append(device)
         else:
             warn(f"{device}  →  opened but no frame (metadata/busy?)")
         cap.release()
     else:
         fail(f"{device}  →  could not open")
+
+# ── 6b. Live preview of all working cameras ───────────────────────────────────
+if _working_cameras:
+    section("Live camera preview  (press Q to quit)")
+    print(f"  Found {len(_working_cameras)} camera(s): {', '.join(_working_cameras)}")
+    print("  Opening preview window… press  Q  to close and continue.\n")
+
+    _caps: dict[str, object] = {}
+    for device in _working_cameras:
+        gst = (
+            f"v4l2src device={device} ! "
+            f"videoconvert ! video/x-raw,format=BGR ! "
+            f"appsink max-buffers=1 drop=true sync=false"
+        )
+        c = _cv2.VideoCapture(gst, _cv2.CAP_GSTREAMER)
+        if c.isOpened():
+            _caps[device] = c
+
+    THUMB_W, THUMB_H = 400, 300
+    _FONT        = _cv2.FONT_HERSHEY_SIMPLEX
+    _GREEN       = (0, 220, 60)
+    _WHITE       = (255, 255, 255)
+    _SHADOW      = (0, 0, 0)
+
+    if _caps:
+        try:
+            while True:
+                tiles = []
+                for device, c in _caps.items():
+                    ret, frame = c.read()
+                    if not ret or frame is None:
+                        frame = _np.zeros((THUMB_H, THUMB_W, 3), dtype=_np.uint8)
+                    else:
+                        frame = _cv2.resize(frame, (THUMB_W, THUMB_H))
+
+                    label   = _CAMERA_LABELS.get(device, device)
+                    caption = f"{label}  |  {device}"
+
+                    # Shadow + text for readability on any background
+                    _cv2.putText(frame, caption, (11, 31), _FONT, 0.58, _SHADOW, 3, _cv2.LINE_AA)
+                    _cv2.putText(frame, caption, (10, 30), _FONT, 0.58, _GREEN,  2, _cv2.LINE_AA)
+
+                    # Green border on each tile
+                    _cv2.rectangle(frame, (0, 0), (THUMB_W - 1, THUMB_H - 1), _GREEN, 2)
+                    tiles.append(frame)
+
+                # Tile: up to 3 per row
+                cols = min(len(tiles), 3)
+                rows_needed = (len(tiles) + cols - 1) // cols
+                while len(tiles) < cols * rows_needed:
+                    tiles.append(_np.zeros((THUMB_H, THUMB_W, 3), dtype=_np.uint8))
+                row_imgs = [_np.hstack(tiles[r * cols:(r + 1) * cols]) for r in range(rows_needed)]
+                grid = _np.vstack(row_imgs)
+
+                _cv2.imshow("EngiRent Camera Diagnostic", grid)
+                if _cv2.waitKey(1) & 0xFF in (ord('q'), ord('Q'), 27):
+                    break
+        finally:
+            for c in _caps.values():
+                c.release()
+            _cv2.destroyAllWindows()
+        ok("Preview closed")
+    else:
+        warn("Could not re-open cameras for preview (another process may hold them)")
 
 # ── 7. Face cascade ────────────────────────────────────────────────────────────
 section("Face detection (Haar cascade)")
