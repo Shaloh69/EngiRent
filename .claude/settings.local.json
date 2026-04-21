@@ -35,7 +35,11 @@
       "Bash(git push *)",
       "Bash(xargs cat *)",
       "Bash(npm run *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "WebFetch(domain:forums.raspberrypi.com)",
+      "WebFetch(domain:gpiozero.readthedocs.io)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:rpi-lgpio.readthedocs.io)"
     ]
   }
 }

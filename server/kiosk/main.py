@@ -105,6 +105,7 @@ log = logging.getLogger("kiosk.main")
 
 
 def _banner():
+    from config import GPIO_CHIP
     kiosk_id   = os.getenv("KIOSK_ID", "kiosk-1")
     server_url = os.getenv("SERVER_URL", "?")
     ui_port    = os.getenv("UI_PORT", "8080")
@@ -117,6 +118,7 @@ def _banner():
     print(f"  {DIM}Kiosk ID  :{RESET}  {WHITE}{kiosk_id}{RESET}")
     print(f"  {DIM}Server    :{RESET}  {WHITE}{server_url}{RESET}")
     print(f"  {DIM}UI Port   :{RESET}  {WHITE}{ui_port}{RESET}")
+    print(f"  {DIM}GPIO Chip :{RESET}  {WHITE}/dev/gpiochip{GPIO_CHIP}{RESET}")
     print(f"  {DIM}GPIO Mock :{RESET}  {YELLOW if mock_gpio else GREEN}{'ON (simulated)' if mock_gpio else 'OFF (real hardware)'}{RESET}")
     print(f"  {DIM}Cam Mock  :{RESET}  {YELLOW if mock_cam else GREEN}{'ON (simulated)' if mock_cam else 'OFF (real cameras)'}{RESET}")
     print(f"{BOLD}{CYAN}{'=' * 56}{RESET}\n")

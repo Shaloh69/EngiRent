@@ -9,6 +9,25 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "kiosk_config.json"
 
+# ── GPIO chip auto-detection (Pi 5 kernel 6.6.45+ moved RP1 to gpiochip0) ─────
+# gpiozero 2.0.1 hardcodes chip=4 for Pi 5 which breaks after the kernel rename.
+# We detect the correct chip at startup so both old and new kernels work.
+def _detect_gpio_chip() -> int:
+    try:
+        import lgpio
+        for chip in (4, 0):
+            try:
+                h = lgpio.gpiochip_open(chip)
+                lgpio.gpiochip_close(h)
+                return chip
+            except Exception:
+                continue
+    except ImportError:
+        pass
+    return 0
+
+GPIO_CHIP = _detect_gpio_chip()
+
 # ── Server connection ──────────────────────────────────────────────────────────
 KIOSK_ID = os.getenv("KIOSK_ID", "kiosk-1")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
@@ -57,7 +76,7 @@ LOCKER_PINS = {
     },
     3: {
         "main_door_pin": 25,      # Relay B IN3 → Solenoid 7
-        "trapdoor_pin": 8,        # Relay B IN4 → Solenoid 8
+        "trapdoor_pin": 9,        # Relay B IN4 → Solenoid 8  (was GPIO8 = SPI0-CE0, conflicts with SPI)
         "bottom_door_pin": 7,     # 1-CH Relay 9 → Solenoid 9
         "actuator_pwm_pin": 19,   # Motor Driver B IN1 (PWM)
         "actuator_dir_pin": 26,   # Motor Driver B IN2 (DIR)
@@ -65,10 +84,10 @@ LOCKER_PINS = {
         "camera_index": 0,        # USB port 1 → /dev/video4 or similar
     },
     4: {
-        "main_door_pin": 1,       # 1-CH Relay 10 → Solenoid 10
-        "trapdoor_pin": 0,        # 1-CH Relay 11 → Solenoid 11
+        "main_door_pin": 11,      # 1-CH Relay 10 → Solenoid 10  (was GPIO1 = HAT EEPROM ID_SC)
+        "trapdoor_pin": 10,       # 1-CH Relay 11 → Solenoid 11  (was GPIO0 = HAT EEPROM ID_SD)
         "bottom_door_pin": 5,     # 1-CH Relay 12 → Solenoid 12
-        "actuator_pwm_pin": 13,   # Motor Driver B IN3 (PWM)
+        "actuator_pwm_pin": 13,   # Motor Driver B IN3 (PWM, hardware PWM1)
         "actuator_dir_pin": 6,    # Motor Driver B IN4 (DIR)
         "camera_type": "usb",
         "camera_index": 1,        # USB port 2 → /dev/video5 or similar
