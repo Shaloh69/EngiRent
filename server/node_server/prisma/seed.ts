@@ -106,7 +106,7 @@ async function seedStudents() {
 
 // ── Lockers ───────────────────────────────────────────────────────────────────
 
-const KIOSK_ID = "KIOSK-001";
+const KIOSK_ID = "kiosk-1";
 
 const LOCKERS = [
   { lockerNumber: "1", size: LockerSize.MEDIUM },

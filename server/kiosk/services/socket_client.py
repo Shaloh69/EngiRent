@@ -97,6 +97,7 @@ async def on_config(data: dict):
 async def on_command(data: dict):
     """Dispatch incoming command to the correct handler."""
     action = data.get("action")
+    command_id = data.get("command_id", "")
     log.info("Command received: %s | data=%s", action, data)
 
     handlers = {
@@ -111,10 +112,31 @@ async def on_command(data: dict):
 
     handler = handlers.get(action)
     if handler:
-        asyncio.create_task(handler(data))
+        asyncio.create_task(_run_with_ack(handler, action, command_id, data))
     else:
         log.warning("Unknown action: %s", action)
         await _emit_error(f"Unknown action: {action}")
+
+
+async def _run_with_ack(handler, action: str, command_id: str, data: dict):
+    """Wraps a command handler and emits kiosk:ack on success or failure."""
+    try:
+        await handler(data)
+        await sio.emit("kiosk:ack", {
+            "kiosk_id": KIOSK_ID,
+            "command_id": command_id,
+            "action": action,
+            "status": "ok",
+        })
+    except Exception as exc:
+        log.error("Command '%s' failed: %s", action, exc)
+        await sio.emit("kiosk:ack", {
+            "kiosk_id": KIOSK_ID,
+            "command_id": command_id,
+            "action": action,
+            "status": "error",
+            "message": str(exc),
+        })
 
 
 # ── Command handlers ───────────────────────────────────────────────────────────

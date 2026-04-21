@@ -572,7 +572,7 @@ export const sendKioskCommand = async (
     const kioskId = req.params.kioskId as string;
     const {
       action,
-      lockerId,
+      locker_id,
       door,
       durationOverride,
       pushSeconds,
@@ -608,7 +608,7 @@ export const sendKioskCommand = async (
     const commandId = Math.random().toString(16).slice(2, 10).toUpperCase();
 
     const payload: Record<string, unknown> = { action, command_id: commandId };
-    if (lockerId !== undefined) payload.locker_id = lockerId;
+    if (locker_id !== undefined) payload.locker_id = locker_id;
     if (door) payload.door = door;
     if (durationOverride !== undefined)
       payload.duration_override = durationOverride;
@@ -706,7 +706,7 @@ export const listKiosks = async (
       ...configs.map((c) => c.kioskId),
     ]);
 
-    res.json({ success: true, data: { kiosks: Array.from(kioskIds) } });
+    res.json({ success: true, data: { kiosks: Array.from(kioskIds).map((id) => ({ id })) } });
   } catch (error) {
     next(error);
   }

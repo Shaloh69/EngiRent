@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "kiosk_config.json"
 
 # ── Server connection ──────────────────────────────────────────────────────────
-KIOSK_ID = os.getenv("KIOSK_ID", "kiosk-001")
+KIOSK_ID = os.getenv("KIOSK_ID", "kiosk-1")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
 ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
 

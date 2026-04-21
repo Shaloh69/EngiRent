@@ -421,7 +421,14 @@ export default function KioskPage() {
                       Manual Controls
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {(["main", "trapdoor", "bottom"] as const).map((door) => (
+                      {(["main", "trapdoor", "bottom"] as const).map((door) => {
+                        const doorKey =
+                          door === "main"
+                            ? "main_door"
+                            : door === "bottom"
+                              ? "bottom_door"
+                              : door;
+                        return (
                         <Button
                           key={door}
                           size="sm"
@@ -430,10 +437,10 @@ export default function KioskPage() {
                           startContent={<LockOpen size={13} />}
                           isLoading={
                             cmdLoading ===
-                            `open_door-${JSON.stringify({ locker_id: id, door })}`
+                            `open_door-${JSON.stringify({ locker_id: id, door: doorKey })}`
                           }
                           onPress={() =>
-                            sendCommand("open_door", { locker_id: id, door })
+                            sendCommand("open_door", { locker_id: id, door: doorKey })
                           }
                         >
                           Open{" "}
@@ -443,7 +450,8 @@ export default function KioskPage() {
                               ? "Bottom"
                               : "Main"}
                         </Button>
-                      ))}
+                        );
+                      })}
                       <Button
                         size="sm"
                         variant="flat"
