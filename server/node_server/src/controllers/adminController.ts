@@ -658,15 +658,19 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
 
   send("connected", { ts: Date.now() });
 
-  const onStatus = (d: unknown) => send("kiosk_status", d);
-  const onOnline = (d: unknown) => send("kiosk_online", d);
-  const onAck = (d: unknown) => send("kiosk_ack", d);
-  const onError = (d: unknown) => send("kiosk_error", d);
+  const onStatus  = (d: unknown) => send("kiosk_status",  d);
+  const onOnline  = (d: unknown) => send("kiosk_online",  d);
+  const onOffline = (d: unknown) => send("kiosk_offline", d);
+  const onAck     = (d: unknown) => send("kiosk_ack",     d);
+  const onError   = (d: unknown) => send("kiosk_error",   d);
+  const onLog     = (d: unknown) => send("kiosk_log",     d);
 
-  kioskEventBus.on("kiosk_status", onStatus);
-  kioskEventBus.on("kiosk_online", onOnline);
-  kioskEventBus.on("kiosk_ack", onAck);
-  kioskEventBus.on("kiosk_error", onError);
+  kioskEventBus.on("kiosk_status",  onStatus);
+  kioskEventBus.on("kiosk_online",  onOnline);
+  kioskEventBus.on("kiosk_offline", onOffline);
+  kioskEventBus.on("kiosk_ack",     onAck);
+  kioskEventBus.on("kiosk_error",   onError);
+  kioskEventBus.on("kiosk_log",     onLog);
 
   // Heartbeat keeps the connection alive through proxies/load balancers
   const heartbeat = setInterval(() => {
@@ -679,10 +683,12 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
 
   req.on("close", () => {
     clearInterval(heartbeat);
-    kioskEventBus.off("kiosk_status", onStatus);
-    kioskEventBus.off("kiosk_online", onOnline);
-    kioskEventBus.off("kiosk_ack", onAck);
-    kioskEventBus.off("kiosk_error", onError);
+    kioskEventBus.off("kiosk_status",  onStatus);
+    kioskEventBus.off("kiosk_online",  onOnline);
+    kioskEventBus.off("kiosk_offline", onOffline);
+    kioskEventBus.off("kiosk_ack",     onAck);
+    kioskEventBus.off("kiosk_error",   onError);
+    kioskEventBus.off("kiosk_log",     onLog);
     logger.info(`SSE client disconnected: ${req.user?.email ?? "unknown"}`);
   });
 };

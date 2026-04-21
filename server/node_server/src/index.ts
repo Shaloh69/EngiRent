@@ -254,11 +254,22 @@ io.on("connection", (socket: Socket) => {
   // ── Kiosk status update
   socket.on("kiosk:status", (data: unknown) => {
     const d = data as Record<string, unknown>;
+    const ui   = d?.ui_state as Record<string, unknown> | undefined;
+    const lockers = ui?.lockers as Record<string, Record<string, string>> | undefined;
+    const lockerSummary = lockers
+      ? Object.entries(lockers)
+          .map(([id, doors]) =>
+            `L${id}[${doors.main ?? "?"}|${doors.trapdoor ?? "?"}|${doors.bottom ?? "?"}]`
+          )
+          .join("  ")
+      : "?";
     logger.info(
-      `  📡 [PI-STATUS]  kiosk=${d?.kiosk_id ?? "?"} ` +
-      `temp=${d?.cpu_temp ?? "?"}°C ` +
-      `uptime=${d?.uptime_seconds ?? "?"}s ` +
-      `lockers=${JSON.stringify(d?.lockers ?? {})}`
+      `\n┌─────────────────────────────────────────────\n` +
+      `│  📡 [PI-STATUS]  Kiosk state update\n` +
+      `│  Kiosk   : ${d?.kiosk_id ?? "?"}\n` +
+      `│  UI      : ${ui?.status ?? "?"} — ${ui?.message ?? ""}\n` +
+      `│  Lockers : ${lockerSummary}\n` +
+      `└─────────────────────────────────────────────`
     );
     io.emit("admin:kiosk_status", data);
     kioskEventBus.emit("kiosk_status", { ...d, ts: Date.now() });
@@ -765,8 +776,40 @@ io.on("connection", (socket: Socket) => {
     kioskEventBus.emit("kiosk_error", { ...d, ts: Date.now() });
   });
 
+  // ── Pi log forwarding — all relevant Pi logs streamed to Render
+  socket.on(
+    "kiosk:log",
+    (data: {
+      kiosk_id: string;
+      level: string;
+      module: string;
+      message: string;
+      ts: number;
+    }) => {
+      const { kiosk_id, level, module, message } = data;
+      const tag = level === "WARNING" || level === "ERROR" || level === "CRITICAL"
+        ? `⚠️  [PI-${level}]`
+        : `📟 [PI-LOG]`;
+      const line = `${tag}  ${kiosk_id} | ${level.padEnd(8)} | ${module.padEnd(20)} | ${message}`;
+      if (level === "ERROR" || level === "CRITICAL") {
+        logger.error(line);
+      } else if (level === "WARNING") {
+        logger.warn(line);
+      } else {
+        logger.info(line);
+      }
+      kioskEventBus.emit("kiosk_log", { ...data, ts: Date.now() });
+    },
+  );
+
   socket.on("disconnect", () => {
-    logger.info(`🔴 [PI-OFFLINE]  Socket disconnected: ${socket.id}`);
+    logger.info(
+      `\n┌─────────────────────────────────────────────\n` +
+      `│  🔴 [PI-OFFLINE]  Kiosk disconnected\n` +
+      `│  Socket : ${socket.id}\n` +
+      `└─────────────────────────────────────────────`
+    );
+    kioskEventBus.emit("kiosk_offline", { socket_id: socket.id, ts: Date.now() });
   });
 });
 
