@@ -6,6 +6,8 @@ Events emitted TO server:
   kiosk:status     – locker states update
   kiosk:images     – captured item images (URLs)
   kiosk:face       – face verification result
+  kiosk:log        – Pi log lines forwarded to Render server logs
+  kiosk:ack        – command execution result (ok / error)
 
 Events received FROM server:
   kiosk:command    – action to perform (open_door, drop_item, capture_image, etc.)
@@ -28,6 +30,43 @@ from services.face_service import verify_face
 log = logging.getLogger("kiosk.socket")
 
 sio = socketio.AsyncClient(reconnection=True, reconnection_attempts=0, logger=False)
+
+
+# ── Socket log handler — forwards Pi logs to Render server logs ────────────────
+
+_FORWARD_MODULES = {
+    "kiosk.main", "kiosk.socket", "kiosk.gpio", "kiosk.actuator",
+    "kiosk.camera", "kiosk.face", "kiosk.uploader", "kiosk.wifi", "kiosk.ui",
+}
+
+
+class _SocketLogHandler(logging.Handler):
+    """Emits Pi log records to the server via kiosk:log so they appear in Render."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.name not in _FORWARD_MODULES:
+            return
+        if record.levelno < logging.INFO:
+            return
+        if not sio.connected:
+            return
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(sio.emit("kiosk:log", {
+                    "kiosk_id": KIOSK_ID,
+                    "level":    record.levelname,
+                    "module":   record.name,
+                    "message":  record.getMessage(),
+                    "ts":       int(record.created * 1000),
+                }))
+        except Exception:
+            pass
+
+
+_socket_log_handler = _SocketLogHandler()
+_socket_log_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(_socket_log_handler)
 
 # Shared hardware instances (injected by main.py)
 _solenoid: SolenoidController | None = None
