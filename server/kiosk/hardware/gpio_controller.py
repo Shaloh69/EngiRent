@@ -82,15 +82,48 @@ class SolenoidController:
     def reinitialize(self, pin_config: dict):
         """Reinitialize with new pin configuration (for dynamic updates from server)."""
         log.info("Reinitializing solenoid controller with new pin config…")
+        old_pin_config = self._pin_config
+        old_relays = self._relays
+        new_relays: dict[tuple[int, str], object] = {}
+
         try:
-            self.lock_all()  # Lock everything first
-            self.cleanup()   # Close old relays
+            # Build the new relay set first, keep existing relays intact until success.
+            for locker_id, pins in pin_config.items():
+                for door in DOOR_KEYS:
+                    pin_key = f"{door}_pin" if f"{door}_pin" in pins else door
+                    pin = pins[pin_key] if isinstance(pins[pin_key], int) else pins[pin_key]
+
+                    if MOCK_GPIO:
+                        relay = _MockOutput(pin)
+                        log.debug("[REINIT] Solenoid locker=%s door=%s pin=GPIO%s [MOCK]", locker_id, door, pin)
+                    else:
+                        relay = OutputDevice(
+                            pin,
+                            active_high=not RELAY_ACTIVE_LOW,
+                            initial_value=False,
+                        )
+                        log.info("[REINIT] Solenoid locker=%s door=%s pin=GPIO%s ✓", locker_id, door, pin)
+                    new_relays[(locker_id, door)] = relay
+
+            # New pin set validated successfully; swap over and close old relays.
             self._pin_config = pin_config
-            self._relays = {}
-            self._init_pins()
+            self._relays = new_relays
+            if old_relays:
+                for relay in old_relays.values():
+                    try:
+                        relay.close()
+                    except Exception as e:
+                        log.warning("Failed to close old relay during reinit: %s", e)
             log.info("Solenoid controller reinitialized successfully ✓")
         except Exception as e:
             log.error("Failed to reinitialize solenoid controller: %s", e)
+            for relay in new_relays.values():
+                try:
+                    relay.close()
+                except Exception:
+                    pass
+            self._pin_config = old_pin_config
+            self._relays = old_relays
             raise
 
     def _relay(self, locker_id: int, door: str):
@@ -129,11 +162,21 @@ class SolenoidController:
 
     def lock_all(self):
         """Emergency: lock every solenoid immediately."""
+        if not self._relays:
+            log.debug("lock_all called with no relays")
+            return
         for (lid, door) in self._relays:
             self.lock(lid, door)
         log.warning("ALL solenoids locked")
 
     def cleanup(self):
+        if not self._relays:
+            log.debug("cleanup called with no relays")
+            return
         self.lock_all()
         for relay in self._relays.values():
-            relay.close()
+            try:
+                relay.close()
+            except Exception as e:
+                log.warning("Failed to close relay during cleanup: %s", e)
+        self._relays = {}
