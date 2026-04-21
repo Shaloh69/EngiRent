@@ -135,37 +135,32 @@ async function seedLockers() {
 // ── Kiosk config ──────────────────────────────────────────────────────────────
 
 async function seedKioskConfig() {
+  const kioskConfigData = {
+    door_open_duration_ms: 5000,
+    actuator_extend_duration_ms: 3000,
+    actuator_retract_duration_ms: 3000,
+    capture_delay_ms: 1500,
+    num_capture_frames: 3,
+    face_detection_timeout_ms: 15000,
+    solenoid_pins: {
+      locker_1: { main_door: 17, trapdoor: 18, bottom_door: 27 },
+      locker_2: { main_door: 22, trapdoor: 23, bottom_door: 24 },
+      locker_3: { main_door: 25, trapdoor: 9,  bottom_door: 7  },
+      locker_4: { main_door: 11, trapdoor: 10, bottom_door: 5  },
+    },
+    actuator_pins: {
+      locker_1: { pwm: 12, dir: 16 },
+      locker_2: { pwm: 20, dir: 21 },
+      locker_3: { pwm: 19, dir: 26 },
+      locker_4: { pwm: 13, dir: 6  },
+    },
+    camera_indices: { item_camera_1: 0, item_camera_2: 1, face_camera: 2 },
+  };
+
   const config = await prisma.kioskConfig.upsert({
     where: { kioskId: KIOSK_ID },
-    update: {},
-    create: {
-      kioskId: KIOSK_ID,
-      config: {
-        door_open_duration_ms: 5000,
-        actuator_extend_duration_ms: 3000,
-        actuator_retract_duration_ms: 3000,
-        capture_delay_ms: 1500,
-        num_capture_frames: 3,
-        face_detection_timeout_ms: 15000,
-        solenoid_pins: {
-          locker_1: { main_door: 17, trapdoor: 27, bottom_door: 22 },
-          locker_2: { main_door: 23, trapdoor: 24, bottom_door: 25 },
-          locker_3: { main_door: 5, trapdoor: 6, bottom_door: 13 },
-          locker_4: { main_door: 19, trapdoor: 26, bottom_door: 21 },
-        },
-        actuator_pins: {
-          locker_1: { extend: 16, retract: 20 },
-          locker_2: { extend: 12, retract: 7 },
-          locker_3: { extend: 8, retract: 11 },
-          locker_4: { extend: 9, retract: 10 },
-        },
-        camera_indices: {
-          item_camera_1: 0,
-          item_camera_2: 1,
-          face_camera: 2,
-        },
-      },
-    },
+    update: { config: kioskConfigData },
+    create: { kioskId: KIOSK_ID, config: kioskConfigData },
   });
 
   log(`  ✓ KioskConfig ${config.kioskId}`);

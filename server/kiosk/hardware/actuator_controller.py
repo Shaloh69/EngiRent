@@ -13,7 +13,7 @@ Pin pairs from config:
 import asyncio
 import logging
 
-from config import LOCKER_PINS, MOCK_GPIO
+from config import LOCKER_PINS, MOCK_GPIO, GPIO_CHIP
 
 log = logging.getLogger("kiosk.actuator")
 
@@ -24,7 +24,8 @@ if not MOCK_GPIO:
     from gpiozero.pins.lgpio import LGPIOFactory
     import gpiozero
 
-    gpiozero.Device.pin_factory = LGPIOFactory()
+    gpiozero.Device.pin_factory = LGPIOFactory(chip=GPIO_CHIP)
+    log.info("Actuator controller using gpiochip%s", GPIO_CHIP)
 
 
 class _MockPWM:

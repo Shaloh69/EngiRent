@@ -13,7 +13,7 @@ Set RELAY_ACTIVE_LOW=False in .env if your board is active-HIGH.
 import asyncio
 import logging
 
-from config import LOCKER_PINS, MOCK_GPIO, RELAY_ACTIVE_LOW
+from config import LOCKER_PINS, MOCK_GPIO, RELAY_ACTIVE_LOW, GPIO_CHIP
 
 log = logging.getLogger("kiosk.gpio")
 
@@ -24,7 +24,8 @@ if not MOCK_GPIO:
     from gpiozero.pins.lgpio import LGPIOFactory
     import gpiozero
 
-    gpiozero.Device.pin_factory = LGPIOFactory()
+    gpiozero.Device.pin_factory = LGPIOFactory(chip=GPIO_CHIP)
+    log.info("Solenoid controller using gpiochip%s", GPIO_CHIP)
 
 
 class _MockOutput:
