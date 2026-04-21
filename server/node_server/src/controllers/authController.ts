@@ -1,20 +1,24 @@
-import { Response, NextFunction } from 'express';
-import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
-import { hashPassword, comparePassword } from '../utils/bcrypt';
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt';
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "../middleware/auth";
+import prisma from "../config/database";
+import { hashPassword, comparePassword } from "../utils/bcrypt";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from "../utils/jwt";
 import {
   ValidationError,
   UnauthorizedError,
   ConflictError,
   NotFoundError,
-} from '../utils/errors';
-import logger from '../utils/logger';
+} from "../utils/errors";
+import logger from "../utils/logger";
 
 export const register = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const {
@@ -28,21 +32,16 @@ export const register = async (
       parentContact,
     } = req.body;
 
-    // Check if user already exists
     const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ email }, { studentId }],
-      },
+      where: { OR: [{ email }, { studentId }] },
     });
 
     if (existingUser) {
-      throw new ConflictError('Email or Student ID already registered');
+      throw new ConflictError("Email or Student ID already registered");
     }
 
-    // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         email,
@@ -62,24 +61,20 @@ export const register = async (
         lastName: true,
         phoneNumber: true,
         isVerified: true,
+        role: true,
         createdAt: true,
       },
     });
 
-    // Generate tokens
-    const accessToken = generateAccessToken({
+    const payload = {
       userId: user.id,
       email: user.email,
       studentId: user.studentId,
-    });
+      role: user.role as "STUDENT" | "ADMIN",
+    };
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
 
-    const refreshToken = generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      studentId: user.studentId,
-    });
-
-    // Save refresh token
     await prisma.user.update({
       where: { id: user.id },
       data: { refreshToken },
@@ -89,14 +84,8 @@ export const register = async (
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
-      data: {
-        user,
-        tokens: {
-          accessToken,
-          refreshToken,
-        },
-      },
+      message: "User registered successfully",
+      data: { user, tokens: { accessToken, refreshToken } },
     });
   } catch (error) {
     next(error);
@@ -106,58 +95,39 @@ export const register = async (
 export const login = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { email, password } = req.body;
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user) {
-      throw new UnauthorizedError('Invalid email or password');
-    }
+    if (!user) throw new UnauthorizedError("Invalid email or password");
+    if (!user.isActive) throw new UnauthorizedError("Account is deactivated");
 
-    // Check if account is active
-    if (!user.isActive) {
-      throw new UnauthorizedError('Account is deactivated');
-    }
-
-    // Verify password
     const isPasswordValid = await comparePassword(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedError('Invalid email or password');
-    }
+    if (!isPasswordValid)
+      throw new UnauthorizedError("Invalid email or password");
 
-    // Generate tokens
-    const accessToken = generateAccessToken({
+    const payload = {
       userId: user.id,
       email: user.email,
       studentId: user.studentId,
-    });
+      role: user.role as "STUDENT" | "ADMIN",
+    };
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
 
-    const refreshToken = generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      studentId: user.studentId,
-    });
-
-    // Update last login and refresh token
     await prisma.user.update({
       where: { id: user.id },
-      data: {
-        lastLogin: new Date(),
-        refreshToken,
-      },
+      data: { lastLogin: new Date(), refreshToken },
     });
 
     logger.info(`User logged in: ${user.email}`);
 
     res.json({
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       data: {
         user: {
           id: user.id,
@@ -167,11 +137,9 @@ export const login = async (
           lastName: user.lastName,
           profileImage: user.profileImage,
           isVerified: user.isVerified,
+          role: user.role,
         },
-        tokens: {
-          accessToken,
-          refreshToken,
-        },
+        tokens: { accessToken, refreshToken },
       },
     });
   } catch (error) {
@@ -182,45 +150,30 @@ export const login = async (
 export const refreshToken = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    const { refreshToken } = req.body;
+    const { refreshToken: token } = req.body;
+    if (!token) throw new ValidationError("Refresh token is required");
 
-    if (!refreshToken) {
-      throw new ValidationError('Refresh token is required');
-    }
-
-    // Verify refresh token
-    const decoded = verifyRefreshToken(refreshToken);
-
-    // Find user and verify refresh token
+    const decoded = verifyRefreshToken(token);
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
     });
 
-    if (!user || user.refreshToken !== refreshToken) {
-      throw new UnauthorizedError('Invalid refresh token');
-    }
+    if (!user || user.refreshToken !== token)
+      throw new UnauthorizedError("Invalid refresh token");
+    if (!user.isActive) throw new UnauthorizedError("Account is deactivated");
 
-    if (!user.isActive) {
-      throw new UnauthorizedError('Account is deactivated');
-    }
-
-    // Generate new tokens
-    const newAccessToken = generateAccessToken({
+    const payload = {
       userId: user.id,
       email: user.email,
       studentId: user.studentId,
-    });
+      role: user.role as "STUDENT" | "ADMIN",
+    };
+    const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
 
-    const newRefreshToken = generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      studentId: user.studentId,
-    });
-
-    // Update refresh token
     await prisma.user.update({
       where: { id: user.id },
       data: { refreshToken: newRefreshToken },
@@ -228,10 +181,7 @@ export const refreshToken = async (
 
     res.json({
       success: true,
-      data: {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-      },
+      data: { accessToken: newAccessToken, refreshToken: newRefreshToken },
     });
   } catch (error) {
     next(error);
@@ -241,25 +191,16 @@ export const refreshToken = async (
 export const logout = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user) {
-      throw new UnauthorizedError('Not authenticated');
-    }
-
-    // Clear refresh token
+    if (!req.user) throw new UnauthorizedError("Not authenticated");
     await prisma.user.update({
       where: { id: req.user.userId },
       data: { refreshToken: null },
     });
-
     logger.info(`User logged out: ${req.user.email}`);
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully',
-    });
+    res.json({ success: true, message: "Logged out successfully" });
   } catch (error) {
     next(error);
   }
@@ -268,12 +209,10 @@ export const logout = async (
 export const getProfile = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user) {
-      throw new UnauthorizedError('Not authenticated');
-    }
+    if (!req.user) throw new UnauthorizedError("Not authenticated");
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
@@ -289,19 +228,14 @@ export const getProfile = async (
         parentContact: true,
         isVerified: true,
         isActive: true,
+        role: true,
         lastLogin: true,
         createdAt: true,
       },
     });
 
-    if (!user) {
-      throw new NotFoundError('User not found');
-    }
-
-    res.json({
-      success: true,
-      data: { user },
-    });
+    if (!user) throw new NotFoundError("User not found");
+    res.json({ success: true, data: { user } });
   } catch (error) {
     next(error);
   }
@@ -310,12 +244,10 @@ export const getProfile = async (
 export const updateProfile = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user) {
-      throw new UnauthorizedError('Not authenticated');
-    }
+    if (!req.user) throw new UnauthorizedError("Not authenticated");
 
     const {
       firstName,
@@ -352,10 +284,9 @@ export const updateProfile = async (
     });
 
     logger.info(`Profile updated: ${req.user.email}`);
-
     res.json({
       success: true,
-      message: 'Profile updated successfully',
+      message: "Profile updated successfully",
       data: { user: updatedUser },
     });
   } catch (error) {
@@ -366,45 +297,32 @@ export const updateProfile = async (
 export const changePassword = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user) {
-      throw new UnauthorizedError('Not authenticated');
-    }
+    if (!req.user) throw new UnauthorizedError("Not authenticated");
 
     const { currentPassword, newPassword } = req.body;
-
-    // Get user with password
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
     });
+    if (!user) throw new NotFoundError("User not found");
 
-    if (!user) {
-      throw new NotFoundError('User not found');
-    }
+    const isPasswordValid = await comparePassword(
+      currentPassword,
+      user.password,
+    );
+    if (!isPasswordValid)
+      throw new UnauthorizedError("Current password is incorrect");
 
-    // Verify current password
-    const isPasswordValid = await comparePassword(currentPassword, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedError('Current password is incorrect');
-    }
-
-    // Hash new password
     const hashedPassword = await hashPassword(newPassword);
-
-    // Update password
     await prisma.user.update({
       where: { id: req.user.userId },
       data: { password: hashedPassword },
     });
 
     logger.info(`Password changed: ${req.user.email}`);
-
-    res.json({
-      success: true,
-      message: 'Password changed successfully',
-    });
+    res.json({ success: true, message: "Password changed successfully" });
   } catch (error) {
     next(error);
   }

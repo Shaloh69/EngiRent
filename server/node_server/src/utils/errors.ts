@@ -2,7 +2,7 @@ export class AppError extends Error {
   constructor(
     public statusCode: number,
     public message: string,
-    public isOperational = true
+    public isOperational = true,
   ) {
     super(message);
     Object.setPrototypeOf(this, AppError.prototype);
@@ -17,19 +17,19 @@ export class ValidationError extends AppError {
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = 'Unauthorized') {
+  constructor(message = "Unauthorized") {
     super(401, message);
   }
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = 'Forbidden') {
+  constructor(message = "Forbidden") {
     super(403, message);
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(message = 'Resource not found') {
+  constructor(message = "Resource not found") {
     super(404, message);
   }
 }
@@ -41,7 +41,7 @@ export class ConflictError extends AppError {
 }
 
 export class InternalServerError extends AppError {
-  constructor(message = 'Internal server error') {
+  constructor(message = "Internal server error") {
     super(500, message, false);
   }
 }

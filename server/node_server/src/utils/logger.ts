@@ -1,5 +1,5 @@
-import winston from 'winston';
-import env from '../config/env';
+import winston from "winston";
+import env from "../config/env";
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
@@ -10,20 +10,20 @@ const logFormat = printf(({ level, message, timestamp, stack }) => {
 const logger = winston.createLogger({
   level: env.LOG_LEVEL,
   format: combine(
-    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
     errors({ stack: true }),
-    logFormat
+    logFormat,
   ),
   transports: [
     new winston.transports.Console({
       format: combine(colorize(), logFormat),
     }),
     new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
+      filename: "logs/error.log",
+      level: "error",
     }),
     new winston.transports.File({
-      filename: 'logs/combined.log',
+      filename: "logs/combined.log",
     }),
   ],
 });

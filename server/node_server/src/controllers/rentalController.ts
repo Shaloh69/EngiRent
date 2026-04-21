@@ -1,17 +1,21 @@
-import { Response, NextFunction } from 'express';
-import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
-import { NotFoundError, ForbiddenError, ValidationError } from '../utils/errors';
-import logger from '../utils/logger';
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "../middleware/auth";
+import prisma from "../config/database";
+import {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+} from "../utils/errors";
+import logger from "../utils/logger";
 
 export const createRental = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const { itemId, startDate, endDate } = req.body;
@@ -22,24 +26,26 @@ export const createRental = async (
     });
 
     if (!item) {
-      throw new NotFoundError('Item not found');
+      throw new NotFoundError("Item not found");
     }
 
     if (!item.isAvailable) {
-      throw new ValidationError('Item is not available for rent');
+      throw new ValidationError("Item is not available for rent");
     }
 
     if (item.ownerId === req.user.userId) {
-      throw new ValidationError('You cannot rent your own item');
+      throw new ValidationError("You cannot rent your own item");
     }
 
     // Calculate duration and price
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const days = Math.ceil(
+      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     if (days <= 0) {
-      throw new ValidationError('Invalid rental period');
+      throw new ValidationError("Invalid rental period");
     }
 
     const totalPrice = days * item.pricePerDay;
@@ -54,7 +60,7 @@ export const createRental = async (
         endDate: end,
         totalPrice,
         securityDeposit: item.securityDeposit,
-        status: 'PENDING',
+        status: "PENDING",
       },
       include: {
         item: {
@@ -92,11 +98,11 @@ export const createRental = async (
     await prisma.notification.create({
       data: {
         userId: item.ownerId,
-        title: 'New Rental Request',
+        title: "New Rental Request",
         message: `${req.user.email} wants to rent your ${item.title}`,
-        type: 'BOOKING_CONFIRMED',
+        type: "BOOKING_CONFIRMED",
         relatedEntityId: rental.id,
-        relatedEntityType: 'rental',
+        relatedEntityType: "rental",
       },
     });
 
@@ -104,7 +110,7 @@ export const createRental = async (
 
     res.status(201).json({
       success: true,
-      message: 'Rental request created successfully',
+      message: "Rental request created successfully",
       data: { rental },
     });
   } catch (error) {
@@ -115,14 +121,14 @@ export const createRental = async (
 export const getRentals = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
-    const { status, type, page = '1', limit = '10' } = req.query;
+    const { status, type, page = "1", limit = "10" } = req.query;
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const take = parseInt(limit as string);
@@ -130,15 +136,12 @@ export const getRentals = async (
     const where: any = {};
 
     // Filter by user type
-    if (type === 'rented') {
+    if (type === "rented") {
       where.renterId = req.user.userId;
-    } else if (type === 'owned') {
+    } else if (type === "owned") {
       where.ownerId = req.user.userId;
     } else {
-      where.OR = [
-        { renterId: req.user.userId },
-        { ownerId: req.user.userId },
-      ];
+      where.OR = [{ renterId: req.user.userId }, { ownerId: req.user.userId }];
     }
 
     if (status) {
@@ -169,7 +172,7 @@ export const getRentals = async (
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       prisma.rental.count({ where }),
     ]);
@@ -194,11 +197,11 @@ export const getRentals = async (
 export const getRentalById = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -234,12 +237,15 @@ export const getRentalById = async (
     });
 
     if (!rental) {
-      throw new NotFoundError('Rental not found');
+      throw new NotFoundError("Rental not found");
     }
 
     // Check if user is involved in this rental
-    if (rental.renterId !== req.user.userId && rental.ownerId !== req.user.userId) {
-      throw new ForbiddenError('Access denied');
+    if (
+      rental.renterId !== req.user.userId &&
+      rental.ownerId !== req.user.userId
+    ) {
+      throw new ForbiddenError("Access denied");
     }
 
     res.json({
@@ -254,11 +260,11 @@ export const getRentalById = async (
 export const updateRentalStatus = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -270,24 +276,27 @@ export const updateRentalStatus = async (
     });
 
     if (!rental) {
-      throw new NotFoundError('Rental not found');
+      throw new NotFoundError("Rental not found");
     }
 
     // Validate user permissions
-    if (rental.renterId !== req.user.userId && rental.ownerId !== req.user.userId) {
-      throw new ForbiddenError('Access denied');
+    if (
+      rental.renterId !== req.user.userId &&
+      rental.ownerId !== req.user.userId
+    ) {
+      throw new ForbiddenError("Access denied");
     }
 
     // Update rental
     const updateData: any = { status };
 
-    if (status === 'DEPOSITED' && lockerId) {
+    if (status === "DEPOSITED" && lockerId) {
       updateData.depositLockerId = lockerId;
       updateData.depositedAt = new Date();
-    } else if (status === 'ACTIVE' && lockerId) {
+    } else if (status === "ACTIVE" && lockerId) {
       updateData.claimLockerId = lockerId;
       updateData.claimedAt = new Date();
-    } else if (status === 'AWAITING_RETURN') {
+    } else if (status === "AWAITING_RETURN") {
       updateData.returnedAt = new Date();
     }
 
@@ -315,23 +324,23 @@ export const updateRentalStatus = async (
 
     // Create notification based on status
     let notificationData: any = null;
-    if (status === 'DEPOSITED') {
+    if (status === "DEPOSITED") {
       notificationData = {
         userId: rental.renterId,
-        title: 'Item Deposited',
+        title: "Item Deposited",
         message: `${rental.item.title} has been deposited in the kiosk`,
-        type: 'ITEM_READY_FOR_CLAIM',
+        type: "ITEM_READY_FOR_CLAIM",
         relatedEntityId: rental.id,
-        relatedEntityType: 'rental',
+        relatedEntityType: "rental",
       };
-    } else if (status === 'ACTIVE') {
+    } else if (status === "ACTIVE") {
       notificationData = {
         userId: rental.ownerId,
-        title: 'Item Claimed',
+        title: "Item Claimed",
         message: `Your ${rental.item.title} has been claimed`,
-        type: 'RENTAL_STARTED',
+        type: "RENTAL_STARTED",
         relatedEntityId: rental.id,
-        relatedEntityType: 'rental',
+        relatedEntityType: "rental",
       };
     }
 
@@ -343,7 +352,7 @@ export const updateRentalStatus = async (
 
     res.json({
       success: true,
-      message: 'Rental status updated successfully',
+      message: "Rental status updated successfully",
       data: { rental: updatedRental },
     });
   } catch (error) {
@@ -354,11 +363,11 @@ export const updateRentalStatus = async (
 export const cancelRental = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -369,20 +378,23 @@ export const cancelRental = async (
     });
 
     if (!rental) {
-      throw new NotFoundError('Rental not found');
+      throw new NotFoundError("Rental not found");
     }
 
-    if (rental.renterId !== req.user.userId && rental.ownerId !== req.user.userId) {
-      throw new ForbiddenError('Access denied');
+    if (
+      rental.renterId !== req.user.userId &&
+      rental.ownerId !== req.user.userId
+    ) {
+      throw new ForbiddenError("Access denied");
     }
 
-    if (!['PENDING', 'AWAITING_DEPOSIT'].includes(rental.status)) {
-      throw new ValidationError('Rental cannot be cancelled at this stage');
+    if (!["PENDING", "AWAITING_DEPOSIT"].includes(rental.status)) {
+      throw new ValidationError("Rental cannot be cancelled at this stage");
     }
 
     await prisma.rental.update({
       where: { id },
-      data: { status: 'CANCELLED' },
+      data: { status: "CANCELLED" },
     });
 
     // Make item available again
@@ -392,18 +404,17 @@ export const cancelRental = async (
     });
 
     // Notify other party
-    const notifyUserId = rental.renterId === req.user.userId
-      ? rental.ownerId
-      : rental.renterId;
+    const notifyUserId =
+      rental.renterId === req.user.userId ? rental.ownerId : rental.renterId;
 
     await prisma.notification.create({
       data: {
         userId: notifyUserId,
-        title: 'Rental Cancelled',
+        title: "Rental Cancelled",
         message: `Rental for ${rental.item.title} has been cancelled`,
-        type: 'SYSTEM_ANNOUNCEMENT',
+        type: "SYSTEM_ANNOUNCEMENT",
         relatedEntityId: rental.id,
-        relatedEntityType: 'rental',
+        relatedEntityType: "rental",
       },
     });
 
@@ -411,7 +422,7 @@ export const cancelRental = async (
 
     res.json({
       success: true,
-      message: 'Rental cancelled successfully',
+      message: "Rental cancelled successfully",
     });
   } catch (error) {
     next(error);

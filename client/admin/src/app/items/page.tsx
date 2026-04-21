@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import AdminLayout from '@/components/layout/AdminLayout';
+import { useEffect, useMemo, useState } from "react";
+import AdminLayout from "@/components/layout/AdminLayout";
 import {
   Table,
   TableHeader,
@@ -15,30 +15,34 @@ import {
   Select,
   SelectItem,
   Spinner,
-} from '@heroui/react';
-import { Search, Eye, Trash2, RefreshCw } from 'lucide-react';
-import api from '@/lib/api';
-import type { Item } from '@/types';
+} from "@heroui/react";
+import { Search, Eye, Trash2, RefreshCw } from "lucide-react";
+import api from "@/lib/api";
+import type { Item } from "@/types";
 
 const categories = [
-  'SCHOOL_ATTIRE',
-  'ACADEMIC_TOOLS',
-  'ELECTRONICS',
-  'DEVELOPMENT_KITS',
-  'MEASUREMENT_TOOLS',
-  'AUDIO_VISUAL',
-  'SPORTS_EQUIPMENT',
-  'OTHER',
+  "SCHOOL_ATTIRE",
+  "ACADEMIC_TOOLS",
+  "ELECTRONICS",
+  "DEVELOPMENT_KITS",
+  "MEASUREMENT_TOOLS",
+  "AUDIO_VISUAL",
+  "SPORTS_EQUIPMENT",
+  "OTHER",
 ];
 
-const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 });
+const peso = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  maximumFractionDigits: 0,
+});
 
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     void fetchItems();
@@ -46,12 +50,12 @@ export default function ItemsPage() {
 
   const fetchItems = async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
-      const response = await api.get('/items');
+      const response = await api.get("/items");
       setItems(response.data.data?.items || []);
     } catch (apiError: any) {
-      setError(apiError?.response?.data?.error || 'Failed to fetch items.');
+      setError(apiError?.response?.data?.error || "Failed to fetch items.");
       setItems([]);
     } finally {
       setLoading(false);
@@ -59,12 +63,12 @@ export default function ItemsPage() {
   };
 
   const deleteItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await api.delete(`/items/${itemId}`);
       await fetchItems();
     } catch (apiError: any) {
-      setError(apiError?.response?.data?.error || 'Failed to delete item.');
+      setError(apiError?.response?.data?.error || "Failed to delete item.");
     }
   };
 
@@ -73,8 +77,10 @@ export default function ItemsPage() {
       items.filter((item) => {
         const keyword = search.toLowerCase();
         const textMatch =
-          item.title.toLowerCase().includes(keyword) || item.description.toLowerCase().includes(keyword);
-        const categoryMatch = categoryFilter === '' || item.category === categoryFilter;
+          item.title.toLowerCase().includes(keyword) ||
+          item.description.toLowerCase().includes(keyword);
+        const categoryMatch =
+          categoryFilter === "" || item.category === categoryFilter;
         return textMatch && categoryMatch;
       }),
     [items, search, categoryFilter],
@@ -86,10 +92,19 @@ export default function ItemsPage() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">Inventory</p>
-              <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">Item Management</h1>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">
+                Inventory
+              </p>
+              <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">
+                Item Management
+              </h1>
             </div>
-            <Button variant="flat" startContent={<RefreshCw size={16} />} className="w-full sm:w-auto" onPress={fetchItems}>
+            <Button
+              variant="flat"
+              startContent={<RefreshCw size={16} />}
+              className="w-full sm:w-auto"
+              onPress={fetchItems}
+            >
               Refresh
             </Button>
           </div>
@@ -102,9 +117,7 @@ export default function ItemsPage() {
               variant="bordered"
             >
               {categories.map((cat) => (
-                <SelectItem key={cat}>
-                  {cat.replace(/_/g, ' ')}
-                </SelectItem>
+                <SelectItem key={cat}>{cat.replace(/_/g, " ")}</SelectItem>
               ))}
             </Select>
             <Input
@@ -118,7 +131,11 @@ export default function ItemsPage() {
           </div>
         </div>
 
-        {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
+        {error && (
+          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {error}
+          </div>
+        )}
 
         <div className="app-surface overflow-x-auto rounded-2xl border border-[var(--color-border)] p-3 sm:p-4">
           {loading ? (
@@ -139,21 +156,32 @@ export default function ItemsPage() {
               <TableBody emptyContent="No items found.">
                 {filteredItems.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-semibold">{item.title}</TableCell>
-                    <TableCell>{item.category.replace(/_/g, ' ')}</TableCell>
-                    <TableCell>{item.condition.replace(/_/g, ' ')}</TableCell>
+                    <TableCell className="font-semibold">
+                      {item.title}
+                    </TableCell>
+                    <TableCell>{item.category.replace(/_/g, " ")}</TableCell>
+                    <TableCell>{item.condition.replace(/_/g, " ")}</TableCell>
                     <TableCell>{peso.format(item.pricePerDay)}</TableCell>
                     <TableCell>
-                      {item.owner?.firstName || 'N/A'} {item.owner?.lastName || ''}
+                      {item.owner?.firstName || "N/A"}{" "}
+                      {item.owner?.lastName || ""}
                     </TableCell>
                     <TableCell>
-                      <Chip color={item.isAvailable ? 'success' : 'warning'} size="sm">
-                        {item.isAvailable ? 'Available' : 'In Use'}
+                      <Chip
+                        color={item.isAvailable ? "success" : "warning"}
+                        size="sm"
+                      >
+                        {item.isAvailable ? "Available" : "In Use"}
                       </Chip>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" color="primary" variant="flat" startContent={<Eye size={15} />}>
+                        <Button
+                          size="sm"
+                          color="primary"
+                          variant="flat"
+                          startContent={<Eye size={15} />}
+                        >
                           View
                         </Button>
                         <Button

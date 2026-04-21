@@ -1,6 +1,6 @@
 # EngiRent Hub — Full Repository Analysis
 
-**Date:** 2026-03-17
+**Date:** 2026-04-21
 **Repository:** EngiRent (monorepo)
 **Institution:** University of Cebu Lapu-Lapu and Mandaue (UCLM), College of Engineering
 **Type:** Engineering Thesis Project
@@ -13,14 +13,16 @@
 2. [Project Architecture](#2-project-architecture)
 3. [Backend — Node.js/Express API](#3-backend--nodejs-express-api)
 4. [AI/ML Verification Service](#4-aiml-verification-service)
-5. [Admin Console — Next.js](#5-admin-console--nextjs)
-6. [Public Web App — Next.js](#6-public-web-app--nextjs)
-7. [Flutter Mobile App](#7-flutter-mobile-app)
-8. [Database Schema](#8-database-schema)
-9. [Key Workflows](#9-key-workflows)
-10. [Security Architecture](#10-security-architecture)
-11. [Strengths & Gaps](#11-strengths--gaps)
-12. [File Index](#12-file-index)
+5. [Raspberry Pi Kiosk Controller](#5-raspberry-pi-kiosk-controller)
+6. [Admin Console — Next.js](#6-admin-console--nextjs)
+7. [Public Web App — Next.js](#7-public-web-app--nextjs)
+8. [Flutter Mobile App](#8-flutter-mobile-app)
+9. [Database Schema](#9-database-schema)
+10. [Key Workflows](#10-key-workflows)
+11. [Security Architecture](#11-security-architecture)
+12. [Deployment — Render.com](#12-deployment--rendercom)
+13. [Strengths & Gaps](#13-strengths--gaps)
+14. [File Index](#14-file-index)
 
 ---
 
@@ -33,7 +35,7 @@
 Students informally lend and borrow expensive engineering equipment (calculators, Arduino kits, measurement tools, etc.) with no accountability, fraud protection, or payment security. EngiRent Hub introduces:
 
 - **Escrow-controlled payments** (GCash, held until verified return)
-- **Smart locker kiosks** (automated, unattended item exchange)
+- **Smart locker kiosks** (automated, unattended item exchange with Raspberry Pi 5)
 - **AI verification** at both deposit and return (prevents fraud by both parties)
 - **Admin oversight** with manual review capability
 
@@ -49,11 +51,12 @@ Students informally lend and borrow expensive engineering equipment (calculators
 | ORM | Prisma | 5.22 | Type-safe database access |
 | ML Service | Python + FastAPI | 3.9+ / 0.104+ | AI item verification |
 | Auth | JWT + Bcrypt | — | Token-based authentication |
-| Storage | AWS S3 | — | Image hosting |
+| Storage | Supabase Storage | — | Image hosting (replaces AWS S3) |
 | Payments | GCash API | — | Cashless payment & escrow |
-| Hardware | Raspberry Pi + ESP32 | — | Kiosk locker controllers |
-| Real-time | Socket.io | 4.8.1 | Push notifications |
+| Hardware | Raspberry Pi 5 | — | Kiosk locker controller |
+| Real-time | Socket.io | 4.8.1 | Push notifications + kiosk commands |
 | UI Framework | HeroUI + Tailwind CSS | 2.6 / 4.1 | Component library (all web apps) |
+| Deployment | Render.com | — | Cloud hosting (Singapore region) |
 
 ---
 
@@ -69,11 +72,14 @@ EngiRent/
 │   └── flutter_app/        Flutter mobile app
 │
 ├── server/
-│   ├── src/                Node.js/Express REST API (port 5000)
-│   ├── prisma/             MySQL schema & migrations
-│   └── python_server/
-│       └── services/ml/    FastAPI ML service (port 8001)
+│   ├── node_server/        Node.js/Express REST API (port 5000)
+│   │   ├── src/            Controllers, routes, middleware, services
+│   │   └── prisma/         MySQL schema & migrations
+│   ├── python_server/
+│   │   └── services/ml/    FastAPI ML service (port 8001)
+│   └── kiosk/              Raspberry Pi 5 kiosk controller (Python)
 │
+├── render.yaml             Render.com cloud deployment config
 ├── README.md
 ├── AI_SYSTEM_DOCUMENTATION.md
 ├── AI_VERIFICATION_GUIDE.md
@@ -100,53 +106,54 @@ EngiRent/
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │         Node.js / Express REST API (port 5000)                  │
-│  /api/v1/{auth|items|rentals|payments|kiosk|notifications}      │
+│  /api/v1/{auth|items|rentals|payments|kiosk|notifications|upload}│
 │                                                                 │
 │  ┌──────────────┐  ┌─────────────┐  ┌────────────────────────┐ │
 │  │ Controllers  │  │ Middleware  │  │ Socket.io (real-time)  │ │
-│  │ auth         │  │ authenticate│  │ notification rooms     │ │
-│  │ items        │  │ validation  │  │ join/disconnect        │ │
+│  │ auth         │  │ authenticate│  │ user rooms (notifs)    │ │
+│  │ items        │  │ validation  │  │ kiosk rooms (commands) │ │
 │  │ rentals      │  │ rateLimiter │  └────────────────────────┘ │
-│  │ payments     │  │ errorHandler│                             │
-│  │ kiosk ───────┼──┼─────────────┼──► ML Service call        │
+│  │ payments     │  │ upload      │                             │
+│  │ kiosk        │  │ errorHandler│                             │
 │  │ notifications│  └─────────────┘                             │
 │  └──────────────┘                                               │
-└───────────┬────────────────────────────┬────────────────────────┘
-            │                            │
-            ▼                            ▼
-┌───────────────────┐       ┌────────────────────────────────────┐
-│   MySQL 8.0       │       │   Python FastAPI ML Service        │
-│   (via Prisma)    │       │   (port 8001)                      │
-│                   │       │                                    │
-│ users             │       │ POST /api/v1/verify                │
-│ items             │       │ POST /api/v1/extract-features      │
-│ rentals           │       │ GET  /api/v1/health                │
-│ transactions      │       │                                    │
-│ verifications     │       │ 8-stage hybrid CV pipeline:        │
-│ lockers           │       │ pHash → ORB → SIFT → SSIM          │
-│ notifications     │       │ → ResNet50 → OCR → score           │
-│ reviews           │       └────────────────────────────────────┘
-└───────────────────┘
+│  storageService → Supabase Storage (image upload)               │
+└───────┬────────────────────┬───────────────────┬───────────────┘
+        │                    │                   │
+        ▼                    ▼                   ▼
+┌──────────────┐  ┌──────────────────────┐  ┌────────────────────┐
+│  MySQL 8.0   │  │  Python FastAPI ML   │  │ Raspberry Pi 5     │
+│  (via Prisma)│  │  Service (port 8001) │  │ Kiosk Controller   │
+│              │  │                      │  │ (Socket.io client) │
+│ users        │  │ POST /verify         │  │                    │
+│ items        │  │ POST /extract-feats  │  │ GPIO solenoids     │
+│ rentals      │  │ GET  /health         │  │ L298N actuators    │
+│ transactions │  │                      │  │ CSI + USB cameras  │
+│ verifications│  │ 8-stage hybrid CV    │  │ Face recognition   │
+│ lockers      │  │ pipeline             │  │ HDMI UI (Flask)    │
+│ notifications│  └──────────────────────┘  │ WiFi provisioning  │
+│ reviews      │                            └────────────────────┘
+└──────────────┘
 
 External Services:
   GCash API ──────────── Payment processing & escrow
-  AWS S3   ──────────── Image storage (item photos, kiosk captures)
-  Hardware ──────────── Raspberry Pi (kiosk controller) → Backend HTTP calls
+  Supabase Storage ────── Image hosting (item photos, kiosk captures, profiles)
+  Render.com ─────────── Cloud hosting (Singapore), 4 services
 ```
 
 ---
 
 ## 3. Backend — Node.js/Express API
 
-**Root:** `server/`
-**Entry Point:** [server/src/index.ts](server/src/index.ts)
+**Root:** `server/node_server/`
+**Entry Point:** [server/node_server/src/index.ts](server/node_server/src/index.ts)
 **Port:** 5000
 **Base Path:** `/api/v1`
 
 ### Folder Structure
 
 ```
-server/
+server/node_server/
 ├── src/
 │   ├── config/
 │   │   ├── database.ts         Prisma client initialization
@@ -162,7 +169,8 @@ server/
 │   │   ├── auth.ts             JWT authentication
 │   │   ├── errorHandler.ts     Global error handling
 │   │   ├── validation.ts       express-validator integration
-│   │   └── rateLimiter.ts      IP-based rate limiting
+│   │   ├── rateLimiter.ts      IP-based rate limiting
+│   │   └── upload.ts           Multer file upload (memory storage)
 │   ├── routes/
 │   │   ├── index.ts            Router aggregator
 │   │   ├── authRoutes.ts
@@ -170,7 +178,10 @@ server/
 │   │   ├── rentalRoutes.ts
 │   │   ├── paymentRoutes.ts
 │   │   ├── kioskRoutes.ts
-│   │   └── notificationRoutes.ts
+│   │   ├── notificationRoutes.ts
+│   │   └── uploadRoutes.ts     NEW: image upload endpoints
+│   ├── services/
+│   │   └── storageService.ts   NEW: Supabase Storage wrapper
 │   ├── utils/
 │   │   ├── errors.ts           Custom AppError classes
 │   │   ├── jwt.ts              Token generation/verification
@@ -179,8 +190,8 @@ server/
 │   └── index.ts
 ├── prisma/
 │   └── schema.prisma
-├── python_server/              (ML microservice — see Section 4)
-├── Dockerfile                  Multi-stage Docker build
+├── schema.sql                  Raw SQL dump of schema
+├── Dockerfile                  Multi-stage Docker build (Node 20)
 ├── docker-compose.yml          MySQL + API services
 ├── .env.example
 └── package.json
@@ -192,15 +203,17 @@ server/
 |---|---|---|
 | express | 4.21.2 | Web framework |
 | @prisma/client | 5.22.0 | Database ORM |
+| @supabase/supabase-js | 2.99.2 | Supabase Storage client |
 | socket.io | 4.8.1 | Real-time events |
 | jsonwebtoken | 9.0.2 | JWT tokens |
 | bcryptjs | 2.4.3 | Password hashing |
 | axios | 1.7.9 | ML service HTTP calls |
-| multer | 2.0.2 | File upload handling |
+| multer | 2.0.2 | File upload handling (memory buffer) |
 | express-validator | 7.2.0 | Input validation |
 | helmet | 8.0.0 | Security headers |
 | winston | 3.17.0 | Structured logging |
 | zod | 3.24.1 | Config schema validation |
+| uuid | 14.0.0 | UUID generation for filenames |
 | morgan | 1.10.0 | HTTP request logging |
 
 ### API Endpoints
@@ -256,6 +269,13 @@ server/
 | POST | `/return` | Yes | Renter returns item → triggers ML verification |
 | GET | `/lockers` | Yes | List available lockers (filterable by size) |
 
+#### Upload — `/api/v1/upload` (NEW)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/image` | Yes | Upload single image → Supabase Storage, returns public URL |
+| POST | `/images` | Yes | Upload up to 10 images → Supabase Storage, returns URL array |
+
 #### Notifications — `/api/v1/notifications`
 
 | Method | Path | Auth | Description |
@@ -269,7 +289,21 @@ server/
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/api/v1/health` | No | API health check (used by Docker) |
+| GET | `/api/v1/health` | No | API health check (used by Docker and Render) |
+
+### Supabase Storage Service (NEW)
+
+**File:** [server/node_server/src/services/storageService.ts](server/node_server/src/services/storageService.ts)
+
+Replaces the previously planned AWS S3 integration. Provides:
+- `uploadFile(folder, filename, buffer, mimetype)` → returns public URL
+- `deleteFile(storagePath)` → removes file from bucket
+- `pathFromUrl(url)` → extracts storage path from full Supabase public URL
+
+Folder prefixes inside the `media` bucket:
+- `item-images/` — listing photos
+- `kiosk-captures/` — kiosk camera frames
+- `profile-images/` — user avatars
 
 ### Controller Business Logic
 
@@ -294,29 +328,31 @@ server/
 |---|---|
 | `helmet()` | Security headers (XSS, clickjacking, MIME sniffing) |
 | `cors()` | CORS for web and mobile client origins |
-| `json()` + `urlencoded()` | Request body parsing |
+| `json({ limit: '10mb' })` + `urlencoded()` | Request body parsing |
 | `morgan()` | HTTP request logging |
 | `rateLimiter` | 100 req / 15 min per IP (in-memory) |
 | `authenticate()` | JWT Bearer token verification, user active check |
 | `optionalAuth()` | Auth attempted but not required (public+auth endpoints) |
+| `uploadSingle` / `uploadMultiple` | Multer memory-buffer upload for `/upload` routes |
 | `validate()` | express-validator chain runner, returns field errors |
 | `errorHandler()` | Global catch-all: Prisma errors, AppError, JWT errors |
 | `notFound()` | 404 handler for unmatched routes |
 
-### Real-time Notifications (Socket.io)
+### Real-time (Socket.io)
 
-- Users join a personal room by `userId` on connect
-- Backend emits events to rooms when notifications are created
-- Frontend clients listen for events to update notification badges in real-time
+Two separate real-time channels:
+- **User rooms** (`user:<userId>`): Notification push events to mobile and admin clients
+- **Kiosk channel**: The backend **receives** events from the Pi kiosk (`kiosk:register`, `kiosk:status`, `kiosk:images`, `kiosk:face`) and **sends** commands (`kiosk:command`, `kiosk:config`)
 
 ### Environment Configuration
 
-All validated by Zod schema in [server/src/config/env.ts](server/src/config/env.ts):
+All validated by Zod schema in [server/node_server/src/config/env.ts](server/node_server/src/config/env.ts):
 
 | Variable | Default | Required |
 |---|---|---|
 | `NODE_ENV` | development | No |
 | `PORT` | 5000 | No |
+| `API_VERSION` | v1 | No |
 | `DATABASE_URL` | — | **Yes** |
 | `JWT_SECRET` | — | **Yes** (min 32 chars) |
 | `JWT_EXPIRE` | 7d | No |
@@ -327,18 +363,23 @@ All validated by Zod schema in [server/src/config/env.ts](server/src/config/env.
 | `GCASH_API_URL` | — | No |
 | `GCASH_MERCHANT_ID` | — | No |
 | `GCASH_SECRET_KEY` | — | No |
-| `AWS_REGION` | — | No |
-| `AWS_ACCESS_KEY_ID` | — | No |
-| `S3_BUCKET_NAME` | — | No |
-| `CLIENT_WEB_URL` | — | No |
-| `CLIENT_MOBILE_URL` | — | No |
+| `GCASH_PUBLIC_KEY` | — | No |
+| `SUPABASE_URL` | — | **Yes** |
+| `SUPABASE_SERVICE_ROLE_KEY` | — | **Yes** |
+| `SUPABASE_STORAGE_BUCKET` | media | No |
+| `CLIENT_WEB_URL` | http://localhost:3000 | No |
+| `CLIENT_MOBILE_URL` | http://localhost:3000 | No |
+| `KIOSK_RASPBERRY_PI_URL` | — | No |
+| `KIOSK_WEBHOOK_SECRET` | — | No |
 | `RATE_LIMIT_WINDOW_MS` | 900000 | No |
 | `RATE_LIMIT_MAX_REQUESTS` | 100 | No |
+| `MAX_FILE_SIZE` | 10485760 (10 MB) | No |
+| `ALLOWED_FILE_TYPES` | image/jpeg,image/png,... | No |
 | `LOG_LEVEL` | info | No |
 
 ### Docker Setup
 
-**Dockerfile:** Multi-stage build — Stage 1 (builder): deps + Prisma generate + TypeScript compile. Stage 2 (production): only production deps + compiled JS. Exposes port 5000. Health check pings `/api/v1/health`.
+**Dockerfile:** Multi-stage build (Node 20) — Stage 1 (builder): deps + Prisma generate + TypeScript compile. Stage 2 (production): only production deps + compiled JS. Exposes port 5000. Health check pings `/api/v1/health`.
 
 **docker-compose.yml:** Two services:
 - `engirent-mysql`: MySQL 8.0 on port 3306, volume `mysql_data`, database `engirent_db`
@@ -430,13 +471,14 @@ When an item is created (`POST /items`), `itemController.ts` fires a background 
 2. Calls `POST /extract-features`
 3. Stores `StorableFeatures` JSON in `item.mlFeatures` (MySQL)
 
-At kiosk time, `kioskController.ts` passes `reference_features` to `/verify`, skipping the expensive ResNet50 feature extraction on already-seen images. This reduces verification latency significantly.
+At kiosk time, `kioskController.ts` passes `reference_features` to `/verify`, skipping the expensive ResNet50 feature extraction on already-seen images.
 
 ### Service Files
 
 ```
 app/
 ├── main.py                     FastAPI app, CORS, router registration
+├── config.py                   ML service configuration
 ├── models/
 │   └── schemas.py              Pydantic request/response models
 ├── routers/
@@ -447,7 +489,8 @@ app/
 │   ├── deep.py                 ResNet50 embeddings
 │   └── phash.py                Perceptual hash
 ├── comparison/
-│   └── hybrid.py               HybridVerifier class, weighted scoring
+│   ├── hybrid.py               HybridVerifier class, weighted scoring
+│   └── similarity.py           Similarity utility helpers
 └── utils/
     ├── image.py                Image loading, resizing, preprocessing
     ├── ocr.py                  Tesseract OCR for serial numbers
@@ -457,7 +500,155 @@ app/
 
 ---
 
-## 5. Admin Console — Next.js
+## 5. Raspberry Pi Kiosk Controller
+
+**Root:** `server/kiosk/`
+**Hardware:** Raspberry Pi 5 (4 GB+)
+**Language:** Python 3 (asyncio + gpiozero + socketio)
+**Communication:** Socket.io client → Node.js backend
+
+This is a **new, complete hardware controller** added to the project. It is the physical brain of each smart locker kiosk unit.
+
+### Responsibilities
+
+- WiFi provisioning (AP captive portal on first boot)
+- GPIO solenoid lock control (12 solenoids across 4 lockers)
+- L298N linear actuator control (4 trapdoor actuators)
+- Camera management (CSI + USB cameras for item capture + face recognition)
+- Face detection + identity verification (OpenCV Haar cascade + ML service)
+- Image upload to Supabase Storage
+- HDMI UI rendering (Flask web server → Chromium kiosk browser)
+- Socket.io persistent connection to the Node.js backend
+
+### Hardware Configuration (per kiosk unit)
+
+| Component | Qty | Role |
+|---|---|---|
+| Raspberry Pi 5 (4 GB+) | 1 | Main controller |
+| 5V 4-channel relay module | 3 | 12 solenoid channels total |
+| 12V solenoid lock | 12 | 3 per locker: main_door, trapdoor, bottom_door |
+| L298N dual H-bridge motor driver | 2 | 4 actuator channels (2 per driver) |
+| 12V linear actuator | 4 | Trapdoor push/pull mechanism per locker |
+| Raspberry Pi Camera Module 3 | 2 | CSI0 (locker 1), CSI1 (locker 2) |
+| USB webcam | 3 | Lockers 3 & 4 item capture + face camera |
+| HDMI monitor | 1 | 7–10" kiosk display |
+
+### Folder Structure
+
+```
+server/kiosk/
+├── main.py                     Entry point: startup sequence
+├── config.py                   Env-driven config (kiosk_id, server URL, GPIO pins)
+├── kiosk_config.json           Live timing config (updated via admin panel)
+├── diagnose.py                 Hardware diagnostic script
+├── requirements.txt            Python dependencies
+├── setup.sh / setup.bat        Install scripts (Linux/Windows dev)
+├── .env.example
+├── hardware/
+│   ├── gpio_controller.py      SolenoidController: 12-relay GPIO management
+│   ├── actuator_controller.py  ActuatorController: L298N PWM/direction control
+│   └── camera_manager.py       CameraManager: CSI + USB capture + face cam
+├── services/
+│   ├── socket_client.py        Socket.io async client + command dispatcher
+│   ├── face_service.py         OpenCV Haar cascade + ML /verify-face call
+│   └── image_uploader.py       Upload captured frames to Supabase Storage
+├── kiosk_ui/
+│   ├── server.py               Flask HDMI UI server (port 8080)
+│   ├── templates/index.html    Kiosk display HTML
+│   └── static/
+│       ├── app.js              UI state polling via AJAX
+│       └── style.css           Kiosk display styles
+├── provisioning/
+│   ├── wifi_manager.py         Check WiFi status via nmcli
+│   └── ap_portal.py            Captive portal for WiFi credentials entry
+├── systemd/
+│   ├── engirent-kiosk.service         Auto-start kiosk controller on boot
+│   └── engirent-kiosk-browser.service Auto-launch Chromium in kiosk mode
+└── data/
+    └── .gitkeep                Holds local haarcascade XML if not system-installed
+```
+
+### Startup Sequence
+
+```
+1. Load .env, configure colored logging
+2. Check WiFi → if not connected, start AP hotspot "EngiRent-Kiosk-Setup"
+   → User connects phone and enters credentials at http://192.168.4.1
+   → Pi reboots with WiFi configured
+3. Initialize hardware:
+   → SolenoidController (12 relays, active-LOW by default)
+   → ActuatorController (4 L298N channels via PWM)
+   → CameraManager (CSI0, CSI1, USB video devices)
+4. Start HDMI UI Flask server on port 8080 (daemon thread)
+   → Chromium auto-launches in kiosk mode pointing to localhost:8080
+5. Start Socket.io client loop (reconnects indefinitely on disconnect)
+   → Emits kiosk:register on connect
+   → Waits for kiosk:command events
+```
+
+### Socket.io Protocol
+
+**Events emitted TO server:**
+
+| Event | Payload | Trigger |
+|---|---|---|
+| `kiosk:register` | `{kiosk_id, locker_count, version}` | On connect |
+| `kiosk:status` | `{kiosk_id, ui_state, config}` | After any command |
+| `kiosk:images` | `{kiosk_id, locker_id, image_urls, rental_id}` | After capture_image command |
+| `kiosk:face` | `{kiosk_id, rental_id, user_id, detected, verified, confidence}` | After capture_face command |
+| `kiosk:error` | `{kiosk_id, message}` | On unknown/failed command |
+
+**Events received FROM server:**
+
+| Event | Payload | Action |
+|---|---|---|
+| `kiosk:command` | `{action, locker_id, ...params}` | Dispatch to handler |
+| `kiosk:config` | timing config JSON | Update `kiosk_config.json` |
+
+**Supported actions in `kiosk:command`:**
+
+| Action | Description |
+|---|---|
+| `open_door` | Unlock solenoid for `door` type on `locker_id` for configurable seconds |
+| `drop_item` | Penalty sequence: unlock trapdoor → actuator push/pull → lock trapdoor |
+| `capture_image` | Capture N frames from locker camera → upload to Supabase → emit URLs |
+| `capture_face` | Capture face frames → Haar detect + ML verify → emit result |
+| `lock_all` | Emergency: lock all solenoids and stop all actuators |
+| `actuator_extend` | Manual actuator push for `locker_id` |
+| `actuator_retract` | Manual actuator pull for `locker_id` |
+
+### Locker Mechanical Design
+
+Each of the 4 lockers has a **3-door system**:
+
+| Door | Solenoid | Purpose |
+|---|---|---|
+| `main_door` | Top | Owner inserts / renter retrieves item |
+| `trapdoor` | Internal | Drop mechanism (penalty/item drop to bottom) |
+| `bottom_door` | Bottom | Renter retrieval access |
+
+The trapdoor uses a linear actuator to physically push/pull it open and closed, with the solenoid as the latch.
+
+### Configuration
+
+Timing parameters are stored in `kiosk_config.json` and can be updated live from the admin panel. Per-locker config includes:
+- `main_door_open_seconds` — how long main door stays unlocked
+- `trapdoor_unlock_seconds` — solenoid unlock duration
+- `bottom_door_open_seconds` — retrieval door open time
+- `actuator_push_seconds` / `actuator_pull_seconds` — trapdoor actuation
+- `actuator_speed_percent` — L298N PWM duty cycle
+
+### Mock Mode (Development)
+
+```bash
+MOCK_GPIO=true MOCK_CAMERA=true python main.py
+```
+
+All GPIO and camera calls are intercepted by mock classes — no hardware needed for development and testing.
+
+---
+
+## 6. Admin Console — Next.js
 
 **Root:** `client/admin/`
 **Framework:** Next.js 15.5.12, React 19.0.0
@@ -520,7 +711,7 @@ app/
 
 ---
 
-## 6. Public Web App — Next.js
+## 7. Public Web App — Next.js
 
 **Root:** `client/web/`
 **Framework:** Next.js 15.5.12, React 18.3.1
@@ -545,20 +736,6 @@ app/
 | `/pricing` | 3 tiers: Student Basic (free), Kiosk Transaction (per rental), Admin Operations (institution) |
 | `/blog` | 3 blog posts about project design, AI verification, and automation philosophy |
 
-### Site Configuration
-
-**File:** [client/web/config/site.ts](client/web/config/site.ts)
-
-```typescript
-siteConfig = {
-  name: 'EngiRent Hub',
-  description: 'Smart kiosk rentals for engineering students with AI-backed verification.',
-  navItems: [Home, About, Docs, Pricing, Blog],
-  navMenuItems: [Owner Flow, Renter Flow, Verification, Security, Contact],
-  links: { admin: 'http://localhost:3001', docs: '/docs', ... }
-}
-```
-
 ### Components
 
 **Navbar** ([client/web/components/navbar.tsx](client/web/components/navbar.tsx)):
@@ -572,16 +749,9 @@ siteConfig = {
 - `title()`: tailwind-variants styled heading with color/size variants
 - `subtitle()`: body text with max-width constraints and muted color
 
-### Styling
-
-- CSS variables prefixed `--brand-*` (nearly identical palette to admin `--color-*`)
-- Font: Manrope (sans), JetBrains Mono (code)
-- Radial gradient backgrounds (blue + green)
-- Dark mode: complete color inversion via `.dark` class
-
 ---
 
-## 7. Flutter Mobile App
+## 8. Flutter Mobile App
 
 **Root:** `client/flutter_app/`
 **Framework:** Flutter SDK 3.9.2+
@@ -637,11 +807,6 @@ siteConfig = {
 - `mlServiceUrl`: `http://localhost:8001/api/v1`
 - Storage keys, item categories (8), rental statuses (10), app version
 
-**Colors** ([lib/core/constants/app_colors.dart](client/flutter_app/lib/core/constants/app_colors.dart)):
-- Primary: `#2563EB`, Secondary: `#10B981`, Accent: `#F59E0B`
-- Status colors: success, warning, error, info
-- Linear gradient: primary → primaryDark
-
 **Models:**
 - `UserModel`: id, email, studentId, firstName, lastName, phone, profileImage, isVerified
 - `ItemModel`: id, title, description, category, condition, pricePerDay, images, averageRating, owner (ItemOwner)
@@ -665,10 +830,6 @@ siteConfig = {
 
 **AuthProvider** — ChangeNotifier: `_user`, `_isLoading`, `_error`. Methods: `login()`, `register()`, `loadUser()`, `logout()`, `clearError()`.
 
-**LoginScreen** — Email/password form, responsive layout (side-by-side on wide), visibility toggle, error snackbar.
-
-**RegisterScreen** — Full student info: email, password, studentId, firstName, lastName, phoneNumber, parentName (optional), parentContact (optional).
-
 #### Home (`features/home/`)
 
 **HomeScreen** — 4-tab `BottomNavigationBar`:
@@ -686,43 +847,17 @@ siteConfig = {
 
 **CreateItemScreen** — Form: title, description, category dropdown (8 options), condition dropdown (5 options), pricePerDay, securityDeposit, image URLs (comma-separated placeholder for image upload).
 
-**ItemService** — `getItems(query?)`, `createItem(...)`. Demo pool of 3 sample items.
-
 #### Kiosk (`features/kiosk/`)
 
-**KioskScanScreen** — UI-only kiosk interaction screen:
-- Informational panel explaining QR + Face workflow
-- 230×230 camera preview placeholder (awaiting hardware camera integration)
-- Manual token input field (fallback)
-- "Validate Session Token" button
-
-#### Rentals (`features/rentals/`)
-
-**RentalService** — `getRentals()` → `GET /rentals`. Demo: 2 samples (ACTIVE, VERIFICATION).
-
-#### Notifications (`features/notifications/`)
-
-**NotificationService** — `getNotifications()` → `GET /notifications`. Demo: 3 samples (ITEM_READY_FOR_CLAIM, RETURN_REMINDER, SYSTEM_ANNOUNCEMENT).
-
-### Authentication Flow
-
-```
-LoginScreen
-  → AuthProvider.login(email, password)
-    → AuthService.login() → POST /auth/login
-      [Success] StorageService.saveTokens() + saveUserId()
-               Navigator.pushReplacementNamed('/home')
-      [Failure] Show error SnackBar
-      [API down + demoMode] Return demo UserModel
-```
+**KioskScanScreen** — UI-only kiosk interaction screen with informational panel, camera preview placeholder, manual token input field, and "Validate Session Token" button.
 
 ---
 
-## 8. Database Schema
+## 9. Database Schema
 
 **ORM:** Prisma 5.22
 **Database:** MySQL 8.0
-**File:** [server/prisma/schema.prisma](server/prisma/schema.prisma)
+**File:** [server/node_server/prisma/schema.prisma](server/node_server/prisma/schema.prisma)
 
 ### Models
 
@@ -735,15 +870,13 @@ LoginScreen
 | studentId | String | Unique |
 | firstName, lastName | String | |
 | phoneNumber | String | |
-| profileImage | String? | URL |
+| profileImage | String? | Supabase Storage URL |
 | parentName, parentContact | String? | |
 | isVerified | Boolean | Default: false |
 | isActive | Boolean | Default: true |
 | emailVerifiedAt | DateTime? | |
 | refreshToken | Text? | Stored for invalidation |
 | lastLogin | DateTime? | |
-
-Relations: `itemsOwned`, `rentalsAsRenter`, `rentalsAsOwner`, `transactions`, `notifications`, `reviews`
 
 #### Item
 | Field | Type | Notes |
@@ -756,14 +889,12 @@ Relations: `itemsOwned`, `rentalsAsRenter`, `rentalsAsOwner`, `transactions`, `n
 | pricePerDay | Float | |
 | pricePerWeek, pricePerMonth | Float? | |
 | securityDeposit | Float | |
-| images | JSON | Array of URLs |
+| images | JSON | Array of Supabase Storage URLs |
 | mlFeatures | JSON? | Pre-extracted ML feature cache |
 | serialNumber | String? | For OCR matching |
 | isAvailable, isActive | Boolean | |
 | campusLocation | String? | |
 | totalRentals, averageRating | Int / Float | Aggregates |
-
-Relations: `owner`, `rentals`, `reviews`
 
 #### Rental
 | Field | Type | Notes |
@@ -779,8 +910,6 @@ Relations: `owner`, `rentals`, `reviews`
 | verificationScore | Float? | |
 | verificationStatus | Enum | PENDING, PROCESSING, COMPLETED, MANUAL_REVIEW, APPROVED, REJECTED |
 | depositAttemptCount, returnAttemptCount | Int | Default: 0 |
-
-Relations: `item`, `renter`, `owner`, `transactions`, `verifications`
 
 #### Transaction
 | Field | Type | Notes |
@@ -799,7 +928,7 @@ Relations: `item`, `renter`, `owner`, `transactions`, `verifications`
 | Field | Type | Notes |
 |---|---|---|
 | id | String (UUID) | PK |
-| originalImages, kioskImages | JSON | Arrays of image URLs |
+| originalImages, kioskImages | JSON | Arrays of Supabase Storage URLs |
 | decision | Enum | APPROVED, PENDING, RETRY, REJECTED |
 | confidenceScore | Float | 0–100 |
 | attemptNumber | Int | Default: 1 |
@@ -821,8 +950,6 @@ Relations: `item`, `renter`, `owner`, `transactions`, `verifications`
 | isOperational | Boolean | |
 | currentRentalId | String? | |
 | lastUsedAt | DateTime? | |
-
-Relations: `depositRentals`, `claimRentals`, `returnRentals`
 
 #### Notification
 | Field | Type | Notes |
@@ -846,7 +973,7 @@ Relations: `depositRentals`, `claimRentals`, `returnRentals`
 
 ---
 
-## 9. Key Workflows
+## 10. Key Workflows
 
 ### Owner Flow
 
@@ -854,6 +981,7 @@ Relations: `depositRentals`, `claimRentals`, `returnRentals`
 1. LIST ITEM
    Owner creates listing via Flutter app
    → POST /items (title, description, category, condition, prices, images)
+   → Images uploaded to Supabase via POST /upload/images first
    → Background: ML feature extraction cached to item.mlFeatures
 
 2. RECEIVE RENTAL REQUEST
@@ -867,87 +995,53 @@ Relations: `depositRentals`, `claimRentals`, `returnRentals`
    → status: AWAITING_DEPOSIT
 
 4. OWNER DEPOSITS ITEM AT KIOSK
-   → POST /kiosk/deposit (rental ID + kiosk images)
-   → Backend calls ML service: original listing images vs kiosk captures
+   Node backend sends kiosk:command { action: "open_door", locker_id: X, door: "main_door" }
+   Owner places item inside locker
+   Node sends kiosk:command { action: "capture_image", locker_id: X }
+   Pi captures frames → uploads to Supabase → emits kiosk:images back to server
+   Backend calls ML service: original listing images vs kiosk captures
    → APPROVED: status → DEPOSITED, locker locked
    → PENDING: status → DEPOSITED + MANUAL_REVIEW flag
    → RETRY: locker released, owner repositions (up to 10 attempts)
    → REJECTED (10th attempt): rental CANCELLED, renter notified/refunded
 
 5. RENTER CLAIMS ITEM
-   → POST /kiosk/claim (QR token + face auth at kiosk hardware)
+   Node sends kiosk:command { action: "capture_face", rental_id: X, user_id: Y }
+   Pi captures face → Haar detect + ML verify → emits kiosk:face
+   If verified: Node sends kiosk:command { action: "open_door", door: "main_door" }
    → status: ACTIVE, owner notified
 
 6. RENTAL PERIOD ACTIVE
    Notifications: RETURN_REMINDER, RETURN_OVERDUE (if late)
 
 7. RENTER RETURNS ITEM
-   → POST /kiosk/return (QR token + face auth + kiosk captures)
-   → Backend calls ML service: original images vs returned item
+   Node sends open_door + capture_image + capture_face commands via Socket.io
+   Pi executes, emits kiosk:images + kiosk:face results
+   Backend calls ML service: original images vs returned item
    → APPROVED: status → COMPLETED, payout released to owner
    → REJECTED: status → DISPUTED, admin investigates
-```
-
-### Renter Flow
-
-```
-1. BROWSE & BOOK
-   → GET /items (search, filter by category/price/availability)
-   → POST /rentals (itemId, startDate, endDate)
-
-2. PAY (GCash)
-   → POST /payments → GCash payment URL
-   → Complete payment externally
-   → Webhook → POST /payments/confirm → status: AWAITING_DEPOSIT
-
-3. WAIT FOR DEPOSIT CONFIRMATION
-   → Notification: ITEM_READY_FOR_CLAIM when owner deposits
-
-4. CLAIM FROM KIOSK
-   → Go to kiosk, QR token + face verification
-   → POST /kiosk/claim → status: ACTIVE
-
-5. USE ITEM
-
-6. RETURN BEFORE DUE DATE
-   → Go to kiosk, POST /kiosk/return + QR + face
-   → ML verifies return condition
-   → APPROVED: rental COMPLETED, security deposit refunded
-   → DISPUTED: admin mediates
 ```
 
 ### Verification Pipeline Detail
 
 ```
-Kiosk captures 3–5 images
+Kiosk Pi captures 3–5 images via camera_manager
     ↓
-POST /kiosk/deposit or /return (Node backend receives)
+Images uploaded to Supabase Storage → URLs returned
+    ↓
+kiosk:images event emitted to Node backend
     ↓
 kioskController builds multipart form:
-  - original_images: from item.images URLs (downloaded as Blobs)
-  - kiosk_images: captured images
+  - original_images: from item.images (Supabase URLs, downloaded as Blobs)
+  - kiosk_images: from emitted image URLs (downloaded as Blobs)
   - reference_features: item.mlFeatures (cached JSON, skips ResNet50 extraction)
   - attempt_number: rental.depositAttemptCount + 1
     ↓
 POST http://ML_SERVICE_URL/api/v1/verify
     ↓
-Python FastAPI:
-  Stage 1: Quality gate (blur/brightness/coverage check)
-  Stage 2: pHash pre-filter
-  Stage 3: Traditional CV (color histogram, LBP, ORB)
-  Stage 4: SIFT + FLANN + RANSAC keypoint matching
-  Stage 5: SSIM structural similarity
-  Stage 6: ResNet50 deep feature cosine similarity
-  Stage 7: Tesseract OCR serial number match
-  Stage 8: Weighted aggregation → confidence score
+Python FastAPI (8 stages) → confidence score + decision
     ↓
-Decision returned to Node backend
-    ↓
-Node applies policy:
-  APPROVED (≥85%): proceed
-  PENDING (60-84%): proceed + MANUAL_REVIEW
-  RETRY (<60%, <10 attempts): fail + increment counter
-  REJECTED (<60%, 10th attempt): cancel/dispute
+Node applies policy (APPROVED / PENDING / RETRY / REJECTED)
     ↓
 Verification record saved to MySQL
     ↓
@@ -957,7 +1051,7 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 
 ---
 
-## 10. Security Architecture
+## 11. Security Architecture
 
 ### Authentication
 
@@ -978,13 +1072,15 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 - **Rate Limiting**: 100 requests per 15-minute window per IP address
 - **Input Validation**: All routes validated with express-validator before hitting controllers
 - **Prisma Parameterized Queries**: Prevents SQL injection
+- **File Upload Guard**: Multer validates MIME type and size (10 MB max) before Supabase upload
 
 ### Kiosk Security
 
-- **Short-lived QR tokens**: Time-limited tokens for kiosk access (prevents token replay)
-- **Face verification**: Biometric confirmation at kiosk terminal (hardware layer)
+- **Face verification**: OpenCV Haar cascade local pre-check + ML service identity confirmation before locker access
+- **Socket.io authentication**: Kiosk registers with `KIOSK_ID` on connect; server tracks active kiosks
 - **Attempt tracking**: Max 10 ML verification attempts prevents brute-force deposit manipulation
 - **Mutual verification**: Both deposit (protects renter) and return (protects owner) are verified independently
+- **Mock mode**: `MOCK_GPIO` and `MOCK_CAMERA` flags for safe development without hardware
 
 ### Admin Security
 
@@ -994,29 +1090,59 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 
 ---
 
-## 11. Strengths & Gaps
+## 12. Deployment — Render.com
+
+**File:** [render.yaml](render.yaml)
+
+The project deploys 4 services to Render.com (Singapore region) from a single config file:
+
+| Service | Render Name | Type | Plan | Root |
+|---|---|---|---|---|
+| Node.js API | `engirent-api` | Web (Node) | Free | `server/node_server` |
+| Admin Console | `engirent-admin` | Web (Node) | Free | `client/admin` |
+| Public Website | `engirent-web` | Web (Node) | Free | `client/web` |
+| ML Service | `engirent-ml` | Web (Docker) | Starter | `server/python_server/services/ml` |
+
+**Production URLs:**
+- API: `https://engirent-api.onrender.com`
+- Admin: `https://engirent-admin.onrender.com`
+- Web: `https://engirent-web.onrender.com`
+- ML: `https://engirent-ml.onrender.com`
+
+**Deployment notes:**
+- API runs `npx prisma db push` as a pre-deploy command (schema sync without migrations)
+- ML service deploys via Dockerfile (Docker runtime on Render starter plan)
+- Secrets (`DATABASE_URL`, `JWT_SECRET`, `SUPABASE_*`) set manually in Render dashboard
+- Kiosk Pi connects to production API via `SERVER_URL=https://engirent-api.onrender.com`
+
+---
+
+## 13. Strengths & Gaps
 
 ### Strengths
 
 | Area | Detail |
 |---|---|
+| Complete hardware layer | Raspberry Pi kiosk controller is fully implemented with GPIO, actuators, cameras, face recognition, and WiFi provisioning |
 | Clean architecture | Feature-based folders across all apps; controllers, middleware, and services are separated |
-| End-to-end rental lifecycle | Complete flow from listing → payment → kiosk → verification → completion |
+| End-to-end rental lifecycle | Complete flow from listing → payment → kiosk (Pi commands) → ML verification → completion |
 | Hybrid ML pipeline | 8 complementary methods produce robust fraud detection; no single-point failure |
 | Feature caching | Pre-extracted ML features reduce verification latency at kiosk time |
 | Attempt tracking | Persistent retry counters survive server restarts; prevents infinite retries |
-| Demo mode | All three clients (admin, Flutter) have demo fallbacks for development |
-| Real-time updates | Socket.io push notifications keep all parties informed of status changes |
-| Docker-ready | Multi-stage Dockerfile + docker-compose for one-command local setup |
+| Supabase Storage | Image hosting fully wired — `POST /upload` endpoints live, used by all image flows |
+| Demo mode | Admin and Flutter clients have demo fallbacks for development without backend |
+| Real-time updates | Socket.io serves both user notification push AND kiosk hardware command/response loop |
+| Cloud deployment | `render.yaml` defines all 4 production services; Pi kiosk connects to production URLs |
+| Docker-ready | ML service deploys via Docker on Render; Node API has multi-stage Dockerfile |
 | Environment validation | Zod schema catches missing config at startup, not at runtime |
-| Type safety | TypeScript backend + Prisma-generated types + Pydantic ML service = strong types throughout |
+| Mock hardware mode | `MOCK_GPIO=true MOCK_CAMERA=true` allows full kiosk software testing without Pi |
 
 ### Gaps & Incomplete Items
 
 | Area | Detail |
 |---|---|
 | GoRouter not wired | `go_router` package installed in Flutter but basic `routes:` map used; no deep linking or guard routes |
-| Image upload placeholder | `CreateItemScreen` uses comma-separated URL text input; `image_picker` installed but not integrated |
+| Image upload placeholder | `CreateItemScreen` uses comma-separated URL text input; `image_picker` installed but not integrated with `POST /upload` |
 | QR scanner placeholder | `KioskScanScreen` shows a static camera box; `qr_code_scanner` installed but not integrated |
 | `get_it` not used | Service locator dependency installed but providers registered manually |
 | `dio` not used | Advanced HTTP client installed but `dart:http` wrapper used |
@@ -1025,47 +1151,78 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 | Pagination not in Flutter | `ItemsScreen` loads all items with no page control |
 | Local notifications not integrated | `flutter_local_notifications` installed but not hooked up to notification service |
 | GCash integration mocked | `paymentController.ts` returns a mock payment URL; real GCash SDK not integrated |
-| AWS S3 not wired | S3 config accepted by env schema but actual upload code not observed |
-| Face verification hardware | KioskScanScreen awaits Raspberry Pi camera module integration |
+| Face verification ML endpoint | `face_service.py` calls ML `/api/v1/verify-face` — this endpoint is not present in the FastAPI service (only `/verify` and `/extract-features` exist) |
+| Node kiosk routes | `kioskRoutes.ts` and `kioskController.ts` exist for REST-based kiosk calls, but the actual hardware now communicates over Socket.io — the REST routes may be redundant or partially wired |
+| Admin kiosk config UI | Admin panel SETUP.md references a "Kiosk page → Configure Timings" admin panel feature, but no `/kiosk` admin page is visible in the current admin app pages |
 
 ---
 
-## 12. File Index
+## 14. File Index
 
-### Backend (server/)
+### Backend (server/node_server/)
 
 | File | Description |
 |---|---|
-| [server/src/index.ts](server/src/index.ts) | Express app setup, Socket.io, middleware stack, route mounting |
-| [server/src/config/env.ts](server/src/config/env.ts) | Zod environment variable schema validation |
-| [server/src/config/database.ts](server/src/config/database.ts) | Prisma client singleton |
-| [server/src/controllers/authController.ts](server/src/controllers/authController.ts) | Register, login, refresh, logout, profile CRUD |
-| [server/src/controllers/itemController.ts](server/src/controllers/itemController.ts) | Item CRUD + background ML feature extraction |
-| [server/src/controllers/rentalController.ts](server/src/controllers/rentalController.ts) | Rental lifecycle, status transitions, notifications |
-| [server/src/controllers/paymentController.ts](server/src/controllers/paymentController.ts) | GCash payment creation, confirmation webhook, refunds |
-| [server/src/controllers/kioskController.ts](server/src/controllers/kioskController.ts) | Deposit/claim/return with ML verification integration |
-| [server/src/controllers/notificationController.ts](server/src/controllers/notificationController.ts) | Notification CRUD |
-| [server/src/middleware/auth.ts](server/src/middleware/auth.ts) | JWT authenticate() and optionalAuth() middleware |
-| [server/src/middleware/errorHandler.ts](server/src/middleware/errorHandler.ts) | Global error handler + 404 handler |
-| [server/src/middleware/rateLimiter.ts](server/src/middleware/rateLimiter.ts) | IP-based rate limiter |
-| [server/src/middleware/validation.ts](server/src/middleware/validation.ts) | express-validator chain runner |
-| [server/src/routes/index.ts](server/src/routes/index.ts) | Route aggregator |
-| [server/prisma/schema.prisma](server/prisma/schema.prisma) | Complete MySQL database schema (8 models) |
-| [server/docker-compose.yml](server/docker-compose.yml) | MySQL + API Docker services |
-| [server/Dockerfile](server/Dockerfile) | Multi-stage production build |
+| [server/node_server/src/index.ts](server/node_server/src/index.ts) | Express app setup, Socket.io, middleware stack, route mounting |
+| [server/node_server/src/config/env.ts](server/node_server/src/config/env.ts) | Zod environment variable schema validation |
+| [server/node_server/src/config/database.ts](server/node_server/src/config/database.ts) | Prisma client singleton |
+| [server/node_server/src/controllers/authController.ts](server/node_server/src/controllers/authController.ts) | Register, login, refresh, logout, profile CRUD |
+| [server/node_server/src/controllers/itemController.ts](server/node_server/src/controllers/itemController.ts) | Item CRUD + background ML feature extraction |
+| [server/node_server/src/controllers/rentalController.ts](server/node_server/src/controllers/rentalController.ts) | Rental lifecycle, status transitions, notifications |
+| [server/node_server/src/controllers/paymentController.ts](server/node_server/src/controllers/paymentController.ts) | GCash payment creation, confirmation webhook, refunds |
+| [server/node_server/src/controllers/kioskController.ts](server/node_server/src/controllers/kioskController.ts) | Kiosk REST endpoints (deposit/claim/return) + ML verification integration |
+| [server/node_server/src/controllers/notificationController.ts](server/node_server/src/controllers/notificationController.ts) | Notification CRUD |
+| [server/node_server/src/middleware/auth.ts](server/node_server/src/middleware/auth.ts) | JWT authenticate() and optionalAuth() middleware |
+| [server/node_server/src/middleware/errorHandler.ts](server/node_server/src/middleware/errorHandler.ts) | Global error handler + 404 handler |
+| [server/node_server/src/middleware/rateLimiter.ts](server/node_server/src/middleware/rateLimiter.ts) | IP-based rate limiter |
+| [server/node_server/src/middleware/validation.ts](server/node_server/src/middleware/validation.ts) | express-validator chain runner |
+| [server/node_server/src/middleware/upload.ts](server/node_server/src/middleware/upload.ts) | Multer memory-buffer upload middleware |
+| [server/node_server/src/routes/index.ts](server/node_server/src/routes/index.ts) | Route aggregator |
+| [server/node_server/src/routes/uploadRoutes.ts](server/node_server/src/routes/uploadRoutes.ts) | POST /upload/image and /upload/images |
+| [server/node_server/src/services/storageService.ts](server/node_server/src/services/storageService.ts) | Supabase Storage: uploadFile, deleteFile, pathFromUrl |
+| [server/node_server/prisma/schema.prisma](server/node_server/prisma/schema.prisma) | Complete MySQL database schema (8 models) |
+| [server/node_server/schema.sql](server/node_server/schema.sql) | Raw SQL schema dump |
+| [server/node_server/docker-compose.yml](server/node_server/docker-compose.yml) | MySQL + API Docker services |
+| [server/node_server/Dockerfile](server/node_server/Dockerfile) | Multi-stage production build (Node 20) |
 
 ### ML Service (server/python_server/)
 
 | File | Description |
 |---|---|
 | [server/python_server/services/ml/app/main.py](server/python_server/services/ml/app/main.py) | FastAPI app, CORS, router registration |
+| [server/python_server/services/ml/app/config.py](server/python_server/services/ml/app/config.py) | ML service configuration |
 | [server/python_server/services/ml/app/routers/verification.py](server/python_server/services/ml/app/routers/verification.py) | /verify, /extract-features, /health endpoints |
 | [server/python_server/services/ml/app/models/schemas.py](server/python_server/services/ml/app/models/schemas.py) | Pydantic request/response models |
 | [server/python_server/services/ml/app/comparison/hybrid.py](server/python_server/services/ml/app/comparison/hybrid.py) | HybridVerifier: weighted score aggregation |
+| [server/python_server/services/ml/app/comparison/similarity.py](server/python_server/services/ml/app/comparison/similarity.py) | Similarity utility helpers |
 | [server/python_server/services/ml/app/features/deep.py](server/python_server/services/ml/app/features/deep.py) | ResNet50 embedding extraction |
 | [server/python_server/services/ml/app/features/sift.py](server/python_server/services/ml/app/features/sift.py) | SIFT + FLANN + RANSAC keypoint matching |
 | [server/python_server/services/ml/app/features/traditional.py](server/python_server/services/ml/app/features/traditional.py) | Color, LBP texture, ORB features |
 | [server/python_server/services/ml/app/utils/ocr.py](server/python_server/services/ml/app/utils/ocr.py) | Tesseract OCR for serial number matching |
+| [server/python_server/services/ml/Dockerfile](server/python_server/services/ml/Dockerfile) | ML service Docker build |
+| [server/python_server/services/ml/requirements.txt](server/python_server/services/ml/requirements.txt) | Python dependencies |
+
+### Kiosk Controller (server/kiosk/)
+
+| File | Description |
+|---|---|
+| [server/kiosk/main.py](server/kiosk/main.py) | Entry point: startup sequence, WiFi check, hardware init, UI, Socket.io loop |
+| [server/kiosk/config.py](server/kiosk/config.py) | Env config: KIOSK_ID, SERVER_URL, GPIO pins, camera indices |
+| [server/kiosk/kiosk_config.json](server/kiosk/kiosk_config.json) | Live timing parameters per locker (updated from admin) |
+| [server/kiosk/diagnose.py](server/kiosk/diagnose.py) | Hardware diagnostic: camera detection, USB V4L2, GPIO test |
+| [server/kiosk/hardware/gpio_controller.py](server/kiosk/hardware/gpio_controller.py) | SolenoidController: 12-relay gpiozero management |
+| [server/kiosk/hardware/actuator_controller.py](server/kiosk/hardware/actuator_controller.py) | ActuatorController: L298N PWM direction control |
+| [server/kiosk/hardware/camera_manager.py](server/kiosk/hardware/camera_manager.py) | CameraManager: CSI (picamera2) + USB (OpenCV) capture |
+| [server/kiosk/services/socket_client.py](server/kiosk/services/socket_client.py) | Socket.io async client, event handlers, command dispatcher |
+| [server/kiosk/services/face_service.py](server/kiosk/services/face_service.py) | Haar cascade face detection + ML service identity verify |
+| [server/kiosk/services/image_uploader.py](server/kiosk/services/image_uploader.py) | Upload kiosk captures to Supabase Storage |
+| [server/kiosk/kiosk_ui/server.py](server/kiosk/kiosk_ui/server.py) | Flask HDMI UI server (port 8080) |
+| [server/kiosk/kiosk_ui/templates/index.html](server/kiosk/kiosk_ui/templates/index.html) | Kiosk display HTML |
+| [server/kiosk/provisioning/wifi_manager.py](server/kiosk/provisioning/wifi_manager.py) | WiFi status check via nmcli |
+| [server/kiosk/provisioning/ap_portal.py](server/kiosk/provisioning/ap_portal.py) | Captive portal for first-boot WiFi setup |
+| [server/kiosk/systemd/engirent-kiosk.service](server/kiosk/systemd/engirent-kiosk.service) | Systemd auto-start for kiosk controller |
+| [server/kiosk/systemd/engirent-kiosk-browser.service](server/kiosk/systemd/engirent-kiosk-browser.service) | Systemd auto-start for Chromium kiosk browser |
+| [server/kiosk/SETUP.md](server/kiosk/SETUP.md) | Full hardware setup guide (wiring, OS, systemd, testing) |
 
 ### Admin Console (client/admin/)
 
@@ -1083,7 +1240,6 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 | [client/admin/src/lib/api.ts](client/admin/src/lib/api.ts) | Axios instance, auth interceptors, demo adapter |
 | [client/admin/src/components/layout/AdminLayout.tsx](client/admin/src/components/layout/AdminLayout.tsx) | Sidebar, header, mobile menu |
 | [client/admin/src/components/charts/StatsCard.tsx](client/admin/src/components/charts/StatsCard.tsx) | Metric display card |
-| [client/admin/src/app/globals.css](client/admin/src/app/globals.css) | CSS variables, Manrope font, utility classes |
 
 ### Public Web App (client/web/)
 
@@ -1096,9 +1252,7 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 | [client/web/app/pricing/page.tsx](client/web/app/pricing/page.tsx) | 3-tier pricing cards |
 | [client/web/app/blog/page.tsx](client/web/app/blog/page.tsx) | 3 project blog posts |
 | [client/web/components/navbar.tsx](client/web/components/navbar.tsx) | Responsive navbar with theme switch |
-| [client/web/components/primitives.ts](client/web/components/primitives.ts) | tailwind-variants title/subtitle primitives |
 | [client/web/config/site.ts](client/web/config/site.ts) | Site name, nav items, links config |
-| [client/web/styles/globals.css](client/web/styles/globals.css) | Brand CSS variables, fonts, dark mode |
 
 ### Flutter App (client/flutter_app/)
 
@@ -1107,18 +1261,21 @@ Admin can manually APPROVE or REJECT PENDING/MANUAL_REVIEW cases
 | [client/flutter_app/lib/main.dart](client/flutter_app/lib/main.dart) | App entry, routes, theme, MultiProvider |
 | [client/flutter_app/pubspec.yaml](client/flutter_app/pubspec.yaml) | All Flutter dependencies |
 | [client/flutter_app/lib/core/constants/app_constants.dart](client/flutter_app/lib/core/constants/app_constants.dart) | API URLs, storage keys, categories, statuses |
-| [client/flutter_app/lib/core/constants/app_colors.dart](client/flutter_app/lib/core/constants/app_colors.dart) | Color palette and gradients |
 | [client/flutter_app/lib/core/services/api_service.dart](client/flutter_app/lib/core/services/api_service.dart) | HTTP wrapper with JWT injection |
 | [client/flutter_app/lib/core/services/storage_service.dart](client/flutter_app/lib/core/services/storage_service.dart) | Secure token + preference storage |
 | [client/flutter_app/lib/features/auth/models/auth_service.dart](client/flutter_app/lib/features/auth/models/auth_service.dart) | Login, register, profile, logout |
 | [client/flutter_app/lib/features/auth/providers/auth_provider.dart](client/flutter_app/lib/features/auth/providers/auth_provider.dart) | ChangeNotifier auth state |
-| [client/flutter_app/lib/features/auth/screens/login_screen.dart](client/flutter_app/lib/features/auth/screens/login_screen.dart) | Login UI |
-| [client/flutter_app/lib/features/auth/screens/register_screen.dart](client/flutter_app/lib/features/auth/screens/register_screen.dart) | Registration form |
 | [client/flutter_app/lib/features/home/screens/home_screen.dart](client/flutter_app/lib/features/home/screens/home_screen.dart) | 4-tab main dashboard |
 | [client/flutter_app/lib/features/items/screens/items_screen.dart](client/flutter_app/lib/features/items/screens/items_screen.dart) | Item browse marketplace |
 | [client/flutter_app/lib/features/items/screens/create_item_screen.dart](client/flutter_app/lib/features/items/screens/create_item_screen.dart) | Item listing form |
 | [client/flutter_app/lib/features/kiosk/screens/kiosk_scan_screen.dart](client/flutter_app/lib/features/kiosk/screens/kiosk_scan_screen.dart) | QR kiosk validation UI |
 
+### Root
+
+| File | Description |
+|---|---|
+| [render.yaml](render.yaml) | Render.com cloud deployment config (4 services, Singapore region) |
+
 ---
 
-*Generated by repository analysis on 2026-03-17.*
+*Generated by repository analysis on 2026-04-21.*

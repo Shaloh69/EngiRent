@@ -1,19 +1,23 @@
-import { Response, NextFunction } from 'express';
-import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
-import { NotFoundError, ForbiddenError, ValidationError } from '../utils/errors';
-import logger from '../utils/logger';
-import axios from 'axios';
-import env from '../config/env';
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "../middleware/auth";
+import prisma from "../config/database";
+import {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+} from "../utils/errors";
+import logger from "../utils/logger";
+import axios from "axios";
+import env from "../config/env";
 
 export const createItem = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const {
@@ -66,14 +70,22 @@ export const createItem = async (
         try {
           const formData = new FormData();
           for (const url of images as string[]) {
-            const resp = await axios.get(url, { responseType: 'arraybuffer' });
-            const blob = new Blob([resp.data as ArrayBuffer], { type: 'image/jpeg' });
-            formData.append('images', blob, 'image.jpg');
+            const resp = await axios.get(url, { responseType: "arraybuffer" });
+            const blob = new Blob([resp.data as ArrayBuffer], {
+              type: "image/jpeg",
+            });
+            formData.append("images", blob, "image.jpg");
           }
           const mlResp = await axios.post(
             `${env.ML_SERVICE_URL}/api/v1/extract-features`,
             formData,
-            { headers: { ...(env.ML_SERVICE_API_KEY && { 'X-API-Key': env.ML_SERVICE_API_KEY }) } }
+            {
+              headers: {
+                ...(env.ML_SERVICE_API_KEY && {
+                  "X-API-Key": env.ML_SERVICE_API_KEY,
+                }),
+              },
+            },
           );
           await prisma.item.update({
             where: { id: item.id },
@@ -81,14 +93,17 @@ export const createItem = async (
           });
           logger.info(`ML features cached for item ${item.id}`);
         } catch (err) {
-          logger.warn(`Failed to pre-extract ML features for item ${item.id}:`, err);
+          logger.warn(
+            `Failed to pre-extract ML features for item ${item.id}:`,
+            err,
+          );
         }
       });
     }
 
     res.status(201).json({
       success: true,
-      message: 'Item created successfully',
+      message: "Item created successfully",
       data: { item },
     });
   } catch (error) {
@@ -99,7 +114,7 @@ export const createItem = async (
 export const getItems = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const {
@@ -110,8 +125,8 @@ export const getItems = async (
       condition,
       isAvailable,
       campusLocation,
-      page = '1',
-      limit = '10',
+      page = "1",
+      limit = "10",
     } = req.query;
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -124,7 +139,7 @@ export const getItems = async (
     if (category) where.category = category;
     if (condition) where.condition = condition;
     if (campusLocation) where.campusLocation = campusLocation;
-    if (isAvailable !== undefined) where.isAvailable = isAvailable === 'true';
+    if (isAvailable !== undefined) where.isAvailable = isAvailable === "true";
 
     if (search) {
       where.OR = [
@@ -154,7 +169,7 @@ export const getItems = async (
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       prisma.item.count({ where }),
     ]);
@@ -179,7 +194,7 @@ export const getItems = async (
 export const getItemById = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const id = req.params.id as string;
@@ -208,13 +223,13 @@ export const getItemById = async (
               },
             },
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
 
     if (!item) {
-      throw new NotFoundError('Item not found');
+      throw new NotFoundError("Item not found");
     }
 
     res.json({
@@ -229,11 +244,11 @@ export const getItemById = async (
 export const updateItem = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -243,11 +258,11 @@ export const updateItem = async (
     });
 
     if (!item) {
-      throw new NotFoundError('Item not found');
+      throw new NotFoundError("Item not found");
     }
 
     if (item.ownerId !== req.user.userId) {
-      throw new ForbiddenError('You can only update your own items');
+      throw new ForbiddenError("You can only update your own items");
     }
 
     const {
@@ -279,7 +294,9 @@ export const updateItem = async (
         ...(pricePerMonth !== undefined && {
           pricePerMonth: pricePerMonth ? parseFloat(pricePerMonth) : null,
         }),
-        ...(securityDeposit && { securityDeposit: parseFloat(securityDeposit) }),
+        ...(securityDeposit && {
+          securityDeposit: parseFloat(securityDeposit),
+        }),
         ...(images && { images }),
         ...(serialNumber !== undefined && { serialNumber }),
         ...(campusLocation && { campusLocation }),
@@ -301,7 +318,7 @@ export const updateItem = async (
 
     res.json({
       success: true,
-      message: 'Item updated successfully',
+      message: "Item updated successfully",
       data: { item: updatedItem },
     });
   } catch (error) {
@@ -312,11 +329,11 @@ export const updateItem = async (
 export const deleteItem = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -327,7 +344,13 @@ export const deleteItem = async (
         rentals: {
           where: {
             status: {
-              in: ['PENDING', 'AWAITING_DEPOSIT', 'DEPOSITED', 'AWAITING_CLAIM', 'ACTIVE'],
+              in: [
+                "PENDING",
+                "AWAITING_DEPOSIT",
+                "DEPOSITED",
+                "AWAITING_CLAIM",
+                "ACTIVE",
+              ],
             },
           },
         },
@@ -335,15 +358,15 @@ export const deleteItem = async (
     });
 
     if (!item) {
-      throw new NotFoundError('Item not found');
+      throw new NotFoundError("Item not found");
     }
 
     if (item.ownerId !== req.user.userId) {
-      throw new ForbiddenError('You can only delete your own items');
+      throw new ForbiddenError("You can only delete your own items");
     }
 
     if (item.rentals.length > 0) {
-      throw new ValidationError('Cannot delete item with active rentals');
+      throw new ValidationError("Cannot delete item with active rentals");
     }
 
     await prisma.item.update({
@@ -355,7 +378,7 @@ export const deleteItem = async (
 
     res.json({
       success: true,
-      message: 'Item deleted successfully',
+      message: "Item deleted successfully",
     });
   } catch (error) {
     next(error);
@@ -365,14 +388,14 @@ export const deleteItem = async (
 export const getMyItems = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
-    const { page = '1', limit = '10' } = req.query;
+    const { page = "1", limit = "10" } = req.query;
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const take = parseInt(limit as string);
@@ -385,7 +408,7 @@ export const getMyItems = async (
         },
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       prisma.item.count({
         where: {

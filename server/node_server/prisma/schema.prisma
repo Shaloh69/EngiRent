@@ -31,6 +31,9 @@ model User {
   isActive          Boolean   @default(true)
   emailVerifiedAt   DateTime?
 
+  // Role
+  role              UserRole  @default(STUDENT)
+
   // Security
   refreshToken      String?   @db.Text
   lastLogin         DateTime?
@@ -143,6 +146,7 @@ model Rental {
   depositedAt       DateTime?
   claimedAt         DateTime?
   returnedAt        DateTime?
+  completedAt       DateTime?
 
   // Relations
   item              Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -164,35 +168,37 @@ model Rental {
 
 // Transaction model - Payment records
 model Transaction {
-  id                String            @id @default(uuid())
-  rentalId          String
-  userId            String
+  id                      String            @id @default(uuid())
+  rentalId                String
+  userId                  String
 
   // Payment details
-  type              TransactionType
-  amount            Float
-  status            TransactionStatus @default(PENDING)
+  type                    TransactionType
+  amount                  Float
+  status                  TransactionStatus @default(PENDING)
 
-  // GCash integration
-  gcashReferenceNo  String?           @unique
-  gcashTransactionId String?          @unique
+  // PayMongo integration
+  paymentReferenceNo      String?           @unique
+  paymentTransactionId    String?           @unique
+  paymongoPaymentId       String?           // PayMongo payment ID for refunds
+  paymongoCheckoutId      String?           @unique // Checkout session ID
 
   // Payment gateway response
-  paymentMethod     String            @default("GCash")
-  paymentDetails    Json?             // Additional payment info
+  paymentMethod           String            @default("PayMongo")
+  paymentDetails          Json?             // Additional payment info
 
   // Timestamps
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  paidAt            DateTime?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  paidAt                  DateTime?
 
   // Relations
-  rental            Rental            @relation(fields: [rentalId], references: [id], onDelete: Cascade)
-  user              User              @relation(fields: [userId], references: [id])
+  rental                  Rental            @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  user                    User              @relation(fields: [userId], references: [id])
 
   @@index([rentalId])
   @@index([userId])
-  @@index([gcashReferenceNo])
+  @@index([paymentReferenceNo])
   @@map("transactions")
 }
 
@@ -267,6 +273,18 @@ model Locker {
   @@map("lockers")
 }
 
+// KioskConfig model - Per-kiosk timing and hardware configuration
+model KioskConfig {
+  id          String   @id @default(uuid())
+  kioskId     String   @unique
+  config      Json     // Shape mirrors kiosk_config.json
+  updatedBy   String?  // Admin userId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("kiosk_configs")
+}
+
 // Notification model - User notifications
 model Notification {
   id                String            @id @default(uuid())
@@ -326,6 +344,11 @@ model Review {
 }
 
 // Enums
+enum UserRole {
+  STUDENT
+  ADMIN
+}
+
 enum ItemCategory {
   SCHOOL_ATTIRE
   ACADEMIC_TOOLS

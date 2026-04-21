@@ -1,19 +1,19 @@
-import { Response, NextFunction } from 'express';
-import { AuthRequest } from '../middleware/auth';
-import prisma from '../config/database';
-import { ForbiddenError } from '../utils/errors';
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "../middleware/auth";
+import prisma from "../config/database";
+import { ForbiddenError } from "../utils/errors";
 
 export const getNotifications = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
-    const { isRead, page = '1', limit = '20' } = req.query;
+    const { isRead, page = "1", limit = "20" } = req.query;
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const take = parseInt(limit as string);
@@ -23,7 +23,7 @@ export const getNotifications = async (
     };
 
     if (isRead !== undefined) {
-      where.isRead = isRead === 'true';
+      where.isRead = isRead === "true";
     }
 
     const [notifications, total, unreadCount] = await Promise.all([
@@ -31,7 +31,7 @@ export const getNotifications = async (
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       prisma.notification.count({ where }),
       prisma.notification.count({
@@ -63,11 +63,11 @@ export const getNotifications = async (
 export const markAsRead = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -85,7 +85,7 @@ export const markAsRead = async (
 
     res.json({
       success: true,
-      message: 'Notification marked as read',
+      message: "Notification marked as read",
     });
   } catch (error) {
     next(error);
@@ -95,11 +95,11 @@ export const markAsRead = async (
 export const markAllAsRead = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     await prisma.notification.updateMany({
@@ -115,7 +115,7 @@ export const markAllAsRead = async (
 
     res.json({
       success: true,
-      message: 'All notifications marked as read',
+      message: "All notifications marked as read",
     });
   } catch (error) {
     next(error);
@@ -125,11 +125,11 @@ export const markAllAsRead = async (
 export const deleteNotification = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
-      throw new ForbiddenError('Authentication required');
+      throw new ForbiddenError("Authentication required");
     }
 
     const id = req.params.id as string;
@@ -143,7 +143,7 @@ export const deleteNotification = async (
 
     res.json({
       success: true,
-      message: 'Notification deleted',
+      message: "Notification deleted",
     });
   } catch (error) {
     next(error);

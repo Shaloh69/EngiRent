@@ -49,7 +49,7 @@ export interface Rental {
 
 export interface Verification {
   id: string;
-  decision: 'APPROVED' | 'PENDING' | 'RETRY' | 'REJECTED';
+  decision: "APPROVED" | "PENDING" | "RETRY" | "REJECTED";
   confidenceScore: number;
   status: string;
   createdAt: string;
