@@ -604,7 +604,9 @@ export const sendKioskCommand = async (
       return;
     }
 
-    const payload: Record<string, unknown> = { action };
+    const commandId = Math.random().toString(16).slice(2, 10).toUpperCase();
+
+    const payload: Record<string, unknown> = { action, command_id: commandId };
     if (lockerId !== undefined) payload.locker_id = lockerId;
     if (door) payload.door = door;
     if (durationOverride !== undefined)
@@ -617,11 +619,19 @@ export const sendKioskCommand = async (
     io.to(`kiosk:${kioskId}`).emit("kiosk:command", payload);
 
     logger.info(
-      `Admin sent kiosk command to ${kioskId}: ${action} by ${req.user?.email}`,
+      `\n┌─────────────────────────────────────────────\n` +
+      `│  📤 [CMD-SENT]  Admin sent kiosk command\n` +
+      `│  Kiosk      : ${kioskId}\n` +
+      `│  Command ID : ${commandId}\n` +
+      `│  Action     : ${action}\n` +
+      `│  By         : ${req.user?.email}\n` +
+      `│  Payload    : ${JSON.stringify(payload)}\n` +
+      `└─────────────────────────────────────────────`
     );
     res.json({
       success: true,
       message: `Command "${action}" sent to kiosk ${kioskId}`,
+      data: { commandId },
     });
   } catch (error) {
     next(error);
