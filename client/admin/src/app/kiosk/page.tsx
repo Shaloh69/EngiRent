@@ -114,6 +114,7 @@ export default function KioskPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  // ── Initial config fetch (once on mount) ──────────────────────────────────
   const fetchState = useCallback(async () => {
     try {
       if (isDemoMode) {
@@ -147,11 +148,82 @@ export default function KioskPage() {
     }
   }, []);
 
+  // ── SSE — real-time kiosk events (replaces polling) ───────────────────────
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 10_000);
-    return () => clearInterval(interval);
   }, [fetchState]);
+
+  useEffect(() => {
+    if (isDemoMode) return;
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("admin_token")
+        : null;
+    if (!token) return;
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api/v1";
+    const controller = new AbortController();
+
+    fetch(`${baseUrl}/admin/kiosks/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let eventName = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split("\n")) {
+            if (line.startsWith("event: ")) {
+              eventName = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6)) as Record<
+                  string,
+                  unknown
+                >;
+                if (eventName === "kiosk_online") {
+                  setKiosk((prev) =>
+                    prev ? { ...prev, status: "online", lastSeen: new Date().toISOString() } : prev,
+                  );
+                } else if (eventName === "kiosk_status") {
+                  const lockers = data.lockers as
+                    | KioskState["lockers"]
+                    | undefined;
+                  setKiosk((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          status: "online",
+                          lastSeen: new Date().toISOString(),
+                          ...(lockers ? { lockers } : {}),
+                        }
+                      : prev,
+                  );
+                } else if (eventName === "kiosk_error") {
+                  setKiosk((prev) =>
+                    prev ? { ...prev, status: "error" } : prev,
+                  );
+                }
+              } catch {
+                // malformed JSON — ignore
+              }
+            }
+          }
+        }
+      })
+      .catch(() => {
+        // connection closed or aborted — silently ignore
+      });
+
+    return () => controller.abort();
+  }, []);
 
   const updateTiming = (
     lockerId: string,

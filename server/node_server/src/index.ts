@@ -12,6 +12,7 @@ import routes from "./routes";
 import { errorHandler, notFound } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
 import prisma from "./config/database";
+import kioskEventBus from "./utils/kioskEventBus";
 
 const app: Application = express();
 const httpServer = createServer(app);
@@ -40,7 +41,11 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
-app.use(rateLimiter);
+// Admin routes are protected by JWT + requireAdmin — skip rate limiter for them
+app.use((req, res, next) => {
+  if (req.path.startsWith(`/api/${env.API_VERSION}/admin`)) return next();
+  return rateLimiter(req, res, next);
+});
 
 // Expose io to controllers
 app.set("io", io);
@@ -159,11 +164,6 @@ async function completeRental(rentalId: string): Promise<void> {
   io.to(`user:${rental.ownerId}`).emit("rental:completed", { rentalId });
 }
 
-// ── Kiosk command ID generator — short 8-char hex for easy log scanning ────
-function makeCommandId(): string {
-  return Math.random().toString(16).slice(2, 10).toUpperCase();
-}
-
 // ── Socket.io ─────────────────────────────────────────────────────────────
 io.on("connection", (socket: Socket) => {
   logger.info(`Socket connected: ${socket.id}`);
@@ -210,6 +210,7 @@ io.on("connection", (socket: Socket) => {
 
       // Broadcast online status to admin
       io.emit("admin:kiosk_online", { kiosk_id, socket_id: socket.id });
+      kioskEventBus.emit("kiosk_online", { kiosk_id, socket_id: socket.id, ts: Date.now() });
     },
   );
 
@@ -246,6 +247,7 @@ io.on("connection", (socket: Socket) => {
         );
       }
       io.emit("admin:kiosk_ack", data);
+      kioskEventBus.emit("kiosk_ack", { ...data, ts: Date.now() });
     },
   );
 
@@ -259,6 +261,7 @@ io.on("connection", (socket: Socket) => {
       `lockers=${JSON.stringify(d?.lockers ?? {})}`
     );
     io.emit("admin:kiosk_status", data);
+    kioskEventBus.emit("kiosk_status", { ...d, ts: Date.now() });
   });
 
   // ── Kiosk images — Pi finished capturing, URLs come back here
@@ -759,6 +762,7 @@ io.on("connection", (socket: Socket) => {
       `└─────────────────────────────────────────────`
     );
     io.emit("admin:kiosk_error", data);
+    kioskEventBus.emit("kiosk_error", { ...d, ts: Date.now() });
   });
 
   socket.on("disconnect", () => {
