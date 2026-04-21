@@ -8,7 +8,7 @@ services:
     plan: free
     buildCommand: npm install --production=false && npm run build
     startCommand: npm start
-    preDeployCommand: npx prisma db push
+    preDeployCommand: npx prisma db push && npx prisma db seed
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
@@ -35,12 +35,20 @@ services:
         value: https://engirent-web.onrender.com
       - key: CLIENT_MOBILE_URL
         value: https://engirent-web.onrender.com
+      - key: CLIENT_ADMIN_URL
+        value: https://engirent-admin.onrender.com
       - key: RATE_LIMIT_WINDOW_MS
         value: "900000"
       - key: RATE_LIMIT_MAX_REQUESTS
         value: "100"
       - key: LOG_LEVEL
         value: info
+      - key: ADMIN_EMAIL
+        sync: false                  # Set manually in Render dashboard
+      - key: ADMIN_PASSWORD
+        sync: false                  # Set manually in Render dashboard
+      - key: ADMIN_STUDENT_ID
+        sync: false                  # Set manually in Render dashboard (optional)
 
   # ─── Next.js Admin Console ───────────────────────────────────────────────────
   - type: web

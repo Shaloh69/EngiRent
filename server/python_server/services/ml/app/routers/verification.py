@@ -11,12 +11,16 @@ import json
 import logging
 import os
 import tempfile
+from urllib.request import urlretrieve
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile 
+import cv2
+import numpy as np
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from ..comparison.hybrid import HybridVerifier
 from ..config import settings
 from ..models.schemas import (
+    FaceVerificationResponse,
     FeatureExtractionResponse,
     HealthResponse,
     StorableFeatures,
@@ -159,6 +163,128 @@ async def extract_features(
         raise HTTPException(status_code=500, detail=f"Extraction error: {e}") from e
     finally:
         _cleanup(paths)
+
+
+def _load_face_cascade() -> cv2.CascadeClassifier:
+    candidates = [
+        "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+        "/usr/share/OpenCV/haarcascades/haarcascade_frontalface_default.xml",
+        "/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+    ]
+    try:
+        p = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        if os.path.exists(p):
+            return cv2.CascadeClassifier(p)
+    except AttributeError:
+        pass
+    for p in candidates:
+        if os.path.exists(p):
+            return cv2.CascadeClassifier(p)
+    return cv2.CascadeClassifier()
+
+
+_face_cascade = _load_face_cascade()
+
+
+def _detect_faces(img_bgr: np.ndarray) -> list:
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    if _face_cascade.empty():
+        return []
+    return list(
+        _face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+    )
+
+
+def _face_similarity(img_a: np.ndarray, img_b: np.ndarray) -> float:
+    """Compare two face crops using histogram correlation (fast, no heavy model needed)."""
+    size = (128, 128)
+    a = cv2.resize(img_a, size)
+    b = cv2.resize(img_b, size)
+    score = 0.0
+    for ch in range(3):
+        ha = cv2.calcHist([a], [ch], None, [64], [0, 256])
+        hb = cv2.calcHist([b], [ch], None, [64], [0, 256])
+        cv2.normalize(ha, ha)
+        cv2.normalize(hb, hb)
+        score += cv2.compareHist(ha, hb, cv2.HISTCMP_CORREL)
+    return max(0.0, score / 3.0)
+
+
+@router.post("/verify-face", response_model=FaceVerificationResponse)
+async def verify_face(
+    captured_image: UploadFile = File(..., description="Captured face image from kiosk camera"),
+    reference_image_url: str = Form(..., description="URL of the user's reference profile photo"),
+):
+    """
+    Verify that the captured face matches a reference image.
+
+    Uses OpenCV Haar cascade for detection + histogram correlation for identity matching.
+    Returns verified=True when confidence >= 0.60.
+    """
+    cap_path = ref_path = None
+    try:
+        cap_bytes = await captured_image.read()
+        cap_arr = np.frombuffer(cap_bytes, np.uint8)
+        cap_img = cv2.imdecode(cap_arr, cv2.IMREAD_COLOR)
+        if cap_img is None:
+            raise HTTPException(status_code=400, detail="Cannot decode captured image")
+
+        faces = _detect_faces(cap_img)
+        if len(faces) == 0:
+            return FaceVerificationResponse(
+                verified=False,
+                detected=False,
+                confidence=0.0,
+                message="No face detected in captured image",
+            )
+
+        # Crop the largest detected face from captured image
+        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+        cap_face = cap_img[y : y + h, x : x + w]
+
+        # Download and decode the reference image
+        suffix = os.path.splitext(reference_image_url.split("?")[0])[-1] or ".jpg"
+        tmp_fd, ref_path = tempfile.mkstemp(suffix=suffix, dir=settings.upload_dir)
+        os.close(tmp_fd)
+        urlretrieve(reference_image_url, ref_path)  # noqa: S310
+
+        ref_img = cv2.imread(ref_path)
+        if ref_img is None:
+            return FaceVerificationResponse(
+                verified=False,
+                detected=True,
+                confidence=0.0,
+                message="Could not load reference image",
+            )
+
+        ref_faces = _detect_faces(ref_img)
+        if len(ref_faces) == 0:
+            ref_face = ref_img
+        else:
+            rx, ry, rw, rh = max(ref_faces, key=lambda f: f[2] * f[3])
+            ref_face = ref_img[ry : ry + rh, rx : rx + rw]
+
+        confidence = _face_similarity(cap_face, ref_face)
+        verified = confidence >= 0.60
+
+        return FaceVerificationResponse(
+            verified=verified,
+            detected=True,
+            confidence=round(confidence, 3),
+            message="Identity verified" if verified else "Face does not match reference",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Face verification failed")
+        raise HTTPException(status_code=500, detail=f"Face verification error: {e}") from e
+    finally:
+        if ref_path and os.path.exists(ref_path):
+            try:
+                os.unlink(ref_path)
+            except OSError:
+                pass
 
 
 @router.get("/health", response_model=HealthResponse)

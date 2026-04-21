@@ -1,53 +1,65 @@
-import { Router } from 'express';
-import { body, param } from 'express-validator';
+import { Router } from "express";
+import { body, param } from "express-validator";
 import {
   createPayment,
   confirmPayment,
   getTransactions,
   refundPayment,
-} from '../controllers/paymentController';
-import { authenticate } from '../middleware/auth';
-import { validate } from '../middleware/validation';
+} from "../controllers/paymentController";
+import { authenticate } from "../middleware/auth";
+import { validate } from "../middleware/validation";
 
 const router = Router();
 
 // Create payment (protected)
 router.post(
-  '/',
+  "/",
   authenticate,
   validate([
-    body('rentalId').isUUID().withMessage('Valid rental ID is required'),
-    body('type').isIn([
-      'RENTAL_PAYMENT',
-      'SECURITY_DEPOSIT',
-      'DEPOSIT_REFUND',
-      'LATE_FEE',
-      'DAMAGE_FEE',
-    ]).withMessage('Valid transaction type is required'),
-    body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number'),
+    body("rentalId").isUUID().withMessage("Valid rental ID is required"),
+    body("type")
+      .isIn([
+        "RENTAL_PAYMENT",
+        "SECURITY_DEPOSIT",
+        "DEPOSIT_REFUND",
+        "LATE_FEE",
+        "DAMAGE_FEE",
+      ])
+      .withMessage("Valid transaction type is required"),
+    body("amount")
+      .isFloat({ min: 0 })
+      .withMessage("Amount must be a positive number"),
   ]),
-  createPayment
+  createPayment,
 );
 
 // Confirm payment (webhook or callback)
 router.post(
-  '/confirm',
+  "/confirm",
   validate([
-    body('transactionId').isUUID().withMessage('Valid transaction ID is required'),
-    body('gcashReferenceNo').notEmpty().withMessage('GCash reference number is required'),
+    body("transactionId")
+      .isUUID()
+      .withMessage("Valid transaction ID is required"),
+    body("gcashReferenceNo")
+      .notEmpty()
+      .withMessage("GCash reference number is required"),
   ]),
-  confirmPayment
+  confirmPayment,
 );
 
 // Get transactions (protected)
-router.get('/', authenticate, getTransactions);
+router.get("/", authenticate, getTransactions);
 
 // Refund payment (protected)
 router.post(
-  '/:transactionId/refund',
+  "/:transactionId/refund",
   authenticate,
-  validate([param('transactionId').isUUID().withMessage('Valid transaction ID is required')]),
-  refundPayment
+  validate([
+    param("transactionId")
+      .isUUID()
+      .withMessage("Valid transaction ID is required"),
+  ]),
+  refundPayment,
 );
 
 export default router;

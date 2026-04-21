@@ -7,7 +7,8 @@ const manrope = Manrope({ subsets: ["latin"], variable: "--font-admin" });
 
 export const metadata: Metadata = {
   title: "EngiRent Admin Console",
-  description: "Admin dashboard for EngiRent Hub IoT-powered Smart Kiosk System",
+  description:
+    "Admin dashboard for EngiRent Hub IoT-powered Smart Kiosk System",
 };
 
 export default function RootLayout({
@@ -18,9 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${manrope.className} ${manrope.variable} app-shell`}>
-        <Providers>
-          {children}
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

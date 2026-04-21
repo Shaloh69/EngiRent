@@ -58,6 +58,13 @@ class FeatureExtractionResponse(BaseModel):
     features: StorableFeatures = Field(description="Full feature data for storage in Item.mlFeatures")
 
 
+class FaceVerificationResponse(BaseModel):
+    verified: bool = Field(description="Whether the face identity matched")
+    detected: bool = Field(description="Whether a face was detected in the captured image")
+    confidence: float = Field(description="Match confidence 0.0–1.0")
+    message: str = Field(description="Human-readable result message")
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str

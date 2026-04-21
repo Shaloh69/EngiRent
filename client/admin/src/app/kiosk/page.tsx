@@ -121,9 +121,24 @@ export default function KioskPage() {
         setTiming({ ...DEMO_STATE.timing });
         return;
       }
-      const res = await api.get<KioskState>("/kiosks/kiosk-1");
-      setKiosk(res.data);
-      setTiming(res.data.timing ?? {});
+      const [kioskRes, configRes] = await Promise.allSettled([
+        api.get("/admin/kiosks"),
+        api.get("/admin/kiosks/kiosk-1/config"),
+      ]);
+      const kioskId =
+        kioskRes.status === "fulfilled"
+          ? (kioskRes.value.data.data?.kiosks?.[0]?.id ?? "kiosk-1")
+          : "kiosk-1";
+      const config =
+        configRes.status === "fulfilled"
+          ? (configRes.value.data.data?.config ?? {})
+          : {};
+      setKiosk({
+        ...DEMO_STATE,
+        id: kioskId,
+        timing: config.lockers ?? DEMO_STATE.timing,
+      });
+      setTiming(config.lockers ?? { ...DEMO_STATE.timing });
     } catch {
       setKiosk(DEMO_STATE);
       setTiming({ ...DEMO_STATE.timing });
@@ -153,9 +168,8 @@ export default function KioskPage() {
     setSaving((p) => ({ ...p, [lockerId]: true }));
     try {
       if (!isDemoMode) {
-        await api.post(`/kiosks/kiosk-1/config`, {
-          locker: lockerId,
-          timing: timing[lockerId],
+        await api.put(`/admin/kiosks/${kiosk?.id ?? "kiosk-1"}/config`, {
+          config: { lockers: { ...timing, [lockerId]: timing[lockerId] } },
         });
       }
       showToast(`Locker ${lockerId} timing saved`);
@@ -174,7 +188,10 @@ export default function KioskPage() {
     setCmdLoading(key);
     try {
       if (!isDemoMode) {
-        await api.post(`/kiosks/kiosk-1/command`, { command: cmd, ...payload });
+        await api.post(`/admin/kiosks/${kiosk?.id ?? "kiosk-1"}/command`, {
+          action: cmd,
+          ...payload,
+        });
       }
       showToast(`Command "${cmd}" sent`);
     } catch {

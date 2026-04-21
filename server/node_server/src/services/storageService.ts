@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import env from '../config/env';
+import { createClient } from "@supabase/supabase-js";
+import env from "../config/env";
 
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -7,9 +7,9 @@ const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 const BUCKET = env.SUPABASE_STORAGE_BUCKET; // "media"
 
 export const FOLDERS = {
-  ITEMS: 'item-images',
-  KIOSK: 'kiosk-captures',
-  PROFILES: 'profile-images',
+  ITEMS: "item-images",
+  KIOSK: "kiosk-captures",
+  PROFILES: "profile-images",
 } as const;
 
 /**
@@ -24,7 +24,7 @@ export async function uploadFile(
   folder: string,
   filename: string,
   buffer: Buffer,
-  mimetype: string
+  mimetype: string,
 ): Promise<string> {
   const path = `${folder}/${filename}`;
 

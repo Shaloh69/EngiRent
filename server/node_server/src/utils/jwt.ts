@@ -1,10 +1,11 @@
-import jwt from 'jsonwebtoken';
-import env from '../config/env';
+import jwt from "jsonwebtoken";
+import env from "../config/env";
 
 export interface JWTPayload {
   userId: string;
   email: string;
   studentId: string;
+  role: "STUDENT" | "ADMIN";
 }
 
 export const generateAccessToken = (payload: JWTPayload): string => {

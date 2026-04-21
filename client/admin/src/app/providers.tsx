@@ -1,14 +1,10 @@
-'use client'
+"use client";
 
-import {HeroUIProvider} from '@heroui/react'
-import {useRouter} from 'next/navigation'
+import { HeroUIProvider } from "@heroui/react";
+import { useRouter } from "next/navigation";
 
-export function Providers({children}: { children: React.ReactNode }) {
+export function Providers({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
-  return (
-    <HeroUIProvider navigate={router.push}>
-      {children}
-    </HeroUIProvider>
-  )
+  return <HeroUIProvider navigate={router.push}>{children}</HeroUIProvider>;
 }

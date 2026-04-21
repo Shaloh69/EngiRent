@@ -142,6 +142,20 @@ async def verify_face(jpeg_bytes: bytes, reference_face_url: str) -> dict:
                 data=data,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    log.warning(
+                        "ML face endpoint returned %d – using local fallback. Body: %s",
+                        resp.status,
+                        body[:200],
+                    )
+                    return {
+                        "detected": True,
+                        "verified": local_conf >= 0.80,
+                        "confidence": local_conf,
+                        "face_url": face_url,
+                        "error": f"ML service error {resp.status} – local fallback used",
+                    }
                 result = await resp.json()
                 return {
                     "detected": True,

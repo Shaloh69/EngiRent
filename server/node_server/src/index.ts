@@ -1,104 +1,719 @@
-import express, { Application } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import { createServer } from 'http';
-import { Server as SocketServer } from 'socket.io';
-import env from './config/env';
-import { connectDatabase } from './config/database';
-import logger from './utils/logger';
-import routes from './routes';
-import { errorHandler, notFound } from './middleware/errorHandler';
-import { rateLimiter } from './middleware/rateLimiter';
+import express, { Application } from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import { createServer } from "http";
+import { Server as SocketServer, Socket } from "socket.io";
+import axios from "axios";
+import env from "./config/env";
+import { connectDatabase } from "./config/database";
+import logger from "./utils/logger";
+import routes from "./routes";
+import { errorHandler, notFound } from "./middleware/errorHandler";
+import { rateLimiter } from "./middleware/rateLimiter";
+import prisma from "./config/database";
 
 const app: Application = express();
 const httpServer = createServer(app);
 
-// Socket.io setup
+const ALLOWED_ORIGINS = [
+  env.CLIENT_WEB_URL,
+  env.CLIENT_MOBILE_URL,
+  env.CLIENT_ADMIN_URL,
+];
+
 const io = new SocketServer(httpServer, {
   cors: {
-    origin: [env.CLIENT_WEB_URL, env.CLIENT_MOBILE_URL],
+    origin: ALLOWED_ORIGINS,
     credentials: true,
   },
 });
 
-// Middleware
+// ── Middleware ─────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(
   cors({
-    origin: [env.CLIENT_WEB_URL, env.CLIENT_MOBILE_URL],
+    origin: ALLOWED_ORIGINS,
     credentials: true,
-  })
+  }),
 );
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
-
-// Rate limiting
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
 app.use(rateLimiter);
 
-// Make io accessible to routes
-app.set('io', io);
+// Expose io to controllers
+app.set("io", io);
 
-// API routes
+// ── API routes ─────────────────────────────────────────────────────────────
 app.use(`/api/${env.API_VERSION}`, routes);
 
-// Error handling
+// ── Error handling ─────────────────────────────────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
 
-// Socket.io connection handling
-io.on('connection', (socket) => {
+// ── ML verification helper (shared by deposit/return socket flows) ──────────
+async function downloadBlob(url: string): Promise<Blob | null> {
+  try {
+    const r = await axios.get(url, { responseType: "arraybuffer" });
+    return new Blob([r.data as ArrayBuffer], { type: "image/jpeg" });
+  } catch {
+    logger.warn(`Could not download image: ${url}`);
+    return null;
+  }
+}
+
+async function runMlVerification(
+  originalUrls: string[],
+  kioskUrls: string[],
+  attemptNumber: number,
+  mlFeatures: unknown,
+): Promise<{
+  decision: string;
+  confidence: number;
+  method_scores: Record<string, number>;
+  ocr: unknown;
+}> {
+  const [origBlobs, kioskBlobs] = await Promise.all([
+    Promise.all(originalUrls.map(downloadBlob)),
+    Promise.all(kioskUrls.map(downloadBlob)),
+  ]);
+
+  const validOrig = origBlobs.filter((b): b is Blob => b !== null);
+  const validKiosk = kioskBlobs.filter((b): b is Blob => b !== null);
+
+  if (validOrig.length === 0 || validKiosk.length === 0) {
+    return { decision: "PENDING", confidence: 0, method_scores: {}, ocr: null };
+  }
+
+  const formData = new FormData();
+  validOrig.forEach((b, i) =>
+    formData.append("original_images", b, `original_${i}.jpg`),
+  );
+  validKiosk.forEach((b, i) =>
+    formData.append("kiosk_images", b, `kiosk_${i}.jpg`),
+  );
+  formData.append("attempt_number", String(attemptNumber));
+  if (mlFeatures)
+    formData.append("reference_features", JSON.stringify(mlFeatures));
+
+  const resp = await axios.post(
+    `${env.ML_SERVICE_URL}/api/v1/verify`,
+    formData,
+    {
+      headers: {
+        ...(env.ML_SERVICE_API_KEY && { "X-API-Key": env.ML_SERVICE_API_KEY }),
+      },
+    },
+  );
+
+  return resp.data as {
+    decision: string;
+    confidence: number;
+    method_scores: Record<string, number>;
+    ocr: unknown;
+  };
+}
+
+// ── Auto-complete a rental after successful verification ────────────────────
+async function completeRental(rentalId: string): Promise<void> {
+  const rental = await prisma.rental.findUnique({
+    where: { id: rentalId },
+    include: { item: true },
+  });
+  if (!rental) return;
+
+  await prisma.$transaction([
+    prisma.rental.update({
+      where: { id: rentalId },
+      data: { status: "COMPLETED", completedAt: new Date() },
+    }),
+    prisma.item.update({
+      where: { id: rental.itemId },
+      data: { isAvailable: true, totalRentals: { increment: 1 } },
+    }),
+    prisma.notification.create({
+      data: {
+        userId: rental.renterId,
+        title: "Rental Completed",
+        message: `Your rental of ${rental.item.title} is complete. Security deposit refund is being processed.`,
+        type: "VERIFICATION_SUCCESS",
+        relatedEntityId: rentalId,
+        relatedEntityType: "rental",
+      },
+    }),
+    prisma.notification.create({
+      data: {
+        userId: rental.ownerId,
+        title: "Item Returned & Verified",
+        message: `${rental.item.title} has been returned and verified. Rental payment will be released.`,
+        type: "VERIFICATION_SUCCESS",
+        relatedEntityId: rentalId,
+        relatedEntityType: "rental",
+      },
+    }),
+  ]);
+
+  // Notify both parties via socket
+  io.to(`user:${rental.renterId}`).emit("rental:completed", { rentalId });
+  io.to(`user:${rental.ownerId}`).emit("rental:completed", { rentalId });
+}
+
+// ── Socket.io ─────────────────────────────────────────────────────────────
+io.on("connection", (socket: Socket) => {
   logger.info(`Socket connected: ${socket.id}`);
 
-  socket.on('join', (userId: string) => {
+  // ── User room join (mobile app / admin console)
+  socket.on("join", (userId: string) => {
     socket.join(`user:${userId}`);
-    logger.info(`User ${userId} joined their room`);
+    logger.info(`User ${userId} joined their notification room`);
   });
 
-  socket.on('disconnect', () => {
+  // ── Kiosk registration — Pi announces itself on connect
+  socket.on(
+    "kiosk:register",
+    async (data: {
+      kiosk_id: string;
+      locker_count: number;
+      version: string;
+    }) => {
+      const { kiosk_id } = data;
+      socket.join(`kiosk:${kiosk_id}`);
+      logger.info(`Kiosk registered: ${kiosk_id} (socket ${socket.id})`);
+
+      // Push stored config to Pi immediately
+      try {
+        const record = await prisma.kioskConfig.findUnique({
+          where: { kioskId: kiosk_id },
+        });
+        if (record?.config) {
+          socket.emit("kiosk:config", record.config);
+        }
+      } catch (err) {
+        logger.error(`Failed to push config to kiosk ${kiosk_id}:`, err);
+      }
+
+      // Broadcast online status to admin
+      io.emit("admin:kiosk_online", { kiosk_id, socket_id: socket.id });
+    },
+  );
+
+  // ── Kiosk status update
+  socket.on("kiosk:status", (data: unknown) => {
+    logger.debug("kiosk:status received", data);
+    // Broadcast to admin dashboard
+    io.emit("admin:kiosk_status", data);
+  });
+
+  // ── Kiosk images — Pi finished capturing, URLs come back here
+  // Bridge: run ML verification and advance the rental
+  socket.on(
+    "kiosk:images",
+    async (data: {
+      kiosk_id: string;
+      locker_id: number;
+      image_urls: string[];
+      rental_id?: string;
+    }) => {
+      const { rental_id, image_urls, locker_id } = data;
+
+      if (!rental_id) {
+        logger.warn("kiosk:images received without rental_id — ignoring");
+        return;
+      }
+
+      logger.info(
+        `kiosk:images for rental ${rental_id}: ${image_urls.length} images`,
+      );
+
+      try {
+        const rental = await prisma.rental.findUnique({
+          where: { id: rental_id },
+          include: { item: true },
+        });
+
+        if (!rental) {
+          logger.warn(`kiosk:images — rental ${rental_id} not found`);
+          return;
+        }
+
+        // ── DEPOSIT flow ─────────────────────────────────────────────────
+        if (rental.status === "AWAITING_DEPOSIT") {
+          const lockerId = String(locker_id);
+          const locker = await prisma.locker.findFirst({
+            where: { lockerNumber: lockerId },
+          });
+
+          const attemptNumber = rental.depositAttemptCount + 1;
+          let mlResult: Awaited<ReturnType<typeof runMlVerification>>;
+          let mlError: string | null = null;
+
+          try {
+            mlResult = await runMlVerification(
+              rental.item.images as string[],
+              image_urls,
+              attemptNumber,
+              rental.item.mlFeatures,
+            );
+          } catch (err) {
+            mlError = (err as Error).message;
+            mlResult = {
+              decision: "PENDING",
+              confidence: 0,
+              method_scores: {},
+              ocr: null,
+            };
+          }
+
+          const { decision, confidence, method_scores } = mlResult;
+
+          if (decision === "RETRY") {
+            await prisma.rental.update({
+              where: { id: rental_id },
+              data: { depositAttemptCount: { increment: 1 } },
+            });
+            socket.emit("kiosk:command", {
+              action: "open_door",
+              locker_id,
+              door: "main_door",
+            });
+            io.to(`user:${rental.ownerId}`).emit("deposit:retry", {
+              rentalId: rental_id,
+              attemptNumber,
+              confidence,
+            });
+            return;
+          }
+
+          if (decision === "REJECTED") {
+            await prisma.rental.update({
+              where: { id: rental_id },
+              data: { depositAttemptCount: { increment: 1 } },
+            });
+            const verification = await prisma.verification.create({
+              data: {
+                originalImages: rental.item.images as never,
+                kioskImages: image_urls as never,
+                decision: "REJECTED",
+                confidenceScore: confidence,
+                attemptNumber,
+                traditionalScore: method_scores?.traditional_best,
+                siftScore: method_scores?.sift_combined,
+                deepLearningScore: method_scores?.deep_learning_aggregated,
+                status: "REJECTED",
+              },
+            });
+            await prisma.rental.update({
+              where: { id: rental_id },
+              data: {
+                status: "CANCELLED",
+                depositVerificationId: verification.id,
+                verificationScore: confidence,
+                verificationStatus: "REJECTED",
+              },
+            });
+            if (locker) {
+              await prisma.locker.update({
+                where: { id: locker.id },
+                data: { status: "AVAILABLE", currentRentalId: null },
+              });
+            }
+            await prisma.notification.create({
+              data: {
+                userId: rental.renterId,
+                title: "Rental Cancelled",
+                message: `Deposit for ${rental.item.title} was rejected after ${attemptNumber} attempts.`,
+                type: "VERIFICATION_FAILED",
+                relatedEntityId: rental_id,
+                relatedEntityType: "rental",
+              },
+            });
+            io.to(`user:${rental.ownerId}`).emit("deposit:rejected", {
+              rentalId: rental_id,
+            });
+            io.to(`user:${rental.renterId}`).emit("deposit:rejected", {
+              rentalId: rental_id,
+            });
+            return;
+          }
+
+          // APPROVED or PENDING — proceed with deposit
+          const verification = await prisma.verification.create({
+            data: {
+              originalImages: rental.item.images as never,
+              kioskImages: image_urls as never,
+              decision: decision as never,
+              confidenceScore: confidence,
+              attemptNumber,
+              traditionalScore: method_scores?.traditional_best,
+              siftScore: method_scores?.sift_combined,
+              deepLearningScore: method_scores?.deep_learning_aggregated,
+              status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
+              ...(mlError && { reviewNotes: `ML error: ${mlError}` }),
+            },
+          });
+
+          await prisma.rental.update({
+            where: { id: rental_id },
+            data: {
+              status: "DEPOSITED",
+              ...(locker && { depositLockerId: locker.id }),
+              depositedAt: new Date(),
+              depositVerificationId: verification.id,
+              verificationScore: confidence,
+              verificationStatus:
+                decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
+            },
+          });
+
+          if (locker) {
+            await prisma.locker.update({
+              where: { id: locker.id },
+              data: {
+                status: "OCCUPIED",
+                currentRentalId: rental_id,
+                lastUsedAt: new Date(),
+              },
+            });
+          }
+
+          await prisma.notification.create({
+            data: {
+              userId: rental.renterId,
+              title: "Item Ready for Claim",
+              message: `${rental.item.title} has been deposited and is ready for pickup.`,
+              type: "ITEM_READY_FOR_CLAIM",
+              relatedEntityId: rental_id,
+              relatedEntityType: "rental",
+            },
+          });
+
+          io.to(`user:${rental.renterId}`).emit("deposit:approved", {
+            rentalId: rental_id,
+            decision,
+            confidence,
+          });
+          io.to(`user:${rental.ownerId}`).emit("deposit:approved", {
+            rentalId: rental_id,
+            decision,
+            confidence,
+          });
+          logger.info(`Deposit ${decision} for rental ${rental_id}`);
+        }
+
+        // ── RETURN flow ──────────────────────────────────────────────────
+        else if (rental.status === "ACTIVE") {
+          const lockerId = String(locker_id);
+          const locker = await prisma.locker.findFirst({
+            where: { lockerNumber: lockerId },
+          });
+
+          const attemptNumber = rental.returnAttemptCount + 1;
+          let mlResult: Awaited<ReturnType<typeof runMlVerification>>;
+          let mlError: string | null = null;
+
+          try {
+            mlResult = await runMlVerification(
+              rental.item.images as string[],
+              image_urls,
+              attemptNumber,
+              rental.item.mlFeatures,
+            );
+          } catch (err) {
+            mlError = (err as Error).message;
+            mlResult = {
+              decision: "PENDING",
+              confidence: 0,
+              method_scores: {},
+              ocr: null,
+            };
+          }
+
+          const { decision, confidence, method_scores } = mlResult;
+
+          if (decision === "RETRY") {
+            await prisma.rental.update({
+              where: { id: rental_id },
+              data: { returnAttemptCount: { increment: 1 } },
+            });
+            socket.emit("kiosk:command", {
+              action: "open_door",
+              locker_id,
+              door: "main_door",
+            });
+            io.to(`user:${rental.renterId}`).emit("return:retry", {
+              rentalId: rental_id,
+              attemptNumber,
+              confidence,
+            });
+            return;
+          }
+
+          if (decision === "REJECTED") {
+            await prisma.rental.update({
+              where: { id: rental_id },
+              data: { returnAttemptCount: { increment: 1 } },
+            });
+            const verification = await prisma.verification.create({
+              data: {
+                originalImages: rental.item.images as never,
+                kioskImages: image_urls as never,
+                decision: "REJECTED",
+                confidenceScore: confidence,
+                attemptNumber,
+                traditionalScore: method_scores?.traditional_best,
+                siftScore: method_scores?.sift_combined,
+                deepLearningScore: method_scores?.deep_learning_aggregated,
+                status: "REJECTED",
+              },
+            });
+            await prisma.rental.update({
+              where: { id: rental_id },
+              data: {
+                status: "DISPUTED",
+                verificationId: verification.id,
+                verificationScore: confidence,
+                verificationStatus: "REJECTED",
+                returnedAt: new Date(),
+                actualReturnDate: new Date(),
+              },
+            });
+            if (locker) {
+              await prisma.locker.update({
+                where: { id: locker.id },
+                data: { status: "AVAILABLE", currentRentalId: null },
+              });
+            }
+            await prisma.notification.create({
+              data: {
+                userId: rental.ownerId,
+                title: "Return Disputed",
+                message: `Returned item for ${rental.item.title} did not match verification. Admin will review.`,
+                type: "VERIFICATION_FAILED",
+                relatedEntityId: rental_id,
+                relatedEntityType: "rental",
+              },
+            });
+            io.to(`user:${rental.renterId}`).emit("return:disputed", {
+              rentalId: rental_id,
+            });
+            io.to(`user:${rental.ownerId}`).emit("return:disputed", {
+              rentalId: rental_id,
+            });
+            return;
+          }
+
+          // APPROVED or PENDING
+          const verification = await prisma.verification.create({
+            data: {
+              originalImages: rental.item.images as never,
+              kioskImages: image_urls as never,
+              decision: decision as never,
+              confidenceScore: confidence,
+              attemptNumber,
+              traditionalScore: method_scores?.traditional_best,
+              siftScore: method_scores?.sift_combined,
+              deepLearningScore: method_scores?.deep_learning_aggregated,
+              status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
+              ...(mlError && { reviewNotes: `ML error: ${mlError}` }),
+            },
+          });
+
+          const verificationStatus =
+            decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW";
+
+          await prisma.rental.update({
+            where: { id: rental_id },
+            data: {
+              status: "VERIFICATION",
+              ...(locker && { returnLockerId: locker.id }),
+              returnedAt: new Date(),
+              actualReturnDate: new Date(),
+              verificationId: verification.id,
+              verificationScore: confidence,
+              verificationStatus,
+            },
+          });
+
+          if (locker) {
+            await prisma.locker.update({
+              where: { id: locker.id },
+              data: {
+                status: "OCCUPIED",
+                currentRentalId: rental_id,
+                lastUsedAt: new Date(),
+              },
+            });
+          }
+
+          if (decision === "APPROVED") {
+            await completeRental(rental_id);
+          } else {
+            // PENDING — notify admin for manual review
+            await prisma.notification.create({
+              data: {
+                userId: rental.ownerId,
+                title: "Item Returned — Under Review",
+                message: `${rental.item.title} return requires manual verification (confidence: ${confidence.toFixed(1)}%).`,
+                type: "RETURN_REMINDER",
+                relatedEntityId: rental_id,
+                relatedEntityType: "rental",
+              },
+            });
+            io.to(`user:${rental.renterId}`).emit("return:under_review", {
+              rentalId: rental_id,
+              confidence,
+            });
+          }
+
+          logger.info(`Return ${decision} for rental ${rental_id}`);
+        } else {
+          logger.warn(
+            `kiosk:images for rental ${rental_id} in unexpected status: ${rental.status}`,
+          );
+        }
+      } catch (err) {
+        logger.error(
+          `kiosk:images handler error for rental ${rental_id}:`,
+          err,
+        );
+      }
+    },
+  );
+
+  // ── Kiosk face result — Pi sends after capture_face command
+  // Gate: if verified → open main door + advance rental to ACTIVE
+  socket.on(
+    "kiosk:face",
+    async (data: {
+      kiosk_id: string;
+      rental_id?: string;
+      user_id?: string;
+      detected: boolean;
+      verified: boolean;
+      confidence: number;
+      face_url?: string;
+    }) => {
+      const { rental_id, user_id, detected, verified, confidence } = data;
+
+      logger.info(
+        `kiosk:face rental=${rental_id} detected=${detected} verified=${verified} conf=${confidence}`,
+      );
+
+      if (!rental_id) return;
+
+      try {
+        const rental = await prisma.rental.findUnique({
+          where: { id: rental_id },
+          include: { item: true },
+        });
+        if (!rental) return;
+
+        if (!verified) {
+          io.to(`user:${rental.renterId}`).emit("face:failed", {
+            rentalId: rental_id,
+            confidence,
+          });
+          return;
+        }
+
+        // ── Claim: advance DEPOSITED → ACTIVE
+        if (rental.status === "DEPOSITED") {
+          await prisma.rental.update({
+            where: { id: rental_id },
+            data: { status: "ACTIVE", claimedAt: new Date() },
+          });
+
+          // Open the locker door for the renter
+          socket.emit("kiosk:command", {
+            action: "open_door",
+            locker_id: rental.depositLockerId,
+            door: "main_door",
+          });
+
+          if (rental.depositLockerId) {
+            await prisma.locker.update({
+              where: { id: rental.depositLockerId },
+              data: { status: "AVAILABLE", currentRentalId: null },
+            });
+          }
+
+          await prisma.notification.create({
+            data: {
+              userId: rental.ownerId,
+              title: "Item Claimed",
+              message: `Your ${rental.item.title} has been claimed by the renter.`,
+              type: "RENTAL_STARTED",
+              relatedEntityId: rental_id,
+              relatedEntityType: "rental",
+            },
+          });
+
+          io.to(`user:${rental.renterId}`).emit("face:verified", {
+            rentalId: rental_id,
+            action: "claim",
+          });
+          io.to(`user:${rental.ownerId}`).emit("rental:active", {
+            rentalId: rental_id,
+          });
+          logger.info(`Claim approved for rental ${rental_id}`);
+        }
+
+        // ── Return: face verified, now request image capture
+        else if (rental.status === "ACTIVE") {
+          socket.emit("kiosk:command", {
+            action: "capture_image",
+            locker_id: user_id,
+            num_frames: 3,
+            rental_id,
+          });
+          io.to(`user:${rental.renterId}`).emit("face:verified", {
+            rentalId: rental_id,
+            action: "return",
+          });
+        }
+      } catch (err) {
+        logger.error(`kiosk:face handler error for rental ${rental_id}:`, err);
+      }
+    },
+  );
+
+  // ── Kiosk error passthrough
+  socket.on("kiosk:error", (data: unknown) => {
+    logger.warn("kiosk:error received:", data);
+    io.emit("admin:kiosk_error", data);
+  });
+
+  socket.on("disconnect", () => {
     logger.info(`Socket disconnected: ${socket.id}`);
   });
 });
 
-// Start server
+// ── Server startup ─────────────────────────────────────────────────────────
 const PORT = parseInt(env.PORT);
 
 const startServer = async (): Promise<void> => {
   try {
-    // Connect to database
     await connectDatabase();
 
-    // Start server
-    httpServer.listen(PORT, '0.0.0.0', () => {
+    httpServer.listen(PORT, "0.0.0.0", () => {
       logger.info(`
 ╔════════════════════════════════════════════╗
-║                                            ║
 ║   🚀 EngiRent Hub API Server Started      ║
-║                                            ║
-║   Environment: ${env.NODE_ENV.padEnd(28)}║
-║   Port: ${PORT.toString().padEnd(35)}║
-║   API Version: ${env.API_VERSION.padEnd(28)}║
-║                                            ║
-║   📡 Server: http://localhost:${PORT}       ║
-║   📚 API: http://localhost:${PORT}/api/${env.API_VERSION}  ║
-║   ❤️  Health: http://localhost:${PORT}/api/${env.API_VERSION}/health ║
-║                                            ║
+║   Port: ${PORT}  |  Env: ${env.NODE_ENV.padEnd(12)}      ║
+║   API: http://localhost:${PORT}/api/${env.API_VERSION}     ║
 ╚════════════════════════════════════════════╝
       `);
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error("Failed to start server:", error);
     process.exit(1);
   }
 };
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
-  httpServer.close(() => {
-    logger.info('HTTP server closed');
-  });
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received — closing server");
+  httpServer.close(() => logger.info("HTTP server closed"));
 });
 
 startServer();
