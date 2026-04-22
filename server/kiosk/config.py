@@ -52,15 +52,11 @@ MOCK_GPIO = os.getenv("MOCK_GPIO", "False").lower() == "true"
 MOCK_CAMERA = os.getenv("MOCK_CAMERA", "False").lower() == "true"
 
 # ── GPIO pin map ───────────────────────────────────────────────────────────────
-# Relay setup: 16 relays total
-# - 12 four-channel relays (SRD-05VDC-SL-C): 4 for main doors, 4 for bottom doors, 4 for actuators (Modules 1&2)
-# - 4 single-channel relays (SRD-12VDC-SL-C): 4 for actuators (Modules 3&4)
-# Each actuator uses 2 relays (extend/retract)
-# Pin assignments:
-# Main doors (four-channel): GPIO 2,3,4,5
-# Bottom doors (four-channel): GPIO 6,7,8,9
-# Actuators (four-channel for Modules 1&2): GPIO 10,11,12,13
-# Actuators (single-channel for Modules 3&4): GPIO 14,15,16,17
+# Relay setup: 2 doors per locker (main_door + bottom_door), no trapdoor.
+# Module 1 (4-ch, SRD-05VDC-SL-C): Main doors  → GPIO 2,3,4,5
+# Module 2 (4-ch, SRD-05VDC-SL-C): Bottom doors → GPIO 6,7,8,9
+# Module 3 (4-ch, SRD-05VDC-SL-C): Actuators L1/L2 extend/retract → GPIO 10,11,12,13
+# Module 4 (1-ch, SRD-12VDC-SL-C × 4): Actuators L3/L4 extend/retract → GPIO 14,15,16,17
 LOCKER_PINS = {
     1: {
         "main_door_pin":       2,   # BCM 2 / Four-channel relay → Main door solenoid
