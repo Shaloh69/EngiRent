@@ -611,8 +611,8 @@ export const sendKioskCommand = async (
     if (door) payload.door = door;
     if (durationOverride !== undefined)
       payload.duration_override = durationOverride;
-    if (pushSeconds !== undefined) payload.push_seconds = pushSeconds;
-    if (pullSeconds !== undefined) payload.pull_seconds = pullSeconds;
+    if (pushSeconds !== undefined) payload.extend_seconds = pushSeconds;
+    if (pullSeconds !== undefined) payload.retract_seconds = pullSeconds;
     if (speedPercent !== undefined) payload.speed = speedPercent;
     if (numFrames !== undefined) payload.num_frames = numFrames;
 

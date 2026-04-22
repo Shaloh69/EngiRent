@@ -142,7 +142,7 @@ async function completeRental(rentalId: string): Promise<void> {
         userId: rental.renterId,
         title: "Rental Completed",
         message: `Your rental of ${rental.item.title} is complete. Security deposit refund is being processed.`,
-        type: "VERIFICATION_SUCCESS",
+        type: "VERIFICATION_PASSED" as never,
         relatedEntityId: rentalId,
         relatedEntityType: "rental",
       },
@@ -152,7 +152,7 @@ async function completeRental(rentalId: string): Promise<void> {
         userId: rental.ownerId,
         title: "Item Returned & Verified",
         message: `${rental.item.title} has been returned and verified. Rental payment will be released.`,
-        type: "VERIFICATION_SUCCESS",
+        type: "VERIFICATION_PASSED" as never,
         relatedEntityId: rentalId,
         relatedEntityType: "rental",
       },
@@ -259,7 +259,7 @@ io.on("connection", (socket: Socket) => {
     const lockerSummary = lockers
       ? Object.entries(lockers)
           .map(([id, doors]) =>
-            `L${id}[${doors.main ?? "?"}|${doors.trapdoor ?? "?"}|${doors.bottom ?? "?"}]`
+            `L${id}[main:${doors.main ?? "?"}|bottom:${doors.bottom ?? "?"}]`
           )
           .join("  ")
       : "?";
@@ -399,7 +399,7 @@ io.on("connection", (socket: Socket) => {
                 userId: rental.renterId,
                 title: "Rental Cancelled",
                 message: `Deposit for ${rental.item.title} was rejected after ${attemptNumber} attempts.`,
-                type: "VERIFICATION_FAILED",
+                type: "VERIFICATION_FAILED" as never,
                 relatedEntityId: rental_id,
                 relatedEntityType: "rental",
               },
@@ -458,7 +458,7 @@ io.on("connection", (socket: Socket) => {
               userId: rental.renterId,
               title: "Item Ready for Claim",
               message: `${rental.item.title} has been deposited and is ready for pickup.`,
-              type: "ITEM_READY_FOR_CLAIM",
+              type: "ITEM_READY_FOR_CLAIM" as never,
               relatedEntityId: rental_id,
               relatedEntityType: "rental",
             },
@@ -565,7 +565,7 @@ io.on("connection", (socket: Socket) => {
                 userId: rental.ownerId,
                 title: "Return Disputed",
                 message: `Returned item for ${rental.item.title} did not match verification. Admin will review.`,
-                type: "VERIFICATION_FAILED",
+                type: "VERIFICATION_FAILED" as never,
                 relatedEntityId: rental_id,
                 relatedEntityType: "rental",
               },
@@ -631,7 +631,7 @@ io.on("connection", (socket: Socket) => {
                 userId: rental.ownerId,
                 title: "Item Returned — Under Review",
                 message: `${rental.item.title} return requires manual verification (confidence: ${confidence.toFixed(1)}%).`,
-                type: "RETURN_REMINDER",
+                type: "RETURN_REMINDER" as never,
                 relatedEntityId: rental_id,
                 relatedEntityType: "rental",
               },
@@ -727,7 +727,7 @@ io.on("connection", (socket: Socket) => {
               userId: rental.ownerId,
               title: "Item Claimed",
               message: `Your ${rental.item.title} has been claimed by the renter.`,
-              type: "RENTAL_STARTED",
+              type: "ITEM_CLAIMED" as never,
               relatedEntityId: rental_id,
               relatedEntityType: "rental",
             },
@@ -745,9 +745,10 @@ io.on("connection", (socket: Socket) => {
 
         // ── Return: face verified, now request image capture
         else if (rental.status === "ACTIVE") {
+          const returnLockerId = rental.returnLockerId ?? rental.depositLockerId;
           socket.emit("kiosk:command", {
             action: "capture_image",
-            locker_id: user_id,
+            locker_id: returnLockerId,
             num_frames: 3,
             rental_id,
           });
