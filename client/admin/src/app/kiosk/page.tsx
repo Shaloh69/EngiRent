@@ -28,28 +28,24 @@ import api, { isDemoMode } from "@/lib/api";
 
 interface LockerTiming {
   main_door_open_seconds: number;
-  trapdoor_unlock_seconds: number;
   bottom_door_open_seconds: number;
-  actuator_push_seconds: number;
-  actuator_pull_seconds: number;
-  actuator_speed_percent: number;
+  actuator_extend_seconds: number;
+  actuator_retract_seconds: number;
 }
 
 interface KioskState {
   id: string;
   status: "online" | "offline" | "error" | string;
   lastSeen: string | null;
-  lockers: Record<string, { main: string; trapdoor: string; bottom: string }>;
+  lockers: Record<string, { main: string; bottom: string }>;
   timing: Record<string, LockerTiming>;
 }
 
 const DEFAULT_TIMING: LockerTiming = {
   main_door_open_seconds: 15,
-  trapdoor_unlock_seconds: 2,
   bottom_door_open_seconds: 15,
-  actuator_push_seconds: 5,
-  actuator_pull_seconds: 5,
-  actuator_speed_percent: 100,
+  actuator_extend_seconds: 5,
+  actuator_retract_seconds: 5,
 };
 
 const DEMO_STATE: KioskState = {
@@ -57,10 +53,10 @@ const DEMO_STATE: KioskState = {
   status: "online",
   lastSeen: new Date().toISOString(),
   lockers: {
-    "1": { main: "locked", trapdoor: "locked", bottom: "locked" },
-    "2": { main: "locked", trapdoor: "locked", bottom: "locked" },
-    "3": { main: "locked", trapdoor: "locked", bottom: "locked" },
-    "4": { main: "locked", trapdoor: "locked", bottom: "locked" },
+    "1": { main: "locked", bottom: "locked" },
+    "2": { main: "locked", bottom: "locked" },
+    "3": { main: "locked", bottom: "locked" },
+    "4": { main: "locked", bottom: "locked" },
   },
   timing: {
     "1": { ...DEFAULT_TIMING },
@@ -381,14 +377,8 @@ export default function KioskPage() {
                     Locker {String(id).padStart(2, "0")}
                   </span>
                   <div className="flex gap-1">
-                    {(["main", "trapdoor", "bottom"] as const).map((door) => {
-                      const state = (doors as Record<string, string>)?.[
-                        door === "trapdoor"
-                          ? "trapdoor"
-                          : door === "bottom"
-                            ? "bottom"
-                            : "main"
-                      ];
+                    {(["main", "bottom"] as const).map((door) => {
+                      const state = (doors as Record<string, string>)?.[door];
                       const unlocked = state === "unlocked";
                       return (
                         <Chip
@@ -400,11 +390,7 @@ export default function KioskPage() {
                               : "border border-[var(--color-border)] bg-transparent text-[var(--color-muted)] text-xs"
                           }
                         >
-                          {door === "trapdoor"
-                            ? "Trap"
-                            : door === "bottom"
-                              ? "Bot"
-                              : "Main"}
+                          {door === "bottom" ? "Bot" : "Main"}
                           {unlocked ? " ●" : " ○"}
                         </Chip>
                       );
@@ -421,35 +407,25 @@ export default function KioskPage() {
                       Manual Controls
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {(["main", "trapdoor", "bottom"] as const).map((door) => {
-                        const doorKey =
-                          door === "main"
-                            ? "main_door"
-                            : door === "bottom"
-                              ? "bottom_door"
-                              : door;
+                      {(["main", "bottom"] as const).map((door) => {
+                        const doorKey = door === "main" ? "main_door" : "bottom_door";
                         return (
-                        <Button
-                          key={door}
-                          size="sm"
-                          variant="flat"
-                          color="primary"
-                          startContent={<LockOpen size={13} />}
-                          isLoading={
-                            cmdLoading ===
-                            `open_door-${JSON.stringify({ locker_id: id, door: doorKey })}`
-                          }
-                          onPress={() =>
-                            sendCommand("open_door", { locker_id: id, door: doorKey })
-                          }
-                        >
-                          Open{" "}
-                          {door === "trapdoor"
-                            ? "Trap"
-                            : door === "bottom"
-                              ? "Bottom"
-                              : "Main"}
-                        </Button>
+                          <Button
+                            key={door}
+                            size="sm"
+                            variant="flat"
+                            color="primary"
+                            startContent={<LockOpen size={13} />}
+                            isLoading={
+                              cmdLoading ===
+                              `open_door-${JSON.stringify({ locker_id: id, door: doorKey })}`
+                            }
+                            onPress={() =>
+                              sendCommand("open_door", { locker_id: id, door: doorKey })
+                            }
+                          >
+                            Open {door === "bottom" ? "Bottom" : "Main"}
+                          </Button>
                         );
                       })}
                       <Button
@@ -494,36 +470,22 @@ export default function KioskPage() {
                         "s",
                       )}
                       {numInput(
-                        "Trapdoor Unlock",
-                        t.trapdoor_unlock_seconds,
-                        (v) => updateTiming(sid, "trapdoor_unlock_seconds", v),
-                        "s",
-                      )}
-                      {numInput(
                         "Bottom Door Open",
                         t.bottom_door_open_seconds,
                         (v) => updateTiming(sid, "bottom_door_open_seconds", v),
                         "s",
                       )}
                       {numInput(
-                        "Actuator Push",
-                        t.actuator_push_seconds,
-                        (v) => updateTiming(sid, "actuator_push_seconds", v),
+                        "Actuator Extend",
+                        t.actuator_extend_seconds,
+                        (v) => updateTiming(sid, "actuator_extend_seconds", v),
                         "s",
                       )}
                       {numInput(
-                        "Actuator Pull",
-                        t.actuator_pull_seconds,
-                        (v) => updateTiming(sid, "actuator_pull_seconds", v),
+                        "Actuator Retract",
+                        t.actuator_retract_seconds,
+                        (v) => updateTiming(sid, "actuator_retract_seconds", v),
                         "s",
-                      )}
-                      {numInput(
-                        "Actuator Speed",
-                        t.actuator_speed_percent,
-                        (v) => updateTiming(sid, "actuator_speed_percent", v),
-                        "%",
-                        10,
-                        100,
                       )}
                     </div>
                     <Button
