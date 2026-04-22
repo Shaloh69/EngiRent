@@ -1,9 +1,8 @@
 """
 Solenoid relay controller.
 
-Each locker has 3 solenoids:
+Each locker has 2 solenoids:
   main_door   – top insertion door
-  trapdoor    – internal drop door (penalty)
   bottom_door – retrieval door at the base
 
 Relay modules are active-LOW by default (energised = GPIO LOW = solenoid open).
@@ -17,7 +16,7 @@ from config import LOCKER_PINS, MOCK_GPIO, RELAY_ACTIVE_LOW, GPIO_CHIP
 
 log = logging.getLogger("kiosk.gpio")
 
-DOOR_KEYS = ("main_door", "trapdoor", "bottom_door")
+DOOR_KEYS = ("main_door", "bottom_door")
 
 if not MOCK_GPIO:
     from gpiozero import OutputDevice

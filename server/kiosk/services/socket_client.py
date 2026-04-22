@@ -78,7 +78,7 @@ _ui_state: dict = {
     "status": "idle",
     "message": "Welcome to EngiRent Hub",
     "active_locker": None,
-    "lockers": {str(i): {"main": "locked", "trapdoor": "locked", "bottom": "locked"} for i in range(1, 5)},
+    "lockers": {str(i): {"main": "locked", "bottom": "locked"} for i in range(1, 5)},
 }
 
 
@@ -196,13 +196,12 @@ async def _run_with_ack(handler, action: str, command_id: str, data: dict):
 
 async def _cmd_open_door(data: dict):
     locker_id = int(data["locker_id"])
-    door = data["door"]                 # "main_door" | "trapdoor" | "bottom_door"
+    door = data["door"]                 # "main_door" | "bottom_door"
     cfg = load_timing_config()
     locker_cfg = cfg["lockers"][str(locker_id)]
 
     duration_map = {
-        "main_door": locker_cfg["main_door_open_seconds"],
-        "trapdoor": locker_cfg["trapdoor_unlock_seconds"],
+        "main_door":   locker_cfg["main_door_open_seconds"],
         "bottom_door": locker_cfg["bottom_door_open_seconds"],
     }
     duration = data.get("duration_override") or duration_map.get(door, 15)
@@ -220,36 +219,22 @@ async def _cmd_open_door(data: dict):
 
 async def _cmd_drop_item(data: dict):
     """
-    Penalty drop sequence:
-      1. Unlock trapdoor solenoid
-      2. Actuator extends (push open) for push_seconds
-      3. Actuator retracts (pull closed) for pull_seconds
-      4. Lock trapdoor solenoid
+    Actuator place sequence:
+      1. Extend actuator (push item into locker)
+      2. Retract actuator (return platform)
     """
     locker_id = int(data["locker_id"])
     cfg = load_timing_config()
     locker_cfg = cfg["lockers"][str(locker_id)]
 
-    push_s = data.get("push_seconds") or locker_cfg["actuator_push_seconds"]
-    pull_s = data.get("pull_seconds") or locker_cfg["actuator_pull_seconds"]
-    trap_s = locker_cfg["trapdoor_unlock_seconds"]
-    speed = locker_cfg["actuator_speed_percent"]
+    ext_s = data.get("extend_seconds") or locker_cfg["actuator_extend_seconds"]
+    ret_s = data.get("retract_seconds") or locker_cfg["actuator_retract_seconds"]
 
-    _set_ui("dropping", f"Locker {locker_id} – dropping item…", locker_id)
-
-    # Unlock trapdoor solenoid first
-    _solenoid.unlock(locker_id, "trapdoor")
-    await asyncio.sleep(0.3)
-
-    # Actuator full open-then-close cycle
-    await _actuator.open_trapdoor(locker_id, push_s, pull_s, speed)
-
-    # Lock trapdoor solenoid
-    _solenoid.lock(locker_id, "trapdoor")
-
-    _set_ui("idle", f"Locker {locker_id} – item dropped. Bottom door available.")
+    _set_ui("dropping", f"Locker {locker_id} – placing item…", locker_id)
+    await _actuator.place_item(locker_id, ext_s, ret_s)
+    _set_ui("idle", f"Locker {locker_id} – item placed.")
     await sio.emit("kiosk:status", _build_status())
-    log.info("Drop sequence complete locker=%s", locker_id)
+    log.info("Place sequence complete locker=%s", locker_id)
 
 
 async def _cmd_capture_image(data: dict):
@@ -318,8 +303,8 @@ async def _cmd_lock_all(_data: dict):
 async def _cmd_actuator_extend(data: dict):
     locker_id = int(data["locker_id"])
     cfg = load_timing_config()
-    seconds = data.get("seconds") or cfg["lockers"][str(locker_id)]["actuator_push_seconds"]
-    speed = data.get("speed") or cfg["lockers"][str(locker_id)]["actuator_speed_percent"]
+    seconds = data.get("seconds") or cfg["lockers"][str(locker_id)]["actuator_extend_seconds"]
+    speed = data.get("speed", 100)
     await _actuator.manual_extend(locker_id, seconds, speed)
     await sio.emit("kiosk:status", _build_status())
 
@@ -327,8 +312,8 @@ async def _cmd_actuator_extend(data: dict):
 async def _cmd_actuator_retract(data: dict):
     locker_id = int(data["locker_id"])
     cfg = load_timing_config()
-    seconds = data.get("seconds") or cfg["lockers"][str(locker_id)]["actuator_pull_seconds"]
-    speed = data.get("speed") or cfg["lockers"][str(locker_id)]["actuator_speed_percent"]
+    seconds = data.get("seconds") or cfg["lockers"][str(locker_id)]["actuator_retract_seconds"]
+    speed = data.get("speed", 100)
     await _actuator.manual_retract(locker_id, seconds, speed)
     await sio.emit("kiosk:status", _build_status())
 

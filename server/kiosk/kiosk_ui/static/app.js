@@ -76,10 +76,8 @@ function applyState(state) {
   // Door pills
   if (lockers) {
     Object.entries(lockers).forEach(([lockerId, doors]) => {
-      const id = lockerId;
-      updateDoor(id, 'main', doors.main);
-      updateDoor(id, 'trap', doors.trapdoor);
-      updateDoor(id, 'bot',  doors.bottom);
+      updateDoor(lockerId, 'main', doors.main);
+      updateDoor(lockerId, 'bot',  doors.bottom);
     });
   }
 

@@ -52,45 +52,43 @@ MOCK_GPIO = os.getenv("MOCK_GPIO", "False").lower() == "true"
 MOCK_CAMERA = os.getenv("MOCK_CAMERA", "False").lower() == "true"
 
 # ── GPIO pin map ───────────────────────────────────────────────────────────────
-# Each locker: 3 solenoids (main door, trapdoor, bottom door) + 1 actuator pair
-# Solenoids are controlled via relay modules
-# Actuators are controlled via L298N motor drivers (PWM + direction)
+# Each locker: 2 solenoids (main door, bottom door) + 1 relay-pair actuator
+# Solenoids controlled via relay modules (active-LOW by default)
+# Actuators controlled via 2-relay polarity-reversal circuit
+#   extend relay ON + retract relay OFF  → actuator extends (item in)
+#   extend relay OFF + retract relay ON  → actuator retracts (item out)
 LOCKER_PINS = {
     1: {
-        "main_door_pin": 17,      # Relay A IN1 → Solenoid 1
-        "trapdoor_pin": 18,       # Relay A IN2 → Solenoid 2
-        "bottom_door_pin": 27,    # Relay A IN3 → Solenoid 3
-        "actuator_pwm_pin": 12,   # Motor Driver A IN1 (PWM)
-        "actuator_dir_pin": 16,   # Motor Driver A IN2 (DIR)
+        "main_door_pin":       17,   # BCM 17 / Pin 11 → Solenoid relay
+        "bottom_door_pin":     27,   # BCM 27 / Pin 13 → Solenoid relay
+        "actuator_extend_pin": 12,   # BCM 12 / Pin 32 → 4-CH Relay IN1
+        "actuator_retract_pin":16,   # BCM 16 / Pin 36 → 4-CH Relay IN2
         "camera_type": "csi",
-        "camera_index": 0,        # CSI0 connector
+        "camera_index": 0,
     },
     2: {
-        "main_door_pin": 22,      # Relay A IN4 → Solenoid 4
-        "trapdoor_pin": 23,       # Relay B IN1 → Solenoid 5
-        "bottom_door_pin": 24,    # Relay B IN2 → Solenoid 6
-        "actuator_pwm_pin": 20,   # Motor Driver A IN3 (PWM)
-        "actuator_dir_pin": 21,   # Motor Driver A IN4 (DIR)
+        "main_door_pin":       22,   # BCM 22 / Pin 15 → Solenoid relay
+        "bottom_door_pin":     23,   # BCM 23 / Pin 16 → Solenoid relay
+        "actuator_extend_pin": 20,   # BCM 20 / Pin 38 → 4-CH Relay IN3
+        "actuator_retract_pin":21,   # BCM 21 / Pin 40 → 4-CH Relay IN4
         "camera_type": "csi",
-        "camera_index": 1,        # CSI1 connector
+        "camera_index": 1,
     },
     3: {
-        "main_door_pin": 25,      # Relay B IN3 → Solenoid 7
-        "trapdoor_pin": 9,        # Relay B IN4 → Solenoid 8  (was GPIO8 = SPI0-CE0, conflicts with SPI)
-        "bottom_door_pin": 7,     # 1-CH Relay 9 → Solenoid 9
-        "actuator_pwm_pin": 19,   # Motor Driver B IN1 (PWM)
-        "actuator_dir_pin": 26,   # Motor Driver B IN2 (DIR)
+        "main_door_pin":       24,   # BCM 24 / Pin 18 → Solenoid relay
+        "bottom_door_pin":     25,   # BCM 25 / Pin 22 → Solenoid relay
+        "actuator_extend_pin": 19,   # BCM 19 / Pin 35 → Single Relay 1
+        "actuator_retract_pin":26,   # BCM 26 / Pin 37 → Single Relay 2
         "camera_type": "usb",
-        "camera_index": 0,        # USB port 1 → /dev/video4 or similar
+        "camera_index": 0,
     },
     4: {
-        "main_door_pin": 11,      # 1-CH Relay 10 → Solenoid 10  (was GPIO1 = HAT EEPROM ID_SC)
-        "trapdoor_pin": 10,       # 1-CH Relay 11 → Solenoid 11  (was GPIO0 = HAT EEPROM ID_SD)
-        "bottom_door_pin": 5,     # 1-CH Relay 12 → Solenoid 12
-        "actuator_pwm_pin": 13,   # Motor Driver B IN3 (PWM, hardware PWM1)
-        "actuator_dir_pin": 6,    # Motor Driver B IN4 (DIR)
+        "main_door_pin":       5,    # BCM 5  / Pin 29 → Solenoid relay
+        "bottom_door_pin":     6,    # BCM 6  / Pin 31 → Solenoid relay
+        "actuator_extend_pin": 13,   # BCM 13 / Pin 33 → Single Relay 3
+        "actuator_retract_pin":4,    # BCM 4  / Pin 7  → Single Relay 4
         "camera_type": "usb",
-        "camera_index": 1,        # USB port 2 → /dev/video5 or similar
+        "camera_index": 1,
     },
 }
 
@@ -113,11 +111,9 @@ def save_timing_config(config: dict) -> None:
 def _default_timing() -> dict:
     default_locker = {
         "main_door_open_seconds": 15,
-        "trapdoor_unlock_seconds": 2,
         "bottom_door_open_seconds": 15,
-        "actuator_push_seconds": 5,
-        "actuator_pull_seconds": 5,
-        "actuator_speed_percent": 100,
+        "actuator_extend_seconds": 5,
+        "actuator_retract_seconds": 5,
     }
     return {
         "lockers": {str(i): dict(default_locker) for i in range(1, 5)},
