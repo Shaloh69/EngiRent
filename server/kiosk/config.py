@@ -13,9 +13,26 @@ CONFIG_FILE = BASE_DIR / "kiosk_config.json"
 # gpiozero 2.0.1 hardcodes chip=4 for Pi 5 which breaks after the kernel rename.
 # We detect the correct chip at startup so both old and new kernels work.
 def _detect_gpio_chip() -> int:
+    """
+    Find the gpiochip that owns the 40-pin header GPIOs.
+    On Pi 5 the RP1 chip label is 'pinctrl-rp1'.
+    Falls back to the first openable chip (usually 0).
+    """
     try:
         import lgpio
-        for chip in (4, 0):
+        # First pass: find the chip whose label contains 'rp1' or 'pinctrl'
+        for chip in range(8):
+            try:
+                h = lgpio.gpiochip_open(chip)
+                info = lgpio.gpio_get_chip_info(h)
+                lgpio.gpiochip_close(h)
+                label = str(info).lower()
+                if "rp1" in label or "pinctrl" in label:
+                    return chip
+            except Exception:
+                continue
+        # Second pass: return the first chip that opens successfully
+        for chip in range(8):
             try:
                 h = lgpio.gpiochip_open(chip)
                 lgpio.gpiochip_close(h)
