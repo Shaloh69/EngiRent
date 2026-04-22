@@ -128,7 +128,21 @@ async def connect_error(data):
 async def on_config(data: dict):
     """Server pushes updated timing config from admin panel."""
     log.info("Received config update: %s", json.dumps(data, indent=2))
-    save_timing_config(data)
+    
+    # Extract solenoid_pins if present and reinitialize GPIO
+    if "solenoid_pins" in data and _solenoid:
+        try:
+            log.info("Updating solenoid pin configuration from server…")
+            solenoid_pins = data.get("solenoid_pins", {})
+            _solenoid.reinitialize(solenoid_pins)
+            log.info("Solenoid controller reinitialized with new pin config ✓")
+        except Exception as e:
+            log.error("Failed to update solenoid pins: %s", e)
+    
+    # Save timing config (everything except solenoid_pins)
+    timing_config = {k: v for k, v in data.items() if k != "solenoid_pins"}
+    save_timing_config(timing_config)
+    
     await sio.emit("kiosk:status", _build_status())
 
 
