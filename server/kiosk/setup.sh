@@ -99,25 +99,40 @@ else
     echo "  venv already exists — skipping creation"
 fi
 
+echo "  Upgrading pip…"
+sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/pip" install --upgrade pip
+
 echo "  Installing Python dependencies from requirements.txt…"
-sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/pip" install --quiet --upgrade pip
-sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/pip" install --quiet -r "$KIOSK_DIR/requirements.txt"
+sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/pip" install -r "$KIOSK_DIR/requirements.txt"
 echo "  ✓ Python dependencies installed"
 
-# Verify opencv can be imported (catches missing system package)
-echo "  Verifying opencv import…"
-if sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/python" -c "import cv2" 2>/dev/null; then
-    echo "  ✓ cv2 import OK"
-else
-    echo "  ⚠  cv2 not importable — ensure python3-opencv is installed via apt"
-fi
+# Verify all critical imports — failures here mean the kiosk will crash on start
+echo ""
+echo "  Verifying critical imports…"
+_check_import() {
+    local MODULE="$1" HINT="$2"
+    if sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/python" -c "import $MODULE" 2>/dev/null; then
+        echo "  ✓ $MODULE"
+    else
+        echo "  ✗ $MODULE — $HINT"
+        IMPORT_ERRORS=$((IMPORT_ERRORS + 1))
+    fi
+}
+IMPORT_ERRORS=0
+_check_import "cv2"           "run: sudo apt install -y python3-opencv"
+_check_import "lgpio"         "run: sudo apt install -y python3-lgpio"
+_check_import "flask"         "run: pip install flask"
+_check_import "flask_socketio" "run: pip install flask-socketio"
+_check_import "socketio"      "run: pip install python-socketio[asyncio_client]"
+_check_import "supabase"      "run: pip install supabase"
+_check_import "PIL"           "run: pip install pillow"
+_check_import "dotenv"        "run: pip install python-dotenv"
 
-# Verify lgpio can be imported
-echo "  Verifying lgpio import…"
-if sudo -u "$SERVICE_USER" "$KIOSK_DIR/venv/bin/python" -c "import lgpio" 2>/dev/null; then
-    echo "  ✓ lgpio import OK"
+if [ "$IMPORT_ERRORS" -gt 0 ]; then
+    echo ""
+    echo "  ⚠  $IMPORT_ERRORS import(s) failed — fix them before starting the kiosk"
 else
-    echo "  ⚠  lgpio not importable — ensure python3-lgpio is installed via apt"
+    echo "  ✓ All imports OK"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
