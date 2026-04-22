@@ -44,6 +44,7 @@ apt-get install -y -qq \
     python3-lgpio \
     python3-gpiozero \
     python3-opencv \
+    opencv-data \
     python3-pip \
     python3-venv \
     gstreamer1.0-tools \
