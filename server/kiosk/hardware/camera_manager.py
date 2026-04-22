@@ -1,10 +1,16 @@
 """
-Camera manager for 5 cameras:
-  - Cameras 1 & 2: CSI ribbon (picamera2) → Lockers 1 & 2
-  - Cameras 3 & 4: USB (OpenCV)           → Lockers 3 & 4
-  - Camera 5:      USB hub (OpenCV)        → Face recognition
+Camera manager — all 5 cameras are USB (OpenCV / GStreamer).
 
-Captures still frames as JPEG bytes ready for Supabase upload.
+  Index 0 → Locker 1  (/dev/video0)
+  Index 1 → Locker 2  (/dev/video2)
+  Index 2 → Locker 3  (/dev/video4)
+  Index 3 → Locker 4  (/dev/video6)
+  Index 4 → Face cam  (/dev/video8)
+
+USB cameras on Pi OS expose two V4L2 nodes each (video + metadata).
+Always use the even-numbered node (0, 2, 4 …) — that is the actual capture device.
+Run `v4l2-ctl --list-devices` to verify and update USB_DEVICE_MAP if your
+cameras land on different indices after a reboot or replug.
 """
 
 import io
@@ -16,31 +22,58 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from config import LOCKER_PINS, MOCK_CAMERA
+from config import LOCKER_PINS, MOCK_CAMERA, FACE_CAMERA_INDEX
 
 log = logging.getLogger("kiosk.camera")
 
-# USB camera device paths – adjust if Linux assigns different indices
-# On Pi 5 with 2 CSI cameras, USB cams usually start at /dev/video4
-# Device paths confirmed via v4l2-ctl --list-devices on this Pi
-# Each USB camera exposes 2 nodes — use the even/first one (actual video capture)
-USB_DEVICE_MAP = {
-    0: "/dev/video2",   # Web Camera USB 1.1 → Locker 3
-    1: "/dev/video4",   # Web Camera USB 1.2 → Locker 4
-    2: "/dev/video0",   # A4tech FHD 1080P   → Face recognition (best quality)
+# Map camera_index (0-4) → V4L2 device node.
+# Update these paths if v4l2-ctl --list-devices shows different numbers.
+USB_DEVICE_MAP: dict[int, str] = {
+    0: "/dev/video0",    # Locker 1  ← update after testing with ffmpeg
+    1: "/dev/video2",    # Locker 2  ← update after testing with ffmpeg
+    2: "/dev/video4",    # Locker 3  ← update after testing with ffmpeg
+    3: "/dev/video7",    # Locker 4  ← Web Camera usb-xhci-hcd.1-1.3
+    4: "/dev/video10",   # Face cam  ← Web Camera usb-xhci-hcd.1-1.4
 }
 
-CSI_RESOLUTION = (1280, 960)
-USB_RESOLUTION = (1280, 960)
-FACE_RESOLUTION = (640, 480)
-JPEG_QUALITY = 90
+LOCKER_RESOLUTION = (1280, 720)   # MJPEG 30fps — supported by all cameras
+FACE_RESOLUTION   = (640, 480)    # MJPEG 30fps — sufficient for face detection
+JPEG_QUALITY      = 90
+
+
+def _open_usb(device: str, width: int, height: int) -> cv2.VideoCapture | None:
+    """Open a USB camera via GStreamer using MJPEG (30fps, low CPU)."""
+    # MJPEG pipeline — best for these cameras (30fps at 1280x720)
+    gst = (
+        f"v4l2src device={device} ! "
+        f"image/jpeg,width={width},height={height},framerate=30/1 ! "
+        f"jpegdec ! videoconvert ! video/x-raw,format=BGR ! "
+        f"appsink max-buffers=1 drop=true sync=false"
+    )
+    cap = cv2.VideoCapture(gst, cv2.CAP_GSTREAMER)
+    if cap.isOpened():
+        return cap
+
+    # Fallback: YUYV at 640x480 (always supported)
+    gst_fallback = (
+        f"v4l2src device={device} ! "
+        f"video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! "
+        f"videoconvert ! video/x-raw,format=BGR ! "
+        f"appsink max-buffers=1 drop=true sync=false"
+    )
+    cap2 = cv2.VideoCapture(gst_fallback, cv2.CAP_GSTREAMER)
+    if cap2.isOpened():
+        log.warning("Camera %s opened with YUYV 640x480 fallback", device)
+        return cap2
+
+    log.error("Camera %s could not be opened — check v4l2-ctl --list-devices", device)
+    return None
 
 
 class CameraManager:
     def __init__(self):
-        self._csi: dict[int, object] = {}   # locker_id → Picamera2 instance
-        self._usb: dict[int, object] = {}   # usb_index → cv2.VideoCapture
-        self._face_cap = None
+        self._usb:      dict[int, cv2.VideoCapture] = {}   # locker_id → capture
+        self._face_cap: cv2.VideoCapture | None = None
         self._init_cameras()
 
     def _init_cameras(self):
@@ -48,134 +81,63 @@ class CameraManager:
             log.warning("MOCK_CAMERA=True – returning placeholder images")
             return
 
-        # ── CSI cameras ───────────────────────────────────────────────────────
-        try:
-            from picamera2 import Picamera2
-
-            for locker_id, pins in LOCKER_PINS.items():
-                if pins["camera_type"] == "csi":
-                    idx = pins["camera_index"]
-                    cam = Picamera2(idx)
-                    cfg = cam.create_still_configuration(
-                        main={"size": CSI_RESOLUTION, "format": "RGB888"}
-                    )
-                    cam.configure(cfg)
-                    cam.start()
-                    self._csi[locker_id] = cam
-                    log.info("CSI camera locker=%s index=%s started", locker_id, idx)
-        except Exception as e:
-            log.error("CSI camera init failed: %s", e)
-
-        # ── USB cameras ───────────────────────────────────────────────────────
-        # apt OpenCV on Pi OS Trixie has broken V4L2 capture; use GStreamer pipeline.
+        # ── Locker cameras ────────────────────────────────────────────────────
+        w, h = LOCKER_RESOLUTION
         for locker_id, pins in LOCKER_PINS.items():
-            if pins["camera_type"] == "usb":
-                usb_idx = pins["camera_index"]
-                device = USB_DEVICE_MAP.get(usb_idx, usb_idx)
-                w, h = USB_RESOLUTION
-                gst = (
-                    f"v4l2src device={device} ! "
-                    f"video/x-raw,width={w},height={h} ! "
-                    f"videoconvert ! video/x-raw,format=BGR ! "
-                    f"appsink max-buffers=1 drop=true sync=false"
-                )
-                cap = cv2.VideoCapture(gst, cv2.CAP_GSTREAMER)
-                if cap.isOpened():
-                    self._usb[locker_id] = cap
-                    log.info("USB camera locker=%s device=%s started (GStreamer)", locker_id, device)
-                else:
-                    # Fallback: let GStreamer negotiate resolution automatically
-                    gst_simple = (
-                        f"v4l2src device={device} ! "
-                        f"videoconvert ! video/x-raw,format=BGR ! "
-                        f"appsink max-buffers=1 drop=true sync=false"
-                    )
-                    cap2 = cv2.VideoCapture(gst_simple, cv2.CAP_GSTREAMER)
-                    if cap2.isOpened():
-                        self._usb[locker_id] = cap2
-                        log.info("USB camera locker=%s device=%s started (GStreamer simple)", locker_id, device)
-                    else:
-                        log.error("USB camera locker=%s device=%s FAILED — check ls /dev/video*", locker_id, device)
+            usb_idx = pins["camera_index"]
+            device  = USB_DEVICE_MAP.get(usb_idx, f"/dev/video{usb_idx * 2}")
+            cap = _open_usb(device, w, h)
+            if cap:
+                self._usb[locker_id] = cap
+                log.info("Locker camera locker=%s device=%s ✓", locker_id, device)
 
-        # ── Face recognition camera ───────────────────────────────────────────
-        face_device = USB_DEVICE_MAP[2]
+        # ── Face camera ───────────────────────────────────────────────────────
+        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video8")
         fw, fh = FACE_RESOLUTION
-        gst_face = (
-            f"v4l2src device={face_device} ! "
-            f"video/x-raw,width={fw},height={fh} ! "
-            f"videoconvert ! video/x-raw,format=BGR ! "
-            f"appsink max-buffers=1 drop=true sync=false"
-        )
-        cap = cv2.VideoCapture(gst_face, cv2.CAP_GSTREAMER)
-        if cap.isOpened():
+        cap = _open_usb(face_device, fw, fh)
+        if cap:
             self._face_cap = cap
-            log.info("Face camera device=%s started (GStreamer)", face_device)
-        else:
-            gst_face_simple = (
-                f"v4l2src device={face_device} ! "
-                f"videoconvert ! video/x-raw,format=BGR ! "
-                f"appsink max-buffers=1 drop=true sync=false"
-            )
-            cap2 = cv2.VideoCapture(gst_face_simple, cv2.CAP_GSTREAMER)
-            if cap2.isOpened():
-                self._face_cap = cap2
-                log.info("Face camera device=%s started (GStreamer simple)", face_device)
-            else:
-                log.error("Face camera device=%s FAILED — check ls /dev/video*", face_device)
+            log.info("Face camera device=%s ✓", face_device)
 
-    # ── Capture helpers ────────────────────────────────────────────────────────
+    # ── Internal helpers ───────────────────────────────────────────────────────
 
     def _mock_frame(self, width: int = 640, height: int = 480) -> bytes:
-        """Returns a solid grey JPEG for mock mode."""
         img = Image.new("RGB", (width, height), color=(128, 128, 128))
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=JPEG_QUALITY)
         return buf.getvalue()
 
-    def _ndarray_to_jpeg(self, frame: np.ndarray) -> bytes:
+    def _to_jpeg(self, frame: np.ndarray) -> bytes:
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if not ok:
             raise RuntimeError("JPEG encoding failed")
         return buf.tobytes()
 
-    def _csi_to_jpeg(self, cam) -> bytes:
-        frame = cam.capture_array()           # RGB888 numpy array
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        return self._ndarray_to_jpeg(frame_bgr)
-
-    def _usb_to_jpeg(self, cap) -> bytes:
+    def _read_frame(self, cap: cv2.VideoCapture, device: str) -> bytes:
         ret, frame = cap.read()
         if not ret:
-            raise RuntimeError("USB camera read failed")
-        return self._ndarray_to_jpeg(frame)
+            raise RuntimeError(f"Camera read failed: {device}")
+        return self._to_jpeg(frame)
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def capture_locker(self, locker_id: int, num_frames: int = 3) -> list[bytes]:
-        """
-        Capture `num_frames` images from the locker camera.
-        Returns list of JPEG bytes.
-        """
         if MOCK_CAMERA:
             return [self._mock_frame(1280, 960) for _ in range(num_frames)]
 
-        frames = []
-        pins = LOCKER_PINS[locker_id]
+        cap = self._usb.get(locker_id)
+        if cap is None:
+            log.error("Locker camera locker=%s not initialised", locker_id)
+            return []
 
+        usb_idx = LOCKER_PINS[locker_id]["camera_index"]
+        device  = USB_DEVICE_MAP.get(usb_idx, "?")
+        frames  = []
         for i in range(num_frames):
             if i > 0:
-                time.sleep(0.5)   # brief gap between captures
+                time.sleep(0.5)
             try:
-                if pins["camera_type"] == "csi":
-                    cam = self._csi.get(locker_id)
-                    if cam is None:
-                        raise RuntimeError(f"CSI cam locker={locker_id} not initialised")
-                    frames.append(self._csi_to_jpeg(cam))
-                else:
-                    cap = self._usb.get(locker_id)
-                    if cap is None:
-                        raise RuntimeError(f"USB cam locker={locker_id} not initialised")
-                    frames.append(self._usb_to_jpeg(cap))
+                frames.append(self._read_frame(cap, device))
             except Exception as e:
                 log.error("Capture failed locker=%s frame=%s: %s", locker_id, i, e)
 
@@ -183,7 +145,6 @@ class CameraManager:
         return frames
 
     def capture_face(self, num_frames: int = 1) -> list[bytes]:
-        """Capture face recognition frame(s)."""
         if MOCK_CAMERA:
             return [self._mock_frame(640, 480) for _ in range(num_frames)]
 
@@ -191,24 +152,24 @@ class CameraManager:
             log.error("Face camera not initialised")
             return []
 
+        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video8")
         frames = []
         for _ in range(num_frames):
             try:
-                frames.append(self._usb_to_jpeg(self._face_cap))
+                frames.append(self._read_frame(self._face_cap, face_device))
             except Exception as e:
                 log.error("Face capture failed: %s", e)
         return frames
 
     def cleanup(self):
-        for cam in self._csi.values():
-            try:
-                cam.stop()
-                cam.close()
-            except Exception:
-                pass
-        for cap in list(self._usb.values()) + ([self._face_cap] if self._face_cap else []):
+        for cap in list(self._usb.values()):
             try:
                 cap.release()
+            except Exception:
+                pass
+        if self._face_cap:
+            try:
+                self._face_cap.release()
             except Exception:
                 pass
         log.info("All cameras released")

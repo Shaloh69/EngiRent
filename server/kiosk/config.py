@@ -52,47 +52,47 @@ MOCK_GPIO = os.getenv("MOCK_GPIO", "False").lower() == "true"
 MOCK_CAMERA = os.getenv("MOCK_CAMERA", "False").lower() == "true"
 
 # ── GPIO pin map ───────────────────────────────────────────────────────────────
-# Each locker: 2 solenoids (main door, bottom door) + 1 relay-pair actuator
-# Solenoids controlled via relay modules (active-LOW by default)
-# Actuators controlled via 2-relay polarity-reversal circuit
-#   extend relay ON + retract relay OFF  → actuator extends (item in)
-#   extend relay OFF + retract relay ON  → actuator retracts (item out)
+# Relay setup: 2 doors per locker (main_door + bottom_door), no trapdoor.
+# Module 1 (4-ch, SRD-05VDC-SL-C): Main doors  → GPIO 2,3,4,5
+# Module 2 (4-ch, SRD-05VDC-SL-C): Bottom doors → GPIO 6,7,8,9
+# Module 3 (4-ch, SRD-05VDC-SL-C): Actuators L1/L2 extend/retract → GPIO 10,11,12,13
+# Module 4 (1-ch, SRD-12VDC-SL-C × 4): Actuators L3/L4 extend/retract → GPIO 14,15,16,17
 LOCKER_PINS = {
     1: {
-        "main_door_pin":       17,   # BCM 17 / Pin 11 → Solenoid relay
-        "bottom_door_pin":     27,   # BCM 27 / Pin 13 → Solenoid relay
-        "actuator_extend_pin": 12,   # BCM 12 / Pin 32 → 4-CH Relay IN1
-        "actuator_retract_pin":16,   # BCM 16 / Pin 36 → 4-CH Relay IN2
-        "camera_type": "csi",
+        "main_door_pin":       2,   # BCM 2 / Four-channel relay → Main door solenoid
+        "bottom_door_pin":     6,   # BCM 6 / Four-channel relay → Bottom door solenoid
+        "actuator_extend_pin": 10,  # BCM 10 / Four-channel relay → Actuator extend
+        "actuator_retract_pin":11,  # BCM 11 / Four-channel relay → Actuator retract
+        "camera_type": "usb",
         "camera_index": 0,
     },
     2: {
-        "main_door_pin":       22,   # BCM 22 / Pin 15 → Solenoid relay
-        "bottom_door_pin":     23,   # BCM 23 / Pin 16 → Solenoid relay
-        "actuator_extend_pin": 20,   # BCM 20 / Pin 38 → 4-CH Relay IN3
-        "actuator_retract_pin":21,   # BCM 21 / Pin 40 → 4-CH Relay IN4
-        "camera_type": "csi",
+        "main_door_pin":       3,   # BCM 3 / Four-channel relay → Main door solenoid
+        "bottom_door_pin":     7,   # BCM 7 / Four-channel relay → Bottom door solenoid
+        "actuator_extend_pin": 12,  # BCM 12 / Four-channel relay → Actuator extend
+        "actuator_retract_pin":13,  # BCM 13 / Four-channel relay → Actuator retract
+        "camera_type": "usb",
         "camera_index": 1,
     },
     3: {
-        "main_door_pin":       24,   # BCM 24 / Pin 18 → Solenoid relay
-        "bottom_door_pin":     25,   # BCM 25 / Pin 22 → Solenoid relay
-        "actuator_extend_pin": 19,   # BCM 19 / Pin 35 → Single Relay 1
-        "actuator_retract_pin":26,   # BCM 26 / Pin 37 → Single Relay 2
+        "main_door_pin":       4,   # BCM 4 / Four-channel relay → Main door solenoid
+        "bottom_door_pin":     8,   # BCM 8 / Four-channel relay → Bottom door solenoid
+        "actuator_extend_pin": 14,  # BCM 14 / Single-channel relay → Actuator extend
+        "actuator_retract_pin":15,  # BCM 15 / Single-channel relay → Actuator retract
         "camera_type": "usb",
-        "camera_index": 0,
+        "camera_index": 2,
     },
     4: {
-        "main_door_pin":       5,    # BCM 5  / Pin 29 → Solenoid relay
-        "bottom_door_pin":     6,    # BCM 6  / Pin 31 → Solenoid relay
-        "actuator_extend_pin": 13,   # BCM 13 / Pin 33 → Single Relay 3
-        "actuator_retract_pin":4,    # BCM 4  / Pin 7  → Single Relay 4
+        "main_door_pin":       5,   # BCM 5 / Four-channel relay → Main door solenoid
+        "bottom_door_pin":     9,   # BCM 9 / Four-channel relay → Bottom door solenoid
+        "actuator_extend_pin": 16,  # BCM 16 / Single-channel relay → Actuator extend
+        "actuator_retract_pin":17,  # BCM 17 / Single-channel relay → Actuator retract
         "camera_type": "usb",
-        "camera_index": 1,
+        "camera_index": 3,
     },
 }
 
-FACE_CAMERA_INDEX = 2   # USB port 3/Hub → /dev/video6 or similar
+FACE_CAMERA_INDEX = 4   # 5th USB camera → /dev/video8 (index into USB_DEVICE_MAP)
 
 
 def load_timing_config() -> dict:

@@ -486,10 +486,9 @@ export const reviewVerification = async (
 
 const DEFAULT_LOCKER_CONFIG = {
   main_door_open_seconds: 15,
-  trapdoor_unlock_seconds: 2,
   bottom_door_open_seconds: 15,
-  actuator_push_seconds: 5,
-  actuator_pull_seconds: 5,
+  actuator_extend_seconds: 5,
+  actuator_retract_seconds: 5,
   actuator_speed_percent: 100,
 };
 
