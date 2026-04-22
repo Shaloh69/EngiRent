@@ -128,21 +128,22 @@ async def connect_error(data):
 async def on_config(data: dict):
     """Server pushes updated timing config from admin panel."""
     log.info("Received config update: %s", json.dumps(data, indent=2))
-    
-    # Extract solenoid_pins if present and reinitialize GPIO
-    if "solenoid_pins" in data and _solenoid:
-        try:
-            log.info("Updating solenoid pin configuration from server…")
-            solenoid_pins = data.get("solenoid_pins", {})
-            _solenoid.reinitialize(solenoid_pins)
-            log.info("Solenoid controller reinitialized with new pin config ✓")
-        except Exception as e:
-            log.error("Failed to update solenoid pins: %s", e)
-    
-    # Save timing config (everything except solenoid_pins)
-    timing_config = {k: v for k, v in data.items() if k != "solenoid_pins"}
-    save_timing_config(timing_config)
-    
+
+    # Only save timing config if the server sends the expected lockers-based format.
+    # Ignore pin overrides (solenoid_pins, actuator_pins) and camera_indices — those
+    # are managed by local config.py so the Pi wiring is the source of truth.
+    # Also ignore the legacy ms-based format (door_open_duration_ms etc.) which would
+    # overwrite kiosk_config.json with keys the command handlers don't read.
+    if "lockers" in data:
+        timing_only = {
+            k: v for k, v in data.items()
+            if k not in ("solenoid_pins", "actuator_pins", "camera_indices")
+        }
+        save_timing_config(timing_only)
+        log.info("Timing config saved from server ✓")
+    else:
+        log.info("Server config has no 'lockers' key — keeping local kiosk_config.json")
+
     await sio.emit("kiosk:status", _build_status())
 
 
