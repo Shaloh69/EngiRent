@@ -5,6 +5,9 @@ import env from "../config/env";
 const supabaseOrigin = env.SUPABASE_URL.replace(/\/(rest|storage|auth|realtime)(\/.*)?$/, "");
 const supabase = createClient(supabaseOrigin, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
+  global: {
+    headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+  },
 });
 
 /** Single bucket — use folder prefixes to organise files */
