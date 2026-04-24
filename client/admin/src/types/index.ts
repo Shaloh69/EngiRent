@@ -55,6 +55,27 @@ export interface Verification {
   createdAt: string;
 }
 
+export interface Transaction {
+  id: string;
+  type: string;
+  amount: number;
+  status: string;
+  paymentMethod: string;
+  paymentReferenceNo?: string;
+  paidAt?: string;
+  createdAt: string;
+  rental: {
+    id: string;
+    item: { id: string; title: string };
+  };
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
 export interface DashboardStats {
   totalUsers: number;
   totalItems: number;

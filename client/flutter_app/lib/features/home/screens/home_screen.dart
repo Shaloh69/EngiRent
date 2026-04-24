@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/models/rental_model.dart';
+import '../../../core/services/socket_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/models/notification_service.dart';
 import '../../rentals/models/rental_service.dart';
@@ -190,11 +192,20 @@ class _RentalsTabState extends State<_RentalsTab> {
   bool _loading = true;
   String? _error;
   List<RentalModel> _rentals = [];
+  StreamSubscription<Map<String, dynamic>>? _socketSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Refresh whenever any rental status changes arrive via Socket.io
+    _socketSub = SocketService.instance.onAnyRentalChange.listen((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _socketSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -282,11 +293,20 @@ class _NotificationsTabState extends State<_NotificationsTab> {
   bool _loading = true;
   String? _error;
   List<NotificationModel> _notifications = [];
+  StreamSubscription<Map<String, dynamic>>? _socketSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Refresh notifications list whenever a rental event arrives
+    _socketSub = SocketService.instance.onAnyRentalChange.listen((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _socketSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

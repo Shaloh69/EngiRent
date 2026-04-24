@@ -60,6 +60,13 @@ const envSchema = z.object({
   // Logging
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info"),
 
+  // Email (optional — notifications disabled when absent)
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().default("587"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+
   // Admin seed (optional — used once on first deploy)
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),

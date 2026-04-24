@@ -71,9 +71,12 @@ def _placeholder_jpeg() -> bytes:
 
 # ── Camera / QR worker ─────────────────────────────────────────────────────────
 
+_MAX_CAM_FAILS = 30  # ~1.5 s at 30 fps before attempting reinit
+
+
 def _camera_worker():
     """Reads from the shared CameraManager face capture for MJPEG streaming + QR scan.
-    CameraManager owns the device; this thread holds _face_lock per frame read."""
+    Auto-reinitialises the camera if too many consecutive read failures occur."""
     global _latest_jpeg
 
     if MOCK_CAMERA:
@@ -89,45 +92,65 @@ def _camera_worker():
 
     # Wait up to 10 s for main.py to inject the CameraManager
     deadline = time.monotonic() + 10.0
-    while (_cam_mgr is None or _cam_mgr._face_cap is None) and time.monotonic() < deadline:
+    while (_cam_mgr is None) and time.monotonic() < deadline:
         time.sleep(0.2)
 
-    if _cam_mgr is None or _cam_mgr._face_cap is None:
-        log.error("Face camera unavailable — MJPEG stream will be blank")
+    if _cam_mgr is None:
+        log.error("CameraManager never injected — MJPEG stream will be blank")
         with _frame_lock:
             _latest_jpeg = _placeholder_jpeg()
         return
-
-    cap       = _cam_mgr._face_cap
-    face_lock = _cam_mgr._face_lock
 
     qr_detector  = cv2.QRCodeDetector()
     last_qr_time = 0.0
 
     log.info("Camera worker running (shared CameraManager face cap)")
-    while True:
-        with face_lock:
-            ret, frame = cap.read()
-        if not ret:
-            time.sleep(0.05)
+
+    while True:   # outer restart loop — keeps running even after camera errors
+        if _cam_mgr._face_cap is None:
+            log.warning("Face cap not ready — waiting 2 s before retry")
+            time.sleep(2)
             continue
 
-        _, jpeg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-        with _frame_lock:
-            _latest_jpeg = jpeg_buf.tobytes()
+        cap       = _cam_mgr._face_cap
+        face_lock = _cam_mgr._face_lock
+        fail_count = 0
 
-        now = time.monotonic()
-        if _qr_active and (now - last_qr_time) > _qr_cooldown:
-            try:
-                qr_data, _, _ = qr_detector.detectAndDecode(frame)
-                if qr_data:
-                    last_qr_time = now
-                    log.info("QR detected: %s", qr_data)
-                    _handle_qr(qr_data.strip())
-            except Exception as exc:
-                log.debug("QR detection error: %s", exc)
+        while True:   # inner read loop
+            with face_lock:
+                ret, frame = cap.read()
 
-        time.sleep(0.033)   # ~30 fps cap
+            if not ret:
+                fail_count += 1
+                time.sleep(0.05)
+                if fail_count >= _MAX_CAM_FAILS:
+                    log.warning(
+                        "Camera worker: %d consecutive read failures — reinitialising face camera",
+                        fail_count,
+                    )
+                    ok = _cam_mgr.reinit_face_camera()
+                    if not ok:
+                        time.sleep(5)
+                    break  # break inner loop → outer loop picks up new cap
+                continue
+
+            fail_count = 0
+            _, jpeg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            with _frame_lock:
+                _latest_jpeg = jpeg_buf.tobytes()
+
+            now = time.monotonic()
+            if _qr_active and (now - last_qr_time) > _qr_cooldown:
+                try:
+                    qr_data, _, _ = qr_detector.detectAndDecode(frame)
+                    if qr_data:
+                        last_qr_time = now
+                        log.info("QR detected: %s", qr_data)
+                        _handle_qr(qr_data.strip())
+                except Exception as exc:
+                    log.debug("QR detection error: %s", exc)
+
+            time.sleep(0.033)   # ~30 fps cap
 
 
 def _handle_qr(rental_id: str):

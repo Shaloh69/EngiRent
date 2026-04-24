@@ -167,6 +167,26 @@ class CameraManager:
                 log.error("Face capture failed: %s", e)
         return frames
 
+    def reinit_face_camera(self) -> bool:
+        """Release and reopen the face camera. Thread-safe via _face_lock.
+        Called by the UI server worker after too many consecutive read failures."""
+        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video0")
+        fw, fh = FACE_RESOLUTION
+        with self._face_lock:
+            if self._face_cap:
+                try:
+                    self._face_cap.release()
+                except Exception:
+                    pass
+                self._face_cap = None
+            cap = _open_usb(face_device, fw, fh)
+            if cap:
+                self._face_cap = cap
+                log.info("Face camera reinitialised ✓ device=%s", face_device)
+                return True
+            log.error("Face camera reinit failed — device=%s unavailable", face_device)
+            return False
+
     def cleanup(self):
         for cap in list(self._usb.values()):
             try:

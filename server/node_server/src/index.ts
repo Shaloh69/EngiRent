@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { createServer } from "http";
 import { Server as SocketServer, Socket } from "socket.io";
 import axios from "axios";
+import cron from "node-cron";
 import env from "./config/env";
 import { connectDatabase } from "./config/database";
 import logger from "./utils/logger";
@@ -13,6 +14,12 @@ import { errorHandler, notFound } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
 import prisma from "./config/database";
 import kioskEventBus from "./utils/kioskEventBus";
+import {
+  sendItemReadyForClaim,
+  sendRentalCompleted,
+  sendReturnOverdue,
+  sendVerificationFailed,
+} from "./utils/email";
 
 const app: Application = express();
 const httpServer = createServer(app);
@@ -120,11 +127,43 @@ async function runMlVerification(
   };
 }
 
+// ── ML feature persistence — store extracted features back on the item ───────
+async function persistMlFeatures(
+  itemId: string,
+  mlResult: { method_scores: Record<string, number>; [k: string]: unknown },
+): Promise<void> {
+  try {
+    const existing = await prisma.item.findUnique({
+      where: { id: itemId },
+      select: { mlFeatures: true },
+    });
+    if (existing?.mlFeatures) return; // already stored
+    if (
+      !mlResult.method_scores ||
+      Object.keys(mlResult.method_scores).length === 0
+    )
+      return;
+    await prisma.item.update({
+      where: { id: itemId },
+      data: { mlFeatures: mlResult as never },
+    });
+    logger.info(`ML features persisted for item ${itemId}`);
+  } catch (err) {
+    logger.warn(
+      `Could not persist ML features for item ${itemId}: ${(err as Error).message}`,
+    );
+  }
+}
+
 // ── Auto-complete a rental after successful verifications ────────────────────
 async function completeRental(rentalId: string): Promise<void> {
   const rental = await prisma.rental.findUnique({
     where: { id: rentalId },
-    include: { item: true },
+    include: {
+      item: true,
+      renter: { select: { firstName: true, email: true } },
+      owner: { select: { firstName: true, email: true } },
+    },
   });
   if (!rental) return;
 
@@ -156,6 +195,20 @@ async function completeRental(rentalId: string): Promise<void> {
         relatedEntityId: rentalId,
         relatedEntityType: "rental",
       },
+    }),
+  ]);
+
+  // Email both parties
+  await Promise.all([
+    sendRentalCompleted(rental.renter.email, {
+      firstName: rental.renter.firstName,
+      itemTitle: rental.item.title,
+      rentalId,
+    }),
+    sendRentalCompleted(rental.owner.email, {
+      firstName: rental.owner.firstName,
+      itemTitle: rental.item.title,
+      rentalId,
     }),
   ]);
 
@@ -471,6 +524,20 @@ io.on("connection", (socket: Socket) => {
             },
           });
 
+          // Persist ML features + send email
+          await persistMlFeatures(rental.itemId, mlResult);
+          const renterUser = await prisma.user.findUnique({
+            where: { id: rental.renterId },
+            select: { email: true, firstName: true },
+          });
+          if (renterUser) {
+            await sendItemReadyForClaim(renterUser.email, {
+              firstName: renterUser.firstName,
+              itemTitle: rental.item.title,
+              rentalId: rental_id,
+            });
+          }
+
           io.to(`user:${rental.renterId}`).emit("deposit:approved", {
             rentalId: rental_id,
             decision,
@@ -577,6 +644,21 @@ io.on("connection", (socket: Socket) => {
                 relatedEntityType: "rental",
               },
             });
+
+            // Email renter about failed verification
+            const renterDisp = await prisma.user.findUnique({
+              where: { id: rental.renterId },
+              select: { email: true, firstName: true },
+            });
+            if (renterDisp) {
+              await sendVerificationFailed(renterDisp.email, {
+                firstName: renterDisp.firstName,
+                itemTitle: rental.item.title,
+                rentalId: rental_id,
+                reason: "return",
+              });
+            }
+
             io.to(`user:${rental.renterId}`).emit("return:disputed", {
               rentalId: rental_id,
             });
@@ -950,6 +1032,83 @@ io.on("connection", (socket: Socket) => {
       ts: Date.now(),
     });
   });
+});
+
+// ── Late fee cron — runs daily at 01:00 server time ───────────────────────
+const LATE_FEE_RATE_PER_DAY = 50; // ₱50 per day overdue
+
+cron.schedule("0 1 * * *", async () => {
+  logger.info("[CRON] Running late fee check…");
+  try {
+    const overdueRentals = await prisma.rental.findMany({
+      where: {
+        status: "ACTIVE",
+        endDate: { lt: new Date() },
+      },
+      include: {
+        renter: { select: { id: true, email: true, firstName: true } },
+        item: { select: { title: true } },
+        transactions: { where: { type: "LATE_FEE", status: "COMPLETED" } },
+      },
+    });
+
+    for (const rental of overdueRentals) {
+      const now = new Date();
+      const daysLate = Math.floor(
+        (now.getTime() - rental.endDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysLate <= 0) continue;
+
+      // Only charge days not yet billed
+      const alreadyBilled = rental.transactions.length;
+      const daysToBill = daysLate - alreadyBilled;
+      if (daysToBill <= 0) continue;
+
+      const lateFee = daysToBill * LATE_FEE_RATE_PER_DAY;
+
+      await prisma.$transaction([
+        prisma.transaction.create({
+          data: {
+            rentalId: rental.id,
+            userId: rental.renterId,
+            type: "LATE_FEE",
+            amount: lateFee,
+            status: "COMPLETED",
+            paidAt: now,
+          },
+        }),
+        prisma.notification.create({
+          data: {
+            userId: rental.renterId,
+            title: "Late Return Fee Applied",
+            message: `A late fee of ₱${lateFee.toFixed(2)} has been applied for ${rental.item.title} (${daysToBill} day(s) overdue).`,
+            type: "RETURN_OVERDUE",
+            relatedEntityId: rental.id,
+            relatedEntityType: "rental",
+          },
+        }),
+      ]);
+
+      await sendReturnOverdue(rental.renter.email, {
+        firstName: rental.renter.firstName,
+        itemTitle: rental.item.title,
+        dueDate: rental.endDate.toLocaleDateString("en-PH"),
+        daysLate,
+        lateFee,
+        rentalId: rental.id,
+      });
+
+      logger.info(
+        `[CRON] Late fee ₱${lateFee} applied for rental ${rental.id} (${daysLate} days late)`,
+      );
+    }
+
+    logger.info(
+      `[CRON] Late fee check done — ${overdueRentals.length} overdue rental(s) checked`,
+    );
+  } catch (err) {
+    logger.error("[CRON] Late fee check failed:", err);
+  }
 });
 
 // ── Server startup ─────────────────────────────────────────────────────────

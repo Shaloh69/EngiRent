@@ -1,4 +1,5 @@
 import { Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
 import { NotFoundError, ValidationError } from "../utils/errors";
@@ -477,6 +478,211 @@ export const reviewVerification = async (
       success: true,
       message: `Verification ${status.toLowerCase()}`,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Transaction management ───────────────────────────────────────────────
+
+export const listTransactions = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const type = req.query.type as string | undefined;
+    const status = req.query.status as string | undefined;
+    const page = (req.query.page as string | undefined) ?? "1";
+    const limit = (req.query.limit as string | undefined) ?? "20";
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const where: Prisma.TransactionWhereInput = {};
+    if (type) where.type = type as Prisma.TransactionWhereInput["type"];
+    if (status) where.status = status as Prisma.TransactionWhereInput["status"];
+
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        skip,
+        take,
+        include: {
+          rental: {
+            select: {
+              id: true,
+              item: { select: { id: true, title: true } },
+            },
+          },
+          user: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.transaction.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        transactions,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: take,
+          totalPages: Math.ceil(total / take),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminRefund = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const transactionId = req.params.transactionId as string;
+    const { reason } = req.body as { reason?: string };
+
+    type TxWithRelations = Prisma.TransactionGetPayload<{
+      include: {
+        rental: { include: { item: true } };
+        user: { select: { id: true; firstName: true; email: true } };
+      };
+    }>;
+    const transaction = (await prisma.transaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        rental: { include: { item: true } },
+        user: { select: { id: true, firstName: true, email: true } },
+      },
+    })) as TxWithRelations | null;
+    if (!transaction) throw new NotFoundError("Transaction not found");
+    if (transaction.status !== "COMPLETED")
+      throw new ValidationError("Only completed transactions can be refunded");
+
+    const itemTitle = transaction.rental.item.title;
+
+    await prisma.$transaction([
+      prisma.transaction.update({
+        where: { id: transactionId },
+        data: { status: "REFUNDED" },
+      }),
+      prisma.transaction.create({
+        data: {
+          rentalId: transaction.rentalId,
+          userId: transaction.userId,
+          type: "DEPOSIT_REFUND",
+          amount: transaction.amount,
+          status: "COMPLETED",
+          paidAt: new Date(),
+          paymentMethod: "Admin Manual Refund",
+        },
+      }),
+      prisma.notification.create({
+        data: {
+          userId: transaction.userId,
+          title: "Refund Processed",
+          message: `Admin issued a refund of ₱${transaction.amount.toFixed(2)} for ${itemTitle}.${reason ? ` Reason: ${reason}` : ""}`,
+          type: "PAYMENT_RECEIVED",
+          relatedEntityId: transaction.rentalId,
+          relatedEntityType: "transaction",
+        },
+      }),
+    ]);
+
+    logger.info(
+      `Admin refunded transaction ${transactionId} — ₱${transaction.amount} by ${req.user?.email}`,
+    );
+    res.json({ success: true, message: "Refund issued" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const settleDispute = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const { outcome, damageFee, notes } = req.body as {
+      outcome: "owner_wins" | "renter_wins";
+      damageFee?: number;
+      notes?: string;
+    };
+
+    if (!["owner_wins", "renter_wins"].includes(outcome)) {
+      throw new ValidationError("outcome must be owner_wins or renter_wins");
+    }
+
+    type RentalWithItem = Prisma.RentalGetPayload<{ include: { item: true } }>;
+    const rental = (await prisma.rental.findUnique({
+      where: { id },
+      include: { item: true },
+    })) as RentalWithItem | null;
+    if (!rental) throw new NotFoundError("Rental not found");
+    if (rental.status !== "DISPUTED")
+      throw new ValidationError("Rental is not in DISPUTED status");
+
+    const itemTitle = rental.item.title;
+    const disputeNote = notes ? ` Note: ${notes}` : "";
+
+    await prisma.$transaction(async (tx) => {
+      await tx.rental.update({
+        where: { id },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
+      await tx.item.update({
+        where: { id: rental.itemId },
+        data: { isAvailable: true, totalRentals: { increment: 1 } },
+      });
+      await tx.notification.create({
+        data: {
+          userId: rental.renterId,
+          title: "Dispute Resolved",
+          message: `Dispute for ${itemTitle} resolved by admin.${disputeNote}`,
+          type: "SYSTEM_ANNOUNCEMENT",
+          relatedEntityId: id,
+          relatedEntityType: "rental",
+        },
+      });
+      await tx.notification.create({
+        data: {
+          userId: rental.ownerId,
+          title: "Dispute Resolved",
+          message: `Dispute for ${itemTitle} resolved by admin.${disputeNote}`,
+          type: "SYSTEM_ANNOUNCEMENT",
+          relatedEntityId: id,
+          relatedEntityType: "rental",
+        },
+      });
+      // If owner wins + damage fee specified, bill the renter
+      if (outcome === "owner_wins" && damageFee && damageFee > 0) {
+        await tx.transaction.create({
+          data: {
+            rentalId: id,
+            userId: rental.renterId,
+            type: "DAMAGE_FEE",
+            amount: damageFee,
+            status: "COMPLETED",
+            paidAt: new Date(),
+            paymentMethod: "Admin Assessment",
+          },
+        });
+      }
+    });
+
+    logger.info(
+      `Admin settled dispute ${id} → ${outcome} by ${req.user?.email}${damageFee ? ` damageFee=₱${damageFee}` : ""}`,
+    );
+    res.json({ success: true, message: "Dispute settled" });
   } catch (error) {
     next(error);
   }

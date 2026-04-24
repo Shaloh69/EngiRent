@@ -270,6 +270,26 @@ const demoAdapter = async (
     });
   }
 
+  // Transactions
+  if (method === "get" && path === "/admin/transactions") {
+    return jsonResponse(config, {
+      success: true,
+      data: {
+        transactions: [],
+        pagination: { total: 0, page: 1, limit: 20, totalPages: 0 },
+      },
+    });
+  }
+
+  if (method === "post" && path.match(/\/admin\/transactions\/.+\/refund/)) {
+    return jsonResponse(config, { success: true, message: "Refund issued" });
+  }
+
+  // Dispute settlement
+  if (method === "post" && path.match(/\/admin\/rentals\/.+\/settle/)) {
+    return jsonResponse(config, { success: true, message: "Dispute settled" });
+  }
+
   // Kiosk admin endpoints
   if (method === "get" && path === "/admin/kiosks") {
     return jsonResponse(config, {

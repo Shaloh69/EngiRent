@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/user_model.dart';
+import '../../../core/services/socket_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../models/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
-  
+  final StorageService _storage = StorageService();
+
   UserModel? _user;
   bool _isLoading = false;
   String? _error;
@@ -40,12 +43,12 @@ class AuthProvider with ChangeNotifier {
     _setLoading(false);
 
     if (result['success']) {
-      _user = result['user'];
+      _user = result['user'] as UserModel;
       _error = null;
       notifyListeners();
       return true;
     } else {
-      _error = result['error'];
+      _error = result['error'] as String?;
       notifyListeners();
       return false;
     }
@@ -53,18 +56,19 @@ class AuthProvider with ChangeNotifier {
 
   Future<bool> login(String email, String password) async {
     _setLoading(true);
-    
+
     final result = await _authService.login(email: email, password: password);
-    
+
     _setLoading(false);
 
     if (result['success']) {
-      _user = result['user'];
+      _user = result['user'] as UserModel;
       _error = null;
       notifyListeners();
+      _connectSocket();
       return true;
     } else {
-      _error = result['error'];
+      _error = result['error'] as String?;
       notifyListeners();
       return false;
     }
@@ -72,17 +76,25 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> loadUser() async {
     final result = await _authService.getProfile();
-    
+
     if (result['success']) {
-      _user = result['user'];
+      _user = result['user'] as UserModel;
       notifyListeners();
+      _connectSocket();
     }
   }
 
   Future<void> logout() async {
+    SocketService.instance.disconnect();
     await _authService.logout();
     _user = null;
     notifyListeners();
+  }
+
+  Future<void> _connectSocket() async {
+    if (_user == null) return;
+    final token = await _storage.getAccessToken();
+    SocketService.instance.connect(userId: _user!.id, accessToken: token);
   }
 
   void _setLoading(bool value) {

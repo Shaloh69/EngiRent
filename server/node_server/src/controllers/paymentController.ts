@@ -256,12 +256,35 @@ export const confirmPayment = async (
 
     const transaction = await prisma.transaction.findUnique({
       where: { id: transactionId },
-      include: { rental: { include: { item: true } } },
+      include: {
+        rental: {
+          include: {
+            item: true,
+            renter: { select: { email: true, firstName: true } },
+          },
+        },
+      },
     });
 
     if (!transaction) throw new NotFoundError("Transaction not found");
-    if (transaction.status === "COMPLETED") {
+
+    // Idempotency: webhook may fire multiple times — safe to ack without re-processing
+    if (
+      transaction.status === "COMPLETED" ||
+      transaction.status === "REFUNDED"
+    ) {
       res.json({ success: true, message: "Already confirmed" });
+      return;
+    }
+
+    // Idempotency: mark PROCESSING first to prevent concurrent webhook duplicates
+    const claimed = await prisma.transaction.updateMany({
+      where: { id: transactionId, status: "PENDING" },
+      data: { status: "PROCESSING" },
+    });
+    if (claimed.count === 0) {
+      // Another request already processing — return 200 so PayMongo doesn't retry
+      res.json({ success: true, message: "Already processing" });
       return;
     }
 
@@ -294,6 +317,17 @@ export const confirmPayment = async (
           relatedEntityType: "rental",
         },
       });
+
+      // Email renter
+      if (transaction.rental.renter?.email) {
+        const { sendPaymentReceived: sendPR } = await import("../utils/email");
+        await sendPR(transaction.rental.renter.email, {
+          firstName: transaction.rental.renter.firstName,
+          amount: transaction.amount,
+          itemTitle: transaction.rental.item.title,
+          rentalId: transaction.rentalId,
+        });
+      }
     }
 
     logger.info(`Payment confirmed: ${transactionId}`);

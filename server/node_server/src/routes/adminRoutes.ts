@@ -9,6 +9,9 @@ import {
   createAdmin,
   listAllRentals,
   forceCompleteRental,
+  settleDispute,
+  listTransactions,
+  adminRefund,
   listVerifications,
   reviewVerification,
   getKioskConfig,
@@ -51,6 +54,24 @@ router.post(
   "/rentals/:id/complete",
   validate([param("id").isUUID()]),
   forceCompleteRental,
+);
+
+router.post(
+  "/rentals/:id/settle",
+  validate([
+    param("id").isUUID(),
+    body("outcome").isIn(["owner_wins", "renter_wins"]),
+  ]),
+  settleDispute,
+);
+
+// ── Transactions ──────────────────────────────────────────────────────────
+router.get("/transactions", listTransactions);
+
+router.post(
+  "/transactions/:transactionId/refund",
+  validate([param("transactionId").isUUID()]),
+  adminRefund,
 );
 
 // ── Verifications ──────────────────────────────────────────────────────────

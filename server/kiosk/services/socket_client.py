@@ -16,11 +16,18 @@ Events received FROM server:
   kiosk:command         – action to perform (open_door, drop_item, capture_image, etc.)
   kiosk:config          – updated timing configuration
   kiosk:rental_info     – rental details in response to kiosk:rental_lookup
+
+Offline queue:
+  Critical outbound events are persisted to offline_queue.json when the socket is
+  disconnected.  On reconnect the queue is flushed in order before normal operation.
+  Non-critical volatile events (kiosk:status, kiosk:log) are dropped while offline.
 """
 
 import asyncio
 import json
 import logging
+import os
+import time
 
 import socketio
 
@@ -41,6 +48,97 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 
 def get_main_loop() -> asyncio.AbstractEventLoop | None:
     return _main_loop
+
+
+# ── Offline queue ──────────────────────────────────────────────────────────────
+# Events in this set are persisted to disk and replayed on reconnect.
+# Volatile events (kiosk:status, kiosk:log) are excluded — they carry live state
+# that would be stale by the time the kiosk reconnects.
+_QUEUED_EVENTS = {"kiosk:ack", "kiosk:face", "kiosk:images", "kiosk:admin_snapshot",
+                  "kiosk:rental_lookup", "kiosk:flow_start"}
+
+_QUEUE_FILE = os.path.join(os.path.dirname(__file__), "..", "offline_queue.json")
+_QUEUE_MAX = 100  # hard cap — prevents unbounded growth if offline for a long time
+
+_offline_queue: list[dict] = []
+_queue_lock: asyncio.Lock | None = None  # created lazily on first async use
+
+
+def _get_queue_lock() -> asyncio.Lock:
+    global _queue_lock
+    if _queue_lock is None:
+        _queue_lock = asyncio.Lock()
+    return _queue_lock
+
+
+def _load_queue() -> None:
+    """Load persisted queue from disk (called once at startup)."""
+    global _offline_queue
+    try:
+        path = os.path.normpath(_QUEUE_FILE)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                _offline_queue = json.load(f)
+            log.info("Offline queue loaded: %d item(s) pending", len(_offline_queue))
+    except Exception as exc:
+        log.warning("Could not load offline queue: %s", exc)
+        _offline_queue = []
+
+
+def _save_queue() -> None:
+    """Persist current queue to disk (synchronous, called under the lock)."""
+    try:
+        path = os.path.normpath(_QUEUE_FILE)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(_offline_queue, f)
+    except Exception as exc:
+        log.warning("Could not save offline queue: %s", exc)
+
+
+async def safe_emit(event: str, data: dict) -> None:
+    """Emit *event* immediately if connected; otherwise queue it if it's a
+    critical event.  Volatile events are silently dropped when offline."""
+    if sio.connected:
+        await sio.emit(event, data)
+        return
+
+    if event not in _QUEUED_EVENTS:
+        return  # drop volatile events while offline
+
+    async with _get_queue_lock():
+        if len(_offline_queue) >= _QUEUE_MAX:
+            # Drop oldest entry to make room (FIFO eviction)
+            _offline_queue.pop(0)
+        _offline_queue.append({"event": event, "data": data, "ts": int(time.time())})
+        _save_queue()
+        log.info("Queued offline event %s (queue depth=%d)", event, len(_offline_queue))
+
+
+async def _flush_offline_queue() -> None:
+    """Replay queued events in order.  Called immediately after reconnect."""
+    async with _get_queue_lock():
+        if not _offline_queue:
+            return
+        log.info("Flushing %d offline event(s)…", len(_offline_queue))
+        flushed = 0
+        failed: list[dict] = []
+        for entry in _offline_queue:
+            try:
+                await sio.emit(entry["event"], entry["data"])
+                flushed += 1
+                log.debug("Flushed queued %s (queued %ds ago)",
+                          entry["event"], int(time.time()) - entry.get("ts", 0))
+            except Exception as exc:
+                log.error("Failed to flush queued %s: %s", entry["event"], exc)
+                failed.append(entry)
+        _offline_queue.clear()
+        _offline_queue.extend(failed)
+        _save_queue()
+        log.info("Offline queue flush complete: sent=%d remaining=%d", flushed, len(failed))
+
+
+# Load any events that were queued before the last shutdown
+_load_queue()
 
 
 # ── Socket log handler — forwards Pi logs to Render server logs ────────────────
@@ -117,6 +215,8 @@ async def connect():
     global _main_loop
     _main_loop = asyncio.get_running_loop()
     log.info("Connected to server %s", SERVER_URL)
+    # Flush any events queued while we were offline before registering
+    await _flush_offline_queue()
     await sio.emit("kiosk:register", {
         "kiosk_id": KIOSK_ID,
         "locker_count": 4,
@@ -187,10 +287,11 @@ async def on_command(data: dict):
 
 
 async def _run_with_ack(handler, action: str, command_id: str, data: dict):
-    """Wraps a command handler and emits kiosk:ack on success or failure."""
+    """Wraps a command handler and emits kiosk:ack on success or failure.
+    Uses safe_emit so the ack is queued if the connection drops mid-command."""
     try:
         await handler(data)
-        await sio.emit("kiosk:ack", {
+        await safe_emit("kiosk:ack", {
             "kiosk_id": KIOSK_ID,
             "command_id": command_id,
             "action": action,
@@ -198,7 +299,7 @@ async def _run_with_ack(handler, action: str, command_id: str, data: dict):
         })
     except Exception as exc:
         log.error("Command '%s' failed: %s", action, exc)
-        await sio.emit("kiosk:ack", {
+        await safe_emit("kiosk:ack", {
             "kiosk_id": KIOSK_ID,
             "command_id": command_id,
             "action": action,
@@ -263,7 +364,7 @@ async def _cmd_capture_image(data: dict):
     urls = upload_locker_images(locker_id, frames)
 
     if rental_id:
-        await sio.emit("kiosk:images", {
+        await safe_emit("kiosk:images", {
             "kiosk_id": KIOSK_ID,
             "locker_id": locker_id,
             "image_urls": urls,
@@ -271,7 +372,7 @@ async def _cmd_capture_image(data: dict):
         })
     else:
         # Admin snapshot — no ML, just relay the URL to admin dashboard
-        await sio.emit("kiosk:admin_snapshot", {
+        await safe_emit("kiosk:admin_snapshot", {
             "kiosk_id": KIOSK_ID,
             "locker_id": locker_id,
             "image_urls": urls,
@@ -305,7 +406,7 @@ async def _cmd_capture_face(data: dict):
             _set_ui("face_scan", "Face not recognised – please try again")
             await asyncio.sleep(1.5)
 
-    await sio.emit("kiosk:face", {
+    await safe_emit("kiosk:face", {
         "kiosk_id": KIOSK_ID,
         "rental_id": data.get("rental_id"),
         "user_id": data.get("user_id"),
@@ -361,16 +462,14 @@ def register_qr_callback(cb):
 # ── Kiosk-initiated rental flow ───────────────────────────────────────────────
 
 async def emit_rental_lookup(rental_id: str):
-    """Ask Node.js for rental details via socket — response comes back in on_rental_info."""
-    if not sio.connected:
-        log.warning("Cannot look up rental %s: not connected", rental_id)
-        if _qr_callback:
-            _qr_callback({"rental_id": rental_id, "rental_info": {"id": rental_id}})
-        return
-    await sio.emit("kiosk:rental_lookup", {
+    """Ask Node.js for rental details via socket — response comes back in on_rental_info.
+    If offline the lookup is queued; the UI receives the info once reconnected."""
+    await safe_emit("kiosk:rental_lookup", {
         "kiosk_id": KIOSK_ID,
         "rental_id": rental_id,
     })
+    if not sio.connected:
+        log.warning("Rental lookup queued (offline): %s", rental_id)
 
 
 @sio.on("kiosk:rental_info")
@@ -388,16 +487,16 @@ async def on_rental_info(data: dict):
 async def initiate_rental_flow(rental_id: str):
     """Called by local browser confirm → emit kiosk:flow_start to Node.js.
     Node.js looks up the rental and sends back capture_face command."""
-    if not sio.connected:
-        log.error("Cannot start rental flow: not connected to server")
-        _set_ui("error", "Not connected to server – please try again")
-        return
-    await sio.emit("kiosk:flow_start", {
+    await safe_emit("kiosk:flow_start", {
         "kiosk_id": KIOSK_ID,
         "rental_id": rental_id,
     })
-    _set_ui("face_scan", "Preparing identity verification…")
-    log.info("Rental flow start emitted for %s", rental_id)
+    if sio.connected:
+        _set_ui("face_scan", "Preparing identity verification…")
+        log.info("Rental flow start emitted for %s", rental_id)
+    else:
+        _set_ui("error", "Not connected to server – flow will resume when online")
+        log.warning("Rental flow queued (offline): %s", rental_id)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
