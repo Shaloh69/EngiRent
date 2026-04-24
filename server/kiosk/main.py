@@ -127,7 +127,7 @@ def _banner():
 # ── Imports (after logging is configured) ─────────────────────────────────────
 from provisioning.wifi_manager import is_wifi_connected
 from provisioning.ap_portal import AP_SSID, AP_PASSWORD, AP_IP, run_portal, start_ap_mode
-from kiosk_ui.server import start_ui_server_thread
+from kiosk_ui.server import start_ui_server_thread, set_camera_manager
 from services.socket_client import init_hardware, connect_to_server
 from hardware.gpio_controller import SolenoidController
 from hardware.actuator_controller import ActuatorController
@@ -202,7 +202,8 @@ def main():
     # 2. Hardware
     solenoid, actuator, camera = init_hardware()
 
-    # 3. Local HDMI UI (daemon thread)
+    # 3. Local HDMI UI (daemon thread) — inject camera before starting
+    set_camera_manager(camera)
     log.info("[UI]     Starting HDMI UI server on port %s…", os.getenv("UI_PORT", "8080"))
     start_ui_server_thread()
     log.info("[UI]     UI server started ✓  → http://localhost:%s", os.getenv("UI_PORT", "8080"))

@@ -16,7 +16,7 @@ import time
 from flask import Flask, Response, jsonify, render_template, request
 from flask_socketio import SocketIO, emit
 
-from config import UI_PORT, FACE_CAMERA_INDEX, MOCK_CAMERA
+from config import UI_PORT, MOCK_CAMERA
 
 log = logging.getLogger("kiosk.ui")
 
@@ -30,17 +30,13 @@ _latest_jpeg: bytes | None = None
 _qr_active    = False
 _qr_cooldown  = 3.0   # seconds between consecutive QR detections
 
+# CameraManager injected by main.py before the UI server thread starts
+_cam_mgr = None
 
-def _get_face_cam_path() -> str:
-    """Map FACE_CAMERA_INDEX to a /dev/videoN path (USB cameras enumerate
-    as pairs — video0/1, video2/3, … so physical index N → /dev/video(N*2))."""
-    candidates = [
-        f"/dev/video{FACE_CAMERA_INDEX * 2}",
-        f"/dev/video{FACE_CAMERA_INDEX * 2 + 1}",
-        "/dev/video10",
-        "/dev/video8",
-    ]
-    return candidates  # caller tries each
+
+def set_camera_manager(cam) -> None:
+    global _cam_mgr
+    _cam_mgr = cam
 
 
 def _placeholder_jpeg() -> bytes:
@@ -76,8 +72,9 @@ def _placeholder_jpeg() -> bytes:
 # ── Camera / QR worker ─────────────────────────────────────────────────────────
 
 def _camera_worker():
-    """Single thread owns the face camera — serves MJPEG frames and runs QR scan."""
-    global _latest_jpeg, _qr_active
+    """Reads from the shared CameraManager face capture for MJPEG streaming + QR scan.
+    CameraManager owns the device; this thread holds _face_lock per frame read."""
+    global _latest_jpeg
 
     if MOCK_CAMERA:
         placeholder = _placeholder_jpeg()
@@ -90,44 +87,32 @@ def _camera_worker():
 
     import cv2
 
-    cap = None
-    for path in _get_face_cam_path():
-        try:
-            c = cv2.VideoCapture(path, cv2.CAP_V4L2)
-            if c.isOpened():
-                cap = c
-                log.info("Face camera opened: %s", path)
-                break
-            c.release()
-        except Exception:
-            continue
+    # Wait up to 10 s for main.py to inject the CameraManager
+    deadline = time.monotonic() + 10.0
+    while (_cam_mgr is None or _cam_mgr._face_cap is None) and time.monotonic() < deadline:
+        time.sleep(0.2)
 
-    if cap is None:
-        log.warning("V4L2 open failed — falling back to index %s", FACE_CAMERA_INDEX)
-        cap = cv2.VideoCapture(FACE_CAMERA_INDEX)
-
-    if not cap.isOpened():
-        log.error("Could not open face camera — MJPEG stream will be blank")
+    if _cam_mgr is None or _cam_mgr._face_cap is None:
+        log.error("Face camera unavailable — MJPEG stream will be blank")
         with _frame_lock:
             _latest_jpeg = _placeholder_jpeg()
         return
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap       = _cam_mgr._face_cap
+    face_lock = _cam_mgr._face_lock
 
     qr_detector  = cv2.QRCodeDetector()
     last_qr_time = 0.0
 
-    log.info("Camera worker running")
+    log.info("Camera worker running (shared CameraManager face cap)")
     while True:
-        ret, frame = cap.read()
+        with face_lock:
+            ret, frame = cap.read()
         if not ret:
             time.sleep(0.05)
             continue
 
-        _, jpeg_buf = cv2.imencode(".jpg", frame,
-                                   [cv2.IMWRITE_JPEG_QUALITY, 75])
+        _, jpeg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
         with _frame_lock:
             _latest_jpeg = jpeg_buf.tobytes()
 
@@ -143,8 +128,6 @@ def _camera_worker():
                 log.debug("QR detection error: %s", exc)
 
         time.sleep(0.033)   # ~30 fps cap
-
-    cap.release()
 
 
 def _handle_qr(rental_id: str):

@@ -15,6 +15,7 @@ cameras land on different indices after a reboot or replug.
 
 import io
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -72,8 +73,9 @@ def _open_usb(device: str, width: int, height: int) -> cv2.VideoCapture | None:
 
 class CameraManager:
     def __init__(self):
-        self._usb:      dict[int, cv2.VideoCapture] = {}   # locker_id → capture
-        self._face_cap: cv2.VideoCapture | None = None
+        self._usb:       dict[int, cv2.VideoCapture] = {}   # locker_id → capture
+        self._face_cap:  cv2.VideoCapture | None = None
+        self._face_lock: threading.Lock = threading.Lock()  # shared with UI server worker
         self._init_cameras()
 
     def _init_cameras(self):
@@ -152,11 +154,15 @@ class CameraManager:
             log.error("Face camera not initialised")
             return []
 
-        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video8")
+        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video0")
         frames = []
         for _ in range(num_frames):
             try:
-                frames.append(self._read_frame(self._face_cap, face_device))
+                with self._face_lock:
+                    ret, frame = self._face_cap.read()
+                if not ret:
+                    raise RuntimeError(f"Camera read failed: {face_device}")
+                frames.append(self._to_jpeg(frame))
             except Exception as e:
                 log.error("Face capture failed: %s", e)
         return frames
