@@ -104,21 +104,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _errorMsg = null);
 
     try {
-      // 1. Register face encoding via ML service
-      final mlDio = Dio();
-      final mlForm = FormData.fromMap({
-        'image': await MultipartFile.fromFile(_faceFile!.path, filename: 'face.jpg'),
-      });
-      final mlResp = await mlDio.post(
-        '${AppConstants.mlServiceUrl}/register-face',
-        data: mlForm,
-      );
+      // 1. Register face encoding via ML service (optional — failures don't block profile setup)
       List<double>? encoding;
-      if (mlResp.statusCode == 200) {
-        final mlData = mlResp.data is String ? jsonDecode(mlResp.data) : mlResp.data;
-        if (mlData['success'] == true && mlData['encoding'] != null) {
-          encoding = List<double>.from(mlData['encoding']);
+      try {
+        final mlDio = Dio();
+        final mlForm = FormData.fromMap({
+          'image': await MultipartFile.fromFile(_faceFile!.path, filename: 'face.jpg'),
+        });
+        final mlResp = await mlDio.post(
+          '${AppConstants.mlServiceUrl}/register-face',
+          data: mlForm,
+        );
+        if (mlResp.statusCode == 200) {
+          final mlData = mlResp.data is String ? jsonDecode(mlResp.data) : mlResp.data;
+          if (mlData['success'] == true && mlData['encoding'] != null) {
+            encoding = List<double>.from(mlData['encoding']);
+          }
         }
+      } catch (_) {
+        // ML service unavailable — continue without face encoding
       }
 
       // 2. Upload face photo and ID photo to server storage
