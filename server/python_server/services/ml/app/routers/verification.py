@@ -241,7 +241,7 @@ async def register_face(
     """
     try:
         img_bytes = await image.read()
-        img_arr = np.frombuffer(img_bytes, np.uint8)
+        img_arr = np.asarray(bytearray(img_bytes), dtype=np.uint8)
         img_bgr = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
         if img_bgr is None:
             raise HTTPException(status_code=400, detail="Cannot decode image")
