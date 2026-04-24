@@ -6,16 +6,17 @@ WORKDIR /build
 
 COPY requirements.txt .
 
-# Install CPU-only torch first (avoids pulling the ~2 GB CUDA variant)
-# Then install dlib-bin (pre-built, skips 90-min C++ compile that times out on Render)
-# face_recognition is installed --no-deps so pip doesn't re-pull dlib from source
-RUN pip install --no-cache-dir --prefix=/install \
+# Install numpy first so torch/other packages don't upgrade it past 1.x.
+# opencv 4.9.0.80 and dlib-bin are both compiled against numpy 1.x — they conflict
+# with numpy 2.x. Pinning numpy==1.26.4 here prevents any later step from upgrading it.
+RUN pip install --no-cache-dir --prefix=/install numpy==1.26.4 && \
+    pip install --no-cache-dir --prefix=/install \
         torch==2.5.1+cpu \
         torchvision==0.20.1+cpu \
         --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --prefix=/install dlib-bin && \
     pip install --no-cache-dir --prefix=/install face_recognition==1.3.0 --no-deps && \
-    grep -v "^dlib-bin\|^face_recognition\|^torch\|^torchvision" requirements.txt > requirements_rest.txt && \
+    grep -v "^dlib-bin\|^face_recognition\|^torch\|^torchvision\|^numpy" requirements.txt > requirements_rest.txt && \
     pip install --no-cache-dir --prefix=/install -r requirements_rest.txt
 
 
