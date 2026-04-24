@@ -40,7 +40,7 @@ from services.face_service import verify_face
 
 log = logging.getLogger("kiosk.socket")
 
-sio = socketio.AsyncClient(reconnection=True, reconnection_attempts=0, logger=False)
+sio = socketio.AsyncClient(reconnection=False, logger=False)
 
 # ── Main asyncio loop reference (set on connect, used by Flask threads) ────────
 _main_loop: asyncio.AbstractEventLoop | None = None
@@ -547,6 +547,8 @@ async def _emit_error(message: str):
 async def connect_to_server():
     while True:
         try:
+            if sio.connected:
+                await sio.disconnect()
             log.info("Connecting to %s …", SERVER_URL)
             await sio.connect(SERVER_URL, transports=["websocket"])
             await sio.wait()
