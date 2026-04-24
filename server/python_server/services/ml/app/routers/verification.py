@@ -243,12 +243,17 @@ async def register_face(
     """
     try:
         img_bytes = await image.read()
+        logger.info(
+            "register_face: bytes=%d content_type=%s filename=%s",
+            len(img_bytes), image.content_type, image.filename,
+        )
         if not img_bytes:
             raise HTTPException(status_code=400, detail="Empty image file received")
         try:
             _pil = _PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
             img_bgr = cv2.cvtColor(np.asarray(_pil, dtype=np.uint8), cv2.COLOR_RGB2BGR)
         except Exception as _decode_err:
+            logger.warning("register_face: decode failed bytes=%d err=%r", len(img_bytes), str(_decode_err))
             raise HTTPException(status_code=400, detail=f"Cannot decode image: {_decode_err}") from _decode_err
 
         if _FR_AVAILABLE:

@@ -107,9 +107,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       // 1. Register face encoding via ML service (optional — failures don't block profile setup)
       List<double>? encoding;
       try {
+        final faceBytes = await _faceFile!.readAsBytes();
+        if (faceBytes.isEmpty) throw Exception('face photo is empty');
         final mlDio = Dio();
         final mlForm = FormData.fromMap({
-          'image': await MultipartFile.fromFile(_faceFile!.path, filename: 'face.jpg'),
+          'image': MultipartFile.fromBytes(
+            faceBytes,
+            filename: 'face.jpg',
+            contentType: DioMediaType('image', 'jpeg'),
+          ),
         });
         final mlResp = await mlDio.post(
           '${AppConstants.mlServiceUrl}/register-face',
