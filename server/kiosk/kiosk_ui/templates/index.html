@@ -39,9 +39,9 @@
       <h1 class="slide-title">Place an Item</h1>
       <p class="slide-subtitle">Deposit your equipment<br>securely for rental</p>
       <div class="slide-steps">
-        <div class="slide-step"><span class="step-num">1</span> Scan your rental QR code</div>
-        <div class="slide-step"><span class="step-num">2</span> Verify your identity</div>
-        <div class="slide-step"><span class="step-num">3</span> Item placed automatically</div>
+        <div class="slide-step"><span class="step-num">1</span> Open app → My Rentals → Place Item</div>
+        <div class="slide-step"><span class="step-num">2</span> Scan kiosk QR with your phone</div>
+        <div class="slide-step"><span class="step-num">3</span> Face check → locker opens</div>
       </div>
     </div>
   </div>
@@ -54,9 +54,9 @@
       <h1 class="slide-title">Retrieve an Item</h1>
       <p class="slide-subtitle">Collect or return rented<br>equipment quickly & safely</p>
       <div class="slide-steps">
-        <div class="slide-step"><span class="step-num">1</span> Scan your rental QR code</div>
-        <div class="slide-step"><span class="step-num">2</span> Face recognition check</div>
-        <div class="slide-step"><span class="step-num">3</span> Locker opens automatically</div>
+        <div class="slide-step"><span class="step-num">1</span> Open app → My Rentals → Retrieve</div>
+        <div class="slide-step"><span class="step-num">2</span> Scan kiosk QR with your phone</div>
+        <div class="slide-step"><span class="step-num">3</span> Face recognition → locker opens</div>
       </div>
     </div>
   </div>
@@ -109,34 +109,33 @@
     <div id="conn-badge" class="conn-badge badge-offline">Offline</div>
   </header>
 
-  <main class="main-body">
-    <div class="main-greeting">
-      <h2 class="greeting-title">How can we help you?</h2>
-      <p class="greeting-sub">Select an option to get started</p>
-    </div>
+  <main class="main-body main-body--qr-hero">
 
-    <div class="action-btns">
-      <button id="btn-place" class="action-btn btn-place" aria-label="Place an Item">
-        <div class="action-icon-wrap">
-          <span class="action-emoji">📦</span>
+    <!-- Hero QR panel — the primary interaction point -->
+    <div class="qr-hero-panel" id="session-qr-panel">
+      <div class="qr-hero-left">
+        <div class="qr-hero-canvas-wrap">
+          <canvas id="session-qr-canvas"></canvas>
+          <div id="session-qr-spinner" class="session-qr-spinner">
+            <span class="spin-ring"></span>
+          </div>
         </div>
-        <div class="action-text">
-          <span class="action-title">Place an Item</span>
-          <span class="action-desc">Deposit equipment for rental</span>
+      </div>
+      <div class="qr-hero-right">
+        <p class="qr-hero-eyebrow">EngiRent Kiosk</p>
+        <h2 class="qr-hero-title">Scan with your phone</h2>
+        <ol class="qr-hero-steps">
+          <li>Open the <strong>EngiRent</strong> app</li>
+          <li>Go to <strong>My Rentals</strong></li>
+          <li>Tap <strong>Place Item</strong> or <strong>Retrieve Item</strong></li>
+          <li>Point your camera at this QR code</li>
+        </ol>
+        <div id="session-qr-status" class="session-qr-status session-qr-status--waiting">
+          <span class="session-qr-dot"></span>
+          <span id="session-qr-status-text">Waiting for scan…</span>
         </div>
-        <span class="action-arrow">›</span>
-      </button>
-
-      <button id="btn-retrieve" class="action-btn btn-retrieve" aria-label="Retrieve an Item">
-        <div class="action-icon-wrap">
-          <span class="action-emoji">🎒</span>
-        </div>
-        <div class="action-text">
-          <span class="action-title">Retrieve an Item</span>
-          <span class="action-desc">Collect or return equipment</span>
-        </div>
-        <span class="action-arrow">›</span>
-      </button>
+        <p class="qr-hero-refresh">QR code refreshes automatically</p>
+      </div>
     </div>
 
     <!-- Locker status mini-row -->
@@ -150,26 +149,6 @@
       </div>
     </div>
 
-    <!-- Session QR panel — user scans this with the EngiRent app -->
-    <div class="session-qr-panel" id="session-qr-panel">
-      <div class="session-qr-inner">
-        <div class="session-qr-canvas-wrap">
-          <canvas id="session-qr-canvas"></canvas>
-          <div id="session-qr-spinner" class="session-qr-spinner">
-            <span class="spin-ring"></span>
-          </div>
-        </div>
-        <div class="session-qr-info">
-          <p class="session-qr-title">Scan with EngiRent App</p>
-          <p class="session-qr-sub">Open the app → tap the <strong>Kiosk</strong> icon → scan this code to continue</p>
-          <div id="session-qr-status" class="session-qr-status session-qr-status--waiting">
-            <span class="session-qr-dot"></span>
-            <span id="session-qr-status-text">Waiting for scan…</span>
-          </div>
-          <p class="session-qr-ttl">Code refreshes automatically</p>
-        </div>
-      </div>
-    </div>
   </main>
 
   <footer class="bot-bar">

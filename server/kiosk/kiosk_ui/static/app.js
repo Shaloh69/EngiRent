@@ -133,17 +133,8 @@ SCR[S.IDLE].addEventListener('click', () => {
   if (currentState === S.IDLE) goTo(S.MAIN);
 });
 
-document.getElementById('btn-place').addEventListener('click', () => {
-  mode = 'place';
-  qrTitle.textContent = 'Scan QR Code – Placing Item';
-  goTo(S.QR);
-});
-
-document.getElementById('btn-retrieve').addEventListener('click', () => {
-  mode = 'retrieve';
-  qrTitle.textContent = 'Scan QR Code – Retrieving Item';
-  goTo(S.QR);
-});
+// Place / Retrieve buttons removed — action is now initiated from the phone app.
+// The user scans the kiosk QR code with the EngiRent app to start the flow.
 
 document.getElementById('qr-back').addEventListener('click', () => {
   socket.emit('set_qr_mode', { active: false });
@@ -390,7 +381,7 @@ let _sqrSessionActive = false;
 function _initSessionQr() {
   if (!_sqrCanvas || typeof QRCode === 'undefined') return;
   _sqrCode = new QRCode(_sqrCanvas, {
-    width: 120, height: 120,
+    width: 220, height: 220,
     colorDark: '#000000', colorLight: '#ffffff',
     correctLevel: QRCode.CorrectLevel.M,
   });
@@ -439,16 +430,12 @@ setInterval(() => {
   }
 }, 30_000);
 
-// Socket event: Flutter app scanned the kiosk QR and started a session
+// Socket event: Flutter app scanned the kiosk QR and session was validated
+// If rental_id was present the Python backend already set state → face_scan,
+// so the 2s poll will transition to face screen automatically.
 socket.on('kiosk_session_started', (data) => {
   const name = [data.firstName, data.lastName].filter(Boolean).join(' ');
-  _setSessionQrStatus(true, name);
-  // After 3s briefing, let the user proceed normally
-  setTimeout(() => {
-    if (currentState === S.MAIN) {
-      // Optionally auto-route based on pending action from data
-    }
-  }, 3000);
+  _setSessionQrStatus(true, name || 'User');
 });
 
 // Reset QR panel when returning to main screen

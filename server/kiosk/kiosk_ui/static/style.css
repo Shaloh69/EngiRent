@@ -669,3 +669,78 @@ html, body {
 .session-qr-ttl {
   font-size: 10px; color: var(--ink3);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   HERO QR LAYOUT — new app-scan flow: QR is the primary element on main screen
+══════════════════════════════════════════════════════════════════════════════ */
+.main-body--qr-hero {
+  padding: 28px 32px;
+  gap: 20px;
+  justify-content: center;
+}
+
+.qr-hero-panel {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 32px 36px;
+  width: 100%;
+  max-width: 680px;
+  flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+}
+
+.qr-hero-left {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-hero-canvas-wrap {
+  position: relative;
+  width: 220px; height: 220px;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  padding: 8px;
+}
+.qr-hero-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.qr-hero-right {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.qr-hero-eyebrow {
+  font-size: 12px; font-weight: 700;
+  color: var(--blue);
+  text-transform: uppercase; letter-spacing: 1.2px;
+  margin: 0;
+}
+.qr-hero-title {
+  font-size: 26px; font-weight: 800; color: var(--ink);
+  letter-spacing: -.4px;
+  margin: 0;
+  line-height: 1.15;
+}
+.qr-hero-steps {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+  display: flex; flex-direction: column; gap: 7px;
+  color: var(--ink2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.qr-hero-steps strong { color: var(--ink); }
+.qr-hero-refresh {
+  font-size: 11px; color: var(--ink3); margin: 4px 0 0;
+}
