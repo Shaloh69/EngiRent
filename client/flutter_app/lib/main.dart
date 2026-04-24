@@ -12,7 +12,8 @@ import 'features/kiosk/screens/kiosk_scan_screen.dart';
 import 'features/rentals/screens/rental_detail_screen.dart';
 import 'features/reviews/screens/reviews_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
