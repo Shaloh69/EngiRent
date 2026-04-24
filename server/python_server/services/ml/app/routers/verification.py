@@ -251,7 +251,7 @@ async def register_face(
             raise HTTPException(status_code=400, detail="Empty image file received")
         try:
             _pil = _PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
-            img_bgr = cv2.cvtColor(np.asarray(_pil, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+            img_bgr = cv2.cvtColor(np.array(_pil), cv2.COLOR_RGB2BGR)
         except Exception as _decode_err:
             logger.warning("register_face: decode failed bytes=%d err=%r", len(img_bytes), str(_decode_err))
             raise HTTPException(status_code=400, detail=f"Cannot decode image: {_decode_err}") from _decode_err
@@ -380,7 +380,7 @@ async def verify_face(
             raise HTTPException(status_code=400, detail="Empty captured image received")
         try:
             _pil_cap = _PILImage.open(io.BytesIO(cap_bytes)).convert("RGB")
-            cap_img = cv2.cvtColor(np.asarray(_pil_cap, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+            cap_img = cv2.cvtColor(np.array(_pil_cap), cv2.COLOR_RGB2BGR)
         except Exception as _decode_err:
             raise HTTPException(status_code=400, detail=f"Cannot decode captured image: {_decode_err}") from _decode_err
 
