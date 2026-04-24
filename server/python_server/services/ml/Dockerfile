@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --prefix=/install numpy==1.26.4 && \
         --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --prefix=/install dlib-bin && \
     pip install --no-cache-dir --prefix=/install face_recognition==1.3.0 --no-deps && \
-    grep -v "^dlib-bin\|^face_recognition\|^torch\|^torchvision\|^numpy" requirements.txt > requirements_rest.txt && \
+    grep -v "^dlib-bin\|^face_recognition==\|^torch\|^torchvision\|^numpy" requirements.txt > requirements_rest.txt && \
     pip install --no-cache-dir --prefix=/install -r requirements_rest.txt
 
 
