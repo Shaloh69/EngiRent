@@ -29,6 +29,7 @@
         "http",
         "image_picker",
         "intl",
+        "mime",
         "mobile_scanner",
         "pdf",
         "permission_handler",
@@ -295,6 +296,11 @@
         "shared_preferences_web",
         "shared_preferences_windows"
       ]
+    },
+    {
+      "name": "mime",
+      "version": "2.0.0",
+      "dependencies": []
     },
     {
       "name": "socket_io_client",
@@ -1037,11 +1043,6 @@
         "meta",
         "web"
       ]
-    },
-    {
-      "name": "mime",
-      "version": "2.0.0",
-      "dependencies": []
     },
     {
       "name": "http_parser",

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:mime/mime.dart';
 import '../constants/app_constants.dart';
 import 'storage_service.dart';
 
@@ -110,7 +112,13 @@ class ApiService {
 
     final request = http.MultipartRequest('POST', url);
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    request.files.add(await http.MultipartFile.fromPath(fieldName, file.path));
+    final mimeType = lookupMimeType(file.path) ?? 'image/jpeg';
+    final parts = mimeType.split('/');
+    request.files.add(await http.MultipartFile.fromPath(
+      fieldName,
+      file.path,
+      contentType: MediaType(parts[0], parts[1]),
+    ));
     if (extraFields != null) request.fields.addAll(extraFields);
 
     final streamed = await request.send();
