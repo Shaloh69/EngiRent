@@ -1,7 +1,10 @@
 """Image preprocessing utilities."""
 
+import io
+
 import cv2
 import numpy as np
+from PIL import Image as _PILImage
 
 
 def load_image(source: str | bytes | np.ndarray) -> np.ndarray:
@@ -9,8 +12,10 @@ def load_image(source: str | bytes | np.ndarray) -> np.ndarray:
     if isinstance(source, np.ndarray):
         return source
     if isinstance(source, bytes):
-        arr = np.asarray(bytearray(source), dtype=np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        # Use Pillow to avoid the cv2.imdecode / numpy ABI incompatibility
+        # that causes "buf is not a numpy array" in the Render Docker environment.
+        pil = _PILImage.open(io.BytesIO(source)).convert("RGB")
+        img = cv2.cvtColor(np.asarray(pil, dtype=np.uint8), cv2.COLOR_RGB2BGR)
     else:
         img = cv2.imread(source)
 

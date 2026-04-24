@@ -12,6 +12,7 @@ import logging
 import aiohttp
 import cv2
 import numpy as np
+from PIL import Image as _PILImage
 
 from config import ML_SERVICE_URL
 from services.image_uploader import upload_face_image
@@ -60,8 +61,8 @@ def detect_face_in_frame(jpeg_bytes: bytes) -> tuple[bool, float]:
     Confidence is estimated from relative face size (larger = more confident).
     """
     try:
-        nparr = np.asarray(bytearray(jpeg_bytes), dtype=np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        pil_img = _PILImage.open(io.BytesIO(jpeg_bytes)).convert("RGB")
+        frame = cv2.cvtColor(np.asarray(pil_img, dtype=np.uint8), cv2.COLOR_RGB2BGR)
         gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         faces = _cascade.detectMultiScale(

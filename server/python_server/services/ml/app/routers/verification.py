@@ -10,6 +10,7 @@ Endpoints:
 """
 
 import base64
+import io
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ from urllib.request import urlretrieve
 
 import cv2
 import numpy as np
+from PIL import Image as _PILImage
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from ..comparison.hybrid import HybridVerifier
@@ -241,10 +243,13 @@ async def register_face(
     """
     try:
         img_bytes = await image.read()
-        img_arr = np.asarray(bytearray(img_bytes), dtype=np.uint8)
-        img_bgr = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
-        if img_bgr is None:
-            raise HTTPException(status_code=400, detail="Cannot decode image")
+        if not img_bytes:
+            raise HTTPException(status_code=400, detail="Empty image file received")
+        try:
+            _pil = _PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
+            img_bgr = cv2.cvtColor(np.asarray(_pil, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+        except Exception as _decode_err:
+            raise HTTPException(status_code=400, detail=f"Cannot decode image: {_decode_err}") from _decode_err
 
         if _FR_AVAILABLE:
             img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -366,10 +371,13 @@ async def verify_face(
     ref_path = None
     try:
         cap_bytes = await captured_image.read()
-        cap_arr = np.asarray(bytearray(cap_bytes), dtype=np.uint8)
-        cap_img = cv2.imdecode(cap_arr, cv2.IMREAD_COLOR)
-        if cap_img is None:
-            raise HTTPException(status_code=400, detail="Cannot decode captured image")
+        if not cap_bytes:
+            raise HTTPException(status_code=400, detail="Empty captured image received")
+        try:
+            _pil_cap = _PILImage.open(io.BytesIO(cap_bytes)).convert("RGB")
+            cap_img = cv2.cvtColor(np.asarray(_pil_cap, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+        except Exception as _decode_err:
+            raise HTTPException(status_code=400, detail=f"Cannot decode captured image: {_decode_err}") from _decode_err
 
         parsed_encoding: list[float] | None = None
         if stored_encoding:
