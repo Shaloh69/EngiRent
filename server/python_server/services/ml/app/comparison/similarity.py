@@ -125,7 +125,9 @@ class SimilarityCalculator:
         numerator = (2 * mu1_mu2 + c1) * (2 * sigma12 + c2)
         denominator = (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)
 
-        ssim_map = numerator / denominator
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ssim_map = numerator / denominator
+        ssim_map = np.where(np.isfinite(ssim_map), ssim_map, 0.0)
         return float(ssim_map.mean())
 
     def _orb_descriptor_match(

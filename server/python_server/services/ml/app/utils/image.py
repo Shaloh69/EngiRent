@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 from PIL import Image as _PILImage
 
+from ..config import settings
+
 
 def load_image(source: str | bytes | np.ndarray) -> np.ndarray:
     """Load image from file path, bytes, or numpy array."""
@@ -15,12 +17,20 @@ def load_image(source: str | bytes | np.ndarray) -> np.ndarray:
         # Use Pillow to avoid the cv2.imdecode / numpy ABI incompatibility
         # that causes "buf is not a numpy array" in the Render Docker environment.
         pil = _PILImage.open(io.BytesIO(source)).convert("RGB")
-        img = cv2.cvtColor(np.asarray(pil, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+        img = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
     else:
         img = cv2.imread(source)
 
     if img is None:
         raise ValueError(f"Could not load image from: {source!r}")
+
+    # Clamp oversized images before any processing to prevent OOM on large phone photos.
+    h, w = img.shape[:2]
+    max_dim = settings.max_image_size
+    if h > max_dim or w > max_dim:
+        scale = max_dim / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
     return img
 
 
