@@ -5,6 +5,8 @@ import {
   claimItem,
   returnItem,
   getAvailableLockers,
+  releaseLocker,
+  startKioskSession,
 } from "../controllers/kioskController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -46,5 +48,19 @@ router.post(
 
 // Get available lockers (protected)
 router.get("/lockers", authenticate, getAvailableLockers);
+
+// Release a locker (admin or kiosk service)
+router.post("/lockers/:id/release", authenticate, releaseLocker);
+
+// App submits scanned kiosk QR token to start a kiosk session
+router.post(
+  "/session/start",
+  authenticate,
+  validate([
+    body("token").notEmpty().withMessage("token is required"),
+    body("kioskId").notEmpty().withMessage("kioskId is required"),
+  ]),
+  startKioskSession,
+);
 
 export default router;

@@ -19,6 +19,7 @@ import {
   sendKioskCommand,
   listKiosks,
   kioskEventStream,
+  getReports,
 } from "../controllers/adminController";
 
 const router = Router();
@@ -85,6 +86,9 @@ router.patch(
   ]),
   reviewVerification,
 );
+
+// ── Reports ────────────────────────────────────────────────────────────────
+router.get("/reports", getReports);
 
 // ── Kiosk management ──────────────────────────────────────────────────────
 router.get("/kiosks/events", kioskEventStream); // SSE — must be before :kioskId routes

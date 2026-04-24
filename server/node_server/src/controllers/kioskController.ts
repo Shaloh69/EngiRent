@@ -7,6 +7,7 @@ import {
   ValidationError,
 } from "../utils/errors";
 import logger from "../utils/logger";
+import kioskEventBus from "../utils/kioskEventBus";
 
 /**
  * POST /kiosk/deposit
@@ -265,6 +266,84 @@ export const getAvailableLockers = async (
     });
 
     res.json({ success: true, data: { lockers } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const startKioskSession = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Not authenticated");
+
+    const { token, kioskId } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { id: true, firstName: true, lastName: true, email: true },
+    });
+    if (!user) throw new ForbiddenError("User not found");
+
+    // Forward validation to the Pi via Socket.io.
+    // The Pi's socket_client handles "kiosk:session_validate" by checking the
+    // token against its active QR token, then emits "kiosk_session_started"
+    // to the local browser UI on success.
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`kiosk:${kioskId}`).emit("kiosk:session_validate", {
+        token,
+        userId: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+    }
+
+    kioskEventBus.emit("kiosk_session_start", {
+      kioskId: kioskId as string,
+      userId: user.id,
+      token: token as string,
+    });
+
+    logger.info(
+      `Kiosk session started: kiosk=${kioskId} user=${user.email}`,
+    );
+
+    res.json({
+      success: true,
+      message: "Session handshake sent to kiosk — stand in front of the camera",
+      data: { kioskId, userId: user.id },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const releaseLocker = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const lockerId = req.params.id as string;
+
+    const locker = await prisma.locker.findUnique({ where: { id: lockerId } });
+    if (!locker) throw new NotFoundError("Locker not found");
+    if (!locker.isOperational)
+      throw new ValidationError("Locker is not operational");
+
+    await prisma.locker.update({
+      where: { id: lockerId },
+      data: { status: "AVAILABLE", currentRentalId: null },
+    });
+
+    logger.info(`Locker ${locker.lockerNumber} released`);
+    res.json({
+      success: true,
+      message: `Locker ${locker.lockerNumber} released`,
+    });
   } catch (error) {
     next(error);
   }

@@ -4,10 +4,13 @@ import 'core/constants/app_colors.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
+import 'features/auth/screens/profile_setup_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'features/items/screens/create_item_screen.dart';
 import 'features/items/screens/items_screen.dart';
 import 'features/kiosk/screens/kiosk_scan_screen.dart';
+import 'features/rentals/screens/rental_detail_screen.dart';
+import 'features/reviews/screens/reviews_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -78,16 +81,76 @@ class MyApp extends StatelessWidget {
           ),
         ),
         initialRoute: '/login',
-        routes: {
-          '/login': (context) => const LoginScreen(),
-          '/register': (context) => const RegisterScreen(),
-          '/home': (context) => const HomeScreen(),
-          '/items': (context) => const ItemsScreen(),
-          '/items/search': (context) => const ItemsScreen(),
-          '/items/create': (context) => const CreateItemScreen(),
-          '/kiosk/scan': (context) => const KioskScanScreen(),
-        },
+        onGenerateRoute: _onGenerateRoute,
       ),
+    );
+  }
+
+  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case '/login':
+        return MaterialPageRoute(builder: (_) => const LoginScreen());
+      case '/register':
+        return MaterialPageRoute(builder: (_) => const RegisterScreen());
+      case '/profile/setup':
+        return MaterialPageRoute(builder: (_) => const ProfileSetupScreen());
+      case '/home':
+        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: HomeScreen()));
+      case '/items':
+      case '/items/search':
+        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: ItemsScreen()));
+      case '/items/create':
+        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: CreateItemScreen()));
+      case '/kiosk/scan':
+        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: KioskScanScreen()));
+      case '/reviews':
+        return MaterialPageRoute(builder: (ctx) {
+          final args = settings.arguments as Map<String, String?>? ?? {};
+          return _AuthGuard(
+            child: ReviewsScreen(itemId: args['itemId'], userId: args['userId']),
+          );
+        });
+    }
+
+    // Dynamic /rentals/:id route
+    final uri = Uri.tryParse(settings.name ?? '');
+    if (uri != null) {
+      final segments = uri.pathSegments;
+      if (segments.length == 2 && segments[0] == 'rentals') {
+        return MaterialPageRoute(
+          builder: (_) => _AuthGuard(child: RentalDetailScreen(rentalId: segments[1])),
+        );
+      }
+    }
+
+    return null;
+  }
+}
+
+/// Wraps a screen with an auth check. Redirects to /login if not authenticated,
+/// or to /profile/setup if authenticated but profile incomplete.
+class _AuthGuard extends StatelessWidget {
+  final Widget child;
+  const _AuthGuard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthProvider>(
+      builder: (context, auth, _) {
+        if (!auth.isAuthenticated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+          });
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (auth.user != null && !auth.user!.profileComplete) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.pushNamedAndRemoveUntil(context, '/profile/setup', (_) => false);
+          });
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        return child;
+      },
     );
   }
 }

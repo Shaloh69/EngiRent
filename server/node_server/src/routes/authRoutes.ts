@@ -7,6 +7,7 @@ import {
   logout,
   getProfile,
   updateProfile,
+  completeProfile,
   changePassword,
 } from "../controllers/authController";
 import { authenticate } from "../middleware/auth";
@@ -65,6 +66,9 @@ router.get("/profile", authenticate, getProfile);
 
 // Update profile (protected)
 router.put("/profile", authenticate, updateProfile);
+
+// Complete profile — submit face photo URL, ID photo URL, and face encoding (protected)
+router.post("/profile/complete", authenticate, completeProfile);
 
 // Change password (protected)
 router.put(

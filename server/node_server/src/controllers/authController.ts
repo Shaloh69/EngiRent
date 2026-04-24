@@ -15,6 +15,25 @@ import {
 } from "../utils/errors";
 import logger from "../utils/logger";
 
+const PROFILE_SELECT = {
+  id: true,
+  email: true,
+  studentId: true,
+  firstName: true,
+  lastName: true,
+  phoneNumber: true,
+  profileImage: true,
+  idImageUrl: true,
+  profileComplete: true,
+  parentName: true,
+  parentContact: true,
+  isVerified: true,
+  isActive: true,
+  role: true,
+  lastLogin: true,
+  createdAt: true,
+} as const;
+
 export const register = async (
   req: AuthRequest,
   res: Response,
@@ -50,20 +69,10 @@ export const register = async (
         firstName,
         lastName,
         phoneNumber,
-        parentName,
-        parentContact,
+        parentName: parentName ?? null,
+        parentContact: parentContact ?? null,
       },
-      select: {
-        id: true,
-        email: true,
-        studentId: true,
-        firstName: true,
-        lastName: true,
-        phoneNumber: true,
-        isVerified: true,
-        role: true,
-        createdAt: true,
-      },
+      select: PROFILE_SELECT,
     });
 
     const payload = {
@@ -135,7 +144,10 @@ export const login = async (
           studentId: user.studentId,
           firstName: user.firstName,
           lastName: user.lastName,
+          phoneNumber: user.phoneNumber,
           profileImage: user.profileImage,
+          idImageUrl: user.idImageUrl,
+          profileComplete: user.profileComplete,
           isVerified: user.isVerified,
           role: user.role,
         },
@@ -216,22 +228,7 @@ export const getProfile = async (
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      select: {
-        id: true,
-        email: true,
-        studentId: true,
-        firstName: true,
-        lastName: true,
-        phoneNumber: true,
-        profileImage: true,
-        parentName: true,
-        parentContact: true,
-        isVerified: true,
-        isActive: true,
-        role: true,
-        lastLogin: true,
-        createdAt: true,
-      },
+      select: PROFILE_SELECT,
     });
 
     if (!user) throw new NotFoundError("User not found");
@@ -249,14 +246,8 @@ export const updateProfile = async (
   try {
     if (!req.user) throw new UnauthorizedError("Not authenticated");
 
-    const {
-      firstName,
-      lastName,
-      phoneNumber,
-      parentName,
-      parentContact,
-      profileImage,
-    } = req.body;
+    const { firstName, lastName, phoneNumber, parentName, parentContact } =
+      req.body;
 
     const updatedUser = await prisma.user.update({
       where: { id: req.user.userId },
@@ -264,29 +255,64 @@ export const updateProfile = async (
         ...(firstName && { firstName }),
         ...(lastName && { lastName }),
         ...(phoneNumber && { phoneNumber }),
-        ...(parentName && { parentName }),
-        ...(parentContact && { parentContact }),
-        ...(profileImage && { profileImage }),
+        ...(parentName !== undefined && { parentName }),
+        ...(parentContact !== undefined && { parentContact }),
       },
-      select: {
-        id: true,
-        email: true,
-        studentId: true,
-        firstName: true,
-        lastName: true,
-        phoneNumber: true,
-        profileImage: true,
-        parentName: true,
-        parentContact: true,
-        isVerified: true,
-        updatedAt: true,
-      },
+      select: PROFILE_SELECT,
     });
 
     logger.info(`Profile updated: ${req.user.email}`);
     res.json({
       success: true,
       message: "Profile updated successfully",
+      data: { user: updatedUser },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const completeProfile = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new UnauthorizedError("Not authenticated");
+
+    const { profileImageUrl, idImageUrl, faceEncoding } = req.body;
+
+    if (!profileImageUrl || !idImageUrl) {
+      throw new ValidationError(
+        "profileImageUrl and idImageUrl are required to complete profile",
+      );
+    }
+
+    if (
+      faceEncoding !== undefined &&
+      faceEncoding !== null &&
+      (!Array.isArray(faceEncoding) || faceEncoding.length !== 128)
+    ) {
+      throw new ValidationError(
+        "faceEncoding must be a 128-element float array",
+      );
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: {
+        profileImage: profileImageUrl,
+        idImageUrl,
+        ...(faceEncoding ? { faceEncoding } : {}),
+        profileComplete: true,
+      },
+      select: PROFILE_SELECT,
+    });
+
+    logger.info(`Profile completed: ${req.user.email}`);
+    res.json({
+      success: true,
+      message: "Profile completed successfully",
       data: { user: updatedUser },
     });
   } catch (error) {

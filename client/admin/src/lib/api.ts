@@ -270,6 +270,51 @@ const demoAdapter = async (
     });
   }
 
+  // Reports
+  if (method === "get" && path === "/admin/reports") {
+    return jsonResponse(config, {
+      success: true,
+      data: {
+        period: { from: new Date(Date.now() - 30 * 86400000), to: new Date() },
+        summary: {
+          totalRevenue: 48200,
+          totalRentals: 87,
+          totalVerifications: 42,
+        },
+        rentalsByStatus: {
+          ACTIVE: 12,
+          COMPLETED: 58,
+          PENDING: 8,
+          CANCELLED: 5,
+          VERIFICATION: 4,
+        },
+        revenueByType: { RENTAL_PAYMENT: 42000, SECURITY_DEPOSIT: 6200 },
+        verificationsByDecision: {
+          APPROVED: 30,
+          PENDING: 6,
+          RETRY: 4,
+          REJECTED: 2,
+        },
+        categoryBreakdown: {
+          ELECTRONICS: 18,
+          DEVELOPMENT_KITS: 22,
+          ACADEMIC_TOOLS: 15,
+          SCHOOL_ATTIRE: 8,
+          MEASUREMENT_TOOLS: 10,
+          OTHER: 6,
+        },
+        topItems: demoState.items.map((i, idx) => ({
+          title: i.title,
+          category: i.category,
+          totalRentals: 24 - idx * 5,
+          averageRating: 4.7 - idx * 0.1,
+          pricePerDay: i.pricePerDay,
+        })),
+        userGrowth: [],
+      },
+    });
+  }
+
   // Transactions
   if (method === "get" && path === "/admin/transactions") {
     return jsonResponse(config, {

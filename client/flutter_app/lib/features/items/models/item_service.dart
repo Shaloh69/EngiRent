@@ -87,6 +87,7 @@ class ItemService {
     required String pricePerDay,
     required String securityDeposit,
     required List<String> images,
+    String? serialNumber,
   }) async {
     try {
       final response = await _api.post('/items', {
@@ -97,6 +98,7 @@ class ItemService {
         'pricePerDay': pricePerDay,
         'securityDeposit': securityDeposit,
         'images': images,
+        if (serialNumber != null && serialNumber.isNotEmpty) 'serialNumber': serialNumber,
       });
       final data = jsonDecode(response.body);
       if ((response.statusCode == 200 || response.statusCode == 201) && data['success']) {

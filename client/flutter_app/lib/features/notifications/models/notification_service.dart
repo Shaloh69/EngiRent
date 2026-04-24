@@ -37,6 +37,24 @@ class NotificationService {
     return data.map((json) => NotificationModel.fromJson(json)).toList();
   }
 
+  Future<bool> markAllRead() async {
+    try {
+      final response = await _api.patch('/notifications/read-all', {});
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> markRead(String notificationId) async {
+    try {
+      final response = await _api.patch('/notifications/$notificationId/read', {});
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> getNotifications() async {
     try {
       final response = await _api.get('/notifications');

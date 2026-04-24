@@ -928,3 +928,149 @@ export const listKiosks = async (
     next(error);
   }
 };
+
+// ─── Reports ────────────────────────────────────────────────────────────────
+
+export const getReports = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const format = (req.query.format as string | undefined) ?? "json";
+    const fromDate = req.query.from
+      ? new Date(req.query.from as string)
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const toDate = req.query.to ? new Date(req.query.to as string) : new Date();
+
+    const dateRange: Prisma.DateTimeFilter = { gte: fromDate, lte: toDate };
+
+    const [
+      rentalsByStatus,
+      revenueByType,
+      topItems,
+      verificationStats,
+      userGrowth,
+      categoryBreakdown,
+    ] = await Promise.all([
+      prisma.rental.groupBy({
+        by: ["status"],
+        _count: { id: true },
+        where: { createdAt: dateRange },
+      }),
+      prisma.transaction.groupBy({
+        by: ["type"],
+        _sum: { amount: true },
+        _count: { id: true },
+        where: { status: "COMPLETED", createdAt: dateRange },
+      }),
+      prisma.item.findMany({
+        where: { isActive: true },
+        orderBy: { totalRentals: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          totalRentals: true,
+          averageRating: true,
+          pricePerDay: true,
+        },
+      }),
+      prisma.verification.groupBy({
+        by: ["decision"],
+        _count: { id: true },
+        where: { createdAt: dateRange },
+      }),
+      prisma.user.groupBy({
+        by: ["createdAt"],
+        _count: { id: true },
+        where: { role: "STUDENT", createdAt: dateRange },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.item.groupBy({
+        by: ["category"],
+        _count: { id: true },
+        where: { isActive: true },
+      }),
+    ]);
+
+    const totalRevenue = revenueByType.reduce(
+      (sum, r) => sum + (r._sum.amount ?? 0),
+      0,
+    );
+
+    const report = {
+      period: { from: fromDate, to: toDate },
+      summary: {
+        totalRevenue,
+        totalRentals: rentalsByStatus.reduce((s, r) => s + r._count.id, 0),
+        totalVerifications: verificationStats.reduce(
+          (s, v) => s + v._count.id,
+          0,
+        ),
+      },
+      rentalsByStatus: Object.fromEntries(
+        rentalsByStatus.map((r) => [r.status, r._count.id]),
+      ),
+      revenueByType: Object.fromEntries(
+        revenueByType.map((r) => [r.type, r._sum.amount ?? 0]),
+      ),
+      verificationsByDecision: Object.fromEntries(
+        verificationStats.map((v) => [v.decision, v._count.id]),
+      ),
+      categoryBreakdown: Object.fromEntries(
+        categoryBreakdown.map((c) => [c.category, c._count.id]),
+      ),
+      topItems,
+      userGrowth: userGrowth.map((u) => ({
+        date: u.createdAt,
+        count: u._count.id,
+      })),
+    };
+
+    if (format === "csv") {
+      const rows: string[] = [
+        "Report Type,Value",
+        `Total Revenue,${totalRevenue}`,
+        `Total Rentals,${report.summary.totalRentals}`,
+        `Total Verifications,${report.summary.totalVerifications}`,
+        "",
+        "Rentals by Status",
+        "Status,Count",
+        ...rentalsByStatus.map((r) => `${r.status},${r._count.id}`),
+        "",
+        "Revenue by Type",
+        "Type,Amount",
+        ...revenueByType.map((r) => `${r.type},${r._sum.amount ?? 0}`),
+        "",
+        "Top Items",
+        "Title,Category,Total Rentals,Avg Rating",
+        ...topItems.map(
+          (i) =>
+            `"${i.title}",${i.category},${i.totalRentals},${i.averageRating}`,
+        ),
+      ];
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="engirent-report-${fromDate.toISOString().slice(0, 10)}.csv"`,
+      );
+      res.send(rows.join("\n"));
+      return;
+    }
+
+    if (format === "pdf") {
+      // Return structured JSON for the Flutter/Admin client to render as PDF
+      // (actual PDF generation happens client-side via pdf/printing packages)
+      res.setHeader("X-Report-Format", "pdf-data");
+      res.json({ success: true, data: report, format: "pdf" });
+      return;
+    }
+
+    res.json({ success: true, data: report });
+  } catch (error) {
+    next(error);
+  }
+};

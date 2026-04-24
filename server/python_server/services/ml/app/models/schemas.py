@@ -65,8 +65,16 @@ class FaceVerificationResponse(BaseModel):
     message: str = Field(description="Human-readable result message")
 
 
+class FaceRegisterResponse(BaseModel):
+    success: bool = Field(description="Whether a face was detected and encoded")
+    encoding: list[float] | None = Field(description="128-float face encoding (store in User.faceEncoding)")
+    face_image_data: str | None = Field(default=None, description="base64 JPEG of detected face crop (for preview)")
+    message: str = Field(description="Human-readable result message")
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str
     deep_learning_enabled: bool
     ocr_enabled: bool
+    face_recognition_enabled: bool = Field(default=False)

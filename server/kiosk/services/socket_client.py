@@ -484,6 +484,35 @@ async def on_rental_info(data: dict):
         log.warning("Received kiosk:rental_info but no QR callback registered")
 
 
+@sio.on("kiosk:session_validate")
+async def on_session_validate(data: dict):
+    """
+    Node.js relays the session token + user info from the Flutter app.
+    We validate the token against the active QR token and emit
+    kiosk_session_started to the local browser UI on success.
+    """
+    from kiosk_ui.server import validate_qr_token_internal
+
+    token = data.get("token", "")
+    if not token:
+        log.warning("kiosk:session_validate received with no token")
+        return
+
+    ok = validate_qr_token_internal(token)
+    if ok:
+        from kiosk_ui.server import local_sio as ui_sio
+        ui_sio.emit("kiosk_session_started", {
+            "userId":    data.get("userId", ""),
+            "firstName": data.get("firstName", ""),
+            "lastName":  data.get("lastName", ""),
+        })
+        _set_ui("session_active",
+                f"Welcome, {data.get('firstName', 'User')}! Please choose an action.")
+        log.info("Kiosk session validated via socket for user %s", data.get("userId"))
+    else:
+        log.warning("kiosk:session_validate failed — invalid or expired token")
+
+
 async def initiate_rental_flow(rental_id: str):
     """Called by local browser confirm → emit kiosk:flow_start to Node.js.
     Node.js looks up the rental and sends back capture_face command."""

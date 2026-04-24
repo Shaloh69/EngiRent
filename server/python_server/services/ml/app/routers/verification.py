@@ -1,12 +1,15 @@
 """
-API routes for item verification.
+API routes for item verification and face recognition.
 
 Endpoints:
     POST /verify           - Full hybrid verification (original vs kiosk images)
     POST /extract-features - Pre-extract features for storage
+    POST /register-face    - Extract 128-float face encoding from a registration photo
+    POST /verify-face      - Verify captured face against stored encoding or reference URL
     GET  /health           - Service health check
 """
 
+import base64
 import json
 import logging
 import os
@@ -20,12 +23,27 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from ..comparison.hybrid import HybridVerifier
 from ..config import settings
 from ..models.schemas import (
+    FaceRegisterResponse,
     FaceVerificationResponse,
     FeatureExtractionResponse,
     HealthResponse,
     StorableFeatures,
     VerificationResponse,
 )
+
+# face_recognition is optional — gracefully degrade to Haar cascade if not installed
+try:
+    import face_recognition as _fr
+    _FR_AVAILABLE = True
+    logger_tmp = logging.getLogger(__name__)
+    logger_tmp.info("face_recognition (dlib) loaded — high-accuracy mode active")
+except ImportError:
+    _fr = None  # type: ignore[assignment]
+    _FR_AVAILABLE = False
+    logging.getLogger(__name__).warning(
+        "face_recognition library not installed — falling back to Haar cascade. "
+        "Run: pip install face_recognition"
+    )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -210,18 +228,142 @@ def _face_similarity(img_a: np.ndarray, img_b: np.ndarray) -> float:
     return max(0.0, score / 3.0)
 
 
+@router.post("/register-face", response_model=FaceRegisterResponse)
+async def register_face(
+    image: UploadFile = File(..., description="In-app selfie taken during registration"),
+):
+    """
+    Extract a 128-float face encoding from a registration photo.
+
+    Store the returned encoding in User.faceEncoding (JSON column).
+    Uses face_recognition (dlib) when available; falls back to Haar cascade
+    detection-only mode which returns success=False with a descriptive message.
+    """
+    try:
+        img_bytes = await image.read()
+        img_arr = np.frombuffer(img_bytes, np.uint8)
+        img_bgr = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+        if img_bgr is None:
+            raise HTTPException(status_code=400, detail="Cannot decode image")
+
+        if _FR_AVAILABLE:
+            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+            face_locations = _fr.face_locations(img_rgb, model="hog")
+            if not face_locations:
+                return FaceRegisterResponse(
+                    success=False,
+                    encoding=None,
+                    message="No face detected — ensure good lighting and face the camera directly",
+                )
+            if len(face_locations) > 1:
+                return FaceRegisterResponse(
+                    success=False,
+                    encoding=None,
+                    message="Multiple faces detected — only one person should be in frame",
+                )
+            encodings = _fr.face_encodings(img_rgb, face_locations)
+            if not encodings:
+                return FaceRegisterResponse(
+                    success=False,
+                    encoding=None,
+                    message="Could not compute face encoding — try a clearer photo",
+                )
+            encoding: list[float] = encodings[0].tolist()
+
+            # Crop face for preview
+            top, right, bottom, left = face_locations[0]
+            face_crop_rgb = img_rgb[top:bottom, left:right]
+            face_crop_bgr = cv2.cvtColor(face_crop_rgb, cv2.COLOR_RGB2BGR)
+            _, buf = cv2.imencode(".jpg", face_crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            face_b64 = base64.b64encode(buf.tobytes()).decode()
+
+            return FaceRegisterResponse(
+                success=True,
+                encoding=encoding,
+                face_image_data=face_b64,
+                message="Face encoding extracted successfully",
+            )
+
+        # Haar cascade fallback — detection only, no encoding
+        faces = _detect_faces(img_bgr)
+        if not faces:
+            return FaceRegisterResponse(
+                success=False,
+                encoding=None,
+                message="No face detected (Haar cascade fallback — install face_recognition for encoding support)",
+            )
+        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+        face_crop = img_bgr[y : y + h, x : x + w]
+        _, buf = cv2.imencode(".jpg", face_crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        face_b64 = base64.b64encode(buf.tobytes()).decode()
+        return FaceRegisterResponse(
+            success=False,
+            encoding=None,
+            face_image_data=face_b64,
+            message="Face detected but encoding unavailable — face_recognition library not installed",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Face registration failed")
+        raise HTTPException(status_code=500, detail=f"Face registration error: {e}") from e
+
+
+def _dlib_verify(cap_rgb: np.ndarray, stored_encoding: list[float] | None, ref_rgb: np.ndarray | None) -> tuple[bool, bool, float, str]:
+    """
+    Compare captured face against stored encoding or reference image using dlib.
+    Returns (verified, detected, confidence, message).
+    """
+    cap_locations = _fr.face_locations(cap_rgb, model="hog")
+    if not cap_locations:
+        return False, False, 0.0, "No face detected in captured image"
+
+    cap_encodings = _fr.face_encodings(cap_rgb, cap_locations)
+    if not cap_encodings:
+        return False, True, 0.0, "Could not compute encoding for captured face"
+
+    cap_enc = cap_encodings[0]
+
+    if stored_encoding is not None:
+        ref_enc = np.array(stored_encoding, dtype=np.float64)
+    elif ref_rgb is not None:
+        ref_locations = _fr.face_locations(ref_rgb, model="hog")
+        if not ref_locations:
+            ref_enc_list = _fr.face_encodings(ref_rgb)
+        else:
+            ref_enc_list = _fr.face_encodings(ref_rgb, ref_locations)
+        if not ref_enc_list:
+            return False, True, 0.0, "Could not detect face in reference image"
+        ref_enc = ref_enc_list[0]
+    else:
+        return False, True, 0.0, "No reference encoding or image provided"
+
+    distance = float(_fr.face_distance([ref_enc], cap_enc)[0])
+    # distance 0.0 = identical, ~0.6 = threshold, 1.0+ = very different
+    # Map to 0-1 confidence: confidence = 1 - (distance / 0.6), clamped
+    confidence = max(0.0, min(1.0, 1.0 - distance / 0.6))
+    verified = distance <= 0.5  # stricter than dlib default 0.6 for higher precision
+
+    msg = "Identity verified" if verified else "Face does not match reference"
+    return verified, True, round(confidence, 3), msg
+
+
 @router.post("/verify-face", response_model=FaceVerificationResponse)
 async def verify_face(
     captured_image: UploadFile = File(..., description="Captured face image from kiosk camera"),
-    reference_image_url: str = Form(..., description="URL of the user's reference profile photo"),
+    reference_image_url: str = Form(default="", description="URL of the user's reference profile photo (used when no stored encoding)"),
+    stored_encoding: str | None = Form(default=None, description="JSON array of 128 floats from User.faceEncoding (preferred over URL)"),
 ):
     """
-    Verify that the captured face matches a reference image.
+    Verify that the captured face matches a reference.
 
-    Uses OpenCV Haar cascade for detection + histogram correlation for identity matching.
-    Returns verified=True when confidence >= 0.60.
+    Priority: stored_encoding (fast, no download) > reference_image_url (download + encode).
+    Uses face_recognition (dlib, 99.38% LFW accuracy) when available;
+    falls back to Haar cascade + histogram correlation.
+    Returns verified=True when confidence >= threshold.
     """
-    cap_path = ref_path = None
+    ref_path = None
     try:
         cap_bytes = await captured_image.read()
         cap_arr = np.frombuffer(cap_bytes, np.uint8)
@@ -229,6 +371,32 @@ async def verify_face(
         if cap_img is None:
             raise HTTPException(status_code=400, detail="Cannot decode captured image")
 
+        parsed_encoding: list[float] | None = None
+        if stored_encoding:
+            try:
+                parsed_encoding = json.loads(stored_encoding)
+                if not isinstance(parsed_encoding, list) or len(parsed_encoding) != 128:
+                    parsed_encoding = None
+            except (json.JSONDecodeError, ValueError):
+                parsed_encoding = None
+
+        if _FR_AVAILABLE:
+            cap_rgb = cv2.cvtColor(cap_img, cv2.COLOR_BGR2RGB)
+            ref_rgb: np.ndarray | None = None
+
+            if parsed_encoding is None and reference_image_url:
+                suffix = os.path.splitext(reference_image_url.split("?")[0])[-1] or ".jpg"
+                tmp_fd, ref_path = tempfile.mkstemp(suffix=suffix, dir=settings.upload_dir)
+                os.close(tmp_fd)
+                urlretrieve(reference_image_url, ref_path)  # noqa: S310
+                ref_bgr = cv2.imread(ref_path)
+                if ref_bgr is not None:
+                    ref_rgb = cv2.cvtColor(ref_bgr, cv2.COLOR_BGR2RGB)
+
+            verified, detected, confidence, message = _dlib_verify(cap_rgb, parsed_encoding, ref_rgb)
+            return FaceVerificationResponse(verified=verified, detected=detected, confidence=confidence, message=message)
+
+        # --- Haar cascade fallback ---
         faces = _detect_faces(cap_img)
         if len(faces) == 0:
             return FaceVerificationResponse(
@@ -238,11 +406,17 @@ async def verify_face(
                 message="No face detected in captured image",
             )
 
-        # Crop the largest detected face from captured image
         x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
         cap_face = cap_img[y : y + h, x : x + w]
 
-        # Download and decode the reference image
+        if not reference_image_url:
+            return FaceVerificationResponse(
+                verified=False,
+                detected=True,
+                confidence=0.0,
+                message="No reference provided for comparison",
+            )
+
         suffix = os.path.splitext(reference_image_url.split("?")[0])[-1] or ".jpg"
         tmp_fd, ref_path = tempfile.mkstemp(suffix=suffix, dir=settings.upload_dir)
         os.close(tmp_fd)
@@ -258,7 +432,7 @@ async def verify_face(
             )
 
         ref_faces = _detect_faces(ref_img)
-        if len(ref_faces) == 0:
+        if not ref_faces:
             ref_face = ref_img
         else:
             rx, ry, rw, rh = max(ref_faces, key=lambda f: f[2] * f[3])
@@ -295,4 +469,5 @@ async def health_check():
         service=settings.app_name,
         deep_learning_enabled=settings.enable_deep_learning,
         ocr_enabled=settings.enable_ocr,
+        face_recognition_enabled=_FR_AVAILABLE,
     )

@@ -9,9 +9,12 @@ Routes:
   GET  /camera/face/stream   → MJPEG stream (face / QR camera)
 """
 
+import hashlib
 import logging
+import os
 import threading
 import time
+import uuid
 
 from flask import Flask, Response, jsonify, render_template, request
 from flask_socketio import SocketIO, emit
@@ -216,6 +219,88 @@ def face_stream():
         _mjpeg_gen(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+# ── QR session token ──────────────────────────────────────────────────────────
+
+_active_qr_token: str | None = None
+_qr_token_expiry: float = 0.0
+_QR_TTL = 90.0  # seconds
+
+_KIOSK_SECRET = os.getenv("KIOSK_SECRET", "engirent-kiosk-secret")
+
+
+def _make_session_token() -> str:
+    """Generate a signed, time-limited session token the app will scan."""
+    token_id = uuid.uuid4().hex
+    ts = str(int(time.time()))
+    kiosk_id = os.getenv("KIOSK_ID", "kiosk-1")
+    payload = f"{kiosk_id}:{token_id}:{ts}"
+    sig = hashlib.sha256(f"{payload}:{_KIOSK_SECRET}".encode()).hexdigest()[:16]
+    return f"{payload}:{sig}"
+
+
+@app.route("/api/qr-token", methods=["GET"])
+def get_qr_token():
+    """
+    Return current session token (generate new one if expired).
+    The kiosk display JS polls this to render the QR code image.
+    """
+    global _active_qr_token, _qr_token_expiry
+    now = time.monotonic()
+    if _active_qr_token is None or now >= _qr_token_expiry:
+        _active_qr_token = _make_session_token()
+        _qr_token_expiry = now + _QR_TTL
+        log.debug("New kiosk QR token generated")
+    remaining = max(0, int(_qr_token_expiry - now))
+    return jsonify({
+        "token": _active_qr_token,
+        "expires_in": remaining,
+        "ttl": int(_QR_TTL),
+        "ttl_seconds": remaining,
+    })
+
+
+def validate_qr_token_internal(token: str) -> bool:
+    """
+    Pure-Python helper used by socket_client.py to validate a session token
+    without going through HTTP.  Returns True if the token is valid and not expired.
+    Invalidates the token on success (single-use).
+    """
+    global _active_qr_token
+    now = time.monotonic()
+    if (
+        token
+        and _active_qr_token is not None
+        and token == _active_qr_token
+        and now < _qr_token_expiry
+    ):
+        _active_qr_token = None  # invalidate — single use
+        return True
+    return False
+
+
+@app.route("/api/qr-validate", methods=["POST"])
+def validate_qr_token():
+    """
+    Called by Node.js (via socket or REST) after the app sends the scanned token.
+    Returns ok=True if the token matches the active session and hasn't expired.
+    """
+    data = request.get_json(force=True) or {}
+    token = data.get("token", "")
+    now = time.monotonic()
+    if validate_qr_token_internal(token):
+        kiosk_id = os.getenv("KIOSK_ID", "kiosk-1")
+        user_info = data.get("user") or {}
+        local_sio.emit("kiosk_session_started", {
+            "kioskId": kiosk_id,
+            "userId": data.get("userId", ""),
+            "firstName": user_info.get("firstName", ""),
+            "lastName": user_info.get("lastName", ""),
+        })
+        log.info("Kiosk session started for user %s", data.get("userId", "unknown"))
+        return jsonify({"ok": True, "kiosk_id": kiosk_id})
+    return jsonify({"ok": False, "message": "Token invalid or expired"}), 400
 
 
 # ── Local Socket.io events ─────────────────────────────────────────────────────

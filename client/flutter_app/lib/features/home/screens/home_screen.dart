@@ -326,10 +326,30 @@ class _NotificationsTabState extends State<_NotificationsTab> {
     });
   }
 
+  Future<void> _markAllRead() async {
+    await _service.markAllRead();
+    _load();
+  }
+
+  Future<void> _markRead(String id) async {
+    await _service.markRead(id);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasUnread = _notifications.any((n) => !n.isRead);
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        actions: [
+          if (hasUnread)
+            TextButton(
+              onPressed: _markAllRead,
+              child: const Text('Mark all read'),
+            ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -355,11 +375,28 @@ class _NotificationsTabState extends State<_NotificationsTab> {
                                   color: notification.isRead ? AppColors.greyDark : AppColors.primaryDark,
                                 ),
                               ),
-                              title: Text(notification.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                              title: Text(
+                                notification.title,
+                                style: TextStyle(
+                                  fontWeight: notification.isRead ? FontWeight.w500 : FontWeight.w800,
+                                ),
+                              ),
                               subtitle: Text(notification.message),
-                              trailing: Text(
-                                '${notification.createdAt.month}/${notification.createdAt.day}',
-                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '${notification.createdAt.month}/${notification.createdAt.day}',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                  ),
+                                  if (!notification.isRead) ...[
+                                    const SizedBox(height: 4),
+                                    GestureDetector(
+                                      onTap: () => _markRead(notification.id),
+                                      child: const Icon(Icons.check_circle_outline, size: 18, color: AppColors.primary),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           );

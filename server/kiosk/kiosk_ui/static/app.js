@@ -375,5 +375,98 @@ setInterval(() => {
     .catch(() => {});
 }, 2000);
 
+// ── Session QR code — kiosk-generated token for Flutter app to scan ───────────
+const _sqrCanvas  = document.getElementById('session-qr-canvas');
+const _sqrSpinner = document.getElementById('session-qr-spinner');
+const _sqrStatus  = document.getElementById('session-qr-status');
+const _sqrStatusTxt = document.getElementById('session-qr-status-text');
+
+let _sqrCode     = null;   // QRCode instance
+let _sqrToken    = null;
+let _sqrExpiry   = 0;
+let _sqrPollId   = null;
+let _sqrSessionActive = false;
+
+function _initSessionQr() {
+  if (!_sqrCanvas || typeof QRCode === 'undefined') return;
+  _sqrCode = new QRCode(_sqrCanvas, {
+    width: 120, height: 120,
+    colorDark: '#000000', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+  _refreshSessionQr();
+}
+
+async function _refreshSessionQr() {
+  if (_sqrSessionActive) return;
+  try {
+    const res  = await fetch('/api/qr-token');
+    const data = await res.json();
+    if (!data.token) throw new Error('no token');
+
+    _sqrToken  = data.token;
+    _sqrExpiry = Date.now() + (data.ttl_seconds || 90) * 1000;
+
+    if (_sqrCode) {
+      _sqrCode.clear();
+      _sqrCode.makeCode(_sqrToken);
+    }
+    if (_sqrSpinner) _sqrSpinner.style.display = 'none';
+  } catch {
+    // keep spinner visible; retry handled by interval
+  }
+}
+
+function _setSessionQrStatus(connected, userName) {
+  if (!_sqrStatus) return;
+  if (connected) {
+    _sqrSessionActive = true;
+    _sqrStatus.className = 'session-qr-status session-qr-status--connected';
+    _sqrStatusTxt.textContent = userName ? `${userName} connected` : 'Connected!';
+  } else {
+    _sqrSessionActive = false;
+    _sqrStatus.className = 'session-qr-status session-qr-status--waiting';
+    _sqrStatusTxt.textContent = 'Waiting for scan…';
+    if (_sqrSpinner) _sqrSpinner.style.display = 'flex';
+    _refreshSessionQr();
+  }
+}
+
+// Refresh QR when it's about to expire (every 30 s check)
+setInterval(() => {
+  if (!_sqrSessionActive && Date.now() > _sqrExpiry - 15_000) {
+    _refreshSessionQr();
+  }
+}, 30_000);
+
+// Socket event: Flutter app scanned the kiosk QR and started a session
+socket.on('kiosk_session_started', (data) => {
+  const name = [data.firstName, data.lastName].filter(Boolean).join(' ');
+  _setSessionQrStatus(true, name);
+  // After 3s briefing, let the user proceed normally
+  setTimeout(() => {
+    if (currentState === S.MAIN) {
+      // Optionally auto-route based on pending action from data
+    }
+  }, 3000);
+});
+
+// Reset QR panel when returning to main screen
+const _origOnEnter = _onEnter;
+function _onEnterPatched(s) {
+  _origOnEnter(s);
+  if (s === S.MAIN) {
+    _setSessionQrStatus(false, null);
+  }
+}
+// Re-assign _onEnter by re-wiring goTo
+(function() {
+  const _origGoTo = goTo;
+  // Patch _onEnter calls: replace by hooking into goTo via closure override
+  // (goTo already calls _onEnter directly; we wrap the session reset here)
+  socket.on('kiosk_session_reset', () => _setSessionQrStatus(false, null));
+})();
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 goTo(S.IDLE);
+_initSessionQr();

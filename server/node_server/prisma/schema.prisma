@@ -20,7 +20,14 @@ model User {
   firstName         String
   lastName          String
   phoneNumber       String
-  profileImage      String?
+
+  // Profile & identity (photos must be taken in-app, not uploaded)
+  profileImage      String?   // Face photo URL (Supabase) — used by AI for identity verification
+  faceEncoding      Json?     // 128-float face_recognition encoding stored after first face capture
+  idImageUrl        String?   // School ID card photo URL (Supabase)
+
+  // Profile completion — true once face + ID photos have been submitted
+  profileComplete   Boolean   @default(false)
 
   // Parent/Guardian information
   parentName        String?
@@ -153,6 +160,7 @@ model Rental {
   renter            User          @relation("RentalRenter", fields: [renterId], references: [id])
   owner             User          @relation("RentalOwner", fields: [ownerId], references: [id])
   transactions      Transaction[]
+  reviews           Review[]
   depositVerification Verification? @relation("DepositVerification", fields: [depositVerificationId], references: [id])
   verification      Verification? @relation("ReturnVerification", fields: [verificationId], references: [id])
   depositLocker     Locker?       @relation("DepositLocker", fields: [depositLockerId], references: [id])
@@ -318,6 +326,7 @@ model Notification {
 model Review {
   id                String    @id @default(uuid())
   itemId            String
+  rentalId          String?   // Link review to the rental that enabled it
   authorId          String
   recipientId       String
 
@@ -334,9 +343,11 @@ model Review {
 
   // Relations
   item              Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  rental            Rental?   @relation(fields: [rentalId], references: [id])
   author            User      @relation("ReviewAuthor", fields: [authorId], references: [id])
   recipient         User      @relation("ReviewRecipient", fields: [recipientId], references: [id])
 
+  @@unique([rentalId, authorId, reviewType])  // one review per role per rental
   @@index([itemId])
   @@index([authorId])
   @@index([recipientId])

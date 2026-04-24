@@ -7,6 +7,7 @@ import kioskRoutes from "./kioskRoutes";
 import notificationRoutes from "./notificationRoutes";
 import uploadRoutes from "./uploadRoutes";
 import adminRoutes from "./adminRoutes";
+import reviewRoutes from "./reviewRoutes";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/kiosk", kioskRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/admin", adminRoutes);
+router.use("/reviews", reviewRoutes);
 
 export default router;

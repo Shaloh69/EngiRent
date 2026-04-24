@@ -45,7 +45,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!mounted) return;
     if (success) {
-      Navigator.pushReplacementNamed(context, '/home');
+      // Profile setup (face + ID camera) is required before accessing home
+      Navigator.pushReplacementNamed(context, '/profile/setup');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(authProvider.error ?? 'Registration failed')),

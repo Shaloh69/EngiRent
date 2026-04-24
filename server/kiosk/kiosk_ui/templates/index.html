@@ -148,6 +148,27 @@
         <div class="locker-pill" id="lp-4"><span>04</span></div>
       </div>
     </div>
+
+    <!-- Session QR panel — user scans this with the EngiRent app -->
+    <div class="session-qr-panel" id="session-qr-panel">
+      <div class="session-qr-inner">
+        <div class="session-qr-canvas-wrap">
+          <canvas id="session-qr-canvas"></canvas>
+          <div id="session-qr-spinner" class="session-qr-spinner">
+            <span class="spin-ring"></span>
+          </div>
+        </div>
+        <div class="session-qr-info">
+          <p class="session-qr-title">Scan with EngiRent App</p>
+          <p class="session-qr-sub">Open the app → tap the <strong>Kiosk</strong> icon → scan this code to continue</p>
+          <div id="session-qr-status" class="session-qr-status session-qr-status--waiting">
+            <span class="session-qr-dot"></span>
+            <span id="session-qr-status-text">Waiting for scan…</span>
+          </div>
+          <p class="session-qr-ttl">Code refreshes automatically</p>
+        </div>
+      </div>
+    </div>
   </main>
 
   <footer class="bot-bar">
@@ -326,6 +347,7 @@
 
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

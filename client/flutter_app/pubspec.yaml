@@ -41,17 +41,25 @@ dependencies:
 
   # Image Handling
   image_picker: ^1.0.7
-  image_cropper: ^5.0.1
 
-  # QR Code
-  qr_code_scanner: ^1.0.1
+  # Camera (in-app photo capture for face + ID registration)
+  camera: ^0.11.0+2
+
+  # QR Code — mobile_scanner replaces deprecated qr_code_scanner
+  mobile_scanner: ^5.2.3
   qr_flutter: ^4.1.0
 
-  # Notifications
-  flutter_local_notifications: ^16.3.2
+  # WebView (PayMongo checkout + deep link detection)
+  webview_flutter: ^4.8.0
+  app_links: ^6.3.2
+
+  # PDF & CSV export (reports)
+  pdf: ^3.11.1
+  printing: ^5.13.1
+  csv: ^6.0.0
 
   # Date & Time
-  intl: ^0.19.0
+  intl: 0.20.2
   timeago: ^3.6.0
 
   # Utils
@@ -60,6 +68,9 @@ dependencies:
   connectivity_plus: ^5.0.2
   flutter_spinkit: ^5.2.0
   dotted_border: ^2.1.0
+
+dependency_overrides:
+  intl: 0.20.2
 
 dev_dependencies:
   flutter_test:
