@@ -28,6 +28,7 @@ class SocketService {
   final _returnUnderReview = StreamController<Map<String, dynamic>>.broadcast();
   final _returnDisputed = StreamController<Map<String, dynamic>>.broadcast();
   final _returnRetry = StreamController<Map<String, dynamic>>.broadcast();
+  final _kioskScanError = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onRentalCompleted => _rentalCompleted.stream;
   Stream<Map<String, dynamic>> get onDepositApproved => _depositApproved.stream;
@@ -39,6 +40,9 @@ class SocketService {
   Stream<Map<String, dynamic>> get onReturnUnderReview => _returnUnderReview.stream;
   Stream<Map<String, dynamic>> get onReturnDisputed => _returnDisputed.stream;
   Stream<Map<String, dynamic>> get onReturnRetry => _returnRetry.stream;
+  Stream<Map<String, dynamic>> get onKioskScanError => _kioskScanError.stream;
+
+  String? get currentUserId => _userId;
 
   /// Convenience broadcast that fires on ANY rental status change.
   /// Widgets that only need to know "something changed" can listen here.
@@ -82,7 +86,12 @@ class SocketService {
       ..on('rental:active', _handle(_rentalActive))
       ..on('return:under_review', _handle(_returnUnderReview))
       ..on('return:disputed', _handle(_returnDisputed))
-      ..on('return:retry', _handle(_returnRetry));
+      ..on('return:retry', _handle(_returnRetry))
+      ..on('kiosk:scan_error', _handle(_kioskScanError));
+  }
+
+  void emit(String event, Map<String, dynamic> data) {
+    _socket?.emit(event, data);
   }
 
   Function(dynamic) _handle(StreamController<Map<String, dynamic>> ctrl) {
@@ -112,6 +121,7 @@ class SocketService {
     _returnUnderReview.close();
     _returnDisputed.close();
     _returnRetry.close();
+    _kioskScanError.close();
     _anyRentalChange.close();
   }
 }

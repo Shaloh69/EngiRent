@@ -1020,6 +1020,69 @@ io.on("connection", (socket: Socket) => {
     },
   );
 
+  // ── App-initiated kiosk scan — Flutter app scanned kiosk QR then tapped action
+  // Token format: "{kiosk_id}:{token_id}:{ts}:{sig}" — first segment is the kiosk ID.
+  // Node forwards the token + rental context to that kiosk for local validation.
+  socket.on(
+    "app:kiosk_scan",
+    (data: {
+      token: string;
+      rentalId: string;
+      mode: "place" | "retrieve" | "return";
+      userId: string;
+    }) => {
+      const { token, rentalId, mode, userId } = data ?? {};
+
+      if (!token || !rentalId || !userId) {
+        socket.emit("kiosk:scan_error", {
+          rentalId,
+          message: "Missing required fields",
+        });
+        return;
+      }
+
+      // Parse kiosk_id from the first colon-delimited segment of the token
+      const kioskId = token.split(":")[0];
+      if (!kioskId) {
+        socket.emit("kiosk:scan_error", {
+          rentalId,
+          message: "Invalid QR token — could not identify kiosk",
+        });
+        return;
+      }
+
+      logger.info(
+        `\n┌─────────────────────────────────────────────\n` +
+          `│  📱 [APP-SCAN]  User scanned kiosk QR\n` +
+          `│  User    : ${userId}\n` +
+          `│  Kiosk   : ${kioskId}\n` +
+          `│  Rental  : ${rentalId}\n` +
+          `│  Mode    : ${mode}\n` +
+          `└─────────────────────────────────────────────`,
+      );
+
+      // Forward to the kiosk — it validates the token and starts the rental flow
+      io.to(`kiosk:${kioskId}`).emit("kiosk:session_validate", {
+        token,
+        rentalId,
+        mode,
+        userId,
+      });
+    },
+  );
+
+  // ── Kiosk relays a token-validation failure back — forward to the user's room
+  socket.on(
+    "kiosk:scan_error_relay",
+    (data: { userId: string; rentalId: string; message: string }) => {
+      const { userId, rentalId, message } = data ?? {};
+      if (userId) {
+        io.to(`user:${userId}`).emit("kiosk:scan_error", { rentalId, message });
+        logger.warn(`[KIOSK-SCAN]  Token validation failed for user ${userId}: ${message}`);
+      }
+    },
+  );
+
   socket.on("disconnect", () => {
     logger.info(
       `\n┌─────────────────────────────────────────────\n` +

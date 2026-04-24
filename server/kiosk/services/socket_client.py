@@ -487,19 +487,50 @@ async def on_rental_info(data: dict):
 @sio.on("kiosk:session_validate")
 async def on_session_validate(data: dict):
     """
-    Node.js relays the session token + user info from the Flutter app.
-    We validate the token against the active QR token and emit
-    kiosk_session_started to the local browser UI on success.
+    Node.js relays the session token + rental context from the Flutter app.
+
+    If the token is valid AND a rental_id is present (app-initiated flow),
+    skip the 'choose action' screen and go straight to facial recognition.
+
+    If no rental_id, fall back to the legacy 'welcome / choose action' screen
+    so the kiosk UI buttons still work.
     """
     from kiosk_ui.server import validate_qr_token_internal
 
-    token = data.get("token", "")
+    token     = data.get("token", "")
+    rental_id = data.get("rentalId", "")
+    mode      = data.get("mode", "")
+
     if not token:
         log.warning("kiosk:session_validate received with no token")
         return
 
     ok = validate_qr_token_internal(token)
-    if ok:
+    if not ok:
+        log.warning("kiosk:session_validate failed — invalid or expired token")
+        await safe_emit("kiosk:scan_error_relay", {
+            "userId":   data.get("userId", ""),
+            "rentalId": rental_id,
+            "message":  "QR code expired or invalid — please scan again",
+        })
+        return
+
+    log.info(
+        "Kiosk session validated for user %s (rental=%s mode=%s)",
+        data.get("userId"), rental_id or "none", mode or "none",
+    )
+
+    if rental_id:
+        # App-initiated flow: go directly to face verification
+        _mode_label = {
+            "place":    "Deposit item",
+            "retrieve": "Pick up item",
+            "return":   "Return item",
+        }.get(mode, "Process rental")
+        _set_ui("face_scan", f"{_mode_label} — identity verification in progress…")
+        await initiate_rental_flow(rental_id)
+    else:
+        # Legacy kiosk-UI flow: show welcome screen, wait for button press
         from kiosk_ui.server import local_sio as ui_sio
         ui_sio.emit("kiosk_session_started", {
             "userId":    data.get("userId", ""),
@@ -508,9 +539,6 @@ async def on_session_validate(data: dict):
         })
         _set_ui("session_active",
                 f"Welcome, {data.get('firstName', 'User')}! Please choose an action.")
-        log.info("Kiosk session validated via socket for user %s", data.get("userId"))
-    else:
-        log.warning("kiosk:session_validate failed — invalid or expired token")
 
 
 async def initiate_rental_flow(rental_id: str):

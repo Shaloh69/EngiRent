@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../kiosk/screens/kiosk_scan_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
 
 class RentalDetailScreen extends StatefulWidget {
@@ -84,6 +85,19 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     }
   }
 
+  Future<void> _openKioskScan(String mode) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => KioskScanScreen(
+          rentalId: _rental!.id,
+          mode: mode,
+        ),
+      ),
+    );
+    if (result == true) _load();
+  }
+
   Color _statusColor(String status) {
     return switch (status) {
       'ACTIVE' => AppColors.success,
@@ -152,6 +166,27 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                           onPressed: _initiatePayment,
                           icon: const Icon(Icons.payment),
                           label: const Text('Pay Now'),
+                          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+                        ),
+                      if (_rental!.status == 'AWAITING_DEPOSIT')
+                        ElevatedButton.icon(
+                          onPressed: () => _openKioskScan('place'),
+                          icon: const Icon(Icons.lock_open_rounded),
+                          label: const Text('Place Item at Kiosk'),
+                          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+                        ),
+                      if (_rental!.status == 'DEPOSITED')
+                        ElevatedButton.icon(
+                          onPressed: () => _openKioskScan('retrieve'),
+                          icon: const Icon(Icons.inventory_2_rounded),
+                          label: const Text('Pick Up Item from Kiosk'),
+                          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+                        ),
+                      if (_rental!.status == 'ACTIVE')
+                        ElevatedButton.icon(
+                          onPressed: () => _openKioskScan('return'),
+                          icon: const Icon(Icons.assignment_return_rounded),
+                          label: const Text('Return Item to Kiosk'),
                           style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
                         ),
                     ],
