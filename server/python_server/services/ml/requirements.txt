@@ -10,7 +10,8 @@ numpy==1.26.4
 scipy==1.14.1
 
 # Face Recognition (dlib-based, 99.38% LFW accuracy — optional, falls back to Haar cascade)
-# Requires cmake + dlib system deps: apt install build-essential cmake libopenblas-dev liblapack-dev
+# dlib compiles from C++ source; build deps (cmake, build-essential, libopenblas-dev) are
+# handled in the Dockerfile builder stage via multi-stage build.
 face_recognition==1.3.0
 
 # Deep Learning (Phase 3)
