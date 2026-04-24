@@ -187,12 +187,12 @@ io.on("connection", (socket: Socket) => {
 
       logger.info(
         `\n┌─────────────────────────────────────────────\n` +
-        `│  🟢 [PI-ONLINE]  Kiosk registered\n` +
-        `│  Kiosk ID : ${kiosk_id}\n` +
-        `│  Socket   : ${socket.id}\n` +
-        `│  Lockers  : ${locker_count ?? "?"}\n` +
-        `│  Version  : ${version ?? "?"}\n` +
-        `└─────────────────────────────────────────────`
+          `│  🟢 [PI-ONLINE]  Kiosk registered\n` +
+          `│  Kiosk ID : ${kiosk_id}\n` +
+          `│  Socket   : ${socket.id}\n` +
+          `│  Lockers  : ${locker_count ?? "?"}\n` +
+          `│  Version  : ${version ?? "?"}\n` +
+          `└─────────────────────────────────────────────`,
       );
 
       // Push stored config to Pi immediately
@@ -210,7 +210,11 @@ io.on("connection", (socket: Socket) => {
 
       // Broadcast online status to admin
       io.emit("admin:kiosk_online", { kiosk_id, socket_id: socket.id });
-      kioskEventBus.emit("kiosk_online", { kiosk_id, socket_id: socket.id, ts: Date.now() });
+      kioskEventBus.emit("kiosk_online", {
+        kiosk_id,
+        socket_id: socket.id,
+        ts: Date.now(),
+      });
     },
   );
 
@@ -228,22 +232,22 @@ io.on("connection", (socket: Socket) => {
       if (status === "ok") {
         logger.info(
           `\n┌─────────────────────────────────────────────\n` +
-          `│  ✅ [PI-ACK]  Command confirmed by Pi\n` +
-          `│  Kiosk     : ${kiosk_id}\n` +
-          `│  Command ID: ${command_id}\n` +
-          `│  Action    : ${action}\n` +
-          `│  Status    : OK\n` +
-          `└─────────────────────────────────────────────`
+            `│  ✅ [PI-ACK]  Command confirmed by Pi\n` +
+            `│  Kiosk     : ${kiosk_id}\n` +
+            `│  Command ID: ${command_id}\n` +
+            `│  Action    : ${action}\n` +
+            `│  Status    : OK\n` +
+            `└─────────────────────────────────────────────`,
         );
       } else {
         logger.warn(
           `\n┌─────────────────────────────────────────────\n` +
-          `│  ⚠️  [PI-ACK]  Command FAILED on Pi\n` +
-          `│  Kiosk     : ${kiosk_id}\n` +
-          `│  Command ID: ${command_id}\n` +
-          `│  Action    : ${action}\n` +
-          `│  Error     : ${message ?? "unknown"}\n` +
-          `└─────────────────────────────────────────────`
+            `│  ⚠️  [PI-ACK]  Command FAILED on Pi\n` +
+            `│  Kiosk     : ${kiosk_id}\n` +
+            `│  Command ID: ${command_id}\n` +
+            `│  Action    : ${action}\n` +
+            `│  Error     : ${message ?? "unknown"}\n` +
+            `└─────────────────────────────────────────────`,
         );
       }
       io.emit("admin:kiosk_ack", data);
@@ -254,22 +258,25 @@ io.on("connection", (socket: Socket) => {
   // ── Kiosk status update
   socket.on("kiosk:status", (data: unknown) => {
     const d = data as Record<string, unknown>;
-    const ui   = d?.ui_state as Record<string, unknown> | undefined;
-    const lockers = ui?.lockers as Record<string, Record<string, string>> | undefined;
+    const ui = d?.ui_state as Record<string, unknown> | undefined;
+    const lockers = ui?.lockers as
+      | Record<string, Record<string, string>>
+      | undefined;
     const lockerSummary = lockers
       ? Object.entries(lockers)
-          .map(([id, doors]) =>
-            `L${id}[main:${doors.main ?? "?"}|bottom:${doors.bottom ?? "?"}]`
+          .map(
+            ([id, doors]) =>
+              `L${id}[main:${doors.main ?? "?"}|bottom:${doors.bottom ?? "?"}]`,
           )
           .join("  ")
       : "?";
     logger.info(
       `\n┌─────────────────────────────────────────────\n` +
-      `│  📡 [PI-STATUS]  Kiosk state update\n` +
-      `│  Kiosk   : ${d?.kiosk_id ?? "?"}\n` +
-      `│  UI      : ${ui?.status ?? "?"} — ${ui?.message ?? ""}\n` +
-      `│  Lockers : ${lockerSummary}\n` +
-      `└─────────────────────────────────────────────`
+        `│  📡 [PI-STATUS]  Kiosk state update\n` +
+        `│  Kiosk   : ${d?.kiosk_id ?? "?"}\n` +
+        `│  UI      : ${ui?.status ?? "?"} — ${ui?.message ?? ""}\n` +
+        `│  Lockers : ${lockerSummary}\n` +
+        `└─────────────────────────────────────────────`,
     );
     io.emit("admin:kiosk_status", data);
     kioskEventBus.emit("kiosk_status", { ...d, ts: Date.now() });
@@ -294,12 +301,12 @@ io.on("connection", (socket: Socket) => {
 
       logger.info(
         `\n┌─────────────────────────────────────────────\n` +
-        `│  📸 [PI-IMAGES]  Kiosk sent captured images\n` +
-        `│  Kiosk    : ${data.kiosk_id}\n` +
-        `│  Rental   : ${rental_id}\n` +
-        `│  Locker   : ${locker_id}\n` +
-        `│  Images   : ${image_urls.length} file(s)\n` +
-        `└─────────────────────────────────────────────`
+          `│  📸 [PI-IMAGES]  Kiosk sent captured images\n` +
+          `│  Kiosk    : ${data.kiosk_id}\n` +
+          `│  Rental   : ${rental_id}\n` +
+          `│  Locker   : ${locker_id}\n` +
+          `│  Images   : ${image_urls.length} file(s)\n` +
+          `└─────────────────────────────────────────────`,
       );
 
       try {
@@ -674,14 +681,14 @@ io.on("connection", (socket: Socket) => {
 
       logger.info(
         `\n┌─────────────────────────────────────────────\n` +
-        `│  👤 [PI-FACE]  Face verification result\n` +
-        `│  Kiosk      : ${data.kiosk_id}\n` +
-        `│  Rental     : ${rental_id}\n` +
-        `│  User       : ${user_id ?? "?"}\n` +
-        `│  Detected   : ${detected}\n` +
-        `│  Verified   : ${verified}\n` +
-        `│  Confidence : ${(confidence * 100).toFixed(1)}%\n` +
-        `└─────────────────────────────────────────────`
+          `│  👤 [PI-FACE]  Face verification result\n` +
+          `│  Kiosk      : ${data.kiosk_id}\n` +
+          `│  Rental     : ${rental_id}\n` +
+          `│  User       : ${user_id ?? "?"}\n` +
+          `│  Detected   : ${detected}\n` +
+          `│  Verified   : ${verified}\n` +
+          `│  Confidence : ${(confidence * 100).toFixed(1)}%\n` +
+          `└─────────────────────────────────────────────`,
       );
 
       if (!rental_id) return;
@@ -745,7 +752,8 @@ io.on("connection", (socket: Socket) => {
 
         // ── Return: face verified, now request image capture
         else if (rental.status === "ACTIVE") {
-          const returnLockerId = rental.returnLockerId ?? rental.depositLockerId;
+          const returnLockerId =
+            rental.returnLockerId ?? rental.depositLockerId;
           socket.emit("kiosk:command", {
             action: "capture_image",
             locker_id: returnLockerId,
@@ -763,15 +771,141 @@ io.on("connection", (socket: Socket) => {
     },
   );
 
+  // ── Rental lookup — Pi scanned a QR code and needs the rental details
+  socket.on(
+    "kiosk:rental_lookup",
+    async (data: { kiosk_id: string; rental_id: string }) => {
+      try {
+        const rental = await prisma.rental.findUnique({
+          where: { id: data.rental_id },
+          include: {
+            item: { select: { title: true, images: true } },
+            owner: { select: { firstName: true, lastName: true } },
+            renter: { select: { firstName: true, lastName: true } },
+          },
+        });
+
+        socket.emit("kiosk:rental_info", {
+          rental_id: data.rental_id,
+          rental_info: rental
+            ? {
+                id: rental.id,
+                status: rental.status,
+                depositLockerId: rental.depositLockerId,
+                claimLockerId: rental.claimLockerId,
+                returnLockerId: rental.returnLockerId,
+                item: rental.item,
+                owner: rental.owner,
+                renter: rental.renter,
+              }
+            : null,
+        });
+      } catch (err) {
+        logger.error(`kiosk:rental_lookup error for ${data.rental_id}:`, err);
+        socket.emit("kiosk:rental_info", {
+          rental_id: data.rental_id,
+          rental_info: null,
+        });
+      }
+    },
+  );
+
+  // ── Admin snapshot — Pi captured an image without a rental_id
+  // Relay the URL to the admin dashboard via SSE (no ML)
+  socket.on(
+    "kiosk:admin_snapshot",
+    (data: { kiosk_id: string; locker_id: number; image_urls: string[] }) => {
+      const { kiosk_id, locker_id, image_urls } = data;
+      logger.info(
+        `\n┌─────────────────────────────────────────────\n` +
+          `│  📷 [PI-SNAPSHOT]  Admin snapshot received\n` +
+          `│  Kiosk  : ${kiosk_id}\n` +
+          `│  Locker : ${locker_id}\n` +
+          `│  Images : ${image_urls?.length ?? 0} file(s)\n` +
+          `└─────────────────────────────────────────────`,
+      );
+      kioskEventBus.emit("kiosk_admin_snapshot", { ...data, ts: Date.now() });
+    },
+  );
+
+  // ── Kiosk-initiated rental flow — student scanned QR and confirmed on screen
+  // Look up rental status → send appropriate capture_face command back
+  socket.on(
+    "kiosk:flow_start",
+    async (data: { kiosk_id: string; rental_id: string }) => {
+      const { rental_id } = data;
+      logger.info(`[PI-FLOW]  flow_start for rental ${rental_id}`);
+
+      try {
+        const rental = await prisma.rental.findUnique({
+          where: { id: rental_id },
+          include: {
+            owner: {
+              select: { id: true, profileImage: true, firstName: true },
+            },
+            renter: {
+              select: { id: true, profileImage: true, firstName: true },
+            },
+          },
+        });
+
+        if (!rental) {
+          socket.emit("kiosk:command", {
+            action: "flow_error",
+            message: "Rental not found – please contact staff",
+          });
+          return;
+        }
+
+        const validStatuses = ["AWAITING_DEPOSIT", "DEPOSITED", "ACTIVE"];
+        if (!validStatuses.includes(rental.status)) {
+          socket.emit("kiosk:command", {
+            action: "flow_error",
+            message: `Rental status "${rental.status}" is not actionable at kiosk`,
+          });
+          return;
+        }
+
+        let reference_face_url = "";
+        let user_id = "";
+
+        if (rental.status === "AWAITING_DEPOSIT") {
+          reference_face_url = rental.owner?.profileImage ?? "";
+          user_id = rental.ownerId;
+        } else {
+          reference_face_url = rental.renter?.profileImage ?? "";
+          user_id = rental.renterId ?? "";
+        }
+
+        socket.emit("kiosk:command", {
+          action: "capture_face",
+          rental_id,
+          reference_face_url,
+          user_id,
+        });
+
+        logger.info(
+          `[PI-FLOW]  Sent capture_face for rental ${rental_id} (status=${rental.status})`,
+        );
+      } catch (err) {
+        logger.error(`kiosk:flow_start error for rental ${rental_id}:`, err);
+        socket.emit("kiosk:command", {
+          action: "flow_error",
+          message: "Server error – please try again",
+        });
+      }
+    },
+  );
+
   // ── Kiosk error passthrough
   socket.on("kiosk:error", (data: unknown) => {
     const d = data as Record<string, unknown>;
     logger.warn(
       `\n┌─────────────────────────────────────────────\n` +
-      `│  ❌ [PI-ERROR]  Kiosk reported an error\n` +
-      `│  Kiosk  : ${d?.kiosk_id ?? "?"}\n` +
-      `│  Error  : ${d?.message ?? JSON.stringify(data)}\n` +
-      `└─────────────────────────────────────────────`
+        `│  ❌ [PI-ERROR]  Kiosk reported an error\n` +
+        `│  Kiosk  : ${d?.kiosk_id ?? "?"}\n` +
+        `│  Error  : ${d?.message ?? JSON.stringify(data)}\n` +
+        `└─────────────────────────────────────────────`,
     );
     io.emit("admin:kiosk_error", data);
     kioskEventBus.emit("kiosk_error", { ...d, ts: Date.now() });
@@ -788,9 +922,10 @@ io.on("connection", (socket: Socket) => {
       ts: number;
     }) => {
       const { kiosk_id, level, module, message } = data;
-      const tag = level === "WARNING" || level === "ERROR" || level === "CRITICAL"
-        ? `⚠️  [PI-${level}]`
-        : `📟 [PI-LOG]`;
+      const tag =
+        level === "WARNING" || level === "ERROR" || level === "CRITICAL"
+          ? `⚠️  [PI-${level}]`
+          : `📟 [PI-LOG]`;
       const line = `${tag}  ${kiosk_id} | ${level.padEnd(8)} | ${module.padEnd(20)} | ${message}`;
       if (level === "ERROR" || level === "CRITICAL") {
         logger.error(line);
@@ -806,11 +941,14 @@ io.on("connection", (socket: Socket) => {
   socket.on("disconnect", () => {
     logger.info(
       `\n┌─────────────────────────────────────────────\n` +
-      `│  🔴 [PI-OFFLINE]  Kiosk disconnected\n` +
-      `│  Socket : ${socket.id}\n` +
-      `└─────────────────────────────────────────────`
+        `│  🔴 [PI-OFFLINE]  Kiosk disconnected\n` +
+        `│  Socket : ${socket.id}\n` +
+        `└─────────────────────────────────────────────`,
     );
-    kioskEventBus.emit("kiosk_offline", { socket_id: socket.id, ts: Date.now() });
+    kioskEventBus.emit("kiosk_offline", {
+      socket_id: socket.id,
+      ts: Date.now(),
+    });
   });
 });
 

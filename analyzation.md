@@ -1,9 +1,10 @@
 # EngiRent Hub — Full Repository Analysis
 
-**Date:** 2026-04-21  
+**Last Updated:** 2026-04-24  
 **Repository:** EngiRent (monorepo)  
 **Institution:** University of Cebu Lapu-Lapu and Mandaue (UCLM), College of Engineering  
 **Type:** Engineering Thesis Project  
+**Active Contributors:** Shem Joshua M. Dumpor, adriancabil19-create
 
 ---
 
@@ -26,8 +27,9 @@
 15. [Deployment — Render.com](#15-deployment--rendercom)
 16. [Item Categories](#16-item-categories)
 17. [Environment Variables](#17-environment-variables)
-18. [Strengths](#18-strengths)
-19. [Gaps & Incomplete Items](#19-gaps--incomplete-items)
+18. [Recent Changes (Post-2026-04-21)](#18-recent-changes-post-2026-04-21)
+19. [Strengths](#19-strengths)
+20. [Gaps & Incomplete Items](#20-gaps--incomplete-items)
 
 ---
 
@@ -80,15 +82,16 @@ EngiRent/ (monorepo)
 | Mobile App | Flutter (Dart) | SDK 3.9.2+ | iOS/Android student-facing app |
 | Admin Console | Next.js + TypeScript | 15.5 / React 19 | Operations dashboard |
 | Public Website | Next.js + TypeScript | 15.5 / React 18 | Marketing & documentation |
-| Backend API | Node.js + Express | 18.x LTS | REST API, business logic |
-| Database | MySQL | 8.0 | Relational data store |
+| Backend API | Node.js + Express | 20.x | REST API, business logic |
+| Database | MySQL | 8.0 (Aiven cloud) | Relational data store |
 | ORM | Prisma | 5.22 | Type-safe DB access |
 | Real-time | Socket.io | 4.8.1 | Notifications + kiosk commands |
-| ML Service | Python + FastAPI | 3.9+ / 0.115 | AI item verification |
+| ML Service | Python + FastAPI | 3.12 / 0.115 | AI item verification |
 | CV Libraries | OpenCV + scikit-image | 4.10 | Image processing |
-| Deep Learning | PyTorch + ResNet50 | 2.5 | Semantic embeddings |
+| Deep Learning | PyTorch + ResNet50 | 2.5 (CPU-only on Render) | Semantic embeddings |
 | OCR | Tesseract | — | Serial number extraction |
-| Hardware | Raspberry Pi 5 | — | Kiosk controller |
+| Hardware | Raspberry Pi 5 | Pi OS Trixie 64-bit | Kiosk controller |
+| GPIO Library | lgpio (direct) | — | GPIO control (replaces gpiozero) |
 | Storage | Supabase Storage | — | Image hosting (S3-compatible) |
 | Auth | JWT + Bcrypt | — | Token-based authentication |
 | Payment | PayMongo | — | Escrow payment processing |
@@ -113,11 +116,11 @@ EngiRent/ (monorepo)
 |---|---|
 | Helmet | Security headers (CSP, X-Frame-Options, HSTS) |
 | CORS | Restricted to configured client origins |
-| Rate Limiter | 100 req / 15 min per IP (in-memory) |
+| Rate Limiter | 100 req / 15 min per IP (in-memory, skips /admin routes) |
 | JWT Auth | `authenticate()` + `optionalAuth()` guards |
 | Multer | File upload (memory buffer, 10MB max, MIME validation) |
 | express-validator | Input validation before controllers |
-| Global Error Handler | Centralized error formatting |
+| Global Error Handler | Centralized error formatting + Prisma error translation |
 
 ### Controllers
 
@@ -131,9 +134,22 @@ EngiRent/ (monorepo)
 | `notificationController.ts` | 151 | Notification CRUD with read status tracking |
 | `adminController.ts` | 654 | User management, verification review, system analytics |
 
+### Socket.io Events (server/kiosk protocol)
+
+| Direction | Event | Description |
+|---|---|---|
+| ← Pi | `kiosk:register` | Pi announces online, receives stored config |
+| ← Pi | `kiosk:status` | Locker door state updates |
+| ← Pi | `kiosk:images` | Captured image URLs → triggers ML verification |
+| ← Pi | `kiosk:face` | Face verification result → advances rental state |
+| ← Pi | `kiosk:log` | Pi log lines forwarded to Render server logs |
+| ← Pi | `kiosk:ack` | Command execution result (ok / error) |
+| → Pi | `kiosk:command` | `{ action, locker_id, params }` |
+| → Pi | `kiosk:config` | Updated timing/hardware config from admin |
+
 ### Background Jobs
 
-When an item is created (`POST /items`), a background job immediately calls the ML service to pre-extract and cache visual features into `item.mlFeatures` (JSON). This prevents expensive ResNet50 inference at kiosk time — the verification call uses pre-cached `reference_features` instead.
+When an item is created (`POST /items`), `setImmediate` triggers the ML service to pre-extract and cache visual features into `item.mlFeatures` (JSON). This prevents expensive ResNet50 inference at kiosk deposit/return time.
 
 ---
 
@@ -184,63 +200,128 @@ When an item is created (`POST /items`), a background job immediately calls the 
 
 - Item creation → background ML call → extracted features cached in `item.mlFeatures` (JSON in DB)
 - At kiosk deposit/return → `reference_features` sent directly → skips expensive re-extraction
-- Reduces verification latency significantly for repeat interactions
+- Significantly reduces verification latency for repeat interactions
 
 ---
 
 ## 6. Raspberry Pi Kiosk Controller
 
 **Location:** `server/kiosk/`  
-**Language:** Python 3 (asyncio + gpiozero + socketio)  
-**Hardware:** Raspberry Pi 5 (4GB+) with 4 lockers
+**Language:** Python 3.13 (asyncio + lgpio + socketio)  
+**Hardware:** Raspberry Pi 5 (Pi OS Trixie 64-bit)
 
-### Hardware Components (per unit)
+### Hardware Components
 
 | Component | Count | Purpose |
 |---|---|---|
-| Raspberry Pi 5 | 1 | Main controller |
-| 5V 4-channel relay modules | 3 | 12 solenoid control channels |
-| 12V solenoid locks | 12 | 3 per locker (main_door, trapdoor, bottom_door) |
-| L298N dual H-bridge drivers | 2 | 4 linear actuator channels |
-| 12V linear actuators | 4 | Trapdoor push/pull mechanism |
-| Raspberry Pi Camera Module 3 | 2 | CSI0, CSI1 ports |
-| USB webcams | 3 | Lockers 3/4 capture + face camera |
-| HDMI touchscreen | 1 | 7–10" kiosk UI display |
+| Raspberry Pi 5 (4GB+) | 1 | Main controller |
+| SRD-05VDC-SL-C 4-ch relay board | 3 | 12 channels: 4 main doors + 4 bottom doors + 4 actuator channels (L1/L2) |
+| SRD-12VDC-SL-C 1-ch relay module | 4 | 4 actuator channels (L3/L4 extend + retract) |
+| 12V solenoid locks | 8 | 2 per locker (main_door + bottom_door) |
+| 12V linear actuators | 4 | Item placement mechanism (relay polarity reversal) |
+| USB webcams | 5 | 4 locker cameras (index 0–3) + 1 face recognition camera (index 4) |
+| HDMI touchscreen | 1 | 7–10" local kiosk UI display |
 
-### Locker Mechanical Design (3-door system)
+> **Note:** Trapdoor door removed from design. CSI cameras removed; all 5 cameras are now USB.
+
+### GPIO Pin Map (current — `config.py`)
+
+| Locker | Signal | BCM Pin | Physical Pin | Module |
+|---|---|---|---|---|
+| 1 | Main Door Solenoid | GPIO 2 | Pin 3 | 4-ch SRD-05V board #1 |
+| 2 | Main Door Solenoid | GPIO 3 | Pin 5 | 4-ch SRD-05V board #1 |
+| 3 | Main Door Solenoid | GPIO 4 | Pin 7 | 4-ch SRD-05V board #1 |
+| 4 | Main Door Solenoid | GPIO 5 | Pin 29 | 4-ch SRD-05V board #1 |
+| 1 | Bottom Door Solenoid | GPIO 6 | Pin 31 | 4-ch SRD-05V board #2 |
+| 2 | Bottom Door Solenoid | GPIO 7 | Pin 26 | 4-ch SRD-05V board #2 |
+| 3 | Bottom Door Solenoid | GPIO 8 | Pin 24 | 4-ch SRD-05V board #2 |
+| 4 | Bottom Door Solenoid | GPIO 9 | Pin 21 | 4-ch SRD-05V board #2 |
+| 1 | Actuator Extend | GPIO 10 | Pin 19 | 4-ch SRD-05V board #3 |
+| 1 | Actuator Retract | GPIO 11 | Pin 23 | 4-ch SRD-05V board #3 |
+| 2 | Actuator Extend | GPIO 12 | Pin 32 | 4-ch SRD-05V board #3 |
+| 2 | Actuator Retract | GPIO 13 | Pin 33 | 4-ch SRD-05V board #3 |
+| 3 | Actuator Extend | GPIO 14 | Pin 8 | 1-ch SRD-12V module |
+| 3 | Actuator Retract | GPIO 15 | Pin 22 | 1-ch SRD-12V module |
+| 4 | Actuator Extend | GPIO 16 | Pin 36 | 1-ch SRD-12V module |
+| 4 | Actuator Retract | GPIO 17 | Pin 11 | 1-ch SRD-12V module |
+
+> All relay channels are **active-LOW** by default (energised = GPIO LOW = solenoid unlocked / actuator driven).  
+> Set `RELAY_ACTIVE_LEVEL=active_high` in `.env` to invert.
+
+### Locker Mechanical Design (2-door system)
 
 | Door | Name | Purpose |
 |---|---|---|
 | Top | `main_door` | Owner inserts item / renter retrieves item |
-| Middle | `trapdoor` | Internal drop mechanism (penalty/automated drop) |
-| Bottom | `bottom_door` | Renter retrieval access (alternate path) |
+| Bottom | `bottom_door` | Alternative renter retrieval access |
+
+### Actuator Control Logic
+
+Polarity reversal via two relay channels per actuator:
+
+| State | Extend Relay | Retract Relay | Effect |
+|---|---|---|---|
+| EXTEND | ON | OFF | Platform pushes item into locker |
+| RETRACT | OFF | ON | Platform returns to home position |
+| STOP | OFF | OFF | No movement, relays de-energised |
+
+### GPIO Driver Change
+
+Both `gpio_controller.py` and `actuator_controller.py` now use **lgpio directly** (no gpiozero wrapper):
+- `lgpio.gpiochip_open(GPIO_CHIP)` — claim chip handle at init
+- `lgpio.gpio_claim_output(handle, pin, initial)` — claim pin as output
+- `lgpio.gpio_write(handle, pin, value)` — write pin state
+- `lgpio.gpio_free(handle, pin)` — release pin on cleanup
+- GPIO chip auto-detected by scanning `pinctrl-rp1` label (Pi 5 kernel-agnostic)
+
+### GPIO Chip Auto-Detection
+
+`config.py` scans up to 16 gpiochip devices looking for the one with label `pinctrl-rp1` (Pi 5 RP1 header chip). Fallback to first openable chip. Handles both pre- and post-kernel-6.6.45 Pi 5 kernels.
+
+### Camera Assignment
+
+| Index | Camera | Used For |
+|---|---|---|
+| 0 | USB cam → Locker 1 | Item capture, locker 1 |
+| 1 | USB cam → Locker 2 | Item capture, locker 2 |
+| 2 | USB cam → Locker 3 | Item capture, locker 3 |
+| 3 | USB cam → Locker 4 | Item capture, locker 4 |
+| 4 | USB cam → Face | Identity verification |
+
+USB cameras captured via GStreamer pipeline (apt OpenCV 4.10 on Trixie — V4L2 broken, GStreamer working):
+```
+v4l2src device=/dev/videoX ! video/x-raw,framerate=15/1 ! videoscale !
+video/x-raw,width=W,height=H ! videoconvert ! video/x-raw,format=BGR !
+appsink max-buffers=1 drop=true sync=false
+```
 
 ### Startup Sequence
 
-1. Load `.env`, initialize logging
-2. Check WiFi → if not connected, start AP `"EngiRent-Kiosk-Setup"` (captive portal)
-3. Initialize hardware (relays, actuators, cameras)
-4. Start Flask UI server on port 8080 → launch Chromium in kiosk mode
-5. Connect Socket.io client to backend → emit `kiosk:register` → wait for commands
+1. Load `.env`, initialize logging (terminal + `/var/log/engirent-kiosk.log`)
+2. Check WiFi → if not connected, start AP `"EngiRent-Kiosk-Setup"` (captive portal, blocks until reboot)
+3. Initialize hardware (SolenoidController, ActuatorController, CameraManager)
+4. Start Flask UI server on port 8080 → Chromium launches in kiosk mode on HDMI
+5. Connect Socket.io client to `SERVER_URL` → emit `kiosk:register` → wait for commands
 
-### Socket.io Protocol
+### Socket.io Protocol (Pi side)
 
 **Emits TO backend:**
 
 | Event | Payload |
 |---|---|
-| `kiosk:register` | `{ kiosk_id }` |
-| `kiosk:status` | Hardware status object |
-| `kiosk:images` | Captured image URLs (Supabase) |
-| `kiosk:face` | Face verification result |
-| `kiosk:error` | Error details |
+| `kiosk:register` | `{ kiosk_id, locker_count: 4, version }` |
+| `kiosk:status` | `{ kiosk_id, ui_state, config }` |
+| `kiosk:images` | `{ kiosk_id, locker_id, image_urls, rental_id }` |
+| `kiosk:face` | `{ kiosk_id, rental_id, user_id, detected, verified, confidence }` |
+| `kiosk:ack` | `{ kiosk_id, command_id, action, status: "ok"/"error" }` |
+| `kiosk:log` | `{ kiosk_id, level, module, message, ts }` |
 
 **Receives FROM backend:**
 
 | Event | Payload |
 |---|---|
-| `kiosk:command` | `{ action, locker_id, params }` |
-| `kiosk:config` | Updated timing/hardware config |
+| `kiosk:command` | `{ action, locker_id, door, rental_id, ... }` |
+| `kiosk:config` | Updated timing + solenoid pin configuration JSON |
 
 **Supported Actions:**
 
@@ -248,7 +329,7 @@ When an item is created (`POST /items`), a background job immediately calls the 
 
 ### Development Mode
 
-Set `MOCK_GPIO=true MOCK_CAMERA=true` to run full kiosk simulation without physical hardware. All GPIO calls and camera operations are mocked.
+`MOCK_GPIO=true MOCK_CAMERA=true` — runs full kiosk simulation without physical hardware.
 
 ---
 
@@ -270,10 +351,25 @@ Set `MOCK_GPIO=true MOCK_CAMERA=true` to run full kiosk simulation without physi
 | `/rentals` | Rental list, filter by status |
 | `/verifications` | AI verification queue, confidence scores, approve/reject modal |
 | `/reports` | Analytics — revenue, rental counts, category breakdown |
+| `/kiosk` | Per-locker door status, manual door commands, actuator extend/retract, timing config |
+
+### Kiosk Page (updated)
+
+The `/kiosk` page now reflects the 2-door design (trapdoor fully removed):
+
+- **Door status chips:** `Main ●` and `Bot ●` per locker (no Trap chip)
+- **Manual controls:** `Open Main`, `Open Bottom`, `Extend`, `Retract` buttons
+- **Timing inputs per locker:**
+  - Main Door Open (seconds)
+  - Bottom Door Open (seconds)
+  - Actuator Extend (seconds)
+  - Actuator Retract (seconds)
+- **Global commands:** `Lock All Doors`, `Test Face Capture`
+- **Real-time status:** SSE stream from `/admin/kiosks/events` updates locker states live
 
 ### Demo Mode
 
-Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All mutations are mocked locally — no backend required. Used for presentations and development.
+`NEXT_PUBLIC_DEMO_MODE=true` — in-memory state with sample data, all mutations mocked locally. Default in non-production environments.
 
 ### Key Components
 
@@ -298,11 +394,6 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 | `/docs` | 4 technical sections (Owner Flow, Renter Flow, Verification, Security) |
 | `/pricing` | 3 tiers (Student Basic, Kiosk Transaction, Admin Operations) |
 | `/blog` | 3 project posts |
-
-### Components
-
-- `Navbar` — Logo, nav items, theme switcher (light/dark)
-- `Primitives` — Styled heading/subtitle components for consistent typography
 
 ---
 
@@ -350,18 +441,11 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 | Date/Time | intl, timeago |
 | Utilities | url_launcher, permission_handler, connectivity_plus |
 
-### Features (Implemented)
-
-- Auth — register, login, profile, logout via REST API
-- Home — 4-tab dashboard (home, rentals, notifications, profile)
-- Items — Browse marketplace, search, create listing (URL-based images)
-- Basic kiosk scan screen (static UI)
-
 ---
 
 ## 10. Database Schema
 
-**ORM:** Prisma 5.22 | **Database:** MySQL 8.0  
+**ORM:** Prisma 5.22 | **Database:** MySQL 8.0 (Aiven Cloud)  
 **Schema:** `server/node_server/prisma/schema.prisma`
 
 ### Models
@@ -573,8 +657,10 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 | PATCH | `/admin/users/:id/status` | Admin JWT | Activate/deactivate user |
 | GET | `/admin/verifications` | Admin JWT | Verification queue with scores |
 | PATCH | `/admin/verifications/:id/review` | Admin JWT | Manually approve/reject verification |
-| GET | `/admin/kiosk-config/:kioskId` | Admin JWT | Get kiosk timing config |
-| PUT | `/admin/kiosk-config/:kioskId` | Admin JWT | Update kiosk config |
+| GET | `/admin/kiosks` | Admin JWT | List kiosks with status |
+| GET | `/admin/kiosks/:id/config` | Admin JWT | Get kiosk timing config |
+| PUT | `/admin/kiosks/:id/config` | Admin JWT | Update kiosk config (pushed to Pi via Socket.io) |
+| GET | `/admin/kiosks/events` | Admin JWT | SSE stream for real-time kiosk status |
 | GET | `/admin/dashboard` | Admin JWT | Analytics metrics (users, items, rentals, revenue) |
 
 ### Health
@@ -597,13 +683,8 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 ### Token Rotation
 
 - `POST /auth/refresh` generates a new access token
-- Refresh token stored in DB enables server-side invalidation (logout blacklists it)
-- Even if a refresh token is intercepted, `POST /auth/logout` prevents reuse
-
-### Password Security
-
-- Bcrypt hashing via `bcryptjs` (configurable salt rounds)
-- Password change requires verification of current password before accepting new one
+- Refresh token stored in DB enables server-side invalidation
+- `POST /auth/logout` blacklists the refresh token
 
 ### Admin Authorization
 
@@ -612,8 +693,9 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 
 ### Rate Limiting
 
-- 100 requests per 15-minute window per IP address
-- In-memory rate limiter (resets on server restart)
+- 100 requests per 15-minute window per IP
+- Skips `/admin` routes
+- In-memory (resets on restart)
 
 ---
 
@@ -629,47 +711,47 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 
 1. Renter books item → `POST /rentals` → status: `PENDING`
 2. Owner receives `BOOKING_CONFIRMED` notification
-3. Renter pays via PayMongo → `POST /payments` → `POST /payments/confirm` (webhook)
+3. Renter pays via PayMongo → `POST /payments` → webhook confirms → `POST /payments/confirm`
 4. Status advances to `AWAITING_DEPOSIT`
 
 ### 3. Owner Deposits Item at Kiosk
 
-1. Backend sends Socket.io `kiosk:command { action: "open_door", locker_id: X, door: "main_door" }`
-2. Pi energizes solenoid relay → door unlocks
-3. Owner places item inside locker, door closes
-4. Backend sends `kiosk:command { action: "capture_image", locker_id: X }`
+1. Server sends `kiosk:command { action: "open_door", locker_id: X, door: "main_door" }`
+2. Pi energizes solenoid relay → door unlocks for `main_door_open_seconds`
+3. Owner places item inside, door auto-locks
+4. Server sends `kiosk:command { action: "capture_image", locker_id: X }`
 5. Pi captures frames → uploads to Supabase → emits `kiosk:images` with URLs
-6. Backend calls ML service: original listing images vs kiosk captures
+6. Server calls ML service: original listing images vs kiosk captures
    - **APPROVED (≥85%):** Status → `DEPOSITED`, locker locked
-   - **PENDING (60–84%):** Status → `DEPOSITED` + `MANUAL_REVIEW` flag for admin
+   - **PENDING (60–84%):** Status → `DEPOSITED` + `MANUAL_REVIEW` flag
    - **RETRY (<60%, attempt<10):** Locker reopens, owner repositions item
    - **REJECTED (10th attempt):** Rental → `CANCELLED`, renter refunded
 
 ### 4. Renter Claims Item
 
-1. Backend sends `kiosk:command { action: "capture_face", rental_id: X, user_id: Y }`
+1. Server sends `kiosk:command { action: "capture_face", rental_id, user_id }`
 2. Pi captures face → OpenCV Haar cascade detects → ML service verifies identity
-3. If verified: Backend sends `kiosk:command { action: "open_door", door: "main_door" }`
-4. Renter takes item, door closes
+3. If verified: `kiosk:command { action: "open_door", door: "main_door" }`
+4. Renter takes item, door auto-locks
 5. Status → `ACTIVE`, owner notified
 
 ### 5. Renter Returns Item
 
-1. Renter goes to kiosk, places item back
-2. Backend sends `open_door` + `capture_image` + `capture_face` commands sequentially
-3. Pi executes each → emits `kiosk:images` + `kiosk:face` results
-4. Backend calls ML service: original listing images vs returned item images
+1. Renter goes to kiosk, places item back via `main_door`
+2. Server sends `open_door` + `capture_image` + `capture_face` sequentially
+3. Pi executes → emits `kiosk:images` + `kiosk:face`
+4. ML service compares: original listing images vs returned item images
    - **APPROVED:** Status → `COMPLETED`, security deposit refunded, payment released to owner
    - **PENDING:** Flagged for admin manual review
-   - **REJECTED:** Status → `DISPUTED`, admin investigates damage/fraud
+   - **REJECTED:** Status → `DISPUTED`, admin investigates
 
 ### 6. Admin Review Flow
 
-1. Admin opens `/verifications` page in admin console
-2. Views verification with confidence score breakdown (traditional, SIFT, deep learning, OCR)
-3. Reviews original listing images vs kiosk images side-by-side
+1. Admin opens `/verifications` page
+2. Views confidence score breakdown (traditional, SIFT, deep learning, OCR)
+3. Reviews original vs kiosk images side-by-side
 4. Manually approves or rejects → `PATCH /admin/verifications/:id/review`
-5. System notifies both parties of admin decision
+5. System notifies both parties
 
 ---
 
@@ -701,7 +783,7 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 | Control | Implementation |
 |---|---|
 | Transport | TLS/SSL for all communications (Render.com terminates SSL) |
-| Images | Supabase Storage (encrypted at rest, signed URLs) |
+| Images | Supabase Storage (encrypted at rest) |
 | Tokens | JWT signed with secrets (min 32 chars), stored encrypted in Flutter |
 | Passwords | Bcrypt hash, never logged or exposed |
 
@@ -714,12 +796,12 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 
 ### 4 Production Services
 
-| Service | Type | Plan | Location |
-|---|---|---|---|
-| `engirent-api` | Node.js Web | Free | `server/node_server/` |
-| `engirent-admin` | Next.js Web | Free | `client/admin/` |
-| `engirent-web` | Next.js Web | Free | `client/web/` |
-| `engirent-ml` | Docker | Starter | `server/python_server/services/ml/` |
+| Service | Type | Location |
+|---|---|---|
+| `engirent-api` | Node.js Web | `server/node_server/` |
+| `engirent-admin` | Next.js Web | `client/admin/` |
+| `engirent-web` | Next.js Web | `client/web/` |
+| `engirent-ml` | Docker | `server/python_server/services/ml/` |
 
 ### Production URLs
 
@@ -732,39 +814,37 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` to enable in-memory state with sample data. All
 
 ### engirent-api (Node.js)
 
+- **Node version:** 20 Alpine
 - **Build:** `npm install --production=false && npm run build`
 - **Start:** `npm start`
 - **Pre-deploy hook:** `npx prisma db push`
 - **Health check:** `GET /api/v1/health`
-- **Required secrets:** `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- **Prisma:** `binaryTargets = ["native", "linux-musl-openssl-3.0.x"]`
+- **Alpine fix:** `apk add openssl` in both builder and production stages
 
 ### engirent-ml (Docker)
 
-- **Dockerfile:** `server/python_server/services/ml/Dockerfile`
-- **Base:** Python 3.9+
-- **Framework:** FastAPI + uvicorn
-- **Health check:** `GET /`
+- **Base:** Python 3.12-slim
+- **PyTorch:** CPU-only wheels from `download.pytorch.org/whl/cpu` (keeps image <200MB)
+- **System libs:** `libglib2.0-0, libgl1, tesseract-ocr`
+- **EXPOSE:** 8001
 
 ### Docker Compose (Local Development)
 
 **File:** `server/node_server/docker-compose.yml`
 
-| Service | Image | Port | Purpose |
-|---|---|---|---|
-| `engirent-mysql` | MySQL 8.0 | 3306 | Local database |
-| `engirent-api` | Node 20 multi-stage | 5000 | Local API |
+| Service | Image | Port |
+|---|---|---|
+| `engirent-mysql` | MySQL 8.0 | 3306 |
+| `engirent-api` | Node 20 multi-stage | 5000 |
 
-### Node.js Dockerfile (Multi-stage)
+### Kiosk Deployment (Raspberry Pi 5)
 
-- **Stage 1:** Install deps, Prisma generate, TypeScript compile
-- **Stage 2:** Production deps only + compiled JS
-- **Health check:** `GET /api/v1/health`
-
-### Kiosk Deployment
-
-- Raspberry Pi 5 connects to production API via `SERVER_URL=https://engirent-api.onrender.com`
-- Images uploaded directly to Supabase Storage (bypasses API)
+- Connects to production API via `SERVER_URL=https://engirent-api.onrender.com`
+- Images uploaded directly to Supabase Storage (bypasses API server)
 - Socket.io persistent WebSocket connection to backend
+- Auto-start via systemd service (`engirent-kiosk.service`)
+- WiFi provisioning AP on first boot if no network configured
 
 ---
 
@@ -791,7 +871,7 @@ Based on UCLM engineering student survey (31 respondents, 2025):
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | Yes | — | MySQL connection string |
+| `DATABASE_URL` | Yes | — | Aiven MySQL connection string (no surrounding quotes!) |
 | `JWT_SECRET` | Yes | — | Access token signing key (min 32 chars) |
 | `JWT_REFRESH_SECRET` | Yes | — | Refresh token signing key (min 32 chars) |
 | `SUPABASE_URL` | Yes | — | Supabase project URL |
@@ -799,39 +879,85 @@ Based on UCLM engineering student survey (31 respondents, 2025):
 | `ML_SERVICE_URL` | No | `http://localhost:8001` | ML service endpoint |
 | `CLIENT_WEB_URL` | No | — | CORS allowed origin (web) |
 | `CLIENT_MOBILE_URL` | No | — | CORS allowed origin (mobile) |
-| `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate limit window (15 min) |
-| `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Max requests per window |
-
-### ML Service (`server/python_server/services/ml/.env`)
-
-| Variable | Description |
-|---|---|
-| `MODEL_PATH` | Path to ML model file |
-| `CONFIDENCE_THRESHOLD` | Minimum verification confidence (default: 0.85) |
-| `MAX_RETRY_ATTEMPTS` | Max kiosk verification attempts (default: 10) |
+| `PAYMONGO_SECRET_KEY` | Yes | — | PayMongo payments |
+| `PAYMONGO_WEBHOOK_SECRET` | Yes | — | PayMongo webhook validation |
 
 ### Kiosk (`server/kiosk/.env`)
 
 | Variable | Description |
 |---|---|
-| `KIOSK_ID` | Unique identifier for this kiosk unit |
-| `SERVER_URL` | Backend API URL |
+| `KIOSK_ID` | Unique identifier (default: `kiosk-1`) |
+| `SERVER_URL` | Backend URL (`https://engirent-api.onrender.com`) |
 | `SUPABASE_URL` | For direct image uploads |
 | `SUPABASE_SERVICE_ROLE_KEY` | Image upload authentication |
 | `MOCK_GPIO` | `true` to disable real GPIO (development) |
 | `MOCK_CAMERA` | `true` to disable real cameras (development) |
-| GPIO pin assignments | Per solenoid, actuator, and camera channel |
+| `RELAY_ACTIVE_LEVEL` | `active_low` (default) or `active_high` |
 
 ---
 
-## 18. Strengths
+## 18. Recent Changes (Post-2026-04-21)
+
+### Commits since last analysis (most recent first)
+
+| Date | Author | Commit | Files Changed |
+|---|---|---|---|
+| 2026-04-23 | adriancabil19 | `b0ead51` — 123set | `config.py`, `setup.sh` |
+| 2026-04-23 | adriancabil19 | `849cf2c` — 2er21 | `config.py` |
+| 2026-04-23 | adriancabil19 | `72d9be1` — 2 | `setup.sh` |
+| 2026-04-23 | adriancabil19 | `5ae7ab1` — fix new | `SETUP.md`, `actuator_controller.py`, `gpio_controller.py`, `setup.sh` |
+| 2026-04-23 | adriancabil19 | `2f9c99f` — new set | `setup.sh` |
+| 2026-04-23 | adriancabil19 | `8de9010` — 34567 | `setup.sh` |
+| 2026-04-22 | adriancabil19 | `862e53f` — jing | `node_server/tsconfig.json` |
+| 2026-04-22 | adriancabil19 | `124662a` — set | `SETUP.md`, `setup.sh` |
+
+### Summary of what changed
+
+**`server/kiosk/config.py`** — GPIO pin map completely rewritten:
+- Removed all previous pins (GPIO 17, 22, 24, 5 etc.)
+- New compact sequential layout: main doors GPIO 2–5, bottom doors GPIO 6–9, actuators GPIO 10–17
+- All cameras changed to USB type (no more CSI)
+- GPIO chip detection logic improved: now scans by `pinctrl-rp1` label across all 16 chip numbers
+
+**`server/kiosk/hardware/gpio_controller.py`** — Library changed from gpiozero to **lgpio direct**:
+- Removed gpiozero `OutputDevice` dependency
+- New `_LgpioOutput` class wraps `lgpio.gpio_claim_output` / `lgpio.gpio_write` / `lgpio.gpio_free`
+- Single `lgpio` handle shared across all solenoid pins (opened at `__init__`, closed at `cleanup`)
+- `reinitialize()` method removed (simplified design)
+
+**`server/kiosk/hardware/actuator_controller.py`** — Same lgpio migration:
+- Removed gpiozero `OutputDevice` dependency
+- New `_LgpioRelay` class wraps lgpio calls
+- Single shared `lgpio` handle
+- Core polarity-reversal logic preserved (extend/retract/stop)
+
+**`server/kiosk/SETUP.md`** — Expanded significantly (668 → ~1000+ lines):
+- Updated wiring diagrams for new GPIO pins
+- Added setup instructions for new relay hardware (SRD-05VDC-SL-C 4-ch boards + SRD-12VDC-SL-C 1-ch modules)
+
+**`server/kiosk/setup.sh`** — Major expansion (automated Pi setup script):
+- Now handles: package installation, venv creation, .env scaffold, systemd service, boot config fixes
+- Includes `camera_auto_detect=0` fix (prevents GPIO 4 conflict)
+- Chromium kiosk mode launch configuration
+
+**`server/node_server/tsconfig.json`** — Minor fix (removed strict/redundant options)
+
+**`client/admin/src/app/kiosk/page.tsx`** (Shem — this session):
+- Removed trapdoor door: interface, DEMO_STATE, door chips, manual buttons, timing inputs
+- Updated `LockerTiming` interface: removed `trapdoor_unlock_seconds`, `actuator_push_seconds`, `actuator_pull_seconds`, `actuator_speed_percent`; added `actuator_extend_seconds`, `actuator_retract_seconds`
+- Door arrays changed from `["main", "trapdoor", "bottom"]` to `["main", "bottom"]`
+- Timing grid changed from 6 inputs to 4 inputs per locker
+
+---
+
+## 19. Strengths
 
 | Area | Detail |
 |---|---|
-| Complete hardware layer | Raspberry Pi 5 kiosk fully implemented — GPIO, actuators, cameras, face recognition, WiFi provisioning |
+| Complete hardware layer | Pi 5 kiosk fully implemented — lgpio GPIO, relay actuators, USB cameras, face recognition, WiFi provisioning |
 | Clean architecture | Feature-based folder structure, controllers/middleware/services separation |
 | End-to-end lifecycle | Full flow from listing → payment → kiosk → ML verification → completion |
-| Hybrid ML pipeline | 8 complementary methods for robust fraud detection, not a single-point-of-failure |
+| Hybrid ML pipeline | 8 complementary methods for robust fraud detection |
 | Feature caching | Pre-extracted ML features reduce verification latency at kiosk time |
 | Attempt tracking | Persistent retry counters survive server restarts (stored in DB) |
 | Supabase Storage | Image hosting fully wired with upload endpoints live |
@@ -845,7 +971,7 @@ Based on UCLM engineering student survey (31 respondents, 2025):
 
 ---
 
-## 19. Gaps & Incomplete Items
+## 20. Gaps & Incomplete Items
 
 ### Flutter Mobile App
 
@@ -863,21 +989,22 @@ Based on UCLM engineering student survey (31 respondents, 2025):
 
 | Gap | Detail |
 |---|---|
-| Face verification endpoint missing | `face_service.py` on the Pi calls `/api/v1/verify-face` which doesn't exist in FastAPI — only `/verify` and `/extract-features` are defined |
-| GCash not integrated | Old documentation references GCash; actual integration is PayMongo only |
-| Admin kiosk config UI missing | Endpoint documented (`PUT /admin/kiosk-config/:kioskId`) but no admin frontend page for it |
-| Node kiosk REST routes partially wired | `kioskRoutes.ts` exists but actual hardware communication uses Socket.io now |
+| Face verify endpoint mismatch | `face_service.py` on Pi calls ML `/api/v1/verify-face` — only `/verify` and `/extract-features` defined in FastAPI |
+| Admin reports use sample data | `/reports` page has hardcoded data; no real API aggregation endpoint |
+| In-memory rate limiter | Resets on restart, doesn't work across multiple instances |
 
-### Testing
+### Kiosk
 
 | Gap | Detail |
 |---|---|
-| No test suite | Zero unit, widget, or integration tests found across any service |
-| Admin reports use sample data | `/reports` page has hardcoded data; no real API aggregation endpoint |
+| `kiosk_config.json` stale | Still has `actuator_speed_percent` from old design — not used by new lgpio actuator controller |
+| GPIO 2 / GPIO 3 I2C conflict | BCM 2 = SDA, BCM 3 = SCL — these are I2C pins and may conflict if any I2C device is on the bus |
+| Relay module driver circuit | SRD-12VDC-SL-C has 12V coil; needs on-board transistor driver to be triggered safely from 3.3V Pi GPIO |
 
 ### Deployment
 
 | Gap | Detail |
 |---|---|
 | Free tier cold starts | Render free tier services sleep after 15 min inactivity — first request after idle takes 30–60s |
-| In-memory rate limiter | Rate limiting resets on process restart and doesn't work across multiple instances |
+| Database not seeded on Render | `prisma/seed.ts` has admin credentials and locker records but seed has not been run against Aiven MySQL in production |
+| Pi `.env` SERVER_URL default | Defaults to `http://localhost:5000` — must be updated to `https://engirent-api.onrender.com` on the Pi |

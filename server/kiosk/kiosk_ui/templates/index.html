@@ -1,97 +1,331 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EngiRent Hub – Kiosk</title>
-    <link rel="stylesheet" href="/static/style.css" />
-  </head>
-  <body>
-    <!-- Header -->
-    <header class="header">
-      <div class="brand">
-        <span class="brand-icon">ER</span>
-        <div>
-          <p class="brand-sub">Smart Kiosk</p>
-          <h1 class="brand-name">EngiRent Hub</h1>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>EngiRent Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: IDLE — Promotional collage
+     Touch anywhere → MAIN
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-idle" class="screen screen-idle active" role="button" aria-label="Touch to start">
+
+  <!-- Slide 0: Brand -->
+  <div class="slide slide-active">
+    <div class="slide-bg slide-bg-brand"></div>
+    <div class="slide-content">
+      <div class="slide-icon brand-logo-icon">ER</div>
+      <h1 class="slide-title">EngiRent Hub</h1>
+      <p class="slide-subtitle">Smart Equipment Rental System</p>
+      <p class="slide-caption">University of Cebu Lapu-Lapu and Mandaue</p>
+      <div class="slide-divider"></div>
+      <p class="slide-tagline">Engineering Thesis 2026</p>
+    </div>
+  </div>
+
+  <!-- Slide 1: Place an Item -->
+  <div class="slide">
+    <div class="slide-bg slide-bg-place"></div>
+    <div class="slide-content">
+      <div class="slide-icon place-icon"><span>📦</span></div>
+      <h1 class="slide-title">Place an Item</h1>
+      <p class="slide-subtitle">Deposit your equipment<br>securely for rental</p>
+      <div class="slide-steps">
+        <div class="slide-step"><span class="step-num">1</span> Scan your rental QR code</div>
+        <div class="slide-step"><span class="step-num">2</span> Verify your identity</div>
+        <div class="slide-step"><span class="step-num">3</span> Item placed automatically</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 2: Retrieve an Item -->
+  <div class="slide">
+    <div class="slide-bg slide-bg-retrieve"></div>
+    <div class="slide-content">
+      <div class="slide-icon retrieve-icon"><span>🎒</span></div>
+      <h1 class="slide-title">Retrieve an Item</h1>
+      <p class="slide-subtitle">Collect or return rented<br>equipment quickly & safely</p>
+      <div class="slide-steps">
+        <div class="slide-step"><span class="step-num">1</span> Scan your rental QR code</div>
+        <div class="slide-step"><span class="step-num">2</span> Face recognition check</div>
+        <div class="slide-step"><span class="step-num">3</span> Locker opens automatically</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 3: AI Security -->
+  <div class="slide">
+    <div class="slide-bg slide-bg-secure"></div>
+    <div class="slide-content">
+      <div class="slide-icon secure-icon"><span>🔐</span></div>
+      <h1 class="slide-title">AI-Verified Security</h1>
+      <p class="slide-subtitle">Every transaction protected<br>by machine learning</p>
+      <div class="slide-badges">
+        <div class="slide-badge">✓ Face ID</div>
+        <div class="slide-badge">✓ QR Verified</div>
+        <div class="slide-badge">✓ ML Matched</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide navigation dots -->
+  <div class="slide-dots" id="slide-dots">
+    <div class="dot dot-active"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+
+  <!-- Touch prompt -->
+  <div class="idle-cta">
+    <div class="idle-cta-ring"></div>
+    <p class="idle-cta-text">Touch anywhere to start</p>
+  </div>
+
+</div><!-- /screen-idle -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: MAIN — Two action buttons
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-main" class="screen screen-main" aria-hidden="true">
+
+  <header class="top-bar">
+    <div class="top-brand">
+      <div class="top-logo">ER</div>
+      <div class="top-text">
+        <span class="top-sub">Smart Kiosk</span>
+        <span class="top-name">EngiRent Hub</span>
+      </div>
+    </div>
+    <div id="conn-badge" class="conn-badge badge-offline">Offline</div>
+  </header>
+
+  <main class="main-body">
+    <div class="main-greeting">
+      <h2 class="greeting-title">How can we help you?</h2>
+      <p class="greeting-sub">Select an option to get started</p>
+    </div>
+
+    <div class="action-btns">
+      <button id="btn-place" class="action-btn btn-place" aria-label="Place an Item">
+        <div class="action-icon-wrap">
+          <span class="action-emoji">📦</span>
+        </div>
+        <div class="action-text">
+          <span class="action-title">Place an Item</span>
+          <span class="action-desc">Deposit equipment for rental</span>
+        </div>
+        <span class="action-arrow">›</span>
+      </button>
+
+      <button id="btn-retrieve" class="action-btn btn-retrieve" aria-label="Retrieve an Item">
+        <div class="action-icon-wrap">
+          <span class="action-emoji">🎒</span>
+        </div>
+        <div class="action-text">
+          <span class="action-title">Retrieve an Item</span>
+          <span class="action-desc">Collect or return equipment</span>
+        </div>
+        <span class="action-arrow">›</span>
+      </button>
+    </div>
+
+    <!-- Locker status mini-row -->
+    <div class="locker-row">
+      <span class="locker-row-label">Lockers</span>
+      <div class="locker-pills">
+        <div class="locker-pill" id="lp-1"><span>01</span></div>
+        <div class="locker-pill" id="lp-2"><span>02</span></div>
+        <div class="locker-pill" id="lp-3"><span>03</span></div>
+        <div class="locker-pill" id="lp-4"><span>04</span></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="bot-bar">
+    <span class="bot-school">UC Lapu-Lapu and Mandaue · Engineering Thesis 2026</span>
+    <span id="clock" class="bot-clock"></span>
+  </footer>
+
+</div><!-- /screen-main -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: QR SCAN
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-qr" class="screen screen-qr" aria-hidden="true">
+
+  <header class="flow-bar">
+    <button class="flow-back" id="qr-back" aria-label="Back">‹</button>
+    <h2 class="flow-title" id="qr-title">Scan QR Code</h2>
+    <span class="flow-step">Step 1 of 3</span>
+  </header>
+
+  <div class="cam-wrap">
+    <img id="qr-cam" class="cam-feed" src="" alt="Camera" />
+    <div class="qr-overlay">
+      <div class="qr-region">
+        <div class="qr-c qr-tl"></div>
+        <div class="qr-c qr-tr"></div>
+        <div class="qr-c qr-bl"></div>
+        <div class="qr-c qr-br"></div>
+        <div class="qr-scanline"></div>
+      </div>
+      <p class="qr-hint">Hold your QR code in frame</p>
+    </div>
+  </div>
+
+  <div class="flow-foot">
+    <div id="qr-status" class="scan-status">
+      <span class="spin-ring"></span>
+      <span id="qr-status-text">Looking for QR code…</span>
+    </div>
+    <p class="flow-foot-hint">Open the EngiRent app → My Rentals → show QR code</p>
+  </div>
+
+</div><!-- /screen-qr -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: CONFIRM
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-confirm" class="screen screen-confirm" aria-hidden="true">
+
+  <header class="flow-bar">
+    <button class="flow-back" id="confirm-back" aria-label="Back">‹</button>
+    <h2 class="flow-title">Confirm Details</h2>
+    <span class="flow-step">Step 2 of 3</span>
+  </header>
+
+  <div class="confirm-scroll">
+    <div class="rental-card">
+      <div id="rental-status-badge" class="rental-badge">AWAITING DEPOSIT</div>
+      <p class="rental-item-name" id="confirm-item">Item Name</p>
+      <div class="rental-grid">
+        <div class="rental-field">
+          <span class="field-label">Locker</span>
+          <span class="field-val" id="confirm-locker">—</span>
+        </div>
+        <div class="rental-field">
+          <span class="field-label">Owner</span>
+          <span class="field-val" id="confirm-owner">—</span>
+        </div>
+        <div class="rental-field">
+          <span class="field-label">Action</span>
+          <span class="field-val" id="confirm-action">—</span>
+        </div>
+        <div class="rental-field">
+          <span class="field-label">Rental ID</span>
+          <span class="field-val mono" id="confirm-rid">—</span>
         </div>
       </div>
-      <div id="connection-badge" class="badge badge-offline">Offline</div>
-    </header>
+    </div>
 
-    <!-- Main panel -->
-    <main class="main">
-      <!-- Status card -->
-      <div id="status-card" class="status-card status-idle">
-        <div id="status-icon" class="status-icon">⬤</div>
-        <p id="status-message" class="status-message">Initialising…</p>
+    <div class="confirm-notice">
+      <span class="notice-icon">ℹ</span>
+      <span id="confirm-notice">Identity verification is required before access is granted.</span>
+    </div>
+  </div>
+
+  <div class="confirm-foot">
+    <button id="btn-proceed" class="cfm-btn btn-proceed">
+      Proceed to Verification →
+    </button>
+    <button id="btn-cancel" class="cfm-btn btn-cancel">Cancel</button>
+  </div>
+
+</div><!-- /screen-confirm -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: FACE SCAN
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-face" class="screen screen-face" aria-hidden="true">
+
+  <header class="flow-bar">
+    <div class="flow-back flow-back-off">‹</div>
+    <h2 class="flow-title">Identity Verification</h2>
+    <span class="flow-step">Step 3 of 3</span>
+  </header>
+
+  <div class="cam-wrap">
+    <img id="face-cam" class="cam-feed" src="" alt="Face Camera" />
+    <div class="face-overlay">
+      <div class="face-ring">
+        <div class="face-ring-pulse"></div>
+        <div class="face-ring-dot"></div>
       </div>
-
-      <!-- Locker grid -->
-      <section class="lockers-grid">
-        <div class="lockers-title">Locker Status</div>
-        <div class="lockers-row">
-          <div class="locker-card" id="locker-1">
-            <div class="locker-number">01</div>
-            <div class="locker-doors">
-              <span class="door-pill" id="l1-main">Main ●</span>
-              <span class="door-pill" id="l1-bot">Bot ●</span>
-            </div>
-          </div>
-          <div class="locker-card" id="locker-2">
-            <div class="locker-number">02</div>
-            <div class="locker-doors">
-              <span class="door-pill" id="l2-main">Main ●</span>
-              <span class="door-pill" id="l2-bot">Bot ●</span>
-            </div>
-          </div>
-          <div class="locker-card" id="locker-3">
-            <div class="locker-number">03</div>
-            <div class="locker-doors">
-              <span class="door-pill" id="l3-main">Main ●</span>
-              <span class="door-pill" id="l3-bot">Bot ●</span>
-            </div>
-          </div>
-          <div class="locker-card" id="locker-4">
-            <div class="locker-number">04</div>
-            <div class="locker-doors">
-              <span class="door-pill" id="l4-main">Main ●</span>
-              <span class="door-pill" id="l4-bot">Bot ●</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Face scan overlay -->
-      <div id="face-overlay" class="face-overlay hidden">
-        <div class="face-box">
-          <div class="face-ring">
-            <div class="face-pulse"></div>
-            <span class="face-icon">👤</span>
-          </div>
-          <p id="face-instruction" class="face-instruction">Look directly at the camera</p>
-          <div class="face-progress">
-            <div id="face-bar" class="face-bar"></div>
-          </div>
-        </div>
+      <div class="face-corners">
+        <div class="fc fc-tl"></div>
+        <div class="fc fc-tr"></div>
+        <div class="fc fc-bl"></div>
+        <div class="fc fc-br"></div>
       </div>
+    </div>
+  </div>
 
-      <!-- Success overlay -->
-      <div id="success-overlay" class="success-overlay hidden">
-        <div class="success-box">
-          <div class="success-icon">✓</div>
-          <p id="success-message" class="success-message">Verified</p>
-        </div>
+  <div class="flow-foot">
+    <p id="face-instr" class="face-instr">Look directly at the camera</p>
+    <div class="face-prog-wrap">
+      <div class="face-prog"><div id="face-bar" class="face-bar"></div></div>
+      <span id="face-label" class="face-label">Verifying…</span>
+    </div>
+  </div>
+
+</div><!-- /screen-face -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: SUCCESS
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-success" class="screen screen-success" aria-hidden="true">
+  <div class="success-wrap">
+    <div class="success-check">
+      <svg viewBox="0 0 52 52" class="check-svg">
+        <circle class="check-circle" cx="26" cy="26" r="25" fill="none" />
+        <path class="check-mark" fill="none" d="M14 27 L22 35 L38 17" />
+      </svg>
+    </div>
+    <h1 class="success-title">Access Granted!</h1>
+    <p id="success-sub" class="success-sub">Locker is now open</p>
+    <p id="success-instr" class="success-instr">Please collect your item</p>
+    <div class="countdown-wrap">
+      <div class="countdown-bar">
+        <div id="countdown-fill" class="countdown-fill"></div>
       </div>
-    </main>
+      <p class="countdown-label">Returning home in <span id="countdown-secs">5</span>s</p>
+    </div>
+  </div>
+</div><!-- /screen-success -->
 
-    <!-- Footer -->
-    <footer class="footer">
-      <span>University of Cebu Lapu-Lapu and Mandaue · Engineering Thesis 2026</span>
-      <span id="clock" class="clock"></span>
-    </footer>
 
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="/static/app.js"></script>
-  </body>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: ERROR
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-error" class="screen screen-error" aria-hidden="true">
+  <div class="error-wrap">
+    <div class="error-icon">
+      <span class="error-x">✕</span>
+    </div>
+    <h1 class="error-title">Something went wrong</h1>
+    <p id="error-msg" class="error-msg">Please try again or contact staff for assistance.</p>
+    <div class="error-btns">
+      <button id="btn-retry" class="err-btn btn-retry">Try Again</button>
+      <button id="btn-err-home" class="err-btn btn-err-home">Back to Home</button>
+    </div>
+  </div>
+</div><!-- /screen-error -->
+
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
 </html>

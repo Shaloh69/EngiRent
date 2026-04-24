@@ -2,16 +2,20 @@
 Socket.io client – connects the Pi kiosk to the Node.js backend.
 
 Events emitted TO server:
-  kiosk:register   – announce this kiosk is online
-  kiosk:status     – locker states update
-  kiosk:images     – captured item images (URLs)
-  kiosk:face       – face verification result
-  kiosk:log        – Pi log lines forwarded to Render server logs
-  kiosk:ack        – command execution result (ok / error)
+  kiosk:register        – announce this kiosk is online
+  kiosk:status          – locker states update
+  kiosk:images          – captured item images (URLs) for a rental
+  kiosk:admin_snapshot  – captured images with no rental_id (admin preview only)
+  kiosk:face            – face verification result
+  kiosk:log             – Pi log lines forwarded to Render server logs
+  kiosk:ack             – command execution result (ok / error)
+  kiosk:rental_lookup   – ask Node.js for rental details by ID (QR scan flow)
+  kiosk:flow_start      – user confirmed rental; Node.js sends capture_face command
 
 Events received FROM server:
-  kiosk:command    – action to perform (open_door, drop_item, capture_image, etc.)
-  kiosk:config     – updated timing configuration
+  kiosk:command         – action to perform (open_door, drop_item, capture_image, etc.)
+  kiosk:config          – updated timing configuration
+  kiosk:rental_info     – rental details in response to kiosk:rental_lookup
 """
 
 import asyncio
@@ -30,6 +34,13 @@ from services.face_service import verify_face
 log = logging.getLogger("kiosk.socket")
 
 sio = socketio.AsyncClient(reconnection=True, reconnection_attempts=0, logger=False)
+
+# ── Main asyncio loop reference (set on connect, used by Flask threads) ────────
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+def get_main_loop() -> asyncio.AbstractEventLoop | None:
+    return _main_loop
 
 
 # ── Socket log handler — forwards Pi logs to Render server logs ────────────────
@@ -103,6 +114,8 @@ def _set_ui(status: str, message: str, active_locker: int | None = None):
 
 @sio.event
 async def connect():
+    global _main_loop
+    _main_loop = asyncio.get_running_loop()
     log.info("Connected to server %s", SERVER_URL)
     await sio.emit("kiosk:register", {
         "kiosk_id": KIOSK_ID,
@@ -155,13 +168,14 @@ async def on_command(data: dict):
     log.info("Command received: %s | data=%s", action, data)
 
     handlers = {
-        "open_door": _cmd_open_door,
-        "drop_item": _cmd_drop_item,
-        "capture_image": _cmd_capture_image,
-        "capture_face": _cmd_capture_face,
-        "lock_all": _cmd_lock_all,
-        "actuator_extend": _cmd_actuator_extend,
+        "open_door":        _cmd_open_door,
+        "drop_item":        _cmd_drop_item,
+        "capture_image":    _cmd_capture_image,
+        "capture_face":     _cmd_capture_face,
+        "lock_all":         _cmd_lock_all,
+        "actuator_extend":  _cmd_actuator_extend,
         "actuator_retract": _cmd_actuator_retract,
+        "flow_error":       _cmd_flow_error,
     }
 
     handler = handlers.get(action)
@@ -240,21 +254,31 @@ async def _cmd_drop_item(data: dict):
 
 async def _cmd_capture_image(data: dict):
     locker_id = int(data["locker_id"])
+    rental_id = data.get("rental_id")
     num_frames = data.get("num_frames", 3)
 
-    _set_ui("capturing", f"Capturing item images from Locker {locker_id}…", locker_id)
+    _set_ui("capturing", f"Capturing images from Locker {locker_id}…", locker_id)
 
     frames = _camera.capture_locker(locker_id, num_frames)
     urls = upload_locker_images(locker_id, frames)
 
-    await sio.emit("kiosk:images", {
-        "kiosk_id": KIOSK_ID,
-        "locker_id": locker_id,
-        "image_urls": urls,
-        "rental_id": data.get("rental_id"),
-    })
+    if rental_id:
+        await sio.emit("kiosk:images", {
+            "kiosk_id": KIOSK_ID,
+            "locker_id": locker_id,
+            "image_urls": urls,
+            "rental_id": rental_id,
+        })
+    else:
+        # Admin snapshot — no ML, just relay the URL to admin dashboard
+        await sio.emit("kiosk:admin_snapshot", {
+            "kiosk_id": KIOSK_ID,
+            "locker_id": locker_id,
+            "image_urls": urls,
+        })
+
     _set_ui("idle", "Ready")
-    log.info("Images sent locker=%s count=%s", locker_id, len(urls))
+    log.info("Images sent locker=%s count=%s rental=%s", locker_id, len(urls), rental_id)
 
 
 async def _cmd_capture_face(data: dict):
@@ -294,6 +318,12 @@ async def _cmd_capture_face(data: dict):
         _set_ui("idle", "Verification failed – please contact staff")
 
 
+async def _cmd_flow_error(data: dict):
+    message = data.get("message", "An error occurred – please try again")
+    _set_ui("error", message)
+    log.error("Flow error from server: %s", message)
+
+
 async def _cmd_lock_all(_data: dict):
     _solenoid.lock_all()
     _actuator.stop_all()
@@ -317,6 +347,57 @@ async def _cmd_actuator_retract(data: dict):
     speed = data.get("speed", 100)
     await _actuator.manual_retract(locker_id, seconds, speed)
     await sio.emit("kiosk:status", _build_status())
+
+
+# ── QR callback (set by kiosk_ui.server to push rental info to browser) ───────
+_qr_callback = None
+
+
+def register_qr_callback(cb):
+    global _qr_callback
+    _qr_callback = cb
+
+
+# ── Kiosk-initiated rental flow ───────────────────────────────────────────────
+
+async def emit_rental_lookup(rental_id: str):
+    """Ask Node.js for rental details via socket — response comes back in on_rental_info."""
+    if not sio.connected:
+        log.warning("Cannot look up rental %s: not connected", rental_id)
+        if _qr_callback:
+            _qr_callback({"rental_id": rental_id, "rental_info": {"id": rental_id}})
+        return
+    await sio.emit("kiosk:rental_lookup", {
+        "kiosk_id": KIOSK_ID,
+        "rental_id": rental_id,
+    })
+
+
+@sio.on("kiosk:rental_info")
+async def on_rental_info(data: dict):
+    """Node.js sends rental details back after a kiosk:rental_lookup request."""
+    if _qr_callback:
+        _qr_callback({
+            "rental_id": data.get("rental_id", ""),
+            "rental_info": data.get("rental_info") or {"id": data.get("rental_id", "")},
+        })
+    else:
+        log.warning("Received kiosk:rental_info but no QR callback registered")
+
+
+async def initiate_rental_flow(rental_id: str):
+    """Called by local browser confirm → emit kiosk:flow_start to Node.js.
+    Node.js looks up the rental and sends back capture_face command."""
+    if not sio.connected:
+        log.error("Cannot start rental flow: not connected to server")
+        _set_ui("error", "Not connected to server – please try again")
+        return
+    await sio.emit("kiosk:flow_start", {
+        "kiosk_id": KIOSK_ID,
+        "rental_id": rental_id,
+    })
+    _set_ui("face_scan", "Preparing identity verification…")
+    log.info("Rental flow start emitted for %s", rental_id)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
