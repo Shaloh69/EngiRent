@@ -192,7 +192,7 @@ export default function KioskPage() {
     fetchState();
   }, [fetchState]);
 
-  // ── SSE real-time stream ──────────────────────────────────────────────────
+  // ── SSE real-time stream with auto-reconnect ─────────────────────────────
   useEffect(() => {
     if (isDemoMode) return;
     const token =
@@ -203,90 +203,108 @@ export default function KioskPage() {
 
     const baseUrl =
       process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api/v1";
+    let aborted = false;
     const ctrl = new AbortController();
 
-    fetch(`${baseUrl}/admin/kiosks/events`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: ctrl.signal,
-    })
-      .then(async (res) => {
-        if (!res.body) return;
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let eventName = "";
+    const connect = async () => {
+      while (!aborted) {
+        try {
+          const res = await fetch(`${baseUrl}/admin/kiosks/events`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: ctrl.signal,
+          });
+          if (!res.body) {
+            await new Promise((r) => setTimeout(r, 3000));
+            continue;
+          }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let eventName = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const line of decoder
-            .decode(value, { stream: true })
-            .split("\n")) {
-            if (line.startsWith("event: ")) {
-              eventName = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6)) as Record<
-                  string,
-                  unknown
-                >;
+          while (!aborted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            for (const line of decoder
+              .decode(value, { stream: true })
+              .split("\n")) {
+              if (line.startsWith("event: ")) {
+                eventName = line.slice(7).trim();
+              } else if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6)) as Record<
+                    string,
+                    unknown
+                  >;
 
-                if (eventName === "kiosk_online") {
-                  setKiosk((p) =>
-                    p
-                      ? {
-                          ...p,
-                          status: "online",
-                          lastSeen: new Date().toISOString(),
-                        }
-                      : p,
-                  );
-                } else if (eventName === "kiosk_status") {
-                  const lockers = data.lockers as
-                    | KioskState["lockers"]
-                    | undefined;
-                  setKiosk((p) =>
-                    p
-                      ? {
-                          ...p,
-                          status: "online",
-                          lastSeen: new Date().toISOString(),
-                          ...(lockers ? { lockers } : {}),
-                        }
-                      : p,
-                  );
-                } else if (eventName === "kiosk_offline") {
-                  setKiosk((p) => (p ? { ...p, status: "offline" } : p));
-                } else if (eventName === "kiosk_error") {
-                  setKiosk((p) => (p ? { ...p, status: "error" } : p));
-                } else if (eventName === "kiosk_log") {
-                  const entry = data as unknown as LogEntry;
-                  setLogs((prev) => [...prev, entry].slice(-300));
-                  setTimeout(
-                    () =>
-                      logEndRef.current?.scrollIntoView({ behavior: "smooth" }),
-                    50,
-                  );
-                } else if (eventName === "kiosk_admin_snapshot") {
-                  const lockerId = String(data.locker_id);
-                  const urls = data.image_urls as string[] | undefined;
-                  if (urls && urls.length > 0) {
-                    setSnapshots((p) => ({ ...p, [lockerId]: urls[0] }));
-                    setSnapLoading((p) => ({ ...p, [lockerId]: false }));
-                    showToast(
-                      `Snapshot captured for Locker ${lockerId.padStart(2, "0")}`,
+                  if (eventName === "kiosk_online") {
+                    setKiosk((p) =>
+                      p
+                        ? {
+                            ...p,
+                            status: "online",
+                            lastSeen: new Date().toISOString(),
+                          }
+                        : p,
                     );
+                  } else if (eventName === "kiosk_status") {
+                    const lockers = data.lockers as
+                      | KioskState["lockers"]
+                      | undefined;
+                    setKiosk((p) =>
+                      p
+                        ? {
+                            ...p,
+                            status: "online",
+                            lastSeen: new Date().toISOString(),
+                            ...(lockers ? { lockers } : {}),
+                          }
+                        : p,
+                    );
+                  } else if (eventName === "kiosk_offline") {
+                    setKiosk((p) => (p ? { ...p, status: "offline" } : p));
+                  } else if (eventName === "kiosk_error") {
+                    setKiosk((p) => (p ? { ...p, status: "error" } : p));
+                  } else if (eventName === "kiosk_log") {
+                    const entry = data as unknown as LogEntry;
+                    setLogs((prev) => [...prev, entry].slice(-300));
+                    setTimeout(
+                      () =>
+                        logEndRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                        }),
+                      50,
+                    );
+                  } else if (eventName === "kiosk_admin_snapshot") {
+                    const lockerId = String(data.locker_id);
+                    const urls = data.image_urls as string[] | undefined;
+                    if (urls && urls.length > 0) {
+                      setSnapshots((p) => ({ ...p, [lockerId]: urls[0] }));
+                      setSnapLoading((p) => ({ ...p, [lockerId]: false }));
+                      showToast(
+                        `Snapshot captured for Locker ${lockerId.padStart(2, "0")}`,
+                      );
+                    }
                   }
+                } catch {
+                  /* malformed JSON */
                 }
-              } catch {
-                /* malformed JSON */
               }
             }
           }
+        } catch {
+          // AbortError means cleanup — stop retrying
+          if (aborted) break;
         }
-      })
-      .catch(() => {});
+        // Wait 3 s before reconnecting (unless cleanup)
+        if (!aborted) await new Promise((r) => setTimeout(r, 3000));
+      }
+    };
 
-    return () => ctrl.abort();
+    connect();
+    return () => {
+      aborted = true;
+      ctrl.abort();
+    };
   }, []);
 
   // ── Actions ───────────────────────────────────────────────────────────────

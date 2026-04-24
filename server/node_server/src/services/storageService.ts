@@ -1,17 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import axios, { AxiosError } from "axios";
 import env from "../config/env";
 
-// Strip any path suffix (e.g. /rest/v1/) — createClient needs only the origin
-const supabaseOrigin = env.SUPABASE_URL.replace(/\/(rest|storage|auth|realtime)(\/.*)?$/, "");
-const supabase = createClient(supabaseOrigin, env.SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-  global: {
-    headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
-  },
-});
-
-/** Single bucket — use folder prefixes to organise files */
-const BUCKET = env.SUPABASE_STORAGE_BUCKET; // "media"
+// Strip any path suffix — only the origin is needed for REST API calls
+const supabaseOrigin = env.SUPABASE_URL.replace(
+  /\/(rest|storage|auth|realtime)(\/.*)?$/,
+  "",
+);
+const BUCKET = env.SUPABASE_STORAGE_BUCKET;
 
 export const FOLDERS = {
   ITEMS: "item-images",
@@ -20,12 +15,9 @@ export const FOLDERS = {
 } as const;
 
 /**
- * Upload a file buffer to Supabase Storage.
- * @param folder  One of FOLDERS.* (used as a path prefix inside the bucket)
- * @param filename Unique filename including extension
- * @param buffer  File data
- * @param mimetype Content-Type
- * @returns Public URL of the uploaded file
+ * Upload a file buffer directly via Supabase Storage REST API.
+ * Using axios bypasses the supabase-js client entirely — the service_role
+ * bearer token on the Authorization header is sufficient and avoids RLS.
  */
 export async function uploadFile(
   folder: string,
@@ -33,24 +25,52 @@ export async function uploadFile(
   buffer: Buffer,
   mimetype: string,
 ): Promise<string> {
-  const path = `${folder}/${filename}`;
+  const filePath = `${folder}/${filename}`;
+  const uploadUrl = `${supabaseOrigin}/storage/v1/object/${BUCKET}/${filePath}`;
 
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, buffer, { contentType: mimetype, upsert: true });
+  try {
+    await axios.post(uploadUrl, buffer, {
+      headers: {
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": mimetype,
+        "x-upsert": "true",
+      },
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+    });
+  } catch (err) {
+    const detail =
+      err instanceof AxiosError
+        ? JSON.stringify(err.response?.data)
+        : String(err);
+    throw new Error(
+      `Storage upload failed: ${detail} (bucket=${BUCKET} path=${filePath} url=${supabaseOrigin})`,
+    );
+  }
 
-  if (error) throw new Error(`Storage upload failed: ${error.message} (bucket=${BUCKET} path=${path} url=${supabaseOrigin})`);
-
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return `${supabaseOrigin}/storage/v1/object/public/${BUCKET}/${filePath}`;
 }
 
 /**
  * Delete a file from Supabase Storage by its storage path (folder/filename).
  */
 export async function deleteFile(storagePath: string): Promise<void> {
-  const { error } = await supabase.storage.from(BUCKET).remove([storagePath]);
-  if (error) throw new Error(`Storage delete failed: ${error.message}`);
+  const deleteUrl = `${supabaseOrigin}/storage/v1/object/${BUCKET}`;
+  try {
+    await axios.delete(deleteUrl, {
+      headers: {
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      data: { prefixes: [storagePath] },
+    });
+  } catch (err) {
+    const detail =
+      err instanceof AxiosError
+        ? JSON.stringify(err.response?.data)
+        : String(err);
+    throw new Error(`Storage delete failed: ${detail}`);
+  }
 }
 
 /**
