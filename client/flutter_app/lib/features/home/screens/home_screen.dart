@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
@@ -20,10 +21,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
+  void _goToRentals() => setState(() => _currentIndex = 1);
+
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const _HomeTab(),
+      _HomeTab(onGoToRentals: _goToRentals),
       const _RentalsTab(),
       const _NotificationsTab(),
       const _ProfileTab(),
@@ -31,108 +34,167 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.primary,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Rentals'),
-          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Alerts'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: const Border(top: BorderSide(color: AppColors.border)),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryDark.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (i) => setState(() => _currentIndex = i),
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          selectedItemColor: AppColors.primary,
+          unselectedItemColor: AppColors.grey,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Rentals'),
+            BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Alerts'),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          ],
+        ),
       ),
     );
   }
 }
 
+// ── Home Tab ─────────────────────────────────────────────────────────────────
+
 class _HomeTab extends StatelessWidget {
-  const _HomeTab();
+  final VoidCallback onGoToRentals;
+  const _HomeTab({required this.onGoToRentals});
 
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
     return Scaffold(
-      appBar: AppBar(title: const Text('EngiRent Hub')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome, ${user?.firstName ?? "Student"}',
-                  style: const TextStyle(color: AppColors.white, fontSize: 24, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Secure kiosk-powered rentals for engineering tools.',
-                  style: TextStyle(color: AppColors.white),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text('Quick Actions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: MediaQuery.of(context).size.width > 700 ? 4 : 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            children: [
-              _QuickActionCard(
-                icon: Icons.add_box_rounded,
-                title: 'List Item',
-                color: AppColors.primary,
-                onTap: () => Navigator.pushNamed(context, '/items/create'),
-              ),
-              _QuickActionCard(
-                icon: Icons.search,
-                title: 'Browse',
-                color: AppColors.secondary,
-                onTap: () => Navigator.pushNamed(context, '/items'),
-              ),
-              _QuickActionCard(
-                icon: Icons.qr_code_scanner,
-                title: 'Kiosk',
-                color: AppColors.accent,
-                onTap: () => Navigator.pushNamed(context, '/kiosk/scan'),
-              ),
-              _QuickActionCard(
-                icon: Icons.receipt_long,
-                title: 'My Rentals',
-                color: AppColors.info,
-                onTap: () {},
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text('Popular Categories', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: AppConstants.categories.values
-                .map(
-                  (category) => Chip(
-                    label: Text(category),
-                    backgroundColor: AppColors.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      side: const BorderSide(color: AppColors.border),
+      backgroundColor: AppColors.background,
+      body: CustomScrollView(
+        slivers: [
+          // Navy gradient header
+          SliverAppBar(
+            expandedHeight: 160,
+            pinned: true,
+            backgroundColor: AppColors.primaryDark,
+            foregroundColor: AppColors.white,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
+                padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Hello, ${user?.firstName ?? "Student"} 👋',
+                      style: const TextStyle(
+                        color: AppColors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                )
-                .toList(),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'What would you like to do today?',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              title: const Text(
+                'EngiRent Hub',
+                style: TextStyle(color: AppColors.white, fontWeight: FontWeight.w800, fontSize: 17),
+              ),
+              titlePadding: const EdgeInsets.only(left: 16, bottom: 12),
+            ),
+          ),
+
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // Quick actions
+                const Text('Quick Actions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: MediaQuery.of(context).size.width > 700 ? 4 : 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.1,
+                  children: [
+                    _QuickActionCard(
+                      icon: Icons.add_box_rounded,
+                      title: 'List Item',
+                      subtitle: 'Earn from your tools',
+                      color: AppColors.primary,
+                      onTap: () => Navigator.pushNamed(context, '/items/create'),
+                    ),
+                    _QuickActionCard(
+                      icon: Icons.search_rounded,
+                      title: 'Browse',
+                      subtitle: 'Find equipment',
+                      color: AppColors.secondary,
+                      onTap: () => Navigator.pushNamed(context, '/items'),
+                    ),
+                    _QuickActionCard(
+                      icon: Icons.qr_code_scanner_rounded,
+                      title: 'Kiosk Scan',
+                      subtitle: 'Use at the hub',
+                      color: AppColors.accent,
+                      onTap: () => Navigator.pushNamed(context, '/kiosk/scan'),
+                    ),
+                    _QuickActionCard(
+                      icon: Icons.receipt_long_rounded,
+                      title: 'My Rentals',
+                      subtitle: 'Track your items',
+                      color: AppColors.info,
+                      onTap: onGoToRentals,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Categories
+                const Text('Browse by Category', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: AppConstants.categories.entries.map((e) {
+                    return GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, '/items'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Text(
+                          e.value,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+              ]),
+            ),
           ),
         ],
       ),
@@ -143,42 +205,59 @@ class _HomeTab extends StatelessWidget {
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String subtitle;
   final Color color;
   final VoidCallback onTap;
 
   const _QuickActionCard({
     required this.icon,
     required this.title,
+    required this.subtitle,
     required this.color,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 38),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryDark.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
+          ],
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const Spacer(),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textPrimary)),
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           ],
         ),
       ),
     );
   }
 }
+
+// ── Rentals Tab ──────────────────────────────────────────────────────────────
 
 class _RentalsTab extends StatefulWidget {
   const _RentalsTab();
@@ -198,7 +277,6 @@ class _RentalsTabState extends State<_RentalsTab> {
   void initState() {
     super.initState();
     _load();
-    // Refresh whenever any rental status changes arrive via Socket.io
     _socketSub = SocketService.instance.onAnyRentalChange.listen((_) => _load());
   }
 
@@ -209,15 +287,12 @@ class _RentalsTabState extends State<_RentalsTab> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
     final result = await _service.getRentals();
     if (!mounted) return;
     setState(() {
       _loading = false;
-      if (result['success']) {
+      if (result['success'] == true) {
         _rentals = result['rentals'] as List<RentalModel>;
       } else {
         _error = result['error'] as String?;
@@ -225,51 +300,133 @@ class _RentalsTabState extends State<_RentalsTab> {
     });
   }
 
+  Color _statusColor(String status) => switch (status) {
+    'ACTIVE' => AppColors.success,
+    'COMPLETED' => AppColors.info,
+    'CANCELLED' || 'DISPUTED' => AppColors.error,
+    'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
+    'VERIFICATION' || 'AWAITING_RETURN' => AppColors.warning,
+    _ => AppColors.textSecondary,
+  };
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Rentals')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('My Rentals'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _load,
+            tooltip: 'Refresh',
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? ListView(children: [const SizedBox(height: 100), Center(child: Text(_error!))])
+                ? ListView(children: [
+                    const SizedBox(height: 100),
+                    Center(child: Text(_error!, style: const TextStyle(color: AppColors.textSecondary))),
+                  ])
                 : _rentals.isEmpty
-                    ? ListView(children: const [SizedBox(height: 100), Center(child: Text('No rentals yet'))])
+                    ? ListView(children: [
+                        const SizedBox(height: 80),
+                        const Center(
+                          child: Column(children: [
+                            Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.grey),
+                            SizedBox(height: 12),
+                            Text('No rentals yet', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                            SizedBox(height: 6),
+                            Text('Browse items to start your first rental', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                          ]),
+                        ),
+                      ])
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _rentals.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final rental = _rentals[index];
-                          return Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                          final statusColor = _statusColor(rental.status);
+                          return GestureDetector(
+                            onTap: () => Navigator.pushNamed(context, '/rentals/${rental.id}').then((_) => _load()),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: AppColors.border),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primaryDark.withValues(alpha: 0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
                                 children: [
-                                  Row(
+                                  // Status indicator strip
+                                  Container(
+                                    width: 4,
+                                    height: 56,
+                                    decoration: BoxDecoration(
+                                      color: statusColor,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          rental.item.title,
+                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_outlined, size: 12, color: AppColors.textSecondary),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Ends ${rental.daysRemaining > 0 ? 'in ${rental.daysRemaining}d' : 'today'}',
+                                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Icon(Icons.payments_outlined, size: 12, color: AppColors.textSecondary),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'PHP ${rental.totalPrice.toStringAsFixed(0)}',
+                                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Expanded(
-                                        child: Text(rental.item.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                      ),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                         decoration: BoxDecoration(
-                                          color: AppColors.primary.withValues(alpha: 0.1),
+                                          color: statusColor.withValues(alpha: 0.1),
                                           borderRadius: BorderRadius.circular(999),
                                         ),
                                         child: Text(
                                           AppConstants.rentalStatus[rental.status] ?? rental.status,
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor),
                                         ),
                                       ),
+                                      const SizedBox(height: 6),
+                                      const Icon(Icons.chevron_right_rounded, color: AppColors.grey, size: 18),
                                     ],
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text('Total: PHP ${rental.totalPrice.toStringAsFixed(0)}'),
-                                  Text('Ends in ${rental.daysRemaining} day(s)', style: const TextStyle(color: AppColors.textSecondary)),
                                 ],
                               ),
                             ),
@@ -280,6 +437,8 @@ class _RentalsTabState extends State<_RentalsTab> {
     );
   }
 }
+
+// ── Notifications Tab ────────────────────────────────────────────────────────
 
 class _NotificationsTab extends StatefulWidget {
   const _NotificationsTab();
@@ -299,7 +458,6 @@ class _NotificationsTabState extends State<_NotificationsTab> {
   void initState() {
     super.initState();
     _load();
-    // Refresh notifications list whenever a rental event arrives
     _socketSub = SocketService.instance.onAnyRentalChange.listen((_) => _load());
   }
 
@@ -310,15 +468,12 @@ class _NotificationsTabState extends State<_NotificationsTab> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
     final result = await _service.getNotifications();
     if (!mounted) return;
     setState(() {
       _loading = false;
-      if (result['success']) {
+      if (result['success'] == true) {
         _notifications = result['notifications'] as List<NotificationModel>;
       } else {
         _error = result['error'] as String?;
@@ -326,27 +481,37 @@ class _NotificationsTabState extends State<_NotificationsTab> {
     });
   }
 
-  Future<void> _markAllRead() async {
-    await _service.markAllRead();
-    _load();
-  }
+  IconData _notifIcon(String type) => switch (type) {
+    'BOOKING_CONFIRMED' => Icons.check_circle_rounded,
+    'ITEM_READY_FOR_CLAIM' => Icons.inventory_2_rounded,
+    'RENTAL_STARTED' => Icons.play_circle_rounded,
+    'PAYMENT_RECEIVED' => Icons.payments_rounded,
+    _ => Icons.notifications_rounded,
+  };
 
-  Future<void> _markRead(String id) async {
-    await _service.markRead(id);
-    _load();
-  }
+  Color _notifColor(String type) => switch (type) {
+    'BOOKING_CONFIRMED' => AppColors.success,
+    'ITEM_READY_FOR_CLAIM' => AppColors.accent,
+    'RENTAL_STARTED' => AppColors.primary,
+    'PAYMENT_RECEIVED' => AppColors.secondary,
+    _ => AppColors.info,
+  };
 
   @override
   Widget build(BuildContext context) {
     final hasUnread = _notifications.any((n) => !n.isRead);
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
           if (hasUnread)
             TextButton(
-              onPressed: _markAllRead,
-              child: const Text('Mark all read'),
+              onPressed: () async {
+                await _service.markAllRead();
+                _load();
+              },
+              child: const Text('Mark all read', style: TextStyle(color: AppColors.primary)),
             ),
         ],
       ),
@@ -357,45 +522,91 @@ class _NotificationsTabState extends State<_NotificationsTab> {
             : _error != null
                 ? ListView(children: [const SizedBox(height: 100), Center(child: Text(_error!))])
                 : _notifications.isEmpty
-                    ? ListView(children: const [SizedBox(height: 100), Center(child: Text('No notifications yet'))])
+                    ? ListView(children: [
+                        const SizedBox(height: 80),
+                        const Center(
+                          child: Column(children: [
+                            Icon(Icons.notifications_off_outlined, size: 56, color: AppColors.grey),
+                            SizedBox(height: 12),
+                            Text('All clear!', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                            SizedBox(height: 6),
+                            Text('No notifications yet', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                          ]),
+                        ),
+                      ])
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _notifications.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
-                          final notification = _notifications[index];
-                          return Card(
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: notification.isRead
-                                    ? AppColors.greyLight
-                                    : AppColors.primaryLight.withValues(alpha: 0.3),
-                                child: Icon(
-                                  notification.isRead ? Icons.mark_email_read : Icons.notifications_active,
-                                  color: notification.isRead ? AppColors.greyDark : AppColors.primaryDark,
+                          final n = _notifications[index];
+                          final color = _notifColor(n.type);
+                          return GestureDetector(
+                            onTap: () async {
+                              if (!n.isRead) {
+                                await _service.markRead(n.id);
+                                _load();
+                              }
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: n.isRead ? AppColors.surface : AppColors.primary.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: n.isRead ? AppColors.border : AppColors.primary.withValues(alpha: 0.2),
                                 ),
                               ),
-                              title: Text(
-                                notification.title,
-                                style: TextStyle(
-                                  fontWeight: notification.isRead ? FontWeight.w500 : FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(notification.message),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '${notification.createdAt.month}/${notification.createdAt.day}',
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                                  ),
-                                  if (!notification.isRead) ...[
-                                    const SizedBox(height: 4),
-                                    GestureDetector(
-                                      onTap: () => _markRead(notification.id),
-                                      child: const Icon(Icons.check_circle_outline, size: 18, color: AppColors.primary),
+                                  Container(
+                                    padding: const EdgeInsets.all(9),
+                                    decoration: BoxDecoration(
+                                      color: color.withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
                                     ),
-                                  ],
+                                    child: Icon(_notifIcon(n.type), color: color, size: 18),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          n.title,
+                                          style: TextStyle(
+                                            fontWeight: n.isRead ? FontWeight.w600 : FontWeight.w800,
+                                            fontSize: 14,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(n.message, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        timeago.format(n.createdAt, allowFromNow: true),
+                                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                      ),
+                                      if (!n.isRead) ...[
+                                        const SizedBox(height: 6),
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: const BoxDecoration(
+                                            color: AppColors.primary,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -407,6 +618,8 @@ class _NotificationsTabState extends State<_NotificationsTab> {
   }
 }
 
+// ── Profile Tab ──────────────────────────────────────────────────────────────
+
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();
 
@@ -415,39 +628,80 @@ class _ProfileTab extends StatelessWidget {
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.user;
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 42,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                    child: Text(
-                      (user?.firstName.isNotEmpty ?? false) ? user!.firstName.substring(0, 1) : 'U',
-                      style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(user?.fullName ?? 'User', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                  Text(user?.email ?? '', style: const TextStyle(color: AppColors.textSecondary)),
-                ],
-              ),
+          // Avatar card
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(20),
             ),
-          ),
-          const SizedBox(height: 12),
-          Card(
             child: Column(
               children: [
-                const ListTile(leading: Icon(Icons.verified_user), title: Text('Identity Verification'), subtitle: Text('QR + face workflow enabled')),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.lock_outline),
-                  title: const Text('Logout'),
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor: Colors.white24,
+                  backgroundImage: user?.profileImage != null
+                      ? NetworkImage(user!.profileImage!)
+                      : null,
+                  child: user?.profileImage == null
+                      ? Text(
+                          (user?.firstName.isNotEmpty ?? false) ? user!.firstName[0].toUpperCase() : 'U',
+                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.white),
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  user?.fullName ?? 'Student',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.white),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  user?.email ?? '',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                if (user != null && user.studentId.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      user.studentId,
+                      style: const TextStyle(color: AppColors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Info items
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                _ProfileTile(icon: Icons.verified_user_rounded, iconColor: AppColors.success, title: 'Identity Verified', subtitle: 'Face ID + QR workflow enabled'),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
+                  icon: Icons.logout_rounded,
+                  iconColor: AppColors.error,
+                  title: 'Logout',
+                  subtitle: 'Sign out of your account',
                   onTap: () async {
                     await authProvider.logout();
                     if (context.mounted) {
@@ -460,6 +714,40 @@ class _ProfileTab extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ProfileTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  const _ProfileTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: iconColor.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: iconColor, size: 20),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+      trailing: onTap != null ? const Icon(Icons.chevron_right_rounded, color: AppColors.grey) : null,
     );
   }
 }

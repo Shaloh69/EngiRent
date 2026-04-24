@@ -6,6 +6,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
 import '../models/item_service.dart';
+import 'item_detail_screen.dart';
 
 class ItemsScreen extends StatefulWidget {
   const ItemsScreen({super.key});
@@ -169,7 +170,15 @@ class _ItemsScreenState extends State<ItemsScreen> {
                                     child: CircularProgressIndicator(),
                                   ));
                                 }
-                                return _ItemCard(item: _items[index]);
+                                return _ItemCard(
+          item: _items[index],
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ItemDetailScreen(item: _items[index]),
+            ),
+          ),
+        );
                               },
                             ),
             ),
@@ -182,7 +191,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
 class _ItemCard extends StatelessWidget {
   final ItemModel item;
-  const _ItemCard({required this.item});
+  final VoidCallback onTap;
+  const _ItemCard({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +200,7 @@ class _ItemCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {},
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
