@@ -30,9 +30,9 @@ log = logging.getLogger("kiosk.camera")
 # Update these paths if v4l2-ctl --list-devices shows different numbers.
 USB_DEVICE_MAP: dict[int, str] = {
     0: "/dev/video0",    # Locker 1  ← A4tech FHD 1080P
-    1: "/dev/video2",    # Locker 2  ← Web Camera usb-xhci-hcd.1-1.1
-    2: "/dev/video6",    # Locker 3  ← Web Camera usb-xhci-hcd.1-1.3 (swapped)
-    3: "/dev/video4",    # Locker 4  ← Web Camera usb-xhci-hcd.1-1.2 (swapped)
+    1: "/dev/video4",    # Locker 2  ← Web Camera usb-xhci-hcd.1-1.2 (swapped)
+    2: "/dev/video2",    # Locker 3  ← Web Camera usb-xhci-hcd.1-1.1 (swapped)
+    3: "/dev/video6",    # Locker 4  ← Web Camera usb-xhci-hcd.1-1.3
     4: "/dev/video8",    # Face cam  ← Web Camera usb-xhci-hcd.1-1.4
 }
 
