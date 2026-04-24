@@ -9,7 +9,7 @@ def load_image(source: str | bytes | np.ndarray) -> np.ndarray:
     if isinstance(source, np.ndarray):
         return source
     if isinstance(source, bytes):
-        arr = np.frombuffer(source, dtype=np.uint8)
+        arr = np.asarray(bytearray(source), dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     else:
         img = cv2.imread(source)

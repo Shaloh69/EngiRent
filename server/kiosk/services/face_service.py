@@ -60,7 +60,7 @@ def detect_face_in_frame(jpeg_bytes: bytes) -> tuple[bool, float]:
     Confidence is estimated from relative face size (larger = more confident).
     """
     try:
-        nparr = np.frombuffer(jpeg_bytes, np.uint8)
+        nparr = np.asarray(bytearray(jpeg_bytes), dtype=np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
