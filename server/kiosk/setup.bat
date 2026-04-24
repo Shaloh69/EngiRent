@@ -14,8 +14,9 @@ echo ======================================================
 echo.
 echo   [1] Full setup  (first-time install / re-run setup.sh)
 echo   [2] Update deps (pip install -r requirements.txt only)
+echo   [3] Push .env   (copy local .env to Pi and restart service)
 echo.
-set /p CHOICE="Choose an option (1 or 2): "
+set /p CHOICE="Choose an option (1, 2 or 3): "
 echo.
 
 :: Check if ssh is available
@@ -27,6 +28,7 @@ if %errorlevel% neq 0 (
 )
 
 if "%CHOICE%"=="2" goto update_deps
+if "%CHOICE%"=="3" goto push_env
 
 :full_setup
 echo Running full setup.sh on the Pi...
@@ -40,6 +42,14 @@ echo Updating Python dependencies on the Pi...
 echo (You will be prompted for the Pi password)
 echo.
 ssh -t %PI_USER%@%PI_HOST% "cd %PI_KIOSK_DIR% && source venv/bin/activate && pip install --upgrade -r requirements.txt && echo Done."
+goto done
+
+:push_env
+echo Pushing .env to Pi and restarting service...
+echo (You will be prompted for the Pi password)
+echo.
+scp "%~dp0.env" %PI_USER%@%PI_HOST%:%PI_KIOSK_DIR%/.env
+ssh -t %PI_USER%@%PI_HOST% "sudo systemctl restart engirent-kiosk.service && echo Service restarted."
 goto done
 
 :done
