@@ -6,7 +6,7 @@ python-multipart==0.0.20
 # Computer Vision
 opencv-python-headless==4.10.0.84
 scikit-image==0.24.0
-numpy==1.26.4
+numpy>=2.0.0
 scipy==1.14.1
 
 # Face Recognition — dlib-bin provides a pre-compiled wheel (no C++ compile needed)
