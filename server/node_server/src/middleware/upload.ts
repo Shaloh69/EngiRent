@@ -7,6 +7,7 @@ const ALLOWED_MIMETYPES = [
   "image/png",
   "image/webp",
   "video/mp4",
+  "application/octet-stream", // camera packages on Android often send this
 ];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
