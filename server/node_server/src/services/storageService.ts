@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import env from "../config/env";
 
-const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+// Strip any path suffix (e.g. /rest/v1/) — createClient needs only the origin
+const supabaseOrigin = env.SUPABASE_URL.replace(/\/(rest|storage|auth|realtime)(\/.*)?$/, "");
+const supabase = createClient(supabaseOrigin, env.SUPABASE_SERVICE_ROLE_KEY);
 
 /** Single bucket — use folder prefixes to organise files */
 const BUCKET = env.SUPABASE_STORAGE_BUCKET; // "media"
