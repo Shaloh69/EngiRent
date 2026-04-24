@@ -32,6 +32,7 @@ export async function uploadFile(
     await axios.post(uploadUrl, buffer, {
       headers: {
         Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
         "Content-Type": mimetype,
         "x-upsert": "true",
       },
@@ -60,6 +61,7 @@ export async function deleteFile(storagePath: string): Promise<void> {
     await axios.delete(deleteUrl, {
       headers: {
         Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
         "Content-Type": "application/json",
       },
       data: { prefixes: [storagePath] },
