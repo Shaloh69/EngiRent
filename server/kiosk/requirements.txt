@@ -2,9 +2,8 @@
 python-dotenv==1.0.1
 structlog==24.4.0
 
-# Socket.io client (communicate with Node.js backend)
-python-socketio[asyncio_client]==5.11.4
-aiohttp==3.11.10
+# Socket.io client — pulled in by flask-socketio; aiohttp activates async client support
+aiohttp>=3.9.0
 
 # GPIO (installed system-wide via apt — imported here for venv awareness)
 # gpiozero and lgpio are provided by python3-gpiozero / python3-lgpio (apt)
