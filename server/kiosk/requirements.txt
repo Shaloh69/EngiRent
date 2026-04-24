@@ -15,7 +15,7 @@ aiohttp==3.11.10
 # do NOT pip-install these — they conflict with system packages on Pi OS Trixie
 
 # Image upload to Supabase
-supabase==2.10.0
+supabase==2.15.3
 pillow==11.0.0
 
 # Local kiosk UI server

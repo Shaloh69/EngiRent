@@ -12,6 +12,11 @@ echo   EngiRent Kiosk Remote Setup
 echo   Connecting to %PI_USER%@%PI_HOST%
 echo ======================================================
 echo.
+echo   [1] Full setup  (first-time install / re-run setup.sh)
+echo   [2] Update deps (pip install -r requirements.txt only)
+echo.
+set /p CHOICE="Choose an option (1 or 2): "
+echo.
 
 :: Check if ssh is available
 where ssh >nul 2>&1
@@ -21,19 +26,29 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo Connecting and running setup.sh on the Pi...
+if "%CHOICE%"=="2" goto update_deps
+
+:full_setup
+echo Running full setup.sh on the Pi...
 echo (You will be prompted for the Pi password)
 echo.
-
 ssh -t %PI_USER%@%PI_HOST% "cd %PI_KIOSK_DIR% && sudo bash setup.sh"
+goto done
 
+:update_deps
+echo Updating Python dependencies on the Pi...
+echo (You will be prompted for the Pi password)
+echo.
+ssh -t %PI_USER%@%PI_HOST% "cd %PI_KIOSK_DIR% && source venv/bin/activate && pip install --upgrade -r requirements.txt && echo Done."
+goto done
+
+:done
 echo.
 echo ======================================================
 if %errorlevel% equ 0 (
-    echo   Setup finished successfully!
-    echo   The kiosk will auto-start on next reboot.
+    echo   Finished successfully!
 ) else (
-    echo   Setup encountered an error. Check the output above.
+    echo   Encountered an error. Check the output above.
 )
 echo ======================================================
 pause

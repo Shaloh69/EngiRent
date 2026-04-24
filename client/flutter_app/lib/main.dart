@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/constants/app_colors.dart';
@@ -13,34 +12,9 @@ import 'features/kiosk/screens/kiosk_scan_screen.dart';
 import 'features/rentals/screens/rental_detail_screen.dart';
 import 'features/reviews/screens/reviews_screen.dart';
 
-void main() {
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    FlutterError.onError = (FlutterErrorDetails details) {
-      _showCrashOverlay('Flutter error:\n${details.exception}\n\n${details.stack}');
-    };
-    runApp(const MyApp());
-  }, (error, stack) {
-    _showCrashOverlay('Dart zone error:\n$error\n\n$stack');
-  });
-}
-
-void _showCrashOverlay(String message) {
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: Scaffold(
-      backgroundColor: Colors.red.shade900,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: SelectableText(
-            message,
-            style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
-          ),
-        ),
-      ),
-    ),
-  ));
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {

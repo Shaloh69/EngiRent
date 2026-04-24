@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 class AppConstants {
   // API Configuration
-  static const String baseUrl = 'http://localhost:5000/api/v1';
-  static const String mlServiceUrl = 'http://localhost:8001/api/v1';
+  static const String baseUrl = 'https://engirent-api.onrender.com/api/v1';
+  static const String mlServiceUrl = 'https://engirent-ai.onrender.com/api/v1';
 
   // Storage Keys
   static const String keyAccessToken = 'access_token';
