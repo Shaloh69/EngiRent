@@ -3,7 +3,9 @@ import env from "../config/env";
 
 // Strip any path suffix (e.g. /rest/v1/) — createClient needs only the origin
 const supabaseOrigin = env.SUPABASE_URL.replace(/\/(rest|storage|auth|realtime)(\/.*)?$/, "");
-const supabase = createClient(supabaseOrigin, env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(supabaseOrigin, env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
 
 /** Single bucket — use folder prefixes to organise files */
 const BUCKET = env.SUPABASE_STORAGE_BUCKET; // "media"
@@ -34,7 +36,7 @@ export async function uploadFile(
     .from(BUCKET)
     .upload(path, buffer, { contentType: mimetype, upsert: true });
 
-  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  if (error) throw new Error(`Storage upload failed: ${error.message} (bucket=${BUCKET} path=${path} url=${supabaseOrigin})`);
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl;
