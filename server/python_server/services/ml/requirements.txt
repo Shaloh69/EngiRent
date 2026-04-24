@@ -9,10 +9,10 @@ scikit-image==0.24.0
 numpy==1.26.4
 scipy==1.14.1
 
-# Face Recognition (dlib-based, 99.38% LFW accuracy — optional, falls back to Haar cascade)
-# dlib compiles from C++ source; build deps (cmake, build-essential, libopenblas-dev) are
-# handled in the Dockerfile builder stage via multi-stage build.
-face_recognition==1.3.0
+# Face Recognition — dlib-bin provides a pre-compiled wheel (no C++ compile needed)
+# face_recognition is installed --no-deps in Dockerfile to prevent pip pulling dlib from source
+dlib-bin
+face_recognition_models
 
 # Deep Learning (Phase 3)
 torch==2.5.1
