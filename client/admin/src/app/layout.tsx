@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   title: "EngiRent Admin Console",
   description:
     "Admin dashboard for EngiRent Hub IoT-powered Smart Kiosk System",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
