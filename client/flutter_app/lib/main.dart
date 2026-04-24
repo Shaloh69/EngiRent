@@ -135,7 +135,14 @@ class MyApp extends StatelessWidget {
       case '/items/create':
         return MaterialPageRoute(builder: (_) => const _AuthGuard(child: CreateItemScreen()));
       case '/kiosk/scan':
-        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: KioskScanScreen()));
+        final kioskArgs = settings.arguments as Map<String, dynamic>? ?? {};
+        final kioskRentalId = kioskArgs['rentalId'] as String? ?? '';
+        final kioskMode = kioskArgs['mode'] as String? ?? 'place';
+        return MaterialPageRoute(
+          builder: (_) => _AuthGuard(
+            child: KioskScanScreen(rentalId: kioskRentalId, mode: kioskMode),
+          ),
+        );
       case '/rentals/create':
         final args = settings.arguments as Map<String, dynamic>? ?? {};
         final item = args['item'] as ItemModel?;
