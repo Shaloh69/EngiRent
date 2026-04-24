@@ -366,7 +366,7 @@ async def verify_face(
     ref_path = None
     try:
         cap_bytes = await captured_image.read()
-        cap_arr = np.frombuffer(cap_bytes, np.uint8)
+        cap_arr = np.asarray(bytearray(cap_bytes), dtype=np.uint8)
         cap_img = cv2.imdecode(cap_arr, cv2.IMREAD_COLOR)
         if cap_img is None:
             raise HTTPException(status_code=400, detail="Cannot decode captured image")
