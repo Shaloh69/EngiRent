@@ -7,6 +7,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/socket_service.dart';
+import '../../admin/screens/admin_home_screen.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/models/notification_service.dart';
 import '../../rentals/models/rental_service.dart';
@@ -172,7 +173,7 @@ class _HomeTab extends StatelessWidget {
                   runSpacing: 8,
                   children: AppConstants.categories.entries.map((e) {
                     return GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/items'),
+                      onTap: () => Navigator.pushNamed(context, '/items', arguments: {'category': e.key}),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
@@ -696,6 +697,19 @@ class _ProfileTab extends StatelessWidget {
                 _ProfileTile(icon: Icons.verified_user_rounded, iconColor: AppColors.success, title: 'Identity Verified', subtitle: 'Face ID + QR workflow enabled'),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
+                if (user?.isAdmin ?? false) ...[
+                  const Divider(height: 1, indent: 56),
+                  _ProfileTile(
+                    icon: Icons.admin_panel_settings_rounded,
+                    iconColor: AppColors.accent,
+                    title: 'Admin Panel',
+                    subtitle: 'Manage users, rentals & kiosks',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+                    ),
+                  ),
+                ],
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.logout_rounded,

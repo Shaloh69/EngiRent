@@ -9,7 +9,8 @@ import '../models/item_service.dart';
 import 'item_detail_screen.dart';
 
 class ItemsScreen extends StatefulWidget {
-  const ItemsScreen({super.key});
+  final String? category;
+  const ItemsScreen({super.key, this.category});
 
   @override
   State<ItemsScreen> createState() => _ItemsScreenState();
@@ -28,10 +29,12 @@ class _ItemsScreenState extends State<ItemsScreen> {
   int _page = 1;
   int _totalPages = 1;
   String _activeQuery = '';
+  String _activeCategory = '';
 
   @override
   void initState() {
     super.initState();
+    _activeCategory = widget.category ?? '';
     _loadItems(reset: true);
     _scrollController.addListener(_onScroll);
   }
@@ -60,7 +63,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
     try {
       final q = _activeQuery.isNotEmpty ? '&search=${Uri.encodeComponent(_activeQuery)}' : '';
-      final resp = await _api.get('/items?page=$_page&limit=10$q', authenticated: false);
+      final cat = _activeCategory.isNotEmpty ? '&category=${Uri.encodeComponent(_activeCategory)}' : '';
+      final resp = await _api.get('/items?page=$_page&limit=10$q$cat', authenticated: false);
       final data = jsonDecode(resp.body);
       if (!mounted) return;
       if (resp.statusCode == 200 && data['success'] == true) {
@@ -148,6 +152,40 @@ class _ItemsScreenState extends State<ItemsScreen> {
               onChanged: (_) => setState(() {}),
             ),
           ),
+          if (_activeCategory.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.filter_list_rounded, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          AppConstants.categories[_activeCategory] ?? _activeCategory,
+                          style: const TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () { setState(() => _activeCategory = ''); _loadItems(reset: true); },
+                          child: const Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           Expanded(
             child: RefreshIndicator(

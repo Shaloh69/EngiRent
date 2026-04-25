@@ -9,6 +9,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../kiosk/screens/kiosk_scan_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
+import '../../reviews/screens/reviews_screen.dart';
 
 class RentalDetailScreen extends StatefulWidget {
   final String rentalId;
@@ -62,28 +63,30 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         final data = jsonDecode(resp.body);
         final checkoutUrl = data['data']['checkoutUrl'] as String?;
         final sessionId = data['data']['sessionId'] as String?;
-        if (checkoutUrl != null && sessionId != null && mounted) {
-          final result = await Navigator.push<PaymentResult>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PaymentWebViewScreen(
-                checkoutUrl: checkoutUrl,
-                checkoutSessionId: sessionId,
-                rentalId: _rental!.id,
-              ),
+        if (checkoutUrl == null || sessionId == null) return;
+        if (!mounted) return;
+        final result = await Navigator.push<PaymentResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PaymentWebViewScreen(
+              checkoutUrl: checkoutUrl,
+              checkoutSessionId: sessionId,
+              rentalId: _rental!.id,
             ),
-          );
-          if (!mounted) return;
-          if (result == PaymentResult.success) {
-            AppToast.success(context, 'Payment Successful!', 'Your rental is now confirmed.');
-            _load();
-          } else if (result == PaymentResult.cancelled) {
-            AppToast.warning(context, 'Payment Cancelled', 'You can pay again anytime.');
-          }
+          ),
+        );
+        if (!mounted) return;
+        if (result == PaymentResult.success) {
+          AppToast.success(context, 'Payment Successful!', 'Your rental is now confirmed.');
+          _load();
+        } else if (result == PaymentResult.cancelled) {
+          AppToast.warning(context, 'Payment Cancelled', 'You can pay again anytime.');
         }
       } else {
         final data = jsonDecode(resp.body);
-        AppToast.error(context, 'Checkout Failed', data['message'] ?? 'Could not open checkout.');
+        final msg = data['message'] as String? ?? 'Could not open checkout.';
+        if (!mounted) return;
+        AppToast.error(context, 'Checkout Failed', msg);
       }
     } catch (e) {
       if (mounted) AppToast.error(context, 'Network Error', e.toString());
@@ -162,6 +165,68 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       if (mounted) AppToast.error(context, 'Network Error', e.toString());
     } finally {
       if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
+  Future<void> _initiateDispute() async {
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('File a Dispute', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Describe the issue with the return verification.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason',
+                hintText: 'e.g. Item was returned in good condition…',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Submit Dispute'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final resp = await _api.post('/rentals/${_rental!.id}/dispute', {
+        'reason': reasonCtrl.text.trim().isEmpty
+            ? 'Verification disputed by user'
+            : reasonCtrl.text.trim(),
+      });
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        AppToast.success(context, 'Dispute Filed', 'Our team will review your case.');
+        _load();
+      } else {
+        final data = jsonDecode(resp.body);
+        final msg = data['message'] as String? ?? 'Could not file dispute.';
+        if (!mounted) return;
+        AppToast.error(context, 'Dispute Failed', msg);
+      }
+    } catch (e) {
+      if (mounted) AppToast.error(context, 'Network Error', e.toString());
     }
   }
 
@@ -306,16 +371,38 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             gradient: AppColors.primaryGradient,
                             onTap: () => _openKioskScan('return'),
                           ),
+                        if (_rental!.status == 'VERIFICATION')
+                          _ActionButton(
+                            icon: Icons.gavel_rounded,
+                            label: 'Dispute this Return',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                            ),
+                            onTap: _initiateDispute,
+                          ),
                         if (_rental!.status == 'COMPLETED') ...[
                           _ActionButton(
                             icon: Icons.star_rounded,
                             label: 'Leave a Review',
                             gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
-                            onTap: () => Navigator.pushNamed(
-                              context,
-                              '/reviews',
-                              arguments: {'itemId': _rental!.item.id},
-                            ),
+                            onTap: () async {
+                              final submitted = await showModalBottomSheet<bool>(
+                                context: context,
+                                isScrollControlled: true,
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                ),
+                                builder: (_) => PostReviewSheet(
+                                  rentalId: _rental!.id,
+                                  reviewType: 'ITEM',
+                                ),
+                              );
+                              if (!mounted) return;
+                              if (submitted == true) {
+                                // ignore: use_build_context_synchronously
+                                AppToast.success(context, 'Review Submitted!', 'Thank you for your feedback.');
+                              }
+                            },
                           ),
                         ],
                         if (['CANCELLED', 'DISPUTED', 'COMPLETED', 'VERIFICATION', 'AWAITING_RETURN']

@@ -28,8 +28,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   String _selectedCategory = AppConstants.categories.keys.first;
   String _selectedCondition = 'GOOD';
   bool _submitting = false;
-  List<File> _pickedImages = [];
-  List<String> _uploadedUrls = [];
+  final List<File> _pickedImages = [];
 
   @override
   void dispose() {
@@ -77,6 +76,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     setState(() => _submitting = true);
 
     final uploadedUrls = await _uploadImages();
+    if (!mounted) return;
     if (uploadedUrls.isEmpty) {
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image upload failed')));
@@ -188,7 +188,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _selectedCategory,
+                  value: _selectedCategory, // ignore: deprecated_member_use
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: AppConstants.categories.entries
                       .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
@@ -197,7 +197,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _selectedCondition,
+                  value: _selectedCondition, // ignore: deprecated_member_use
                   decoration: const InputDecoration(labelText: 'Condition'),
                   items: const [
                     DropdownMenuItem(value: 'NEW', child: Text('New')),
