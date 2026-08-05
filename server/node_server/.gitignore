@@ -43,3 +43,8 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Local persistent state (rate limiter disk snapshot; local file storage once
+# Phase 0.5's Supabase→local-filesystem migration lands)
+data/
+storage/

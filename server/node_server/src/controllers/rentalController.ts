@@ -257,6 +257,17 @@ export const getRentalById = async (
   }
 };
 
+// Manual (client-initiated) status transitions that are safe to allow.
+// The real lifecycle states — DEPOSITED, ACTIVE, VERIFICATION, COMPLETED,
+// DISPUTED — are *earned* through kiosk verification, payment webhooks, or
+// admin review and must never be settable directly by a participant, or the
+// verification/payment gates could be skipped. Admins use the dedicated
+// /admin routes (force-complete, settle) for privileged transitions.
+const ALLOWED_MANUAL_TRANSITIONS: Record<string, string[]> = {
+  PENDING: ["CANCELLED"],
+  AWAITING_DEPOSIT: ["CANCELLED"],
+};
+
 export const updateRentalStatus = async (
   req: AuthRequest,
   res: Response,
@@ -268,7 +279,7 @@ export const updateRentalStatus = async (
     }
 
     const id = req.params.id as string;
-    const { status, lockerId } = req.body;
+    const { status } = req.body;
 
     const rental = await prisma.rental.findUnique({
       where: { id },
@@ -287,22 +298,19 @@ export const updateRentalStatus = async (
       throw new ForbiddenError("Access denied");
     }
 
-    // Update rental
-    const updateData: any = { status };
-
-    if (status === "DEPOSITED" && lockerId) {
-      updateData.depositLockerId = lockerId;
-      updateData.depositedAt = new Date();
-    } else if (status === "ACTIVE" && lockerId) {
-      updateData.claimLockerId = lockerId;
-      updateData.claimedAt = new Date();
-    } else if (status === "AWAITING_RETURN") {
-      updateData.returnedAt = new Date();
+    // Enforce the transition whitelist — reject any attempt to jump into a
+    // verification/payment-earned state.
+    const allowedNext = ALLOWED_MANUAL_TRANSITIONS[rental.status] ?? [];
+    if (!allowedNext.includes(status)) {
+      throw new ValidationError(
+        `Transition ${rental.status} → ${status} is not permitted here. ` +
+          `This status is set automatically by the kiosk/payment flow.`,
+      );
     }
 
     const updatedRental = await prisma.rental.update({
       where: { id },
-      data: updateData,
+      data: { status },
       include: {
         item: true,
         renter: {
@@ -322,30 +330,25 @@ export const updateRentalStatus = async (
       },
     });
 
-    // Create notification based on status
-    let notificationData: any = null;
-    if (status === "DEPOSITED") {
-      notificationData = {
-        userId: rental.renterId,
-        title: "Item Deposited",
-        message: `${rental.item.title} has been deposited in the kiosk`,
-        type: "ITEM_READY_FOR_CLAIM",
-        relatedEntityId: rental.id,
-        relatedEntityType: "rental",
-      };
-    } else if (status === "ACTIVE") {
-      notificationData = {
-        userId: rental.ownerId,
-        title: "Item Claimed",
-        message: `Your ${rental.item.title} has been claimed`,
-        type: "RENTAL_STARTED",
-        relatedEntityId: rental.id,
-        relatedEntityType: "rental",
-      };
-    }
-
-    if (notificationData) {
-      await prisma.notification.create({ data: notificationData });
+    // The only permitted transition here is → CANCELLED. Free the item and
+    // notify the other party, mirroring cancelRental.
+    if (status === "CANCELLED") {
+      await prisma.item.update({
+        where: { id: rental.itemId },
+        data: { isAvailable: true },
+      });
+      const notifyUserId =
+        rental.renterId === req.user.userId ? rental.ownerId : rental.renterId;
+      await prisma.notification.create({
+        data: {
+          userId: notifyUserId,
+          title: "Rental Cancelled",
+          message: `Rental for ${rental.item.title} has been cancelled`,
+          type: "SYSTEM_ANNOUNCEMENT",
+          relatedEntityId: rental.id,
+          relatedEntityType: "rental",
+        },
+      });
     }
 
     logger.info(`Rental ${id} status updated to ${status}`);

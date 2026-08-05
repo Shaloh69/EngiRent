@@ -22,16 +22,35 @@ model User {
   phoneNumber       String
 
   // Profile & identity (photos must be taken in-app, not uploaded)
-  profileImage      String?   // Face photo URL (Supabase) — used by AI for identity verification
-  faceEncoding      Json?     // 128-float face_recognition encoding stored after first face capture
-  idImageUrl        String?   // School ID card photo URL (Supabase)
+  profileImage      String?   // Face photo path (local storage) — used by AI for identity verification
+  faceEncoding      Json?     // 128-float face_recognition encoding, AES-256-GCM encrypted (see utils/crypto.ts)
+  idImageUrl        String?   // School ID card photo path (local storage)
 
   // Profile completion — true once face + ID photos have been submitted
   profileComplete   Boolean   @default(false)
 
+  // Biometric consent — an explicit, separate affirmative capture at profile
+  // setup (distinct from general terms-of-service acceptance), required
+  // before faceEncoding/idImageUrl are written. Null means no biometric data
+  // has ever been captured, or consent predates this field's introduction —
+  // completeProfile() requires a fresh consent flag on every biometric
+  // submission regardless.
+  biometricConsentAt DateTime?
+
   // Parent/Guardian information
   parentName        String?
   parentContact     String?
+
+  // Payout destination — where this user's rental earnings and security-
+  // deposit refunds go via PayMongo's Disbursements (Transfers V2) API.
+  // Optional at signup; only required by the time a rental this user owns
+  // actually completes (see index.ts's completeRental). Collected once,
+  // typically during profile setup or when first listing an item.
+  payoutProvider       String? // "instapay" | "pesonet" — the rail destination_account routes over
+  payoutBic            String? // provider_code from PayMongo's receiving-institutions list — identifies the bank/e-wallet
+  payoutInstitutionName String? // display name of the chosen bank/e-wallet, cached so the UI doesn't need to re-resolve it from payoutBic
+  payoutAccountName    String? // recipient account holder name
+  payoutAccountNumber  Json?   // recipient account number — AES-256-GCM encrypted (utils/crypto.ts), same pattern as faceEncoding; genuine financial PII, not just a display value
 
   // Account status
   isVerified        Boolean   @default(false)
@@ -171,6 +190,10 @@ model Rental {
   @@index([renterId])
   @@index([ownerId])
   @@index([status])
+  // Serves the daily late-fee cron's `{status: ACTIVE, endDate: {lt: now}}`
+  // scan (index.ts) — a single-column index on `status` alone still requires
+  // a filtered scan across every ACTIVE rental to compare endDate.
+  @@index([status, endDate])
   @@map("rentals")
 }
 
@@ -379,13 +402,21 @@ enum ItemCondition {
   ACCEPTABLE
 }
 
+// AWAITING_CLAIM and AWAITING_RETURN were removed (2026-08-06) — neither was
+// ever assigned by any code path. DEPOSITED already represents "awaiting
+// claim" (there's no real gap between those two ideas); the return flow
+// stays ACTIVE for the (brief) window between the renter physically
+// returning the item and the AI verification resolving it to VERIFICATION/
+// DISPUTED — introducing a real intermediate state there would require
+// updating three separate status guards (kioskController.returnItem,
+// index.ts's kiosk:images and kiosk:face return-flow branches) with real
+// regression risk for a correctness-cleanup pass; simply removing the two
+// enum values that were never live schema was the lower-risk fix.
 enum RentalStatus {
   PENDING
   AWAITING_DEPOSIT
   DEPOSITED
-  AWAITING_CLAIM
   ACTIVE
-  AWAITING_RETURN
   VERIFICATION
   COMPLETED
   CANCELLED
@@ -398,6 +429,11 @@ enum TransactionType {
   DEPOSIT_REFUND
   LATE_FEE
   DAMAGE_FEE
+  // The real Disbursement Transfer paying the item owner their rental
+  // earnings at completion — distinct from RENTAL_PAYMENT, which is the
+  // renter's original charge into the platform's own PayMongo wallet, not
+  // money reaching the owner. See rentalSettlementService.ts.
+  OWNER_PAYOUT
 }
 
 enum TransactionStatus {

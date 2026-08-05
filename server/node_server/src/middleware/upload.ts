@@ -1,16 +1,16 @@
 import multer from "multer";
 import { Request } from "express";
+import env from "../config/env";
 
-const ALLOWED_MIMETYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "video/mp4",
-  "application/octet-stream", // camera packages on Android often send this
-];
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+// Actually controlled by ALLOWED_FILE_TYPES/MAX_FILE_SIZE now — these two env
+// vars previously existed in the schema but were silently ignored here,
+// which meant the config surface claimed something was configurable when it
+// wasn't. video/mp4 and application/octet-stream are included in the
+// .env.example default because Android camera packages often send the
+// latter for what is actually a JPEG — dropping it from a real deployment's
+// env value would break mobile-app photo uploads.
+const ALLOWED_MIMETYPES = env.ALLOWED_FILE_TYPES.split(",").map((t) => t.trim());
+const MAX_FILE_SIZE = parseInt(env.MAX_FILE_SIZE, 10);
 
 const fileFilter = (
   _req: Request,

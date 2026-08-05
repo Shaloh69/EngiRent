@@ -7,9 +7,12 @@ import {
   getAvailableLockers,
   releaseLocker,
   startKioskSession,
+  uploadKioskImages,
 } from "../controllers/kioskController";
 import { authenticate } from "../middleware/auth";
+import { requireKioskSecret } from "../middleware/kioskAuth";
 import { validate } from "../middleware/validation";
+import { uploadMultiple } from "../middleware/upload";
 
 const router = Router();
 
@@ -61,6 +64,16 @@ router.post(
     body("kioskId").notEmpty().withMessage("kioskId is required"),
   ]),
   startKioskSession,
+);
+
+// Kiosk uploads captured images directly (not via the mobile app's JWT auth —
+// the Pi has no user identity, only its shared secret). Replaces the kiosk
+// uploading straight to Supabase (see uploadKioskImages() doc comment).
+router.post(
+  "/upload",
+  requireKioskSecret,
+  uploadMultiple,
+  uploadKioskImages,
 );
 
 export default router;

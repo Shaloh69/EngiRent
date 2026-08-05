@@ -6,6 +6,10 @@ import { NotFoundError, ValidationError } from "../utils/errors";
 import logger from "../utils/logger";
 import { hashPassword } from "../utils/bcrypt";
 import kioskEventBus from "../utils/kioskEventBus";
+import axios from "axios";
+import fs from "fs";
+import env from "../config/env";
+import { finalizeRentalCompletion } from "../services/rentalSettlementService";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
 
@@ -38,6 +42,24 @@ export const getStats = async (
 
     const totalRevenue = revenueResult._sum.amount ?? 0;
 
+    // Real per-category rental counts for the admin dashboard's "popular
+    // categories" chart — Prisma's groupBy can't traverse the Item relation
+    // directly, and this dataset is small enough that aggregating in JS is
+    // simpler and clearer than a raw SQL join.
+    const rentalsWithCategory = await prisma.rental.findMany({
+      select: { item: { select: { category: true } } },
+    });
+    const categoryCounts = new Map<string, number>();
+    for (const r of rentalsWithCategory) {
+      categoryCounts.set(
+        r.item.category,
+        (categoryCounts.get(r.item.category) ?? 0) + 1,
+      );
+    }
+    const rentalsByCategory = Array.from(categoryCounts.entries()).map(
+      ([category, count]) => ({ category, count }),
+    );
+
     res.json({
       success: true,
       data: {
@@ -47,6 +69,7 @@ export const getStats = async (
         pendingVerifications,
         completedRentals,
         totalRevenue,
+        rentalsByCategory,
       },
     });
   } catch (error) {
@@ -679,6 +702,12 @@ export const settleDispute = async (
       }
     });
 
+    // Same real money movement as the normal AI-verified completion path
+    // (deposit refund net of damage/late fees + owner payout) — runs after
+    // the $transaction above commits so the DAMAGE_FEE row it just wrote is
+    // visible when finalizeRentalCompletion sums deductions.
+    await finalizeRentalCompletion(id);
+
     logger.info(
       `Admin settled dispute ${id} → ${outcome} by ${req.user?.email}${damageFee ? ` damageFee=₱${damageFee}` : ""}`,
     );
@@ -690,12 +719,14 @@ export const settleDispute = async (
 
 // ─── Kiosk config ─────────────────────────────────────────────────────────
 
+// No actuator_speed_percent — actuators are relay-driven on/off (no PWM
+// speed-control circuit exists on the current hardware), so a "speed"
+// setting here would be silently ignored by the Pi's actuator controller.
 const DEFAULT_LOCKER_CONFIG = {
   main_door_open_seconds: 15,
   bottom_door_open_seconds: 15,
   actuator_extend_seconds: 5,
   actuator_retract_seconds: 5,
-  actuator_speed_percent: 100,
 };
 
 const DEFAULT_CONFIG = {
@@ -794,6 +825,13 @@ export const sendKioskCommand = async (
       "lock_all",
       "actuator_extend",
       "actuator_retract",
+      // Hardware self-test — pulses every solenoid/actuator briefly and
+      // opens every camera, reporting pass/fail per component. Lets an admin
+      // verify kiosk hardware remotely instead of needing physical/SSH
+      // access to the Pi for every check (see docs/planning/03-revamp-master.md
+      // §3.5's Components Check). Result comes back via kiosk:self_test_result
+      // (index.ts), relayed through this same SSE stream below.
+      "self_test",
     ];
 
     if (!action || !validActions.includes(action)) {
@@ -834,6 +872,43 @@ export const sendKioskCommand = async (
         `│  Payload    : ${JSON.stringify(payload)}\n` +
         `└─────────────────────────────────────────────`,
     );
+
+    // "lock_all" is this kiosk's emergency stop today — the kiosk's own UI
+    // labels it "Emergency lock engaged" (socket_client.py). This is a
+    // *software* command dependent on the Pi process and network being
+    // alive — exactly the scenario a real E-stop most needs to survive.
+    // The actual fix (a normally-closed physical button wired in series with
+    // the relay/solenoid power rail, cutting power regardless of software
+    // state) requires hands-on hardware rework this session can't do — see
+    // memory.md's Phase 2 entry. This block is the software-side half the
+    // master plan asks for regardless: surface every trigger loudly rather
+    // than let it pass as a routine command.
+    if (action === "lock_all") {
+      logger.warn(
+        `[EMERGENCY STOP] lock_all triggered on kiosk ${kioskId} by ${req.user?.email} — command ${commandId}`,
+      );
+      kioskEventBus.emit("kiosk_emergency", {
+        kiosk_id: kioskId,
+        command_id: commandId,
+        triggered_by: req.user?.email,
+        ts: Date.now(),
+      });
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN" },
+        select: { id: true },
+      });
+      await prisma.notification.createMany({
+        data: admins.map((a) => ({
+          userId: a.id,
+          title: "Emergency Stop Triggered",
+          message: `${req.user?.email} triggered an emergency lock-all on kiosk ${kioskId}.`,
+          type: "SYSTEM_ANNOUNCEMENT",
+          relatedEntityId: kioskId,
+          relatedEntityType: "kiosk",
+        })),
+      });
+    }
+
     res.json({
       success: true,
       message: `Command "${action}" sent to kiosk ${kioskId}`,
@@ -870,6 +945,11 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
   const onError = (d: unknown) => send("kiosk_error", d);
   const onLog = (d: unknown) => send("kiosk_log", d);
   const onSnapshot = (d: unknown) => send("kiosk_admin_snapshot", d);
+  // Hardware self-test results — extends this existing telemetry shape
+  // rather than a separate channel; see the "self_test" action above.
+  const onSelfTest = (d: unknown) => send("kiosk_self_test", d);
+  // Emergency stop (lock_all) — see sendKioskCommand's emergency-stop block.
+  const onEmergency = (d: unknown) => send("kiosk_emergency", d);
 
   kioskEventBus.on("kiosk_status", onStatus);
   kioskEventBus.on("kiosk_online", onOnline);
@@ -878,6 +958,8 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
   kioskEventBus.on("kiosk_error", onError);
   kioskEventBus.on("kiosk_log", onLog);
   kioskEventBus.on("kiosk_admin_snapshot", onSnapshot);
+  kioskEventBus.on("kiosk_self_test", onSelfTest);
+  kioskEventBus.on("kiosk_emergency", onEmergency);
 
   // Heartbeat keeps the connection alive through proxies/load balancers
   const heartbeat = setInterval(() => {
@@ -897,8 +979,131 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
     kioskEventBus.off("kiosk_error", onError);
     kioskEventBus.off("kiosk_log", onLog);
     kioskEventBus.off("kiosk_admin_snapshot", onSnapshot);
+    kioskEventBus.off("kiosk_self_test", onSelfTest);
+    kioskEventBus.off("kiosk_emergency", onEmergency);
     logger.info(`SSE client disconnected: ${req.user?.email ?? "unknown"}`);
   });
+};
+
+// ─── System Components Check (PC-side software health) ────────────────────
+// Backs the admin Health Check page's software panel — a live version of
+// the same checks Start.bat runs at PC startup, so an admin can re-check
+// without needing shell access to the machine. Per-Pi hardware status is a
+// separate concern, driven by the "self_test" kiosk command + SSE stream
+// above, not this endpoint.
+
+interface HealthCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+async function checkDatabase(): Promise<HealthCheck> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return { name: "MySQL Database", ok: true, detail: "Reachable" };
+  } catch (err) {
+    return {
+      name: "MySQL Database",
+      ok: false,
+      detail: `Unreachable: ${(err as Error).message}`,
+    };
+  }
+}
+
+function checkStorageDir(): HealthCheck {
+  try {
+    fs.accessSync(env.STORAGE_DIR, fs.constants.R_OK | fs.constants.W_OK);
+    return {
+      name: "Local Storage",
+      ok: true,
+      detail: `${env.STORAGE_DIR} is readable/writable`,
+    };
+  } catch {
+    // Not yet created is fine — saveBuffer() creates it on first upload.
+    return {
+      name: "Local Storage",
+      ok: true,
+      detail: `${env.STORAGE_DIR} does not exist yet — created automatically on first upload`,
+    };
+  }
+}
+
+async function checkMlService(): Promise<HealthCheck> {
+  try {
+    const resp = await axios.get(`${env.ML_SERVICE_URL}/api/v1/health`, {
+      timeout: 5000,
+    });
+    return {
+      name: "ML Verification Service",
+      ok: resp.status === 200,
+      detail: `Responded ${resp.status} at ${env.ML_SERVICE_URL}`,
+    };
+  } catch (err) {
+    return {
+      name: "ML Verification Service",
+      ok: false,
+      detail: `Unreachable at ${env.ML_SERVICE_URL}: ${(err as Error).message}`,
+    };
+  }
+}
+
+function checkPaymongo(): HealthCheck {
+  const key = env.PAYMONGO_SECRET_KEY;
+  const configured = Boolean(key) && !key!.includes("your-") && !key!.includes("change-me");
+  return {
+    name: "PayMongo",
+    ok: configured,
+    detail: configured
+      ? "PAYMONGO_SECRET_KEY is configured"
+      : "PAYMONGO_SECRET_KEY is unset or still a placeholder",
+  };
+}
+
+async function checkAdminConsole(): Promise<HealthCheck> {
+  try {
+    const resp = await axios.get(env.CLIENT_ADMIN_URL, { timeout: 5000 });
+    return {
+      name: "Admin Console",
+      ok: resp.status < 500,
+      detail: `Responded ${resp.status} at ${env.CLIENT_ADMIN_URL}`,
+    };
+  } catch (err) {
+    return {
+      name: "Admin Console",
+      ok: false,
+      detail: `Unreachable at ${env.CLIENT_ADMIN_URL}: ${(err as Error).message}`,
+    };
+  }
+}
+
+export const getSystemHealth = async (
+  _req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const checks = await Promise.all([
+      checkDatabase(),
+      Promise.resolve(checkStorageDir()),
+      checkMlService(),
+      Promise.resolve(checkPaymongo()),
+      checkAdminConsole(),
+    ]);
+    // The Node API responding at all is this check itself succeeding.
+    checks.unshift({ name: "Node API", ok: true, detail: "Responding" });
+
+    res.json({
+      success: true,
+      data: {
+        overall: checks.every((c) => c.ok) ? "ok" : "degraded",
+        checks,
+        checkedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const listKiosks = async (

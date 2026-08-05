@@ -1,4 +1,5 @@
 import { Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
 import {
@@ -9,6 +10,46 @@ import {
 import logger from "../utils/logger";
 import axios from "axios";
 import env from "../config/env";
+
+/**
+ * Pre-extract and cache ML verification features for an item's listing
+ * photos, in the background (doesn't block the HTTP response). Shared by
+ * createItem (initial listing) and updateItem (whenever `images` changes) —
+ * the cache must be refreshed on both, not just populated once at creation.
+ */
+function extractAndCacheMlFeatures(itemId: string, images: string[]): void {
+  if (!env.ML_SERVICE_URL || images.length === 0) return;
+  setImmediate(async () => {
+    try {
+      const formData = new FormData();
+      for (const url of images) {
+        const resp = await axios.get(url, { responseType: "arraybuffer" });
+        const blob = new Blob([resp.data as ArrayBuffer], {
+          type: "image/jpeg",
+        });
+        formData.append("images", blob, "image.jpg");
+      }
+      const mlResp = await axios.post(
+        `${env.ML_SERVICE_URL}/api/v1/extract-features`,
+        formData,
+        {
+          headers: {
+            ...(env.ML_SERVICE_API_KEY && {
+              "X-API-Key": env.ML_SERVICE_API_KEY,
+            }),
+          },
+        },
+      );
+      await prisma.item.update({
+        where: { id: itemId },
+        data: { mlFeatures: mlResp.data.features as any },
+      });
+      logger.info(`ML features cached for item ${itemId}`);
+    } catch (err) {
+      logger.warn(`Failed to pre-extract ML features for item ${itemId}:`, err);
+    }
+  });
+}
 
 export const createItem = async (
   req: AuthRequest,
@@ -63,42 +104,10 @@ export const createItem = async (
 
     logger.info(`Item created: ${item.id} by user ${req.user.userId}`);
 
-    // Fix 5: Pre-extract ML features in the background so verification is faster.
-    // Uses setImmediate to avoid blocking the HTTP response — failure only logs a warning.
-    if (env.ML_SERVICE_URL && images && (images as string[]).length > 0) {
-      setImmediate(async () => {
-        try {
-          const formData = new FormData();
-          for (const url of images as string[]) {
-            const resp = await axios.get(url, { responseType: "arraybuffer" });
-            const blob = new Blob([resp.data as ArrayBuffer], {
-              type: "image/jpeg",
-            });
-            formData.append("images", blob, "image.jpg");
-          }
-          const mlResp = await axios.post(
-            `${env.ML_SERVICE_URL}/api/v1/extract-features`,
-            formData,
-            {
-              headers: {
-                ...(env.ML_SERVICE_API_KEY && {
-                  "X-API-Key": env.ML_SERVICE_API_KEY,
-                }),
-              },
-            },
-          );
-          await prisma.item.update({
-            where: { id: item.id },
-            data: { mlFeatures: mlResp.data.features as any },
-          });
-          logger.info(`ML features cached for item ${item.id}`);
-        } catch (err) {
-          logger.warn(
-            `Failed to pre-extract ML features for item ${item.id}:`,
-            err,
-          );
-        }
-      });
+    // Pre-extract ML features in the background so verification is faster —
+    // doesn't block this response; failure only logs a warning.
+    if (images && (images as string[]).length > 0) {
+      extractAndCacheMlFeatures(item.id, images as string[]);
     }
 
     res.status(201).json({
@@ -280,6 +289,13 @@ export const updateItem = async (
       isAvailable,
     } = req.body;
 
+    // If listing photos change, the cached ML feature vectors (extracted
+    // from the *old* photos) must not survive — a stale cache silently
+    // compared against new photos would produce wrong verification results
+    // at the kiosk. Null it out synchronously in the same update, then
+    // re-trigger background extraction against the new photos below.
+    const imagesChanged = images !== undefined;
+
     const updatedItem = await prisma.item.update({
       where: { id },
       data: {
@@ -298,6 +314,7 @@ export const updateItem = async (
           securityDeposit: parseFloat(securityDeposit),
         }),
         ...(images && { images }),
+        ...(imagesChanged && { mlFeatures: Prisma.JsonNull }),
         ...(serialNumber !== undefined && { serialNumber }),
         ...(campusLocation && { campusLocation }),
         ...(isAvailable !== undefined && { isAvailable }),
@@ -313,6 +330,10 @@ export const updateItem = async (
         },
       },
     });
+
+    if (imagesChanged && (images as string[]).length > 0) {
+      extractAndCacheMlFeatures(id, images as string[]);
+    }
 
     logger.info(`Item updated: ${id} by user ${req.user.userId}`);
 
@@ -344,13 +365,7 @@ export const deleteItem = async (
         rentals: {
           where: {
             status: {
-              in: [
-                "PENDING",
-                "AWAITING_DEPOSIT",
-                "DEPOSITED",
-                "AWAITING_CLAIM",
-                "ACTIVE",
-              ],
+              in: ["PENDING", "AWAITING_DEPOSIT", "DEPOSITED", "ACTIVE"],
             },
           },
         },

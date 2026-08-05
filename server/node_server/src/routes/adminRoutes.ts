@@ -20,6 +20,7 @@ import {
   listKiosks,
   kioskEventStream,
   getReports,
+  getSystemHealth,
 } from "../controllers/adminController";
 
 const router = Router();
@@ -89,6 +90,9 @@ router.patch(
 
 // ── Reports ────────────────────────────────────────────────────────────────
 router.get("/reports", getReports);
+
+// ── System health (PC-side software Components Check) ─────────────────────
+router.get("/health", getSystemHealth);
 
 // ── Kiosk management ──────────────────────────────────────────────────────
 router.get("/kiosks/events", kioskEventStream); // SSE — must be before :kioskId routes

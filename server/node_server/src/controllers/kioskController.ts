@@ -8,6 +8,14 @@ import {
 } from "../utils/errors";
 import logger from "../utils/logger";
 import kioskEventBus from "../utils/kioskEventBus";
+import { decryptFaceEncoding } from "../utils/crypto";
+import {
+  signedMediaUrl,
+  saveBuffer,
+  verificationImagePath,
+} from "../services/storageService";
+import { Request } from "express";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * POST /kiosk/deposit
@@ -128,7 +136,10 @@ export const claimItem = async (
 
     const { depositLocker: locker } = rental;
 
-    // Command Pi: capture face → kiosk:face socket handler takes over
+    // Command Pi: capture face → kiosk:face socket handler takes over.
+    // Prefer the decrypted stored encoding (fast, no re-download/re-encode on
+    // the ML side) over the reference URL, which stays as a fallback.
+    const decodedEncoding = decryptFaceEncoding(rental.renter.faceEncoding);
     const io = req.app.get("io");
     if (io) {
       io.to(`kiosk:${locker.kioskId}`).emit("kiosk:command", {
@@ -136,7 +147,15 @@ export const claimItem = async (
         locker_id: parseInt(locker.lockerNumber, 10),
         rental_id: rentalId,
         user_id: req.user.userId,
-        reference_face_url: rental.renter.profileImage ?? "",
+        // signedMediaUrl() converts the stored path into a short-lived,
+        // single-purpose URL the kiosk can fetch over plain HTTP — the
+        // kiosk has no user JWT (only its Socket.io shared-secret), so the
+        // authenticated /media/users/:id/face.jpg route isn't reachable to
+        // it; a signed link is the correct tier for this consumer.
+        reference_face_url: signedMediaUrl(rental.renter.profileImage) ?? "",
+        ...(decodedEncoding
+          ? { stored_encoding: JSON.stringify(decodedEncoding) }
+          : {}),
       });
     }
 
@@ -213,13 +232,22 @@ export const returnItem = async (
       });
 
       // After door closes — request face capture first
+      const decodedEncoding = decryptFaceEncoding(rental.renter.faceEncoding);
       setTimeout(() => {
         io.to(`kiosk:${locker.kioskId}`).emit("kiosk:command", {
           action: "capture_face",
           locker_id: parseInt(locker.lockerNumber, 10),
           rental_id: rentalId,
           user_id: req.user!.userId,
-          reference_face_url: rental.renter.profileImage ?? "",
+          // signedMediaUrl() converts the stored path into a short-lived,
+        // single-purpose URL the kiosk can fetch over plain HTTP — the
+        // kiosk has no user JWT (only its Socket.io shared-secret), so the
+        // authenticated /media/users/:id/face.jpg route isn't reachable to
+        // it; a signed link is the correct tier for this consumer.
+        reference_face_url: signedMediaUrl(rental.renter.profileImage) ?? "",
+          ...(decodedEncoding
+            ? { stored_encoding: JSON.stringify(decodedEncoding) }
+            : {}),
         });
       }, 20_000);
     }
@@ -321,18 +349,100 @@ export const startKioskSession = async (
   }
 };
 
+/**
+ * POST /kiosk/upload
+ *
+ * Receives locker-capture and face-capture images directly from the
+ * Raspberry Pi over HTTP (multipart), authenticated via the shared kiosk
+ * secret (see middleware/kioskAuth.ts) — not a user JWT, since the kiosk has
+ * no user identity of its own.
+ *
+ * This replaces the kiosk uploading straight to Supabase. Once storage
+ * moved to the PC's local filesystem, the Pi can no longer write to it
+ * directly (they're different physical machines, connected over Tailscale,
+ * not a shared filesystem) — the kiosk now POSTs bytes here instead, the
+ * same way any other client would.
+ *
+ * Verification/face-capture images are all treated as sensitive (evidence
+ * tied to a specific rental's dispute/audit trail, or a live biometric
+ * capture) — every URL returned is a short-lived signed one, never a
+ * permanent/guessable link.
+ */
+export const uploadKioskImages = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ success: false, message: "No images provided" });
+      return;
+    }
+
+    const rentalId = (req.body.rentalId as string | undefined)?.trim();
+    // Rental-scoped when we know the rental (the overwhelming majority of
+    // calls); falls back to an "unscoped" bucket for admin-preview snapshots
+    // that have no associated rental (kiosk:admin_snapshot).
+    const scope = rentalId && rentalId.length > 0 ? rentalId : "unscoped";
+
+    const urls = await Promise.all(
+      files.map(async (file) => {
+        const ext = file.mimetype === "image/png" ? ".png" : ".jpg";
+        const filename = `${Date.now()}-${uuidv4()}${ext}`;
+        const relativePath = verificationImagePath(scope, filename);
+        await saveBuffer(relativePath, file.buffer);
+        return signedMediaUrl(relativePath);
+      }),
+    );
+
+    res.json({ success: true, urls });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const releaseLocker = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
   try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+
     const lockerId = req.params.id as string;
 
     const locker = await prisma.locker.findUnique({ where: { id: lockerId } });
     if (!locker) throw new NotFoundError("Locker not found");
     if (!locker.isOperational)
       throw new ValidationError("Locker is not operational");
+
+    // Ownership check — this previously accepted a request from *any*
+    // authenticated student regardless of whose rental (if any) occupied the
+    // locker, despite the route comment claiming "admin or kiosk service."
+    // Admins may always release a locker. Otherwise the caller must be the
+    // renter or owner of the rental currently occupying it. A locker with no
+    // current rental has nothing for a non-admin to legitimately release.
+    if (req.user.role !== "ADMIN") {
+      if (!locker.currentRentalId) {
+        throw new ForbiddenError(
+          "Only an admin can release a locker with no active rental",
+        );
+      }
+      const rental = await prisma.rental.findUnique({
+        where: { id: locker.currentRentalId },
+        select: { renterId: true, ownerId: true },
+      });
+      if (
+        !rental ||
+        (rental.renterId !== req.user.userId &&
+          rental.ownerId !== req.user.userId)
+      ) {
+        throw new ForbiddenError(
+          "You can only release a locker tied to your own rental",
+        );
+      }
+    }
 
     await prisma.locker.update({
       where: { id: lockerId },

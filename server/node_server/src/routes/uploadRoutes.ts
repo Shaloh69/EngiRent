@@ -1,11 +1,24 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { authenticate } from "../middleware/auth";
 import { uploadSingle, uploadMultiple } from "../middleware/upload";
-import { uploadFile, FOLDERS } from "../services/storageService";
+import {
+  saveBuffer,
+  itemImagePath,
+  publicItemUrl,
+} from "../services/storageService";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 
 const router = Router();
+
+// Both routes below are for *item listing photos only* — not sensitive, so
+// they're saved under items/{batchId}/ and served back as a plain (unsigned)
+// URL. `batchId` is a fresh UUID per upload call rather than the eventual
+// Item.id, because these routes run before the Item record exists (the
+// client uploads photos first, then POSTs /items with the resulting URLs).
+// Face/ID photos go through POST /auth/register-face + the profile-complete
+// flow instead (see authController.ts) — they're a different sensitivity
+// tier (private, or authenticated-only) and never touch this router.
 
 // POST /upload/image — single file
 router.post(
@@ -18,22 +31,19 @@ router.post(
         res.status(400).json({ success: false, message: "No file provided" });
         return;
       }
+      const batchId = uuidv4();
       const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
-      const filename = `${uuidv4()}${ext}`;
-      const url = await uploadFile(
-        FOLDERS.ITEMS,
-        filename,
-        req.file.buffer,
-        req.file.mimetype,
-      );
-      res.json({ success: true, url });
+      const filename = `listing-1${ext}`;
+      const relativePath = itemImagePath(batchId, filename);
+      await saveBuffer(relativePath, req.file.buffer);
+      res.json({ success: true, url: publicItemUrl(relativePath) });
     } catch (error) {
       next(error);
     }
   },
 );
 
-// POST /upload/images — multiple files (up to 10)
+// POST /upload/images — multiple files (up to 10), grouped under one batch
 router.post(
   "/images",
   authenticate,
@@ -45,16 +55,14 @@ router.post(
         res.status(400).json({ success: false, message: "No files provided" });
         return;
       }
+      const batchId = uuidv4();
       const urls = await Promise.all(
-        files.map((file) => {
+        files.map(async (file, i) => {
           const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-          const filename = `${uuidv4()}${ext}`;
-          return uploadFile(
-            FOLDERS.ITEMS,
-            filename,
-            file.buffer,
-            file.mimetype,
-          );
+          const filename = `listing-${i + 1}${ext}`;
+          const relativePath = itemImagePath(batchId, filename);
+          await saveBuffer(relativePath, file.buffer);
+          return publicItemUrl(relativePath);
         }),
       );
       res.json({ success: true, urls });

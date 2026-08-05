@@ -10,10 +10,16 @@ import env from "./config/env";
 import { connectDatabase } from "./config/database";
 import logger from "./utils/logger";
 import routes from "./routes";
+import mediaRoutes from "./routes/mediaRoutes";
 import { errorHandler, notFound } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
+import { mediaUrlRewriter } from "./middleware/mediaUrlRewriter";
 import prisma from "./config/database";
 import kioskEventBus from "./utils/kioskEventBus";
+import { verifyAccessToken } from "./utils/jwt";
+import { decryptFaceEncoding } from "./utils/crypto";
+import { signedMediaUrl } from "./services/storageService";
+import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
   sendItemReadyForClaim,
   sendRentalCompleted,
@@ -48,17 +54,97 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
-// Admin routes are protected by JWT + requireAdmin — skip rate limiter for them
-app.use((req, res, next) => {
-  if (req.path.startsWith(`/api/${env.API_VERSION}/admin`)) return next();
-  return rateLimiter(req, res, next);
-});
+// Rate limiting applies uniformly, including /admin — a prior version of this
+// middleware skipped every /admin/* path, meaning admin login itself was
+// completely unprotected against a brute-force password attempt. requireAdmin
+// still gates *access* to admin data, but that's a separate concern from
+// throttling how many login attempts an IP can make.
+app.use(rateLimiter);
+// Rewrites stored media paths (users/{id}/face.jpg, users/{id}/id.jpg,
+// verifications/**) into real URLs on every JSON response — see
+// middleware/mediaUrlRewriter.ts for why this is global instead of
+// per-controller.
+app.use(mediaUrlRewriter);
 
 // Expose io to controllers
 app.set("io", io);
 
+// ── Socket.io authentication ────────────────────────────────────────────────
+// Every socket is tagged as one of: "kiosk" (Raspberry Pi, proven by the shared
+// secret), "user" (mobile/web client, proven by a valid access token), or "anon".
+// Privileged events (all kiosk:* hardware/verification events, user-room join,
+// app-initiated kiosk scans) are gated on this tag below. This closes the hole
+// where any unauthenticated socket could open a locker (kiosk:face) or drive a
+// rental/payment through its state machine (kiosk:images).
+if (!env.KIOSK_SHARED_SECRET) {
+  logger.warn(
+    "⚠️  KIOSK_SHARED_SECRET is not set — kiosk hardware events will be REFUSED " +
+      "(fail-closed). Set it on both the backend and the Pi to enable the kiosk.",
+  );
+}
+
+io.use((socket, next) => {
+  try {
+    const auth = (socket.handshake.auth ?? {}) as Record<string, unknown>;
+    const headers = socket.handshake.headers;
+
+    // 1) Kiosk — shared secret via auth payload or x-kiosk-secret header
+    const kioskSecret =
+      (auth.kioskSecret as string | undefined) ??
+      (headers["x-kiosk-secret"] as string | undefined);
+    if (
+      env.KIOSK_SHARED_SECRET &&
+      kioskSecret &&
+      kioskSecret === env.KIOSK_SHARED_SECRET
+    ) {
+      socket.data.kind = "kiosk";
+      socket.data.kioskId = (auth.kioskId as string | undefined) ?? undefined;
+      return next();
+    }
+
+    // 2) User — access token via auth payload or Authorization header
+    const bearer =
+      (auth.token as string | undefined) ??
+      (headers.authorization as string | undefined)?.replace(/^Bearer\s+/i, "");
+    if (bearer) {
+      try {
+        const decoded = verifyAccessToken(bearer);
+        socket.data.kind = "user";
+        socket.data.userId = decoded.userId;
+        socket.data.role = decoded.role;
+        return next();
+      } catch {
+        // fall through to anon
+      }
+    }
+
+    // 3) Anonymous — may connect (to receive public broadcasts) but cannot
+    //    trigger any privileged event.
+    socket.data.kind = "anon";
+    return next();
+  } catch {
+    socket.data.kind = "anon";
+    return next();
+  }
+});
+
+/** True when the socket authenticated as a genuine kiosk. */
+function isKiosk(socket: Socket): boolean {
+  return socket.data?.kind === "kiosk";
+}
+/** True when the socket authenticated as a logged-in user. */
+function isUser(socket: Socket): boolean {
+  return socket.data?.kind === "user" && Boolean(socket.data?.userId);
+}
+
 // ── API routes ─────────────────────────────────────────────────────────────
 app.use(`/api/${env.API_VERSION}`, routes);
+
+// ── Local media serving (Phase 0.5 — replaces Supabase's public bucket) ─────
+// Deliberately mounted outside /api/${API_VERSION} — this is asset serving,
+// not a REST resource, and the rate limiter above already applies to it
+// (mounted before this line) same as every other route.
+app.use("/media", mediaRoutes);
 
 // ── Error handling ─────────────────────────────────────────────────────────
 app.use(notFound);
@@ -127,34 +213,6 @@ async function runMlVerification(
   };
 }
 
-// ── ML feature persistence — store extracted features back on the item ───────
-async function persistMlFeatures(
-  itemId: string,
-  mlResult: { method_scores: Record<string, number>; [k: string]: unknown },
-): Promise<void> {
-  try {
-    const existing = await prisma.item.findUnique({
-      where: { id: itemId },
-      select: { mlFeatures: true },
-    });
-    if (existing?.mlFeatures) return; // already stored
-    if (
-      !mlResult.method_scores ||
-      Object.keys(mlResult.method_scores).length === 0
-    )
-      return;
-    await prisma.item.update({
-      where: { id: itemId },
-      data: { mlFeatures: mlResult as never },
-    });
-    logger.info(`ML features persisted for item ${itemId}`);
-  } catch (err) {
-    logger.warn(
-      `Could not persist ML features for item ${itemId}: ${(err as Error).message}`,
-    );
-  }
-}
-
 // ── Auto-complete a rental after successful verifications ────────────────────
 async function completeRental(rentalId: string): Promise<void> {
   const rental = await prisma.rental.findUnique({
@@ -212,6 +270,12 @@ async function completeRental(rentalId: string): Promise<void> {
     }),
   ]);
 
+  // Real money movement: refund the renter's deposit (minus any damage/late
+  // fees already logged) and pay the owner out — see rentalSettlementService.ts.
+  // Deliberately outside the $transaction above — each half calls an external
+  // PayMongo API and creates its own follow-up notification independently.
+  await finalizeRentalCompletion(rentalId);
+
   // Notify both parties via socket
   io.to(`user:${rental.renterId}`).emit("rental:completed", { rentalId });
   io.to(`user:${rental.ownerId}`).emit("rental:completed", { rentalId });
@@ -221,13 +285,20 @@ async function completeRental(rentalId: string): Promise<void> {
 io.on("connection", (socket: Socket) => {
   logger.info(`Socket connected: ${socket.id}`);
 
-  // ── User room join (mobile app / admin console)
-  socket.on("join", (userId: string) => {
-    socket.join(`user:${userId}`);
-    logger.info(`User ${userId} joined their notification room`);
+  // ── User room join (mobile app) — join ONLY the authenticated user's room.
+  // The client-supplied id is ignored so a socket can't subscribe to someone
+  // else's notifications.
+  socket.on("join", () => {
+    if (!isUser(socket)) {
+      logger.warn("Rejected 'join' from non-authenticated socket");
+      return;
+    }
+    const uid = socket.data.userId as string;
+    socket.join(`user:${uid}`);
+    logger.info(`User ${uid} joined their notification room`);
   });
 
-  // ── Kiosk registration — Pi announces itself on connect
+  // ── Kiosk registration — Pi announces itself on connect (kiosk-only)
   socket.on(
     "kiosk:register",
     async (data: {
@@ -235,7 +306,14 @@ io.on("connection", (socket: Socket) => {
       locker_count: number;
       version: string;
     }) => {
+      if (!isKiosk(socket)) {
+        logger.warn(
+          `Rejected 'kiosk:register' from unauthenticated socket ${socket.id}`,
+        );
+        return;
+      }
       const { kiosk_id, locker_count, version } = data;
+      socket.data.kioskId = kiosk_id;
       socket.join(`kiosk:${kiosk_id}`);
 
       logger.info(
@@ -281,6 +359,7 @@ io.on("connection", (socket: Socket) => {
       status: "ok" | "error";
       message?: string;
     }) => {
+      if (!isKiosk(socket)) return;
       const { kiosk_id, command_id, action, status, message } = data;
       if (status === "ok") {
         logger.info(
@@ -310,6 +389,7 @@ io.on("connection", (socket: Socket) => {
 
   // ── Kiosk status update
   socket.on("kiosk:status", (data: unknown) => {
+    if (!isKiosk(socket)) return;
     const d = data as Record<string, unknown>;
     const ui = d?.ui_state as Record<string, unknown> | undefined;
     const lockers = ui?.lockers as
@@ -345,6 +425,12 @@ io.on("connection", (socket: Socket) => {
       image_urls: string[];
       rental_id?: string;
     }) => {
+      if (!isKiosk(socket)) {
+        logger.warn(
+          `Rejected 'kiosk:images' from unauthenticated socket ${socket.id}`,
+        );
+        return;
+      }
       const { rental_id, image_urls, locker_id } = data;
 
       if (!rental_id) {
@@ -408,6 +494,16 @@ io.on("connection", (socket: Socket) => {
               where: { id: rental_id },
               data: { depositAttemptCount: { increment: 1 } },
             });
+            // Tell the kiosk's own screen the verification result, separate
+            // from the physical door command above — closes the gap where
+            // the kiosk previously went straight back to "idle" the instant
+            // it uploaded images, before this (multi-second) ML decision
+            // ever came back (see kiosk_ui's new "verifying" screen).
+            socket.emit("kiosk:command", {
+              action: "verification_done",
+              result: "retry",
+              locker_id,
+            });
             socket.emit("kiosk:command", {
               action: "open_door",
               locker_id,
@@ -463,6 +559,11 @@ io.on("connection", (socket: Socket) => {
                 relatedEntityId: rental_id,
                 relatedEntityType: "rental",
               },
+            });
+            socket.emit("kiosk:command", {
+              action: "verification_done",
+              result: "rejected",
+              locker_id,
             });
             io.to(`user:${rental.ownerId}`).emit("deposit:rejected", {
               rentalId: rental_id,
@@ -524,8 +625,12 @@ io.on("connection", (socket: Socket) => {
             },
           });
 
-          // Persist ML features + send email
-          await persistMlFeatures(rental.itemId, mlResult);
+          // Feature caching for this item already happened at listing time
+          // (itemController.createItem/updateItem → extractAndCacheMlFeatures);
+          // persisting the verification *result* here into Item.mlFeatures was
+          // removed — it wrote the wrong shape (hybrid.py expects
+          // {traditional, deep, ocr_texts, image_count}, not a decision/score
+          // object) and never actually served as a usable cache.
           const renterUser = await prisma.user.findUnique({
             where: { id: rental.renterId },
             select: { email: true, firstName: true },
@@ -538,6 +643,11 @@ io.on("connection", (socket: Socket) => {
             });
           }
 
+          socket.emit("kiosk:command", {
+            action: "verification_done",
+            result: decision === "APPROVED" ? "approved" : "pending",
+            locker_id,
+          });
           io.to(`user:${rental.renterId}`).emit("deposit:approved", {
             rentalId: rental_id,
             decision,
@@ -585,6 +695,11 @@ io.on("connection", (socket: Socket) => {
             await prisma.rental.update({
               where: { id: rental_id },
               data: { returnAttemptCount: { increment: 1 } },
+            });
+            socket.emit("kiosk:command", {
+              action: "verification_done",
+              result: "retry",
+              locker_id,
             });
             socket.emit("kiosk:command", {
               action: "open_door",
@@ -659,6 +774,11 @@ io.on("connection", (socket: Socket) => {
               });
             }
 
+            socket.emit("kiosk:command", {
+              action: "verification_done",
+              result: "rejected",
+              locker_id,
+            });
             io.to(`user:${rental.renterId}`).emit("return:disputed", {
               rentalId: rental_id,
             });
@@ -711,6 +831,12 @@ io.on("connection", (socket: Socket) => {
             });
           }
 
+          socket.emit("kiosk:command", {
+            action: "verification_done",
+            result: decision === "APPROVED" ? "approved" : "pending",
+            locker_id,
+          });
+
           if (decision === "APPROVED") {
             await completeRental(rental_id);
           } else {
@@ -758,8 +884,28 @@ io.on("connection", (socket: Socket) => {
       verified: boolean;
       confidence: number;
       face_url?: string;
+      error?: string | null;
     }) => {
-      const { rental_id, user_id, detected, verified, confidence } = data;
+      if (!isKiosk(socket)) {
+        logger.warn(
+          `Rejected 'kiosk:face' from unauthenticated socket ${socket.id}`,
+        );
+        return;
+      }
+      const { rental_id, user_id, detected, verified, confidence, error } =
+        data;
+
+      // The kiosk substitutes a materially weaker local Haar-cascade
+      // confidence check (see face_service.py) when the real ML dlib
+      // comparison is unreachable — previously this happened with no signal
+      // anywhere that a security-relevant degradation had occurred. The
+      // string match against face_service.py's own wording is the current
+      // signal since there's no dedicated boolean field on the wire yet;
+      // logged loudly and persisted as an admin notification either way, so
+      // it's genuinely visible rather than silent.
+      const usedFallback = Boolean(
+        error && /local fallback used/i.test(error),
+      );
 
       logger.info(
         `\n┌─────────────────────────────────────────────\n` +
@@ -770,8 +916,20 @@ io.on("connection", (socket: Socket) => {
           `│  Detected   : ${detected}\n` +
           `│  Verified   : ${verified}\n` +
           `│  Confidence : ${(confidence * 100).toFixed(1)}%\n` +
+          `${usedFallback ? `│  ⚠ WEAKER LOCAL FALLBACK USED — ${error}\n` : ""}` +
           `└─────────────────────────────────────────────`,
       );
+
+      if (usedFallback) {
+        logger.warn(
+          `Kiosk ${data.kiosk_id} used the weaker local face-match fallback for rental ${rental_id ?? "?"} — ML service was unreachable.`,
+        );
+        kioskEventBus.emit("kiosk_error", {
+          kiosk_id: data.kiosk_id,
+          message: `Weaker local face-match fallback used (ML service unreachable) for rental ${rental_id ?? "unknown"}`,
+          ts: Date.now(),
+        });
+      }
 
       if (!rental_id) return;
 
@@ -857,6 +1015,7 @@ io.on("connection", (socket: Socket) => {
   socket.on(
     "kiosk:rental_lookup",
     async (data: { kiosk_id: string; rental_id: string }) => {
+      if (!isKiosk(socket)) return;
       try {
         const rental = await prisma.rental.findUnique({
           where: { id: data.rental_id },
@@ -897,6 +1056,7 @@ io.on("connection", (socket: Socket) => {
   socket.on(
     "kiosk:admin_snapshot",
     (data: { kiosk_id: string; locker_id: number; image_urls: string[] }) => {
+      if (!isKiosk(socket)) return;
       const { kiosk_id, locker_id, image_urls } = data;
       logger.info(
         `\n┌─────────────────────────────────────────────\n` +
@@ -915,6 +1075,7 @@ io.on("connection", (socket: Socket) => {
   socket.on(
     "kiosk:flow_start",
     async (data: { kiosk_id: string; rental_id: string }) => {
+      if (!isKiosk(socket)) return;
       const { rental_id } = data;
       logger.info(`[PI-FLOW]  flow_start for rental ${rental_id}`);
 
@@ -923,10 +1084,20 @@ io.on("connection", (socket: Socket) => {
           where: { id: rental_id },
           include: {
             owner: {
-              select: { id: true, profileImage: true, firstName: true },
+              select: {
+                id: true,
+                profileImage: true,
+                firstName: true,
+                faceEncoding: true,
+              },
             },
             renter: {
-              select: { id: true, profileImage: true, firstName: true },
+              select: {
+                id: true,
+                profileImage: true,
+                firstName: true,
+                faceEncoding: true,
+              },
             },
           },
         });
@@ -950,20 +1121,37 @@ io.on("connection", (socket: Socket) => {
 
         let reference_face_url = "";
         let user_id = "";
+        let storedEncodingRaw: unknown = null;
 
+        // signedMediaUrl() converts the stored path into a short-lived URL
+        // the kiosk can fetch over plain HTTP — it has no user JWT (only its
+        // Socket.io shared secret), so the authenticated
+        // /media/users/:id/face.jpg route isn't reachable to it.
         if (rental.status === "AWAITING_DEPOSIT") {
-          reference_face_url = rental.owner?.profileImage ?? "";
+          reference_face_url = signedMediaUrl(rental.owner?.profileImage) ?? "";
           user_id = rental.ownerId;
+          storedEncodingRaw = rental.owner?.faceEncoding ?? null;
         } else {
-          reference_face_url = rental.renter?.profileImage ?? "";
+          reference_face_url = signedMediaUrl(rental.renter?.profileImage) ?? "";
           user_id = rental.renterId ?? "";
+          storedEncodingRaw = rental.renter?.faceEncoding ?? null;
         }
+
+        // Prefer the decrypted stored encoding (fast, no image download/
+        // re-encode on the ML side) over the reference URL, which stays as a
+        // fallback for accounts that registered before encoding capture
+        // existed. The raw floats only ever leave process memory over this
+        // already-authenticated kiosk socket channel.
+        const decodedEncoding = decryptFaceEncoding(storedEncodingRaw);
 
         socket.emit("kiosk:command", {
           action: "capture_face",
           rental_id,
           reference_face_url,
           user_id,
+          ...(decodedEncoding
+            ? { stored_encoding: JSON.stringify(decodedEncoding) }
+            : {}),
         });
 
         logger.info(
@@ -981,6 +1169,7 @@ io.on("connection", (socket: Socket) => {
 
   // ── Kiosk error passthrough
   socket.on("kiosk:error", (data: unknown) => {
+    if (!isKiosk(socket)) return;
     const d = data as Record<string, unknown>;
     logger.warn(
       `\n┌─────────────────────────────────────────────\n` +
@@ -993,6 +1182,20 @@ io.on("connection", (socket: Socket) => {
     kioskEventBus.emit("kiosk_error", { ...d, ts: Date.now() });
   });
 
+  // ── Hardware self-test result — Pi reports back after a "self_test"
+  // kiosk:command (see adminController.sendKioskCommand), relayed to the
+  // admin Health Check page via the existing SSE stream (kiosk_self_test
+  // event) rather than a new channel.
+  socket.on("kiosk:self_test_result", (data: unknown) => {
+    if (!isKiosk(socket)) return;
+    const d = data as Record<string, unknown>;
+    logger.info(
+      `[SELF-TEST] kiosk=${d?.kiosk_id ?? "?"} command_id=${d?.command_id ?? "?"} ` +
+        `overall=${d?.overall ?? "?"}`,
+    );
+    kioskEventBus.emit("kiosk_self_test", { ...d, ts: Date.now() });
+  });
+
   // ── Pi log forwarding — all relevant Pi logs streamed to Render
   socket.on(
     "kiosk:log",
@@ -1003,6 +1206,7 @@ io.on("connection", (socket: Socket) => {
       message: string;
       ts: number;
     }) => {
+      if (!isKiosk(socket)) return;
       const { kiosk_id, level, module, message } = data;
       const tag =
         level === "WARNING" || level === "ERROR" || level === "CRITICAL"
@@ -1031,9 +1235,15 @@ io.on("connection", (socket: Socket) => {
       mode: "place" | "retrieve" | "return";
       userId: string;
     }) => {
-      const { token, rentalId, mode, userId } = data ?? {};
+      if (!isUser(socket)) {
+        logger.warn("Rejected 'app:kiosk_scan' from non-authenticated socket");
+        return;
+      }
+      const { token, rentalId, mode } = data ?? {};
+      // Trust the authenticated identity, not a client-supplied userId
+      const userId = socket.data.userId as string;
 
-      if (!token || !rentalId || !userId) {
+      if (!token || !rentalId) {
         socket.emit("kiosk:scan_error", {
           rentalId,
           message: "Missing required fields",
@@ -1075,6 +1285,7 @@ io.on("connection", (socket: Socket) => {
   socket.on(
     "kiosk:scan_error_relay",
     (data: { userId: string; rentalId: string; message: string }) => {
+      if (!isKiosk(socket)) return;
       const { userId, rentalId, message } = data ?? {};
       if (userId) {
         io.to(`user:${userId}`).emit("kiosk:scan_error", { rentalId, message });
@@ -1098,7 +1309,27 @@ io.on("connection", (socket: Socket) => {
 });
 
 // ── Late fee cron — runs daily at 01:00 server time ───────────────────────
-const LATE_FEE_RATE_PER_DAY = 50; // ₱50 per day overdue
+// Per-category daily rates, derived from docs/reference/ITEM_CATEGORIES.md's
+// "Pricing Guidelines" table (§ Suggested Daily Rental Rates), averaged
+// within each Prisma ItemCategory bucket. Two judgment calls worth recording:
+//   1. That table's column is literally labeled "Late Fee/Hour", but its
+//      values (₱5-₱80) only make sense read as *daily* rates — at face value
+//      an hourly rate would integrate to ₱120-₱1,920/day, several times the
+//      item's own daily rental price. Treating the header as the doc's own
+//      error and the values as per-day is consistent with this rate's own
+//      prior placeholder comment, written the same way before this fix.
+//   2. SPORTS_EQUIPMENT and OTHER have no row in that table at all — rather
+//      than inventing a number with zero basis, both fall back to the old
+//      flat ₱50/day (still a documented default, not silently different).
+const LATE_FEE_RATE_BY_CATEGORY: Record<string, number> = {
+  SCHOOL_ATTIRE: 12, // avg of Lab Gown ₱10, School Uniform ₱15, PE Uniform ₱10
+  ACADEMIC_TOOLS: 15, // avg of Calculator ₱10, Drawing Tools ₱20
+  ELECTRONICS: 28, // avg of Laptop ₱50, Tablet ₱30, Power Bank ₱5
+  DEVELOPMENT_KITS: 20, // avg of Arduino Kit ₱15, Raspberry Pi Kit ₱25
+  MEASUREMENT_TOOLS: 10, // Multimeter ₱10 (only category row with a documented rate)
+  AUDIO_VISUAL: 45, // avg of Headphones ₱10, Camera ₱80
+};
+const DEFAULT_LATE_FEE_RATE_PER_DAY = 50; // SPORTS_EQUIPMENT, OTHER — no doc data
 
 cron.schedule("0 1 * * *", async () => {
   logger.info("[CRON] Running late fee check…");
@@ -1110,7 +1341,7 @@ cron.schedule("0 1 * * *", async () => {
       },
       include: {
         renter: { select: { id: true, email: true, firstName: true } },
-        item: { select: { title: true } },
+        item: { select: { title: true, category: true } },
         transactions: { where: { type: "LATE_FEE", status: "COMPLETED" } },
       },
     });
@@ -1127,7 +1358,10 @@ cron.schedule("0 1 * * *", async () => {
       const daysToBill = daysLate - alreadyBilled;
       if (daysToBill <= 0) continue;
 
-      const lateFee = daysToBill * LATE_FEE_RATE_PER_DAY;
+      const rate =
+        LATE_FEE_RATE_BY_CATEGORY[rental.item.category] ??
+        DEFAULT_LATE_FEE_RATE_PER_DAY;
+      const lateFee = daysToBill * rate;
 
       await prisma.$transaction([
         prisma.transaction.create({
@@ -1138,13 +1372,18 @@ cron.schedule("0 1 * * *", async () => {
             amount: lateFee,
             status: "COMPLETED",
             paidAt: now,
+            // No real charge happens here — this is a claim against the
+            // renter's held security deposit, settled (deducted from the
+            // deposit refund) once the rental completes. See
+            // rentalSettlementService.ts's finalizeRentalCompletion().
+            paymentMethod: "Held Deposit Deduction",
           },
         }),
         prisma.notification.create({
           data: {
             userId: rental.renterId,
             title: "Late Return Fee Applied",
-            message: `A late fee of ₱${lateFee.toFixed(2)} has been applied for ${rental.item.title} (${daysToBill} day(s) overdue).`,
+            message: `A late fee of ₱${lateFee.toFixed(2)} has been applied for ${rental.item.title} (${daysToBill} day(s) overdue). This will be deducted from your security deposit refund.`,
             type: "RETURN_OVERDUE",
             relatedEntityId: rental.id,
             relatedEntityType: "rental",
