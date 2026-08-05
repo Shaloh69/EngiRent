@@ -15,15 +15,17 @@ import json
 import logging
 import os
 import tempfile
-from urllib.request import urlretrieve
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import cv2
 import numpy as np
 from PIL import Image as _PILImage
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..comparison.hybrid import HybridVerifier
 from ..config import settings
+from ..security import require_api_key
 from ..models.schemas import (
     FaceRegisterResponse,
     FaceVerificationResponse,
@@ -78,7 +80,69 @@ def _cleanup(paths: list[str]):
             pass
 
 
-@router.post("/verify", response_model=VerificationResponse)
+def _fetch_reference_image(url: str) -> str:
+    """
+    Safely download a caller-supplied reference image URL for /verify-face.
+
+    Previously this endpoint called urlretrieve() directly on whatever
+    `reference_image_url` a caller provided — no scheme/host check, no size
+    cap, no timeout, letting anyone submit an internal or arbitrary URL (SSRF).
+    This enforces, in order: https-only, an allowlisted host (or debug-mode-
+    only when unconfigured), a connect/read timeout, and a hard byte cap that
+    aborts the download rather than silently truncating an oversized file.
+
+    Raises HTTPException(400) on any policy violation; returns the temp file
+    path on success (caller is responsible for cleanup).
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="reference_image_url must be https")
+
+    allowed_hosts = {h.strip() for h in settings.allowed_image_hosts.split(",") if h.strip()}
+    if allowed_hosts:
+        if parsed.hostname not in allowed_hosts:
+            raise HTTPException(
+                status_code=400,
+                detail=f"reference_image_url host '{parsed.hostname}' is not allowlisted",
+            )
+    elif not settings.debug:
+        # Fail closed: no allowlist configured and not in local dev mode.
+        raise HTTPException(
+            status_code=400,
+            detail="reference_image_url fetching is not configured (ML_ALLOWED_IMAGE_HOSTS unset)",
+        )
+    else:
+        logger.warning(
+            "ML_ALLOWED_IMAGE_HOSTS is unset — allowing reference_image_url fetch "
+            "because debug=True. Set an allowlist before deploying."
+        )
+
+    suffix = os.path.splitext(parsed.path)[-1] or ".jpg"
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix, dir=settings.upload_dir)
+    os.close(tmp_fd)  # re-opened below only once the download has succeeded
+    try:
+        req = Request(url, headers={"User-Agent": "engirent-ml-service/1"})
+        with urlopen(req, timeout=settings.image_fetch_timeout_seconds) as resp:  # noqa: S310
+            max_bytes = settings.image_fetch_max_bytes
+            chunk = resp.read(max_bytes + 1)
+            if len(chunk) > max_bytes:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"reference_image_url exceeds the {max_bytes}-byte limit",
+                )
+        with open(tmp_path, "wb") as f:
+            f.write(chunk)
+    except HTTPException:
+        os.unlink(tmp_path)
+        raise
+    except Exception as e:
+        os.unlink(tmp_path)
+        raise HTTPException(status_code=400, detail=f"Could not fetch reference_image_url: {e}") from e
+
+    return tmp_path
+
+
+@router.post("/verify", response_model=VerificationResponse, dependencies=[Depends(require_api_key)])
 async def verify_item(
     original_images: list[UploadFile] = File(
         ..., description="Owner's uploaded reference images (3+)"
@@ -145,7 +209,7 @@ async def verify_item(
         _cleanup(orig_paths + kiosk_paths)
 
 
-@router.post("/extract-features", response_model=FeatureExtractionResponse)
+@router.post("/extract-features", response_model=FeatureExtractionResponse, dependencies=[Depends(require_api_key)])
 async def extract_features(
     images: list[UploadFile] = File(
         ..., description="Images to extract features from"
@@ -230,7 +294,7 @@ def _face_similarity(img_a: np.ndarray, img_b: np.ndarray) -> float:
     return max(0.0, score / 3.0)
 
 
-@router.post("/register-face", response_model=FaceRegisterResponse)
+@router.post("/register-face", response_model=FaceRegisterResponse, dependencies=[Depends(require_api_key)])
 async def register_face(
     image: UploadFile = File(..., description="In-app selfie taken during registration"),
 ):
@@ -359,7 +423,7 @@ def _dlib_verify(cap_rgb: np.ndarray, stored_encoding: list[float] | None, ref_r
     return verified, True, round(confidence, 3), msg
 
 
-@router.post("/verify-face", response_model=FaceVerificationResponse)
+@router.post("/verify-face", response_model=FaceVerificationResponse, dependencies=[Depends(require_api_key)])
 async def verify_face(
     captured_image: UploadFile = File(..., description="Captured face image from kiosk camera"),
     reference_image_url: str = Form(default="", description="URL of the user's reference profile photo (used when no stored encoding)"),
@@ -398,10 +462,7 @@ async def verify_face(
             ref_rgb: np.ndarray | None = None
 
             if parsed_encoding is None and reference_image_url:
-                suffix = os.path.splitext(reference_image_url.split("?")[0])[-1] or ".jpg"
-                tmp_fd, ref_path = tempfile.mkstemp(suffix=suffix, dir=settings.upload_dir)
-                os.close(tmp_fd)
-                urlretrieve(reference_image_url, ref_path)  # noqa: S310
+                ref_path = _fetch_reference_image(reference_image_url)
                 ref_bgr = cv2.imread(ref_path)
                 if ref_bgr is not None:
                     ref_rgb = cv2.cvtColor(ref_bgr, cv2.COLOR_BGR2RGB)
@@ -430,10 +491,7 @@ async def verify_face(
                 message="No reference provided for comparison",
             )
 
-        suffix = os.path.splitext(reference_image_url.split("?")[0])[-1] or ".jpg"
-        tmp_fd, ref_path = tempfile.mkstemp(suffix=suffix, dir=settings.upload_dir)
-        os.close(tmp_fd)
-        urlretrieve(reference_image_url, ref_path)  # noqa: S310
+        ref_path = _fetch_reference_image(reference_image_url)
 
         ref_img = cv2.imread(ref_path)
         if ref_img is None:

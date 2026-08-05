@@ -10,6 +10,16 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8001
 
+    # Security
+    # If set, every verification/face endpoint requires a matching X-API-Key
+    # header. The Node backend sends env ML_SERVICE_API_KEY as X-API-Key, so set
+    # this (ML_API_KEY) to the SAME value. Leave empty only for local dev.
+    api_key: str = ""
+    # CORS allowlist. Empty by default because all real callers are server-side
+    # (Node backend, Pi kiosk) and don't need browser CORS. Set ML_ALLOWED_ORIGINS
+    # as a comma-separated list only if a browser must call the service directly.
+    allowed_origins: str = ""
+
     # Verification thresholds
     threshold_verified: float = 85.0
     threshold_manual_review: float = 60.0
@@ -65,6 +75,19 @@ class Settings(BaseSettings):
 
     # Storage (for uploaded images)
     upload_dir: str = "/tmp/engirent_uploads"
+
+    # Reference-image fetch safety (SSRF hardening for /verify-face's
+    # reference_image_url — the endpoint previously fetched any caller-
+    # supplied URL with no host restriction, size cap, or timeout).
+    # Comma-separated hostnames allowed to be fetched from (e.g. the
+    # Supabase storage host today; the local image-serving host once storage
+    # moves to the PC). Empty means "not configured" — in that case fetches
+    # are only permitted when `debug=True` (local dev), and refused
+    # (fail-closed) otherwise, mirroring the fail-closed pattern already used
+    # for the kiosk shared secret and the ML API key.
+    allowed_image_hosts: str = ""
+    image_fetch_timeout_seconds: float = 5.0
+    image_fetch_max_bytes: int = 10_000_000  # 10 MB
 
     model_config = {"env_prefix": "ML_"}
 
