@@ -1,0 +1,45 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  node-server:
+    name: Node server (Jest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/node_server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: server/node_server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsc --noEmit
+      - run: npx jest
+
+  ml-service:
+    name: ML service (pytest — API-key gate only, no CV/DL stack needed)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/python_server/services/ml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Deliberately not `pip install -r requirements.txt` — that pulls in
+      # torch/opencv/scikit-image/dlib just to test a 5-line auth check.
+      # app/security.py was split out from app/routers/verification.py
+      # specifically so this test suite doesn't need the CV/DL stack at all
+      # (see server/python_server/services/ml/tests/test_api_key_gate.py).
+      - run: pip install fastapi pydantic-settings pytest==8.3.4 pytest-asyncio==0.24.0 httpx==0.28.1
+      - run: python -m pytest tests/ -v
