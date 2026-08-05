@@ -86,6 +86,25 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-06 — Phase 5: committed locally in 9 logical groups, push withheld (Phase 4 audit didn't pass)
+
+Per this repo's own hard constraint, **nothing was pushed to `origin/main`** — Phase 4's audit found real blockers (no reachable DB, no PayMongo sandbox key, no hardware access). All work is committed locally, in order:
+1. `docs: reorganize documentation...` — the pre-Phase-0 housekeeping (docs/ reorg, LICENSE, memory.md, planning docs).
+2. `chore(flutter): stop tracking build artifacts...` — a discovery made while committing: `client/flutter_app` never had its own `.gitignore`, so `.dart_tool/`'s entire build cache (compiled per-arch `.so` files, `.dill` snapshots) and the `generated_plugin_registrant.*` files were committed to git. Untracked (kept on disk) and added the standard Flutter-template `.gitignore`.
+3. `feat(server): ...` — all of `server/node_server`, Phases 0-2 combined (couldn't cleanly separate further — the same files, e.g. `paymentController.ts`/`index.ts`/`schema.prisma`, legitimately accumulated changes across multiple phases with nothing committed in between to split on).
+4. `feat(kiosk): ...` — all of `server/kiosk`.
+5. `feat(ml): ...` — all of `server/python_server/services/ml`.
+6. `feat(admin): ...` — `client/admin` (Health Check page + the Mantine design migration) + `DESIGN.md` + `docs/design-screenshots/`.
+7. `feat(mobile): ...` — `client/flutter_app/lib` + pubspec changes.
+8. `ci: ...` — `.github/workflows/test.yml` + `docs/audit/phase4-audit-report.md`.
+9. `docs: final README pass...` — README, `Start.bat`, `render.yaml` annotation, the apk/pdf deletion confirmations.
+
+**Two self-caught git-bookkeeping mistakes while doing this, both fixed before the final state:**
+- First attempt at commit 1 accidentally included the `Engirentpre2.apk` deletion and all ~90 Flutter build-artifact deletions, because `git commit -m "..."` commits the *entire* index, not just what was `git add`ed for that logical group — and those were already staged from earlier in the session. Caught by checking `git show --stat HEAD` right after, fixed with `git reset --soft HEAD~1` (undoes the commit, keeps everything staged, nothing lost) and a full `git reset` (unstage everything) before redoing each commit — verifying `git diff --cached --stat` matched intent *before* every single commit after that, not after.
+- That same mixed `git reset` used to unstage everything cleanly then **wiped out** the `Engirentpre2.apk` un-staging fix a second time (mixed reset sets the index to HEAD, and HEAD at that point was still the original pre-session commit with the apk normally tracked) — caught by explicitly re-checking `git ls-files -s Engirentpre2.apk` before the final commit rather than assuming the earlier fix still held, and re-ran `git rm --cached` once more. **Lesson for next time**: after *any* `git reset` (soft or mixed), explicitly re-verify anything that was fixed via a bare `git rm --cached`/staged-deletion earlier in the same session — resets silently revert exactly that class of change, and it won't show up as a test failure or a `tsc`/`flutter analyze` error, only as a `git status`/`git ls-files` discrepancy.
+
+Final state re-verified clean after all 9 commits: `tsc --noEmit` clean (node_server + admin), `flutter analyze` clean, `npx jest` 43/43, `pytest` 5/5, `git status` shows nothing uncommitted.
+
 ### 2026-08-06 — Phase 4: audit does not pass cleanly — full report in `docs/audit/phase4-audit-report.md`
 
 Ran the live audit per `docs/planning/03-revamp-master.md` §7, item by item, rather than another code read-through. **Result: does not pass cleanly** — 3 of 6 items are blocked on access this session doesn't have, not on anything fixable in code. Per this file's own hard constraint, **`origin/main` will not be pushed to** based on this result; Phase 5 proceeds with local commits only.
