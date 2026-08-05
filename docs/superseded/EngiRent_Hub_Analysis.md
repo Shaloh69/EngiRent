@@ -1,5 +1,11 @@
 # EngiRent Hub: Complete System Analysis & Process Flow
 
+> ⚠️ **Partially superseded.** The process-flow diagrams here are still useful, but this document
+> predates implementation and names **YOLOv8** (real system: 8-stage hybrid CV — see
+> `AI_SYSTEM_DOCUMENTATION.md`), **GCash API** (real: PayMongo), and **AWS S3** (real: Supabase
+> Storage). It also assumes an escrow "payment released to owner" step that is **not implemented**
+> in code (see `AUDIT.md`, findings C4/H1). Treat the flows as intent, `analyzation.md` as reality.
+
 ## Executive Summary
 
 **EngiRent Hub** is a Smart Kiosk system for secure student-to-student item rentals at the University of Cebu Lapu-Lapu and Mandaue (UCLM), College of Engineering. The system automates the borrowing/lending process through IoT-enabled lockers, biometric authentication (QR codes + facial recognition), AI-powered item verification, automated notifications, and cashless GCash payments.

@@ -1,5 +1,10 @@
 # EngiRent Hub - AI Item Verification System 🤖
 
+> ⚠️ **Superseded / historical.** This guide predates the implementation and describes an
+> early **YOLOv8 + Method-1/2/3** design that was **not** the system that shipped. The real,
+> as-built pipeline is an 8-stage hybrid CV similarity engine (no YOLOv8). For the authoritative
+> description see **`AI_SYSTEM_DOCUMENTATION.md`** and **`analyzation.md`**. Kept for reference only.
+
 ## Problem Statement
 
 **Challenge**: How to verify that the item physically placed in the locker by the owner is the **exact same item** shown in the listing photos they uploaded?
@@ -630,4 +635,4 @@ CREATE TABLE verification_logs (
 For verification system questions:
 - Technical: ml@engirenthub.com
 - Camera setup: hardware@engirenthub.com
-- GitHub Issues: [Report bugs](https://github.com/your-repo/issues)
+- GitHub Issues: [Report bugs](https://github.com/Shaloh69/EngiRent/issues)
