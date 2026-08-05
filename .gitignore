@@ -126,3 +126,7 @@ coverage.xml
 *.zip
 *.rar
 *.7z
+
+# Compiled binaries — distribute via GitHub Releases, not git
+*.apk
+AI_SYSTEM_DOCUMENTATION.pdf

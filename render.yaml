@@ -23,6 +23,8 @@ services:
         sync: false                  # Set manually in Render dashboard
       - key: JWT_REFRESH_EXPIRE
         value: 30d
+      - key: KIOSK_SHARED_SECRET
+        sync: false                  # Set manually — must match the Pi's KIOSK_SHARED_SECRET
       - key: SUPABASE_URL
         sync: false                  # Set manually in Render dashboard
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -31,6 +33,8 @@ services:
         value: media
       - key: ML_SERVICE_URL
         value: https://engirent-ml.onrender.com
+      - key: ML_SERVICE_API_KEY
+        sync: false                  # Set manually — must match the ML service's ML_API_KEY
       - key: CLIENT_WEB_URL
         value: https://engirent-web.onrender.com
       - key: CLIENT_MOBILE_URL
@@ -92,3 +96,7 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: ML_API_KEY
+        sync: false                  # Set manually — must match the API's ML_SERVICE_API_KEY
+      - key: ML_ALLOWED_ORIGINS
+        value: ""                    # Server-to-server only; add browser origins if ever needed

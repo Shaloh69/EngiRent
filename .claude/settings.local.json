@@ -39,7 +39,22 @@
       "WebFetch(domain:forums.raspberrypi.com)",
       "WebFetch(domain:gpiozero.readthedocs.io)",
       "WebFetch(domain:gist.github.com)",
-      "WebFetch(domain:rpi-lgpio.readthedocs.io)"
+      "WebFetch(domain:rpi-lgpio.readthedocs.io)",
+      "Read(//c/Projects/Thesis/2026/EngiRent/**)",
+      "Read(//d/Projects-Shem/Thesis/2026/EngiRent/**)",
+      "PowerShell(Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\" -Recurse -Directory | Where-Object { $_.FullName -notmatch 'node_modules|\\\\.venv|venv|__pycache__|\\\\.next|dist|build' } | ForEach-Object { $_.FullName.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\',''\\) })",
+      "PowerShell(Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\node_server\\\\src\" -Recurse -File | ForEach-Object { $_.FullName.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\node_server\\\\src\\\\',''\\) }; Write-Output '--- kiosk ---'; Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\kiosk\" -Recurse -File | Where-Object { $_.FullName -notmatch '__pycache__|node_modules' } | ForEach-Object { $_.FullName.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\kiosk\\\\',''\\) }; Write-Output '--- python_server ---'; Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\python_server\" -Recurse -File | Where-Object { $_.FullName -notmatch '__pycache__|venv' } | ForEach-Object { $_.FullName.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\server\\\\python_server\\\\',''\\) })",
+      "PowerShell(Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\web\\\\src\" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\web\\\\src\\\\',''\\) }; Write-Output '=== admin ==='; Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\admin\\\\src\" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 60 -ExpandProperty FullName | ForEach-Object { $_.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\admin\\\\src\\\\',''\\) }; Write-Output '=== flutter lib ==='; Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\flutter_app\\\\lib\" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\flutter_app\\\\lib\\\\',''\\) })",
+      "PowerShell(Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\web\" -File | Select-Object Name; Get-ChildItem \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\web\" -Directory | Where-Object Name -ne 'node_modules' | ForEach-Object { Write-Output \"DIR: $\\($_.Name\\)\"; Get-ChildItem $_.FullName -Recurse -File | Select-Object -First 40 -ExpandProperty FullName | ForEach-Object { $_.Replace\\('D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\client\\\\web\\\\','  '\\) } })",
+      "PowerShell(git -C \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\" ls-files | ForEach-Object { $e=[System.IO.Path]::GetExtension\\($_\\).ToLower\\(\\); $f=Join-Path \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\" $_; if\\(Test-Path $f\\){ [PSCustomObject]@{Ext=$e; Size=\\(Get-Item $f\\).Length} } } | Group-Object Ext | ForEach-Object { [PSCustomObject]@{Ext=$_.Name; Files=$_.Count; KB=[math]::Round\\(\\($_.Group | Measure-Object Size -Sum\\).Sum/1KB\\)} } | Sort-Object KB -Descending | Select-Object -First 15)",
+      "PowerShell(foreach \\($f in 'AI_SYSTEM_DOCUMENTATION.md','AI_VERIFICATION_GUIDE.md','EngiRent_Hub_Analysis.md','analyzation.md','ITEM_CATEGORIES.md'\\) { $p = \"D:\\\\Projects-Shem\\\\Thesis\\\\2026\\\\EngiRent\\\\$f\"; $lines = \\(Get-Content $p | Measure-Object -Line\\).Lines; Write-Output \"=== $f \\($lines lines\\) ===\"; Get-Content $p -TotalCount 12 })",
+      "Bash(xargs ls -la)",
+      "Bash(awk '{print $5, $NF}')",
+      "Bash(sort -k2)",
+      "Bash(git count-objects *)",
+      "Bash(sed -i 's#your-username/engirent-hub#Shaloh69/EngiRent#g' README.md)",
+      "Bash(sed -i 's#https://github.com/your-repo/issues#https://github.com/Shaloh69/EngiRent/issues#g' AI_VERIFICATION_GUIDE.md)",
+      "Bash(sed -i 's#https://zezsxfyoufqqxaffsvng.supabase.co#https://hosyeqkzkhewtadicgba.supabase.co#' server/kiosk/.env.example)"
     ]
   }
 }
