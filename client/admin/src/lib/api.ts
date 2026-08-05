@@ -190,6 +190,12 @@ const demoAdapter = async (
           (sum, r) => sum + (r.totalPrice || 0),
           0,
         ),
+        rentalsByCategory: Object.entries(
+          demoState.items.reduce<Record<string, number>>((acc, i) => {
+            acc[i.category] = (acc[i.category] ?? 0) + 1;
+            return acc;
+          }, {}),
+        ).map(([category, count]) => ({ category, count })),
       },
     });
   }
@@ -356,6 +362,33 @@ const demoAdapter = async (
 
   if (method === "post" && path.match(/\/admin\/kiosks\/.+\/command/)) {
     return jsonResponse(config, { success: true, message: "Command sent" });
+  }
+
+  // System health (Components Check)
+  if (method === "get" && path === "/admin/health") {
+    return jsonResponse(config, {
+      success: true,
+      data: {
+        overall: "ok",
+        checkedAt: new Date().toISOString(),
+        checks: [
+          { name: "Node API", ok: true, detail: "Responding (demo mode)" },
+          { name: "MySQL Database", ok: true, detail: "Reachable (demo mode)" },
+          {
+            name: "Local Storage",
+            ok: true,
+            detail: "Demo mode — not checked",
+          },
+          {
+            name: "ML Verification Service",
+            ok: true,
+            detail: "Demo mode — not checked",
+          },
+          { name: "PayMongo", ok: true, detail: "Demo mode — not checked" },
+          { name: "Admin Console", ok: true, detail: "Responding (demo mode)" },
+        ],
+      },
+    });
   }
 
   return jsonResponse(

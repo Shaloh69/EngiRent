@@ -2,7 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
-import StatsCard from "@/components/charts/StatsCard";
+import {
+  Group,
+  Text,
+  Title,
+  Card,
+  SimpleGrid,
+  Table,
+  Badge,
+  Button,
+  Loader,
+  Alert,
+  ThemeIcon,
+  Stack,
+} from "@mantine/core";
+import { BarChart } from "@mantine/charts";
+import { motion } from "framer-motion";
 import {
   Users,
   Package,
@@ -10,29 +25,47 @@ import {
   CheckCircle2,
   DollarSign,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react";
-import {
-  Card,
-  CardBody,
-  CardHeader,
-  Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
-  Chip,
-  Button,
-  Spinner,
-} from "@heroui/react";
 import api from "@/lib/api";
 import type { DashboardStats, Rental } from "@/types";
+import { roleColor } from "../theme";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
   maximumFractionDigits: 0,
 });
+
+const CATEGORY_LABELS: Record<string, string> = {
+  SCHOOL_ATTIRE: "School Attire",
+  ACADEMIC_TOOLS: "Academic Tools",
+  ELECTRONICS: "Electronics",
+  DEVELOPMENT_KITS: "Dev Kits",
+  MEASUREMENT_TOOLS: "Measurement",
+  AUDIO_VISUAL: "Audio/Visual",
+  SPORTS_EQUIPMENT: "Sports",
+  OTHER: "Other",
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  ACTIVE: roleColor.success,
+  PENDING: roleColor.warning,
+  AWAITING_DEPOSIT: roleColor.warning,
+  DEPOSITED: roleColor.accent,
+  COMPLETED: roleColor.brand,
+  VERIFICATION: roleColor.cta,
+  CANCELLED: roleColor.critical,
+  DISPUTED: roleColor.critical,
+};
+
+const KPI_CARDS = [
+  { key: "totalUsers", label: "Total Users", icon: Users, color: "blue" },
+  { key: "totalItems", label: "Total Items", icon: Package, color: "emerald" },
+  { key: "activeRentals", label: "Active Rentals", icon: Receipt, color: "violet" },
+  { key: "pendingVerifications", label: "Pending Verification", icon: CheckCircle2, color: "warn" },
+  { key: "totalRevenue", label: "Revenue", icon: DollarSign, color: "amber" },
+] as const;
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -41,6 +74,7 @@ export default function DashboardPage() {
     activeRentals: 0,
     pendingVerifications: 0,
     totalRevenue: 0,
+    rentalsByCategory: [],
   });
   const [recentRentals, setRecentRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +102,7 @@ export default function DashboardPage() {
         activeRentals: s.activeRentals ?? 0,
         pendingVerifications: s.pendingVerifications ?? 0,
         totalRevenue: s.totalRevenue ?? 0,
+        rentalsByCategory: s.rentalsByCategory ?? [],
       });
 
       setRecentRentals(rentals.slice(0, 8));
@@ -75,150 +110,149 @@ export default function DashboardPage() {
       setError(
         apiError?.response?.data?.error || "Unable to load dashboard data.",
       );
-      setStats({
-        totalUsers: 0,
-        totalItems: 0,
-        activeRentals: 0,
-        pendingVerifications: 0,
-        totalRevenue: 0,
-      });
-      setRecentRentals([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const revenueLabel = useMemo(
-    () => peso.format(stats.totalRevenue || 0),
-    [stats.totalRevenue],
+  const chartData = useMemo(
+    () =>
+      stats.rentalsByCategory.map((row) => ({
+        category: CATEGORY_LABELS[row.category] ?? row.category,
+        Rentals: row.count,
+      })),
+    [stats.rentalsByCategory],
   );
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<
-      string,
-      "success" | "warning" | "danger" | "primary" | "secondary"
-    > = {
-      ACTIVE: "success",
-      PENDING: "warning",
-      COMPLETED: "primary",
-      CANCELLED: "danger",
-      VERIFICATION: "secondary",
-    };
-    return colors[status] || "default";
-  };
+  const kpiValue = (key: (typeof KPI_CARDS)[number]["key"]) =>
+    key === "totalRevenue" ? peso.format(stats.totalRevenue) : stats[key];
 
   return (
     <AdminLayout>
-      <div className="space-y-5 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Stack gap="lg">
+        <Group justify="space-between" wrap="wrap">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
               Overview
-            </p>
-            <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">
+            </Text>
+            <Title order={1} size="h2">
               Dashboard
-            </h1>
+            </Title>
           </div>
           <Button
-            variant="flat"
-            startContent={<RefreshCw size={16} />}
-            className="w-full sm:w-auto"
-            onPress={fetchDashboardData}
+            variant="light"
+            leftSection={<RefreshCw size={16} />}
+            onClick={fetchDashboardData}
+            loading={loading}
           >
             Refresh Data
           </Button>
-        </div>
+        </Group>
 
         {error && (
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <Alert icon={<AlertCircle size={16} />} color="danger" variant="light">
             {error}
-          </div>
+          </Alert>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <StatsCard
-            title="Total Users"
-            value={stats.totalUsers}
-            icon={Users}
-            color="bg-blue-500"
-          />
-          <StatsCard
-            title="Total Items"
-            value={stats.totalItems}
-            icon={Package}
-            color="bg-emerald-500"
-          />
-          <StatsCard
-            title="Active Rentals"
-            value={stats.activeRentals}
-            icon={Receipt}
-            color="bg-sky-600"
-          />
-          <StatsCard
-            title="Pending Verification"
-            value={stats.pendingVerifications}
-            icon={CheckCircle2}
-            color="bg-amber-500"
-          />
-          <StatsCard
-            title="Revenue"
-            value={revenueLabel}
-            icon={DollarSign}
-            color="bg-indigo-600"
-          />
-        </div>
+        <SimpleGrid cols={{ base: 1, sm: 2, xl: 5 }}>
+          {KPI_CARDS.map((card, i) => (
+            <motion.div
+              key={card.key}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: i * 0.05, ease: "easeOut" }}
+            >
+              <Card withBorder radius="md" padding="lg">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                      {card.label}
+                    </Text>
+                    <Text size="xl" fw={800} mt={4}>
+                      {kpiValue(card.key)}
+                    </Text>
+                  </div>
+                  <ThemeIcon size={40} radius="md" variant="light" color={card.color}>
+                    <card.icon size={20} />
+                  </ThemeIcon>
+                </Group>
+              </Card>
+            </motion.div>
+          ))}
+        </SimpleGrid>
 
-        <Card className="app-surface rounded-2xl border border-[var(--color-border)]">
-          <CardHeader className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-[var(--color-ink)]">
-              Recent Rentals
-            </h2>
-          </CardHeader>
-          <CardBody>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner label="Loading rentals..." />
-              </div>
+        <SimpleGrid cols={{ base: 1, lg: 2 }}>
+          <Card withBorder radius="md" padding="lg">
+            <Text fw={700} mb="md">
+              Popular Categories
+            </Text>
+            {chartData.length === 0 ? (
+              <Text c="dimmed" size="sm">
+                No rental data yet.
+              </Text>
             ) : (
-              <div className="overflow-x-auto">
-                <Table aria-label="Recent rentals table" removeWrapper>
-                  <TableHeader>
-                    <TableColumn>RENTAL ID</TableColumn>
-                    <TableColumn>ITEM</TableColumn>
-                    <TableColumn>RENTER</TableColumn>
-                    <TableColumn>STATUS</TableColumn>
-                    <TableColumn>TOTAL</TableColumn>
-                  </TableHeader>
-                  <TableBody emptyContent="No rentals found.">
-                    {recentRentals.map((rental) => (
-                      <TableRow key={rental.id}>
-                        <TableCell className="font-mono text-xs">
-                          {rental.id.slice(0, 8)}...
-                        </TableCell>
-                        <TableCell>
-                          {rental.item?.title || "Unknown Item"}
-                        </TableCell>
-                        <TableCell>
-                          {rental.renter?.firstName || "N/A"}{" "}
-                          {rental.renter?.lastName || ""}
-                        </TableCell>
-                        <TableCell>
-                          <Chip color={getStatusColor(rental.status)} size="sm">
-                            {rental.status}
-                          </Chip>
-                        </TableCell>
-                        <TableCell>
-                          {peso.format(rental.totalPrice || 0)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <BarChart
+                h={260}
+                data={chartData}
+                dataKey="category"
+                series={[{ name: "Rentals", color: "violet.6" }]}
+                withLegend={false}
+              />
             )}
-          </CardBody>
-        </Card>
-      </div>
+          </Card>
+
+          <Card withBorder radius="md" padding="lg">
+            <Text fw={700} mb="md">
+              Recent Rentals
+            </Text>
+            {loading ? (
+              <Group justify="center" py="xl">
+                <Loader />
+              </Group>
+            ) : (
+              <Table.ScrollContainer minWidth={480}>
+                <Table verticalSpacing="sm" highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Item</Table.Th>
+                      <Table.Th>Renter</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Total</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {recentRentals.length === 0 ? (
+                      <Table.Tr>
+                        <Table.Td colSpan={4}>
+                          <Text c="dimmed" ta="center" py="md">
+                            No rentals found.
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ) : (
+                      recentRentals.map((rental) => (
+                        <Table.Tr key={rental.id}>
+                          <Table.Td>{rental.item?.title || "Unknown Item"}</Table.Td>
+                          <Table.Td>
+                            {rental.renter?.firstName || "N/A"} {rental.renter?.lastName || ""}
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge color={STATUS_COLOR[rental.status] ?? "gray"} variant="light">
+                              {rental.status}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>{peso.format(rental.totalPrice || 0)}</Table.Td>
+                        </Table.Tr>
+                      ))
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+          </Card>
+        </SimpleGrid>
+      </Stack>
     </AdminLayout>
   );
 }

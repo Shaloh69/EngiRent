@@ -1,15 +1,21 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
 import {
-  Button,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
-  Chip,
-} from "@heroui/react";
+  AppShell,
+  Burger,
+  Group,
+  NavLink,
+  Text,
+  Avatar,
+  Menu,
+  ActionIcon,
+  Badge,
+  ThemeIcon,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { spotlight, Spotlight } from "@mantine/spotlight";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
@@ -19,11 +25,10 @@ import {
   BarChart3,
   CreditCard,
   LogOut,
-  User as UserIcon,
-  Menu,
-  X,
-  Bell,
   MonitorSpeaker,
+  HeartPulse,
+  Search,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -36,6 +41,7 @@ const menuItems = [
   { name: "Verifications", icon: CheckCircle2, href: "/verifications" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Kiosk", icon: MonitorSpeaker, href: "/kiosk" },
+  { name: "Health Check", icon: HeartPulse, href: "/health" },
 ];
 
 export default function AdminLayout({
@@ -45,7 +51,7 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
 
   const handleLogout = () => {
     localStorage.removeItem("admin_token");
@@ -56,110 +62,114 @@ export default function AdminLayout({
     pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Button
-              isIconOnly
-              variant="light"
-              className="lg:hidden"
-              onPress={() => setMenuOpen((value) => !value)}
-            >
-              {menuOpen ? <X size={20} /> : <Menu size={20} />}
-            </Button>
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white">
-                ER
-              </span>
-              <div className="leading-tight">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
-                  Control
-                </p>
-                <p className="text-base font-extrabold text-[var(--color-ink)]">
-                  EngiRent Admin
-                </p>
-              </div>
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Chip
-              size="sm"
-              variant="flat"
-              className="hidden md:inline-flex border border-[var(--color-border)] bg-[var(--color-surface-soft)] text-[var(--color-muted)]"
-              startContent={<Bell size={14} />}
-            >
-              Monitoring
-            </Chip>
-            <Dropdown>
-              <DropdownTrigger>
-                <Button
-                  isIconOnly
-                  variant="flat"
-                  className="bg-[var(--color-surface-soft)]"
-                >
-                  <UserIcon size={18} />
-                </Button>
-              </DropdownTrigger>
-              <DropdownMenu aria-label="Profile actions">
-                <DropdownItem
-                  key="logout"
-                  onClick={handleLogout}
-                  startContent={<LogOut size={16} />}
-                  color="danger"
-                >
-                  Logout
-                </DropdownItem>
-              </DropdownMenu>
-            </Dropdown>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-[1400px] gap-4 px-4 py-4 sm:px-6 sm:py-6">
-        <aside className="hidden w-64 shrink-0 lg:block">
-          <nav className="app-surface sticky top-24 space-y-1 rounded-2xl border border-[var(--color-border)] p-3">
-            {menuItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                  isActive(item.href)
-                    ? "bg-[var(--color-primary)] text-white"
-                    : "text-[var(--color-muted)] hover:bg-[var(--color-surface-soft)] hover:text-[var(--color-ink)]"
-                }`}
-              >
-                <item.icon size={18} />
-                {item.name}
+    <>
+      <Spotlight
+        actions={menuItems.map((item) => ({
+          id: item.href,
+          label: item.name,
+          leftSection: <item.icon size={18} />,
+          onClick: () => router.push(item.href),
+        }))}
+        nothingFound="No matching page"
+        highlightQuery
+        searchProps={{ placeholder: "Jump to a page… (⌘K)" }}
+      />
+      <AppShell
+        header={{ height: 64 }}
+        navbar={{
+          width: 260,
+          breakpoint: "lg",
+          collapsed: { mobile: !mobileOpened },
+        }}
+        padding="md"
+      >
+        <AppShell.Header>
+          <Group h="100%" px="md" justify="space-between">
+            <Group gap="sm">
+              <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="lg" size="sm" />
+              <Link href="/dashboard" style={{ textDecoration: "none" }}>
+                <Group gap="xs">
+                  <ThemeIcon size={36} radius="md" variant="filled" color="violet">
+                    <Text fw={800} size="sm">ER</Text>
+                  </ThemeIcon>
+                  <div>
+                    <Text size="xs" fw={700} tt="uppercase" c="dimmed" lh={1.1}>
+                      Control
+                    </Text>
+                    <Text size="sm" fw={800} lh={1.2}>
+                      EngiRent Admin
+                    </Text>
+                  </div>
+                </Group>
               </Link>
-            ))}
-          </nav>
-        </aside>
+            </Group>
 
-        <div className="min-w-0 flex-1">
-          {menuOpen && (
-            <nav className="app-surface mb-4 space-y-1 rounded-2xl border border-[var(--color-border)] p-3 lg:hidden">
-              {menuItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMenuOpen(false)}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                    isActive(item.href)
-                      ? "bg-[var(--color-primary)] text-white"
-                      : "text-[var(--color-muted)] hover:bg-[var(--color-surface-soft)] hover:text-[var(--color-ink)]"
-                  }`}
-                >
-                  <item.icon size={18} />
-                  {item.name}
-                </Link>
-              ))}
-            </nav>
-          )}
-          <main>{children}</main>
-        </div>
-      </div>
-    </div>
+            <Group gap="xs">
+              <ActionIcon
+                variant="light"
+                color="gray"
+                size="lg"
+                onClick={() => spotlight.open()}
+                aria-label="Search (Cmd+K)"
+              >
+                <Search size={16} />
+              </ActionIcon>
+              <Badge
+                variant="light"
+                color="gray"
+                leftSection={<Bell size={12} />}
+                visibleFrom="md"
+              >
+                Monitoring
+              </Badge>
+              <Menu position="bottom-end" shadow="md" width={180}>
+                <Menu.Target>
+                  <Avatar radius="xl" color="violet" style={{ cursor: "pointer" }}>
+                    A
+                  </Avatar>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<LogOut size={14} />}
+                    color="red"
+                    onClick={handleLogout}
+                  >
+                    Logout
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </Group>
+          </Group>
+        </AppShell.Header>
+
+        <AppShell.Navbar p="sm">
+          {menuItems.map((item) => (
+            <NavLink
+              key={item.href}
+              component={Link}
+              href={item.href}
+              label={item.name}
+              leftSection={<item.icon size={18} />}
+              active={isActive(item.href)}
+              variant="filled"
+              color="violet"
+              onClick={toggleMobile}
+              styles={{ root: { borderRadius: "var(--mantine-radius-md)", marginBottom: 4 } }}
+            />
+          ))}
+        </AppShell.Navbar>
+
+        <AppShell.Main>
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            {children}
+          </motion.div>
+        </AppShell.Main>
+      </AppShell>
+    </>
   );
 }

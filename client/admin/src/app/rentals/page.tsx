@@ -25,7 +25,6 @@ const statuses = [
   "AWAITING_DEPOSIT",
   "DEPOSITED",
   "ACTIVE",
-  "AWAITING_RETURN",
   "VERIFICATION",
   "COMPLETED",
   "CANCELLED",
@@ -69,7 +68,6 @@ export default function RentalsPage() {
       COMPLETED: "primary",
       CANCELLED: "danger",
       VERIFICATION: "secondary",
-      AWAITING_RETURN: "warning",
     };
     return colors[status] || "default";
   };

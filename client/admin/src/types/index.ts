@@ -82,4 +82,5 @@ export interface DashboardStats {
   activeRentals: number;
   pendingVerifications: number;
   totalRevenue: number;
+  rentalsByCategory: { category: string; count: number }[];
 }

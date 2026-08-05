@@ -758,8 +758,9 @@ export default function KioskPage() {
               isLoading={cmdLoading === "lock_all-{}"}
               isDisabled={!isOnline && !isDemoMode}
               onPress={() => sendCommand("lock_all")}
+              title="This is a software command over the network — it depends on the kiosk's process and connection being alive. It is not a substitute for a physical emergency-stop button."
             >
-              Lock All Doors
+              Emergency Stop — Lock All Doors
             </Button>
           </div>
         </div>
