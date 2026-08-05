@@ -1,9 +1,20 @@
 import 'package:flutter/foundation.dart';
 
 class AppConstants {
-  // API Configuration
-  static const String baseUrl = 'https://engirent-api.onrender.com/api/v1';
-  static const String mlServiceUrl = 'https://engirent-ai.onrender.com/api/v1';
+  // API Configuration — build-configurable via --dart-define, e.g.:
+  //   flutter build apk --dart-define=API_BASE_URL=http://desktop-gklhcri:5000/api/v1
+  // Falls back to the current production (Render) URL so existing build
+  // commands without --dart-define keep working exactly as before; update
+  // the fallback once the Phase 0.5 PC-hosting migration is live and the
+  // default should point there instead.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://engirent-api.onrender.com/api/v1',
+  );
+  // Note: the ML service is no longer called directly by this app — face
+  // registration goes through POST /auth/register-face (a Node proxy) so the
+  // ML service's server-to-server API key never has to live in this app's
+  // bundle. See features/auth/screens/profile_setup_screen.dart.
 
   // Storage Keys
   static const String keyAccessToken = 'access_token';
@@ -28,9 +39,7 @@ class AppConstants {
     'PENDING': 'Pending',
     'AWAITING_DEPOSIT': 'Awaiting Deposit',
     'DEPOSITED': 'Deposited',
-    'AWAITING_CLAIM': 'Awaiting Claim',
     'ACTIVE': 'Active',
-    'AWAITING_RETURN': 'Awaiting Return',
     'VERIFICATION': 'Under Verification',
     'COMPLETED': 'Completed',
     'CANCELLED': 'Cancelled',

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -6,10 +7,12 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/models/rental_model.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/services/socket_service.dart';
-import '../../admin/screens/admin_home_screen.dart';
+import '../../../core/utils/toast_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/models/notification_service.dart';
+import '../../payments/screens/payout_details_screen.dart';
 import '../../rentals/models/rental_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -306,7 +309,7 @@ class _RentalsTabState extends State<_RentalsTab> {
     'COMPLETED' => AppColors.info,
     'CANCELLED' || 'DISPUTED' => AppColors.error,
     'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
-    'VERIFICATION' || 'AWAITING_RETURN' => AppColors.warning,
+    'VERIFICATION' => AppColors.warning,
     _ => AppColors.textSecondary,
   };
 
@@ -697,19 +700,27 @@ class _ProfileTab extends StatelessWidget {
                 _ProfileTile(icon: Icons.verified_user_rounded, iconColor: AppColors.success, title: 'Identity Verified', subtitle: 'Face ID + QR workflow enabled'),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
-                if (user?.isAdmin ?? false) ...[
-                  const Divider(height: 1, indent: 56),
-                  _ProfileTile(
-                    icon: Icons.admin_panel_settings_rounded,
-                    iconColor: AppColors.accent,
-                    title: 'Admin Panel',
-                    subtitle: 'Manage users, rentals & kiosks',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
-                    ),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
+                  icon: Icons.account_balance_wallet_rounded,
+                  iconColor: (user?.payoutConfigured ?? false) ? AppColors.success : AppColors.accent,
+                  title: 'Payout Details',
+                  subtitle: (user?.payoutConfigured ?? false)
+                      ? 'Set up — receiving rental earnings & deposit refunds'
+                      : 'Not set up — required to receive rental earnings',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PayoutDetailsScreen()),
                   ),
-                ],
+                ),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
+                  icon: Icons.delete_forever_rounded,
+                  iconColor: AppColors.error,
+                  title: 'Delete My Biometric Data & Account',
+                  subtitle: 'Permanently erase face/ID photos and deactivate',
+                  onTap: () => _confirmDeleteAccount(context, authProvider),
+                ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.logout_rounded,
@@ -729,6 +740,70 @@ class _ProfileTab extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// RA 10173 erasure-right entry point — requires password re-confirmation
+  /// (a destructive action, not a routine edit) before calling
+  /// DELETE /auth/account, which genuinely purges faceEncoding/idImageUrl/
+  /// profileImage server-side and deactivates the account.
+  Future<void> _confirmDeleteAccount(BuildContext context, AuthProvider authProvider) async {
+    final passwordCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Delete biometric data & account?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This permanently deletes your face photo, ID photo, and face '
+              'recognition template, and deactivates your account. This cannot '
+              'be undone. Enter your password to confirm.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Current password'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Delete Permanently', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    if (passwordCtrl.text.isEmpty) {
+      AppToast.error(context, 'Password required', 'Enter your password to confirm deletion.');
+      return;
+    }
+
+    try {
+      final resp = await ApiService().delete('/auth/account', body: {'password': passwordCtrl.text});
+      if (resp.statusCode == 200) {
+        await authProvider.logout();
+        if (context.mounted) {
+          AppToast.success(context, 'Account deleted', 'Your biometric data has been permanently removed.');
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+        }
+      } else {
+        final data = jsonDecode(resp.body);
+        if (context.mounted) {
+          AppToast.error(context, 'Could not delete account', data['message'] as String? ?? 'Please try again.');
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        AppToast.error(context, 'Could not delete account', e.toString());
+      }
+    }
   }
 }
 

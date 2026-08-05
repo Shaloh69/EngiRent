@@ -1,15 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:camera/camera.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/services/api_service.dart';
 import '../providers/auth_provider.dart';
 
-enum _SetupStep { facePhoto, idPhoto, uploading, done }
+enum _SetupStep { consent, facePhoto, idPhoto, uploading, done }
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({super.key});
@@ -22,10 +20,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _parentNameCtrl = TextEditingController();
   final _parentContactCtrl = TextEditingController();
 
-  _SetupStep _step = _SetupStep.facePhoto;
+  _SetupStep _step = _SetupStep.consent;
   CameraController? _camCtrl;
   List<CameraDescription> _cameras = [];
   bool _camReady = false;
+  bool _consentChecked = false;
 
   File? _faceFile;
   File? _idFile;
@@ -36,6 +35,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   void initState() {
     super.initState();
+    // Camera init is deferred until consent is given (_acceptConsent) — no
+    // biometric capture surface should even be ready before the user has
+    // explicitly agreed to it.
+  }
+
+  void _acceptConsent() {
+    setState(() => _step = _SetupStep.facePhoto);
     _initCamera();
   }
 
@@ -90,64 +96,74 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
-  Future<String?> _uploadImage(File file) async {
-    final resp = await _api.uploadFile('/upload/image', file, 'file');
-    if (resp.statusCode == 200) {
-      final data = jsonDecode(resp.body);
-      return data['url'] as String?;
-    }
-    return null;
-  }
-
   Future<void> _submit() async {
     if (_faceFile == null || _idFile == null) return;
     setState(() => _errorMsg = null);
 
     try {
-      // 1. Register face encoding via ML service (optional — failures don't block profile setup)
-      List<double>? encoding;
-      try {
-        final faceBytes = await _faceFile!.readAsBytes();
-        if (faceBytes.isEmpty) throw Exception('face photo is empty');
-        final mlDio = Dio();
-        final mlForm = FormData.fromMap({
-          'image': MultipartFile.fromBytes(
-            faceBytes,
-            filename: 'face.jpg',
-            contentType: DioMediaType('image', 'jpeg'),
-          ),
-        });
-        final mlResp = await mlDio.post(
-          '${AppConstants.mlServiceUrl}/register-face',
-          data: mlForm,
-        );
-        if (mlResp.statusCode == 200) {
-          final mlData = mlResp.data is String ? jsonDecode(mlResp.data) : mlResp.data;
-          if (mlData['success'] == true && mlData['encoding'] != null) {
-            encoding = List<double>.from(mlData['encoding']);
-          }
-        }
-      } catch (_) {
-        // ML service unavailable — continue without face encoding
-      }
-
-      // 2. Upload face photo and ID photo to server storage
-      final faceUrl = await _uploadImage(_faceFile!);
-      final idUrl = await _uploadImage(_idFile!);
-
-      if (faceUrl == null || idUrl == null) {
+      // 1. Register face encoding — via the Node backend's proxy endpoint,
+      // NOT a direct call to the ML service. The ML service is gated by a
+      // server-to-server API key; that secret must never ship inside this
+      // app's bundle (it would be extractable from the APK), so the backend
+      // holds the key and forwards the request instead.
+      //
+      // This is a hard requirement, not a nice-to-have: unlike the old
+      // behavior (silently continuing with no encoding on any failure), a
+      // failure here now blocks profile completion entirely. A profile
+      // "completed" with no face encoding would silently disable kiosk face
+      // verification for that student with no indication anything was wrong.
+      final faceBytes = await _faceFile!.readAsBytes();
+      if (faceBytes.isEmpty) {
         setState(() {
           _step = _SetupStep.facePhoto;
-          _errorMsg = 'Upload failed. Check your connection and try again.';
+          _errorMsg = 'Face photo capture failed (empty file). Please retake it.';
         });
         return;
       }
 
-      // 3. Complete profile on Node server
+      final registerResp = await _api.uploadFile('/auth/register-face', _faceFile!, 'file');
+      if (registerResp.statusCode != 200) {
+        setState(() {
+          _step = _SetupStep.facePhoto;
+          _errorMsg = 'Face registration failed. Please retake your selfie and try again.';
+        });
+        return;
+      }
+      final registerData = jsonDecode(registerResp.body);
+      final mlData = registerData['data'] as Map<String, dynamic>?;
+      if (mlData == null || mlData['success'] != true || mlData['encoding'] == null) {
+        setState(() {
+          _step = _SetupStep.facePhoto;
+          _errorMsg = (mlData?['message'] as String?) ??
+              'Could not extract a face encoding from that photo. Ensure good lighting and try again.';
+        });
+        return;
+      }
+      final encoding = List<double>.from(mlData['encoding']);
+
+      // 2. Upload the ID photo. (The face photo was already stored by
+      // /auth/register-face above — no separate upload needed for it.)
+      final idResp = await _api.uploadFile('/auth/id-photo', _idFile!, 'file');
+      if (idResp.statusCode != 200) {
+        setState(() {
+          _step = _SetupStep.facePhoto;
+          _errorMsg = 'ID photo upload failed. Check your connection and try again.';
+        });
+        return;
+      }
+
+      // 3. Complete profile on Node server. Note: no profileImageUrl/
+      // idImageUrl here — the backend derives both paths itself from the
+      // authenticated user's ID (they were just written by register-face
+      // and id-photo above), rather than trusting a client-supplied URL.
       final completeResp = await _api.post('/auth/profile/complete', {
-        'profileImageUrl': faceUrl,
-        'idImageUrl': idUrl,
-        if (encoding != null) 'faceEncoding': encoding,
+        'faceEncoding': encoding,
+        // Required by the backend — completeProfile() rejects the request
+        // without it. Only ever sent because the user already passed through
+        // the mandatory consent screen (_step.consent) before any capture
+        // began; this flag is not a formality, it's what the backend uses as
+        // its record that explicit consent was given.
+        'biometricConsent': _consentChecked,
         if (_parentNameCtrl.text.isNotEmpty) 'parentName': _parentNameCtrl.text.trim(),
         if (_parentContactCtrl.text.isNotEmpty) 'parentContact': _parentContactCtrl.text.trim(),
       });
@@ -187,6 +203,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         automaticallyImplyLeading: false,
       ),
       body: switch (_step) {
+        _SetupStep.consent => _ConsentView(
+            checked: _consentChecked,
+            onCheckedChanged: (v) => setState(() => _consentChecked = v),
+            onContinue: _consentChecked ? _acceptConsent : null,
+          ),
         _SetupStep.done => _DoneView(onContinue: () => Navigator.pushReplacementNamed(context, '/home')),
         _SetupStep.uploading => const Center(
             child: Column(
@@ -208,6 +229,98 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             onCapture: _capture,
           ),
       },
+    );
+  }
+}
+
+/// Explicit, separate biometric consent capture — distinct from general
+/// terms-of-service acceptance, per RA 10173 (Data Privacy Act) expectations
+/// for processing sensitive personal information. Must be affirmatively
+/// checked before any camera/capture UI becomes reachable.
+class _ConsentView extends StatelessWidget {
+  final bool checked;
+  final ValueChanged<bool> onCheckedChanged;
+  final VoidCallback? onContinue;
+
+  const _ConsentView({
+    required this.checked,
+    required this.onCheckedChanged,
+    required this.onContinue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.fingerprint, size: 48, color: AppColors.primary),
+            const SizedBox(height: 16),
+            const Text(
+              'Before we continue',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'To use EngiRent Hub\'s kiosk, we need to collect a selfie, a photo '
+              'of your school ID, and a face-recognition template derived from '
+              'your selfie. This is biometric data, and we\'re asking for your '
+              'explicit consent before capturing it — separate from the general '
+              'terms of service.',
+              style: TextStyle(fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'What this is used for:',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '• Verifying it\'s really you when you deposit, claim, or return an '
+              'item at the kiosk\n'
+              '• Nothing else — this data is never used for attendance, '
+              'analytics, or any purpose beyond kiosk identity verification',
+              style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'You can request permanent deletion of this data at any time from '
+              'your Profile settings, which also deactivates your account.',
+              style: TextStyle(fontSize: 13, height: 1.4, fontStyle: FontStyle.italic),
+            ),
+            const Spacer(),
+            InkWell(
+              onTap: () => onCheckedChanged(!checked),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(value: checked, onChanged: (v) => onCheckedChanged(v ?? false)),
+                  const SizedBox(width: 4),
+                  const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text(
+                        'I understand and explicitly consent to EngiRent Hub capturing '
+                        'and storing my face photo, ID photo, and face-recognition '
+                        'template as described above.',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: onContinue,
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+              child: const Text('I Agree — Continue'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

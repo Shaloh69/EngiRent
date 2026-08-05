@@ -10,6 +10,7 @@ class UserModel {
   final bool profileComplete;
   final bool isVerified;
   final String role;
+  final bool payoutConfigured;
 
   UserModel({
     required this.id,
@@ -23,6 +24,7 @@ class UserModel {
     this.profileComplete = false,
     required this.isVerified,
     this.role = 'STUDENT',
+    this.payoutConfigured = false,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -38,6 +40,7 @@ class UserModel {
       profileComplete: (json['profileComplete'] as bool?) ?? false,
       isVerified: (json['isVerified'] as bool?) ?? false,
       role: (json['role'] as String?) ?? 'STUDENT',
+      payoutConfigured: (json['payoutConfigured'] as bool?) ?? false,
     );
   }
 
@@ -53,8 +56,8 @@ class UserModel {
         'profileComplete': profileComplete,
         'isVerified': isVerified,
         'role': role,
+        'payoutConfigured': payoutConfigured,
       };
 
   String get fullName => '$firstName $lastName';
-  bool get isAdmin => role == 'ADMIN';
 }

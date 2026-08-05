@@ -91,13 +91,14 @@ class ApiService {
     return http.patch(url, headers: headers, body: jsonEncode(body));
   }
 
-  Future<http.Response> delete(String endpoint, {bool authenticated = true}) async {
+  Future<http.Response> delete(String endpoint, {dynamic body, bool authenticated = true}) async {
     final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
     final headers = await _getHeaders(authenticated: authenticated);
+    final encodedBody = body != null ? jsonEncode(body) : null;
     if (authenticated) {
-      return _withRefresh(() => http.delete(url, headers: headers));
+      return _withRefresh(() => http.delete(url, headers: headers, body: encodedBody));
     }
-    return http.delete(url, headers: headers);
+    return http.delete(url, headers: headers, body: encodedBody);
   }
 
   // Upload a single file to the given endpoint as multipart form-data

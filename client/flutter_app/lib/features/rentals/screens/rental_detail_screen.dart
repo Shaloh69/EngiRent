@@ -234,7 +234,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     'ACTIVE' => AppColors.success,
     'COMPLETED' => AppColors.info,
     'CANCELLED' || 'DISPUTED' => AppColors.error,
-    'VERIFICATION' || 'AWAITING_RETURN' => AppColors.warning,
+    'VERIFICATION' => AppColors.warning,
     'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
     _ => AppColors.textSecondary,
   };
@@ -405,7 +405,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             },
                           ),
                         ],
-                        if (['CANCELLED', 'DISPUTED', 'COMPLETED', 'VERIFICATION', 'AWAITING_RETURN']
+                        if (['CANCELLED', 'DISPUTED', 'COMPLETED', 'VERIFICATION']
                             .contains(_rental!.status))
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -452,7 +452,6 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     'DISPUTED' => 'This rental is under review. Our team will contact you.',
     'COMPLETED' => 'Rental complete! Thank you for using EngiRent.',
     'VERIFICATION' => 'Item verification in progress…',
-    'AWAITING_RETURN' => 'Waiting for the item to be returned to the kiosk.',
     _ => '',
   };
 }

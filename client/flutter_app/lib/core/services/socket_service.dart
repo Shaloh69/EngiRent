@@ -59,16 +59,21 @@ class SocketService {
 
     final baseUrl = AppConstants.baseUrl.replaceFirst('/api/v1', '');
 
-    _socket = io.io(
-      baseUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .setExtraHeaders(accessToken != null ? {'Authorization': 'Bearer $accessToken'} : {})
-          .enableReconnection()
-          .setReconnectionDelay(3000)
-          .setReconnectionAttempts(double.infinity.toInt())
-          .build(),
-    );
+    final builder = io.OptionBuilder()
+        .setTransports(['websocket'])
+        .setExtraHeaders(accessToken != null ? {'Authorization': 'Bearer $accessToken'} : {})
+        .enableReconnection()
+        .setReconnectionDelay(3000)
+        .setReconnectionAttempts(double.infinity.toInt());
+
+    // The backend authenticates the socket from this auth payload (preferred
+    // over extraHeaders, which some websocket transports drop). Without a valid
+    // token the socket cannot join its notification room.
+    if (accessToken != null) {
+      builder.setAuth({'token': accessToken});
+    }
+
+    _socket = io.io(baseUrl, builder.build());
 
     _socket!
       ..onConnect((_) {
