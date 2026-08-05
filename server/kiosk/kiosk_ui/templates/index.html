@@ -285,6 +285,26 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════
+     SCREEN: VERIFYING — AI item-condition check, runs server-side on the
+     Node backend after images are captured/uploaded. This can take several
+     seconds (8-stage pipeline incl. a ResNet50 pass); the inactivity timer
+     is explicitly suspended while this screen is shown (see app.js) so the
+     kiosk cannot revert to the attract screen while a check the user was
+     told to wait for is still running.
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-verifying" class="screen screen-verifying" aria-hidden="true">
+  <div class="success-wrap">
+    <div class="verifying-spinner" aria-hidden="true"></div>
+    <h1 class="success-title">Checking your item…</h1>
+    <p id="verifying-sub" class="success-sub">This takes about 15 seconds.</p>
+    <p class="error-msg" style="margin-top:18px;font-weight:700;">
+      Please do not walk away yet — verification is still in progress.
+    </p>
+  </div>
+</div><!-- /screen-verifying -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
      SCREEN: SUCCESS
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="screen-success" class="screen screen-success" aria-hidden="true">

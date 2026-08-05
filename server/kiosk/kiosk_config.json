@@ -4,29 +4,25 @@
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     },
     "2": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     },
     "3": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     },
     "4": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     }
   },
   "face_recognition": {

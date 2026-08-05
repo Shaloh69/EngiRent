@@ -6,15 +6,21 @@ structlog==24.4.0
 aiohttp>=3.9.0
 
 # GPIO (installed system-wide via apt — imported here for venv awareness)
-# gpiozero and lgpio are provided by python3-gpiozero / python3-lgpio (apt)
+# lgpio is provided by python3-lgpio (apt). gpiozero is deliberately NOT
+# installed — the hardware layer (hardware/gpio_controller.py,
+# hardware/actuator_controller.py) migrated to direct lgpio calls; gpiozero's
+# own pin-factory daemon (lgd) actively conflicts with this (it pre-claims
+# GPIO pins), which is why setup.sh explicitly stops/disables it.
 # venv must be created with --system-site-packages
 
 # Camera
-# picamera2 and opencv are provided by python3-picamera2 / python3-opencv (apt)
-# do NOT pip-install these — they conflict with system packages on Pi OS Trixie
+# opencv is provided by python3-opencv (apt) — do NOT pip-install it, it
+# conflicts with the system package on Pi OS Trixie. picamera2 is not used
+# at all — all 5 cameras are USB (via OpenCV/GStreamer), not a Pi Camera
+# Module.
 
-# Image upload to Supabase
-supabase==2.15.3
+# Image upload — POSTs to the Node backend (see services/image_uploader.py),
+# not a direct storage SDK
 pillow==11.0.0
 
 # Local kiosk UI server

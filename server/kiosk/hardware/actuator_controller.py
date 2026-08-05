@@ -122,12 +122,12 @@ class ActuatorController:
         self._stop(locker_id)
         log.info("PLACE complete locker=%s", locker_id)
 
-    async def manual_extend(self, locker_id: int, seconds: float, _speed: int = 100):
+    async def manual_extend(self, locker_id: int, seconds: float):
         self._do_extend(locker_id)
         await asyncio.sleep(seconds)
         self._stop(locker_id)
 
-    async def manual_retract(self, locker_id: int, seconds: float, _speed: int = 100):
+    async def manual_retract(self, locker_id: int, seconds: float):
         self._do_retract(locker_id)
         await asyncio.sleep(seconds)
         self._stop(locker_id)

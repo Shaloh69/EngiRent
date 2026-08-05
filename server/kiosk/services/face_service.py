@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 from PIL import Image as _PILImage
 
-from config import ML_SERVICE_URL
+from config import ML_SERVICE_URL, ML_SERVICE_API_KEY
 from services.image_uploader import upload_face_image
 
 log = logging.getLogger("kiosk.face")
@@ -88,12 +88,24 @@ def detect_face_in_frame(jpeg_bytes: bytes) -> tuple[bool, float]:
         return False, 0.0
 
 
-async def verify_face(jpeg_bytes: bytes, reference_face_url: str) -> dict:
+async def verify_face(
+    jpeg_bytes: bytes,
+    reference_face_url: str,
+    stored_encoding: str | None = None,
+    rental_id: str | None = None,
+) -> dict:
     """
     Full verification pipeline:
       1. Detect face locally with OpenCV Haar cascade
-      2. Upload captured image to Supabase
-      3. Send both images to ML service for identity comparison
+      2. Upload captured image to the Node backend (local storage)
+      3. Send the captured image (+ stored_encoding if available, else
+         reference_face_url) to the ML service for identity comparison
+
+    `stored_encoding`, when provided, is a JSON string of the user's 128-float
+    face encoding — decrypted server-side by the Node backend and passed
+    through here unmodified. It's strictly faster (no reference-image
+    download/re-encode) and is preferred by the ML service's /verify-face
+    endpoint whenever both are present.
 
     Returns:
       {
@@ -116,7 +128,7 @@ async def verify_face(jpeg_bytes: bytes, reference_face_url: str) -> dict:
             "error": "No face detected",
         }
 
-    face_url = upload_face_image(jpeg_bytes)
+    face_url = await upload_face_image(jpeg_bytes, rental_id)
 
     if not face_url:
         return {
@@ -137,10 +149,14 @@ async def verify_face(jpeg_bytes: bytes, reference_face_url: str) -> dict:
                 content_type="image/jpeg",
             )
             data.add_field("reference_image_url", reference_face_url)
+            if stored_encoding:
+                data.add_field("stored_encoding", stored_encoding)
 
+            headers = {"X-API-Key": ML_SERVICE_API_KEY} if ML_SERVICE_API_KEY else {}
             async with session.post(
                 f"{ML_SERVICE_URL}/api/v1/verify-face",
                 data=data,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 if resp.status >= 400:

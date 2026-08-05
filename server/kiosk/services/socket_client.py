@@ -31,7 +31,13 @@ import time
 
 import socketio
 
-from config import KIOSK_ID, SERVER_URL, load_timing_config, save_timing_config
+from config import (
+    KIOSK_ID,
+    KIOSK_SHARED_SECRET,
+    SERVER_URL,
+    load_timing_config,
+    save_timing_config,
+)
 from hardware.gpio_controller import SolenoidController
 from hardware.actuator_controller import ActuatorController
 from hardware.camera_manager import CameraManager
@@ -276,6 +282,8 @@ async def on_command(data: dict):
         "actuator_extend":  _cmd_actuator_extend,
         "actuator_retract": _cmd_actuator_retract,
         "flow_error":       _cmd_flow_error,
+        "self_test":        _cmd_self_test,
+        "verification_done": _cmd_verification_done,
     }
 
     handler = handlers.get(action)
@@ -361,7 +369,7 @@ async def _cmd_capture_image(data: dict):
     _set_ui("capturing", f"Capturing images from Locker {locker_id}…", locker_id)
 
     frames = _camera.capture_locker(locker_id, num_frames)
-    urls = upload_locker_images(locker_id, frames)
+    urls = await upload_locker_images(locker_id, frames, rental_id)
 
     if rental_id:
         await safe_emit("kiosk:images", {
@@ -370,6 +378,13 @@ async def _cmd_capture_image(data: dict):
             "image_urls": urls,
             "rental_id": rental_id,
         })
+        # The AI verification pipeline runs server-side on the Node backend
+        # from here — it can take several seconds (8 stages incl. a ResNet50
+        # pass). Previously the kiosk went straight back to "idle" the
+        # instant it uploaded, before that decision ever came back. Now it
+        # waits in a dedicated "do not leave" state until Node's
+        # "verification_done" command arrives (_cmd_verification_done below).
+        _set_ui("verifying_item", "Checking your item — this takes about 15 seconds…")
     else:
         # Admin snapshot — no ML, just relay the URL to admin dashboard
         await safe_emit("kiosk:admin_snapshot", {
@@ -377,13 +392,42 @@ async def _cmd_capture_image(data: dict):
             "locker_id": locker_id,
             "image_urls": urls,
         })
+        _set_ui("idle", "Ready")
 
-    _set_ui("idle", "Ready")
     log.info("Images sent locker=%s count=%s rental=%s", locker_id, len(urls), rental_id)
+
+
+async def _cmd_verification_done(data: dict):
+    """
+    Node sends this right after deciding a kiosk:images verification
+    (APPROVED/PENDING/RETRY/REJECTED) — see the "verification_done"
+    kiosk:command emissions in index.ts's kiosk:images handler. Moves the
+    kiosk screen out of the "verifying_item" do-not-leave state and shows
+    the actual outcome, rather than leaving the user staring at a spinner
+    indefinitely or (worse) having the screen silently sit on "idle" while
+    a check it was told to wait for was still running.
+    """
+    result = data.get("result", "pending")
+    locker_id = data.get("locker_id")
+    if result == "approved":
+        _set_ui("item_verified", "Item verified ✓", locker_id)
+    elif result == "pending":
+        _set_ui("item_verified", "Item received — pending manual review", locker_id)
+    elif result == "retry":
+        _set_ui("item_retry", "Please reposition the item and try again", locker_id)
+    else:  # rejected
+        _set_ui("error", "Item verification failed. Please contact staff.")
+    log.info("Verification result for command_id=%s: %s", data.get("command_id"), result)
 
 
 async def _cmd_capture_face(data: dict):
     reference_url = data.get("reference_face_url", "")
+    # Preferred over reference_url when present — the Node backend decrypts
+    # User.faceEncoding and sends the raw floats directly, skipping a
+    # reference-image download + re-encode on the ML service side. Falls back
+    # to reference_url for accounts registered before encoding capture existed.
+    stored_encoding = data.get("stored_encoding")
+    rental_id = data.get("rental_id")
     _set_ui("face_scan", "Please look directly at the camera…")
 
     cfg = load_timing_config()
@@ -398,7 +442,7 @@ async def _cmd_capture_face(data: dict):
             break
 
         _set_ui("face_scan", f"Verifying… (attempt {attempt}/{attempts})")
-        result = await verify_face(frames[0], reference_url)
+        result = await verify_face(frames[0], reference_url, stored_encoding, rental_id)
 
         if result["detected"] and result["verified"]:
             break
@@ -425,6 +469,79 @@ async def _cmd_flow_error(data: dict):
     log.error("Flow error from server: %s", message)
 
 
+async def _cmd_self_test(data: dict):
+    """
+    Real hardware self-test, triggered remotely from the admin Health Check
+    page (see adminController.sendKioskCommand's "self_test" action) — lets
+    an admin verify kiosk hardware without needing physical/SSH access to
+    the Pi. Pulses every solenoid and actuator briefly, tries to open every
+    camera and capture one frame, and reports pass/fail per component.
+
+    Emits kiosk:self_test_result directly (in addition to the generic
+    kiosk:ack _run_with_ack always sends) so the admin console gets a
+    structured, itemized result rather than a single flag.
+    """
+    command_id = data.get("command_id", "")
+    components: list[dict] = []
+
+    _set_ui("busy", "Running hardware self-test…")
+
+    # Solenoids — brief pulse (unlock then immediately re-lock) on both doors
+    # of every locker.
+    for locker_id in range(1, 5):
+        for door in ("main_door", "bottom_door"):
+            name = f"solenoid_{locker_id}_{door}"
+            try:
+                await _solenoid.unlock_for(locker_id, door, 0.3)
+                components.append({"component": name, "ok": True})
+            except Exception as e:
+                components.append({"component": name, "ok": False, "error": str(e)})
+
+    # Actuators — brief extend/retract pulse per locker.
+    for locker_id in range(1, 5):
+        name = f"actuator_{locker_id}"
+        try:
+            await _actuator.manual_extend(locker_id, 0.3)
+            await _actuator.manual_retract(locker_id, 0.3)
+            components.append({"component": name, "ok": True})
+        except Exception as e:
+            components.append({"component": name, "ok": False, "error": str(e)})
+
+    # Cameras — one locker camera per locker + the face camera.
+    for locker_id in range(1, 5):
+        name = f"camera_locker_{locker_id}"
+        try:
+            frames = _camera.capture_locker(locker_id, num_frames=1)
+            components.append({"component": name, "ok": bool(frames)})
+        except Exception as e:
+            components.append({"component": name, "ok": False, "error": str(e)})
+
+    try:
+        face_frames = _camera.capture_face(num_frames=1)
+        components.append({"component": "camera_face", "ok": bool(face_frames)})
+    except Exception as e:
+        components.append({"component": "camera_face", "ok": False, "error": str(e)})
+
+    # Tailscale/network connectivity to the backend is implicitly confirmed
+    # by the fact that this command was received at all (it arrived over
+    # the same Socket.io connection) — recorded explicitly anyway so the
+    # admin UI can show it alongside the other checks rather than needing to
+    # infer it.
+    components.append({"component": "backend_connectivity", "ok": sio.connected})
+
+    overall = "ok" if all(c["ok"] for c in components) else "degraded"
+
+    await safe_emit("kiosk:self_test_result", {
+        "kiosk_id": KIOSK_ID,
+        "command_id": command_id,
+        "overall": overall,
+        "components": components,
+    })
+
+    log.info("Self-test complete: overall=%s (%d components)", overall, len(components))
+    _set_ui("idle", "Self-test complete")
+
+
 async def _cmd_lock_all(_data: dict):
     _solenoid.lock_all()
     _actuator.stop_all()
@@ -436,8 +553,9 @@ async def _cmd_actuator_extend(data: dict):
     locker_id = int(data["locker_id"])
     cfg = load_timing_config()
     seconds = data.get("seconds") or cfg["lockers"][str(locker_id)]["actuator_extend_seconds"]
-    speed = data.get("speed", 100)
-    await _actuator.manual_extend(locker_id, seconds, speed)
+    # No speed parameter — actuators are relay-driven on/off (no PWM speed
+    # control circuit exists), so a "speed" was accepted but silently ignored.
+    await _actuator.manual_extend(locker_id, seconds)
     await sio.emit("kiosk:status", _build_status())
 
 
@@ -445,8 +563,7 @@ async def _cmd_actuator_retract(data: dict):
     locker_id = int(data["locker_id"])
     cfg = load_timing_config()
     seconds = data.get("seconds") or cfg["lockers"][str(locker_id)]["actuator_retract_seconds"]
-    speed = data.get("speed", 100)
-    await _actuator.manual_retract(locker_id, seconds, speed)
+    await _actuator.manual_retract(locker_id, seconds)
     await sio.emit("kiosk:status", _build_status())
 
 
@@ -578,7 +695,16 @@ async def connect_to_server():
             if sio.connected:
                 await sio.disconnect()
             log.info("Connecting to %s …", SERVER_URL)
-            await sio.connect(SERVER_URL, transports=["websocket"])
+            if not KIOSK_SHARED_SECRET:
+                log.warning(
+                    "KIOSK_SHARED_SECRET is empty — the backend will refuse all "
+                    "kiosk hardware events. Set it in the Pi .env to match the backend."
+                )
+            await sio.connect(
+                SERVER_URL,
+                transports=["websocket"],
+                auth={"kioskSecret": KIOSK_SHARED_SECRET, "kioskId": KIOSK_ID},
+            )
             await sio.wait()
         except Exception as e:
             log.error("Socket error: %s – reconnecting in 5s", e)

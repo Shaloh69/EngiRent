@@ -49,11 +49,19 @@ GPIO_CHIP = _detect_gpio_chip()
 KIOSK_ID = os.getenv("KIOSK_ID", "kiosk-1")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
 ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
+# Sent as the X-API-Key header on every direct kiosk→ML call (currently just
+# /verify-face). MUST match ML_API_KEY on the ML service. The kiosk is a
+# physically-secured, server-side device (unlike the distributed mobile app),
+# so holding this secret in its own .env is the same trust model as
+# KIOSK_SHARED_SECRET above, not a public-client secret-embedding problem.
+ML_SERVICE_API_KEY = os.getenv("ML_SERVICE_API_KEY", "")
 
-# ── Supabase ───────────────────────────────────────────────────────────────────
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "media")
+# Shared secret presented on the Socket.io handshake so the backend can prove
+# this connection is a genuine kiosk before honouring any lock/verification
+# event. MUST match KIOSK_SHARED_SECRET on the backend. If unset the backend
+# refuses all kiosk hardware events (fail-closed).
+KIOSK_SHARED_SECRET = os.getenv("KIOSK_SHARED_SECRET", "")
+
 
 # ── Local UI ───────────────────────────────────────────────────────────────────
 UI_PORT = int(os.getenv("UI_PORT", "8080"))

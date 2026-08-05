@@ -38,7 +38,6 @@ checks = [
     ("flask_cors",    "flask-cors"),
     ("socketio",      "python-socketio"),
     ("aiohttp",       "aiohttp"),
-    ("supabase",      "supabase"),
     ("PIL",           "pillow"),
 ]
 for mod, pkg in checks:
@@ -49,8 +48,12 @@ for mod, pkg in checks:
         fail(f"{pkg}  →  {e}")
 
 # ── 3. Hardware imports ────────────────────────────────────────────────────────
+# gpiozero and picamera2 are deliberately NOT checked here — the hardware
+# layer migrated to direct lgpio calls (gpiozero's pin-factory daemon
+# actively conflicts with this), and all 5 cameras are USB (via OpenCV/
+# GStreamer), not a Pi Camera Module. Both were part of an earlier design.
 section("Hardware imports")
-for mod, pkg in [("cv2","opencv"), ("gpiozero","gpiozero"), ("lgpio","lgpio"), ("picamera2","picamera2")]:
+for mod, pkg in [("cv2", "opencv"), ("lgpio", "lgpio")]:
     try:
         m = __import__(mod)
         ver = getattr(m, "__version__", "?")
@@ -234,8 +237,9 @@ except Exception as e:
 section(".env configuration")
 from dotenv import load_dotenv
 load_dotenv()
-keys = ["KIOSK_ID", "SERVER_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
-        "ML_SERVICE_URL", "UI_PORT", "RELAY_ACTIVE_LEVEL", "MOCK_GPIO", "MOCK_CAMERA"]
+keys = ["KIOSK_ID", "SERVER_URL", "KIOSK_SHARED_SECRET",
+        "ML_SERVICE_URL", "ML_SERVICE_API_KEY", "UI_PORT", "RELAY_ACTIVE_LEVEL",
+        "MOCK_GPIO", "MOCK_CAMERA"]
 for k in keys:
     v = os.getenv(k, "")
     if not v:

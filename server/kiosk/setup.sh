@@ -42,7 +42,6 @@ step "Installing system packages"
 apt-get update -qq
 apt-get install -y -qq \
     python3-lgpio \
-    python3-gpiozero \
     python3-opencv \
     opencv-data \
     python3-pip \
@@ -172,7 +171,6 @@ _check_import "lgpio"         "run: sudo apt install -y python3-lgpio"
 _check_import "flask"         "run: pip install flask"
 _check_import "flask_socketio" "run: pip install flask-socketio"
 _check_import "socketio"      "run: pip install python-socketio[asyncio_client]"
-_check_import "supabase"      "run: pip install supabase"
 _check_import "PIL"           "run: pip install pillow"
 _check_import "dotenv"        "run: pip install python-dotenv"
 
@@ -200,7 +198,7 @@ chown "$SERVICE_USER:$SERVICE_USER" "$KIOSK_DIR/.env"
 _prompt_env() {
     local KEY="$1" LABEL="$2" CURRENT
     CURRENT="$(grep -E "^${KEY}=" "$KIOSK_DIR/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)"
-    if [ -z "$CURRENT" ] || echo "$CURRENT" | grep -qiE "your-|PASTE_|example\.com"; then
+    if [ -z "$CURRENT" ] || echo "$CURRENT" | grep -qiE "your-|change-me|PASTE_|example\.com"; then
         echo ""
         printf "  ┌─ %s\n" "$KEY"
         read -rp "  │  $LABEL: " NEW_VAL
@@ -220,10 +218,10 @@ _prompt_env() {
 }
 
 _prompt_env "KIOSK_ID"                  "Kiosk ID (e.g. kiosk-1)"
-_prompt_env "SERVER_URL"                "Backend URL (e.g. https://engirent-api.onrender.com)"
-_prompt_env "SUPABASE_URL"              "Supabase project URL (https://xxx.supabase.co)"
-_prompt_env "SUPABASE_SERVICE_ROLE_KEY" "Supabase service role key (from Supabase → API settings)"
-_prompt_env "ML_SERVICE_URL"            "ML service URL (e.g. https://engirent-ml.onrender.com)"
+_prompt_env "SERVER_URL"                "Backend URL — the PC's Tailscale address (e.g. http://desktop-gklhcri:5000)"
+_prompt_env "KIOSK_SHARED_SECRET"       "Shared secret matching KIOSK_SHARED_SECRET on the backend (openssl rand -hex 32)"
+_prompt_env "ML_SERVICE_URL"            "ML service URL — the PC's Tailscale address (e.g. http://desktop-gklhcri:8001)"
+_prompt_env "ML_SERVICE_API_KEY"        "API key matching ML_API_KEY on the ML service"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 5. Default kiosk_config.json
@@ -237,29 +235,25 @@ if [ ! -f "$KIOSK_DIR/kiosk_config.json" ]; then
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     },
     "2": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     },
     "3": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     },
     "4": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
       "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5,
-      "actuator_speed_percent": 100
+      "actuator_retract_seconds": 5
     }
   },
   "face_recognition": {
@@ -386,9 +380,9 @@ echo "╚═══════════════════════�
 echo ""
 
 # Warn if .env still has unfilled placeholder values
-if grep -qE "your-service-role-key|PASTE_YOUR|your-" "$KIOSK_DIR/.env" 2>/dev/null; then
+if grep -qE "change-me|PASTE_YOUR|your-" "$KIOSK_DIR/.env" 2>/dev/null; then
     echo "  ⚠  .env has unfilled values — edit before starting:"
-    grep -nE "your-service-role-key|PASTE_YOUR|your-" "$KIOSK_DIR/.env" | sed 's/^/     /'
+    grep -nE "change-me|PASTE_YOUR|your-" "$KIOSK_DIR/.env" | sed 's/^/     /'
     echo ""
 fi
 

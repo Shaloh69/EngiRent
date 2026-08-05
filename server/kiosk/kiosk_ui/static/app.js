@@ -10,6 +10,7 @@ const S = {
   QR:      'qr',
   CONFIRM: 'confirm',
   FACE:    'face',
+  VERIFYING: 'verifying',
   SUCCESS: 'success',
   ERROR:   'error',
 };
@@ -34,6 +35,7 @@ const SCR = {
   [S.QR]:      document.getElementById('screen-qr'),
   [S.CONFIRM]: document.getElementById('screen-confirm'),
   [S.FACE]:    document.getElementById('screen-face'),
+  [S.VERIFYING]: document.getElementById('screen-verifying'),
   [S.SUCCESS]: document.getElementById('screen-success'),
   [S.ERROR]:   document.getElementById('screen-error'),
 };
@@ -52,6 +54,7 @@ const successSub   = document.getElementById('success-sub');
 const successInstr = document.getElementById('success-instr');
 const countdownEl  = document.getElementById('countdown-secs');
 const errorMsg     = document.getElementById('error-msg');
+const verifyingSub = document.getElementById('verifying-sub');
 // Confirm screen
 const confirmItem   = document.getElementById('confirm-item');
 const confirmBadge  = document.getElementById('rental-status-badge');
@@ -95,6 +98,8 @@ function _onEnter(s) {
   } else if (s === S.FACE) {
     _startCam('face');
     _animFaceBar();
+  } else if (s === S.VERIFYING) {
+    _stopCam();
   } else if (s === S.SUCCESS) {
     _stopCam();
     _startCountdown();
@@ -108,6 +113,13 @@ function _onEnter(s) {
 function _resetInactivity() {
   clearTimeout(inactTimer);
   if (currentState === S.IDLE) return;
+  // The user was explicitly told not to leave — reverting to the attract
+  // screen mid-verification would directly contradict that instruction (the
+  // exact bug class this "verifying" state exists to close). No timeout is
+  // armed at all while this screen is showing; _cmd_verification_done always
+  // moves the kiosk to a different state once Node's decision comes back,
+  // which re-arms the timer normally from there.
+  if (currentState === S.VERIFYING) return;
   if (currentState === S.MAIN) {
     inactTimer = setTimeout(() => goTo(S.IDLE), IDLE_MS);
   } else {
@@ -352,6 +364,20 @@ function _applyState(s) {
       : 'Please collect your item and close the door';
 
     setTimeout(() => goTo(S.SUCCESS), 600);
+  } else if (status === 'verifying_item') {
+    // Item-condition AI check, running server-side — see the "verifying"
+    // screen's own inactivity-timeout suspension in _resetInactivity().
+    if (verifyingSub) verifyingSub.textContent = message || 'This takes about 15 seconds.';
+    if (currentState !== S.VERIFYING) goTo(S.VERIFYING);
+  } else if (status === 'item_verified') {
+    const lockerNum = active_locker ? `Locker ${String(active_locker).padStart(2, '0')}` : 'Locker';
+    successSub.textContent   = message || 'Item verified';
+    successInstr.textContent = `${lockerNum} — you're all set.`;
+    goTo(S.SUCCESS);
+  } else if (status === 'item_retry') {
+    // The physical door reopens via a separate, already-in-flight command —
+    // this just gets the screen off "verifying" so it isn't stuck there.
+    goTo(S.MAIN);
   } else if (status === 'error') {
     errorMsg.textContent = message || 'An error occurred. Please try again.';
     if (currentState !== S.ERROR) goTo(S.ERROR);

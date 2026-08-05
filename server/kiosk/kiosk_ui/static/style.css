@@ -524,6 +524,14 @@ html, body {
   padding: 56px 40px; text-align: center; gap: 20px;
 }
 
+/* Verifying screen — reuses .success-wrap's centered layout */
+.screen-verifying { background: linear-gradient(180deg, #06090f 0%, #04100a 100%); }
+.verifying-spinner {
+  width: 72px; height: 72px;
+  border: 6px solid var(--border); border-top-color: var(--blue);
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+
 .success-check { margin-bottom: 4px; }
 .check-svg {
   width: 110px; height: 110px;
