@@ -86,6 +86,46 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-06 — Phase 3 continued: Kiosk React/Vite migration complete (user explicitly asked to keep going on design while Phase 4's blockers get sorted)
+
+Per the user's explicit follow-up instruction after the five-phase summary: keep going on Phase 3 (doesn't need live DB/PayMongo/Tailscale access), Kiosk first since its React/Vite migration is a prerequisite for the animation stack, then Phone App or `client/web` by judgment. Full accounting in `DESIGN.md` §3 — short version:
+
+- New `server/kiosk/kiosk_ui_react/` (React 19 + Vite + TS + framer-motion + socket.io-client + qrcode.react). Flask's `kiosk_ui/server.py` now serves the built `dist/` (`static_folder` repointed; old `templates/`+`static/` deleted) instead of the prior Jinja+vanilla-JS UI — every backend route (`/api/state`, `/api/qr-token`, `/camera/face/stream`, the local Socket.IO channel) is untouched, only the frontend moved.
+- Ported all 8 original screens (idle/main/qr/confirm/face/verifying/success/error) faithfully from `app.js`'s state machine, plus added a genuinely new 9th: a dedicated offline-fallback screen, since the design mandate explicitly requires one and the old version only had a small connection badge.
+- "Vault" dark theme implemented as real CSS custom properties (`theme.css`), same EngiRent Spectrum hex values as the Admin Console's Mantine theme — one palette, not reinvented per surface.
+- Idle screen's mandated 3D-lock moment: no Spline/R3F asset or sourced Lottie file was available in this environment, so built a hand-rolled SVG + Framer Motion lock with a real locked→unlocking→unlocked state machine instead — documented as a substitution, not silently passed off as the real thing.
+- Added `?demo=<screen>` (and `&offline=1`) to `useKioskState.ts` specifically to make "screenshot-verify against local/demo data" possible without a live kiosk backend, per the user's explicit instruction on how to proceed without live access.
+- **The screenshot loop caught a real bug**, exactly as it's supposed to: the first idle-screen screenshot showed the lock overlapping the title and most of the screen empty — `.screen-idle`'s CSS was overriding the shared `.screen` class's `position: fixed` with `position: relative`, collapsing the container to content-height instead of filling the viewport. Fixed, re-screenshotted, confirmed.
+- Verified the Flask-serving wiring itself (not just the Vite dev server) via Flask's test client: `/` serves the real built `index.html`, a built JS asset serves from `/assets/`, the favicon serves, and the pre-existing `/api/qr-token` endpoint still works.
+- **Side effect worth flagging, same pattern as the ML service's pytest install earlier**: smoke-testing `server.py` required installing `flask==3.1.0`, `flask-socketio==5.4.1`, `flask-cors==5.0.0`, and `aiohttp` globally into this machine's shared Python interpreter (no venv exists for the kiosk service either). All pinned to `requirements.txt`'s exact versions; flagging for the same reason as before — a dedicated venv for the kiosk service would prevent this going forward.
+- Updated `server/kiosk/KIOSK_CODE_SETUP.md`'s file-tree and `kiosk_ui/server.py` section to describe the new structure, and fixed a stale "Upload images to Supabase" line while in there (Phase 0.5 already moved this to local storage via the Node API; the doc just hadn't been updated).
+
+Next: Phone App or `client/web` (judgment call, not yet decided as of this entry — see the next log entry for which one and why).
+
+### 2026-08-06 — Phase 3 continued: `client/web` fully migrated off HeroUI (chosen over Phone App first)
+
+Judgment call on ordering: picked `client/web` over the Phone App first because it's a much smaller surface (5 content pages + a navbar, no auth/payment/camera flows) — realistic to get **completely** done and verified in the time available, versus a partial dent in the much larger Flutter app. Full accounting in `DESIGN.md` §5 — short version:
+
+- Installed `@mantine/core`/`@mantine/hooks`, added `config/theme.ts` (same EngiRent Spectrum values as `client/admin`'s theme, duplicated since the two packages don't share a monorepo setup), migrated `providers.tsx` (briefly nested, same transitional pattern as Admin Console), then rebuilt all 5 pages (home/about/pricing/blog/docs) + `navbar.tsx` + `error.tsx` + `theme-switch.tsx` on Mantine + Framer Motion.
+- **Went further than the Admin Console**: this surface was small enough to take all the way to zero HeroUI — removed all 35 `@heroui/*` packages plus now-orphaned `@react-aria/visually-hidden`/`@react-types/shared`/`intl-messageformat` from `package.json` (185 packages actually removed from `node_modules`, not just unused-but-installed), deleted `hero.ts` (the HeroUI Tailwind plugin) and its `globals.css` references.
+- Fixed the two leftover scaffold artifacts the master plan named explicitly: `components/counter.tsx` (deleted, confirmed zero references first) and `package.json`'s `"name": "next-app-template"` → `"engirent-web"`.
+- Updated `globals.css`'s `--brand-*` custom properties to the actual mandated hex values (previous scheme was a similar-but-not-quite blue/emerald/amber).
+- **The screenshot loop caught a real bug again**: Mantine's `<List>` rendered with zero visible bullet/number markers on the pricing and docs pages — Tailwind's preflight resets `list-style: none` globally, silently stripping List's reliance on the browser-default marker box. Fixed with a targeted CSS override, re-screenshotted both pages to confirm numbers/bullets came back.
+- Verified desktop (1440×900) and mobile (390×844, confirms the Burger/responsive collapse works) viewports, plus both `npm run dev` and a real `npm run build` (all 6 static routes generate cleanly).
+
+`client/web` is now the second surface (after Kiosk) that's genuinely fully done, not partial. Remaining: Admin Console's ~9 unmigrated pages, and the entire Phone App (still not started).
+
+### 2026-08-06 — Phase 3 continued: Phone App palette ported and screenshot-verified (foundation only)
+
+Ran out of realistic room to fully rebuild the Phone App's entire mandated screen list (most of it sits behind a live authenticated backend session this environment doesn't have anyway) — applied the same "foundation: palette + verify it actually renders" treatment the Admin Console got, rather than leaving this surface completely untouched. Full accounting in `DESIGN.md` §4.
+
+- **`lib/core/constants/app_colors.dart`** — `primary` (navy → violet `#7C3AED`), `accent` (orange → coral `#FB7185`), `background`/`border` (cool grey → the same warm off-white "Campus Day" tone used everywhere else). Both gradients updated to match. Since every screen in this app already funnels through `AppColors.*` + one shared `ThemeData` (`main.dart`), this single-file change re-themes the whole app at once — same "shared token" leverage the other three surfaces' migrations used.
+- **Deliberately did NOT touch `AppColors.secondary`** (stayed green) — it's used across 9 call sites specifically for availability/success semantics, not as a general brand color, and its hex already exactly equals the mandate's own emerald "success" value. Swapping it to the mandate's literal amber "secondary" would have broken that semantic meaning for zero visual-consistency benefit. Documented in the file itself, not silently decided.
+- **Screenshot proof, on a real compiled build, not a mockup**: `flutter build web`, served statically, screenshotted via Playwright — Login and Register screens (`docs/design-screenshots/mobile-{login,register}.png`), the only two screens reachable without a live authenticated session. Both render correctly: violet hero gradient, violet buttons, warm off-white background.
+- **Not done**: no `lottie`/`rive` packages added, no screen actually rebuilt beyond the color-token swap — home/marketplace/item-detail/checkout/active-rentals/kiosk-QR/owner-listing/notifications/chat/profile/reviews all remain as-is structurally. This is the smallest foundation of the four surfaces, tracked honestly as such.
+
+**This closes out the extended, user-requested Phase 3 continuation** (Kiosk fully done, `client/web` fully done, Admin Console + Phone App both have verified foundations). Remaining backlog for a future session: Admin Console's ~9 unmigrated pages, and the actual Phone App screen rebuild.
+
 ### 2026-08-06 — Phase 5: committed locally in 9 logical groups, push withheld (Phase 4 audit didn't pass)
 
 Per this repo's own hard constraint, **nothing was pushed to `origin/main`** — Phase 4's audit found real blockers (no reachable DB, no PayMongo sandbox key, no hardware access). All work is committed locally, in order:
