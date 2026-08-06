@@ -55,14 +55,18 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     if (_rental == null) return;
     AppToast.info(context, 'Opening Checkout…');
     try {
-      final resp = await _api.post('/payments/create-checkout', {
+      // Matches paymentController.ts's real route/response shape: POST
+      // /payments (not /payments/create-checkout, which doesn't exist), and
+      // { transaction, paymentUrl } (not checkoutUrl/sessionId — the
+      // transaction's own id doubles as the "session" id for status polling).
+      final resp = await _api.post('/payments', {
         'rentalId': _rental!.id,
         'type': 'RENTAL_PAYMENT',
       });
       if (resp.statusCode == 201 || resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
-        final checkoutUrl = data['data']['checkoutUrl'] as String?;
-        final sessionId = data['data']['sessionId'] as String?;
+        final checkoutUrl = data['data']['paymentUrl'] as String?;
+        final sessionId = data['data']['transaction']?['id'] as String?;
         if (checkoutUrl == null || sessionId == null) return;
         if (!mounted) return;
         final result = await Navigator.push<PaymentResult>(
