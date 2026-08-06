@@ -1,4 +1,7 @@
-import { Card, CardBody } from "@heroui/card";
+"use client";
+
+import { Card, List, SimpleGrid, Text } from "@mantine/core";
+import { motion } from "framer-motion";
 import { title, subtitle } from "@/components/primitives";
 
 const sections = [
@@ -60,26 +63,28 @@ export default function DocsPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {sections.map((section) => (
-          <Card
+      <SimpleGrid cols={{ base: 1, lg: 2 }}>
+        {sections.map((section, i) => (
+          <motion.div
             key={section.id}
             id={section.id}
-            className="border border-[var(--brand-border)] bg-[var(--brand-surface)]"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: i * 0.06 }}
           >
-            <CardBody className="space-y-3 p-5">
-              <h2 className="text-lg font-bold text-[var(--brand-ink)]">
+            <Card withBorder radius="lg" padding="lg" h="100%">
+              <Text fw={700} size="lg" mb="sm">
                 {section.title}
-              </h2>
-              <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--brand-muted)]">
+              </Text>
+              <List type="ordered" size="sm" c="dimmed" spacing="xs">
                 {section.steps.map((step) => (
-                  <li key={step}>{step}</li>
+                  <List.Item key={step}>{step}</List.Item>
                 ))}
-              </ol>
-            </CardBody>
-          </Card>
+              </List>
+            </Card>
+          </motion.div>
         ))}
-      </div>
+      </SimpleGrid>
     </div>
   );
 }

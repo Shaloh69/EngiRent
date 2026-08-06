@@ -1,111 +1,82 @@
-'use client';
+"use client";
 
-import {
-  Navbar as HeroUINavbar,
-  NavbarContent,
-  NavbarMenu,
-  NavbarMenuToggle,
-  NavbarBrand,
-  NavbarItem,
-  NavbarMenuItem,
-} from '@heroui/navbar';
-import { Button } from '@heroui/button';
-import { Link } from '@heroui/link';
-import NextLink from 'next/link';
-import { usePathname } from 'next/navigation';
-import clsx from 'clsx';
+import { Group, Burger, Button, Text, ThemeIcon, Drawer, Stack, Box } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import NextLink from "next/link";
+import { usePathname } from "next/navigation";
+import clsx from "clsx";
 
-import { siteConfig } from '@/config/site';
-import { ThemeSwitch } from '@/components/theme-switch';
-import { Logo } from '@/components/icons';
+import { siteConfig } from "@/config/site";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Logo } from "@/components/icons";
 
 export const Navbar = () => {
   const pathname = usePathname();
+  const [opened, { toggle, close }] = useDisclosure();
+
+  const navLink = (item: { label: string; href: string }, mobile = false) => (
+    <NextLink
+      key={item.href}
+      href={item.href}
+      onClick={close}
+      className={clsx(
+        mobile ? "nav-link nav-link--mobile" : "nav-link",
+        pathname === item.href && "nav-link--active",
+      )}
+    >
+      {item.label}
+    </NextLink>
+  );
 
   return (
-    <HeroUINavbar
-      maxWidth="xl"
-      position="sticky"
-      className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/90 backdrop-blur"
-    >
-      <NavbarContent className="basis-1/5 sm:basis-full" justify="start">
-        <NavbarBrand as="li" className="gap-3 max-w-fit">
-          <NextLink className="flex items-center gap-2" href="/">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--brand-primary)] text-white">
+    <header className="site-header">
+      <div className="site-header-inner">
+        <Group gap="xs">
+          <NextLink href="/" className="brand-link">
+            <ThemeIcon size={36} radius="md" variant="filled" color="violet">
               <Logo size={18} />
-            </span>
-            <div className="leading-tight">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-muted)]">Smart Kiosk</p>
-              <p className="font-extrabold text-[var(--brand-ink)]">{siteConfig.name}</p>
+            </ThemeIcon>
+            <div>
+              <Text size="10px" fw={700} tt="uppercase" c="dimmed" lh={1.1} style={{ letterSpacing: 2 }}>
+                Smart Kiosk
+              </Text>
+              <Text size="sm" fw={800} lh={1.2}>
+                {siteConfig.name}
+              </Text>
             </div>
           </NextLink>
-        </NavbarBrand>
-        <ul className="ml-3 hidden gap-5 lg:flex">
-          {siteConfig.navItems.map((item) => (
-            <NavbarItem key={item.href}>
-              <NextLink
-                className={clsx(
-                  'text-sm font-semibold transition',
-                  pathname === item.href ? 'text-[var(--brand-primary)]' : 'text-[var(--brand-muted)] hover:text-[var(--brand-ink)]',
-                )}
-                href={item.href}
-              >
-                {item.label}
-              </NextLink>
-            </NavbarItem>
-          ))}
-        </ul>
-      </NavbarContent>
+        </Group>
 
-      <NavbarContent className="hidden sm:flex" justify="end">
-        <NavbarItem>
-          <ThemeSwitch />
-        </NavbarItem>
-        <NavbarItem className="hidden md:flex">
+        <Group gap={28} visibleFrom="md">
+          {siteConfig.navItems.map((item) => navLink(item))}
+        </Group>
+
+        <Group gap="sm">
+          <Box visibleFrom="sm">
+            <ThemeSwitch />
+          </Box>
           <Button
-            as={Link}
+            component={NextLink}
             href={siteConfig.links.docs}
-            className="font-semibold text-white"
-            style={{ background: 'var(--brand-primary)' }}
+            color="violet"
             radius="sm"
+            visibleFrom="sm"
           >
             Read Docs
           </Button>
-        </NavbarItem>
-      </NavbarContent>
+          <Burger opened={opened} onClick={toggle} hiddenFrom="md" size="sm" />
+        </Group>
+      </div>
 
-      <NavbarContent className="sm:hidden basis-1 pl-4" justify="end">
-        <ThemeSwitch />
-        <NavbarMenuToggle />
-      </NavbarContent>
-
-      <NavbarMenu>
-        <div className="mx-3 mt-3 flex flex-col gap-2">
-          {siteConfig.navItems.map((item) => (
-            <NavbarMenuItem key={item.href}>
-              <NextLink
-                href={item.href}
-                className={clsx(
-                  'block rounded-xl px-3 py-2 text-base font-semibold transition',
-                  pathname === item.href
-                    ? 'bg-[var(--brand-soft)] text-[var(--brand-primary)]'
-                    : 'text-[var(--brand-muted)] hover:bg-[var(--brand-soft)] hover:text-[var(--brand-ink)]',
-                )}
-              >
-                {item.label}
-              </NextLink>
-            </NavbarMenuItem>
-          ))}
-          <Button
-            as={Link}
-            href={siteConfig.links.docs}
-            className="mt-2 font-semibold text-white"
-            style={{ background: 'var(--brand-primary)' }}
-          >
+      <Drawer opened={opened} onClose={close} position="right" size="xs" title="Menu">
+        <Stack gap="md">
+          {siteConfig.navItems.map((item) => navLink(item, true))}
+          <ThemeSwitch />
+          <Button component={NextLink} href={siteConfig.links.docs} color="violet" onClick={close}>
             Read Docs
           </Button>
-        </div>
-      </NavbarMenu>
-    </HeroUINavbar>
+        </Stack>
+      </Drawer>
+    </header>
   );
 };

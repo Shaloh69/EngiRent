@@ -1,7 +1,8 @@
-import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
-import { Chip } from "@heroui/chip";
-import { Link } from "@heroui/link";
+"use client";
+
+import { Badge, Button, Card, SimpleGrid, ThemeIcon, Group, Text, Stack } from "@mantine/core";
+import { motion } from "framer-motion";
+import NextLink from "next/link";
 import { title, subtitle } from "@/components/primitives";
 
 const features = [
@@ -27,18 +28,25 @@ const features = [
   },
 ];
 
+const focusItems = [
+  "Payment stays in escrow until owner deposit is verified.",
+  "Pickup and return require QR + face validation for both parties.",
+  "Admin receives monitoring feeds for disputes, penalties, and fallback handling.",
+];
+
 export default function Home() {
   return (
     <section className="space-y-8 pb-6 sm:space-y-12">
       <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
-        <div className="space-y-5">
-          <Chip
-            size="sm"
-            variant="flat"
-            className="border border-[var(--brand-border)] bg-[var(--brand-soft)] text-[var(--brand-primary)]"
-          >
+        <motion.div
+          className="space-y-5"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <Badge color="violet" variant="light" size="lg">
             UCLM Engineering Thesis Platform
-          </Chip>
+          </Badge>
           <h1 className={title({ size: "lg", fullWidth: true })}>
             Smart, Secure Student
             <br />
@@ -52,70 +60,63 @@ export default function Home() {
             payment, deposit verification, pickup, return checks, and
             completion.
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              as={Link}
-              href="/docs"
-              className="font-semibold text-white"
-              style={{ background: "var(--brand-primary)" }}
-            >
+          <Group>
+            <Button component={NextLink} href="/docs" color="violet" size="md">
               Explore Architecture
             </Button>
-            <Button
-              as={Link}
-              href="/about"
-              variant="bordered"
-              className="border-[var(--brand-border)] font-semibold text-[var(--brand-ink)]"
-            >
+            <Button component={NextLink} href="/about" variant="default" size="md">
               About the Team
             </Button>
-          </div>
-        </div>
+          </Group>
+        </motion.div>
 
-        <Card className="border border-[var(--brand-border)] bg-[var(--brand-surface)] shadow-[0_12px_34px_rgba(25,55,117,0.12)]">
-          <CardBody className="space-y-4 p-6 sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+        >
+          <Card withBorder radius="lg" padding="xl" h="100%">
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
               Current Focus
-            </p>
-            <h2 className="text-2xl font-extrabold text-[var(--brand-ink)]">
+            </Text>
+            <Text size="xl" fw={800} mt={4} mb="md">
               End-to-End Kiosk Transaction Reliability
-            </h2>
-            <ul className="space-y-3 text-sm text-[var(--brand-muted)]">
-              <li className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-soft)] px-4 py-3">
-                Payment stays in escrow until owner deposit is verified.
-              </li>
-              <li className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-soft)] px-4 py-3">
-                Pickup and return require QR + face validation for both parties.
-              </li>
-              <li className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-soft)] px-4 py-3">
-                Admin receives monitoring feeds for disputes, penalties, and
-                fallback handling.
-              </li>
-            </ul>
-          </CardBody>
-        </Card>
+            </Text>
+            <Stack gap="sm">
+              {focusItems.map((item) => (
+                <div key={item} className="focus-item">
+                  {item}
+                </div>
+              ))}
+            </Stack>
+          </Card>
+        </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {features.map((feature) => (
-          <Card
+      <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }}>
+        {features.map((feature, i) => (
+          <motion.div
             key={feature.name}
-            className="border border-[var(--brand-border)] bg-[var(--brand-surface)]"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15 + i * 0.06 }}
           >
-            <CardBody className="space-y-3 p-5">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-primary)]">
-                <span className="text-xs font-extrabold">{feature.icon}</span>
-              </span>
-              <p className="text-base font-bold text-[var(--brand-ink)]">
+            <Card withBorder radius="md" padding="lg" h="100%">
+              <ThemeIcon size={40} radius="md" variant="light" color="violet" mb="sm">
+                <Text size="xs" fw={800}>
+                  {feature.icon}
+                </Text>
+              </ThemeIcon>
+              <Text fw={700} mb={4}>
                 {feature.name}
-              </p>
-              <p className="text-sm leading-relaxed text-[var(--brand-muted)]">
+              </Text>
+              <Text size="sm" c="dimmed">
                 {feature.text}
-              </p>
-            </CardBody>
-          </Card>
+              </Text>
+            </Card>
+          </motion.div>
         ))}
-      </div>
+      </SimpleGrid>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Button } from "@heroui/button";
+import { Button, Card, Text } from "@mantine/core";
 
 export default function Error({
   error,
@@ -15,24 +15,20 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-lg rounded-3xl border border-[var(--brand-border)] bg-[var(--brand-surface)] p-8 text-center">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
+    <Card withBorder radius="lg" padding="xl" maw={480} mx="auto" ta="center">
+      <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
         Unexpected Error
-      </p>
-      <h2 className="mt-2 text-2xl font-extrabold text-[var(--brand-ink)]">
+      </Text>
+      <Text size="xl" fw={800} mt={4}>
         Something went wrong
-      </h2>
-      <p className="mt-3 text-sm text-[var(--brand-muted)]">
+      </Text>
+      <Text size="sm" c="dimmed" mt="sm">
         We could not render this section. Retry the action or return to the
         previous page.
-      </p>
-      <Button
-        className="mt-5 font-semibold text-white"
-        style={{ background: "var(--brand-primary)" }}
-        onPress={reset}
-      >
+      </Text>
+      <Button color="violet" mt="lg" onClick={reset}>
         Try again
       </Button>
-    </div>
+    </Card>
   );
 }

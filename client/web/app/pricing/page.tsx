@@ -1,5 +1,7 @@
-import { Card, CardBody } from "@heroui/card";
-import { Chip } from "@heroui/chip";
+"use client";
+
+import { Badge, Card, List, SimpleGrid, Text } from "@mantine/core";
+import { motion } from "framer-motion";
 import { title, subtitle } from "@/components/primitives";
 
 const tiers = [
@@ -48,41 +50,48 @@ export default function PricingPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {tiers.map((tier) => (
-          <Card
+      <SimpleGrid cols={{ base: 1, lg: 3 }}>
+        {tiers.map((tier, i) => (
+          <motion.div
             key={tier.name}
-            className={`border ${
-              tier.featured
-                ? "border-[var(--brand-primary)] bg-[var(--brand-soft)]"
-                : "border-[var(--brand-border)] bg-[var(--brand-surface)]"
-            }`}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: i * 0.08 }}
           >
-            <CardBody className="space-y-3 p-5">
+            <Card
+              withBorder
+              radius="lg"
+              padding="lg"
+              h="100%"
+              style={
+                tier.featured
+                  ? { borderColor: "var(--mantine-color-violet-6)", background: "var(--mantine-color-violet-0)" }
+                  : undefined
+              }
+            >
               {tier.featured && (
-                <Chip
-                  size="sm"
-                  className="w-fit bg-[var(--brand-primary)] text-white"
-                >
+                <Badge color="violet" w="fit-content" mb="sm">
                   Recommended
-                </Chip>
+                </Badge>
               )}
-              <h2 className="text-xl font-bold text-[var(--brand-ink)]">
+              <Text fw={700} size="xl">
                 {tier.name}
-              </h2>
-              <p className="text-sm font-semibold text-[var(--brand-primary)]">
+              </Text>
+              <Text fw={600} c="violet" size="sm" mt={4}>
                 {tier.price}
-              </p>
-              <p className="text-sm text-[var(--brand-muted)]">{tier.desc}</p>
-              <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--brand-muted)]">
+              </Text>
+              <Text size="sm" c="dimmed" mt="xs" mb="sm">
+                {tier.desc}
+              </Text>
+              <List size="sm" c="dimmed">
                 {tier.bullets.map((bullet) => (
-                  <li key={bullet}>{bullet}</li>
+                  <List.Item key={bullet}>{bullet}</List.Item>
                 ))}
-              </ul>
-            </CardBody>
-          </Card>
+              </List>
+            </Card>
+          </motion.div>
         ))}
-      </div>
+      </SimpleGrid>
     </div>
   );
 }

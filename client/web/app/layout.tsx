@@ -1,6 +1,7 @@
+import "@mantine/core/styles.css";
 import "@/styles/globals.css";
 import { Metadata, Viewport } from "next";
-import { Link } from "@heroui/link";
+import NextLink from "next/link";
 import clsx from "clsx";
 
 import { Providers } from "./providers";
@@ -51,9 +52,9 @@ export default function RootLayout({
                 <p className="text-[var(--brand-muted)]">
                   EngiRent Hub by UCLM Engineering Thesis Team
                 </p>
-                <Link href="/docs" className="text-[var(--brand-primary)]">
+                <NextLink href="/docs" className="text-[var(--brand-primary)]">
                   View Technical Docs
-                </Link>
+                </NextLink>
               </div>
             </footer>
           </div>

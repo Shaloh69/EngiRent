@@ -1,4 +1,7 @@
-import { Card, CardBody } from "@heroui/card";
+"use client";
+
+import { Card, Text, SimpleGrid, Stack } from "@mantine/core";
+import { motion } from "framer-motion";
 import { title, subtitle } from "@/components/primitives";
 
 export default function AboutPage() {
@@ -13,45 +16,55 @@ export default function AboutPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="border border-[var(--brand-border)] bg-[var(--brand-surface)] lg:col-span-2">
-          <CardBody className="space-y-3 p-5 sm:p-6">
-            <h2 className="text-lg font-bold text-[var(--brand-ink)]">
-              Project Intent
-            </h2>
-            <p className="text-sm leading-relaxed text-[var(--brand-muted)]">
-              Build a complete end-to-end flow where trust is enforced by system
-              controls: identity verification, kiosk automation, payment
-              hold/release logic, and machine-assisted item validation on
-              deposit and return.
-            </p>
-            <p className="text-sm leading-relaxed text-[var(--brand-muted)]">
-              The architecture combines Flutter mobile clients, a Node.js
-              backend as source of truth, a Python vision service, and admin
-              monitoring tools for disputes, policy enforcement, and operations.
-            </p>
-          </CardBody>
-        </Card>
-        <Card
-          id="contact"
-          className="border border-[var(--brand-border)] bg-[var(--brand-soft)]"
+      <SimpleGrid cols={{ base: 1, lg: 3 }}>
+        <motion.div
+          style={{ gridColumn: "span 2" }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
         >
-          <CardBody className="space-y-2 p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
+          <Card withBorder radius="lg" padding="lg" h="100%">
+            <Text fw={700} size="lg" mb="sm">
+              Project Intent
+            </Text>
+            <Stack gap="sm">
+              <Text size="sm" c="dimmed">
+                Build a complete end-to-end flow where trust is enforced by
+                system controls: identity verification, kiosk automation,
+                payment hold/release logic, and machine-assisted item
+                validation on deposit and return.
+              </Text>
+              <Text size="sm" c="dimmed">
+                The architecture combines Flutter mobile clients, a Node.js
+                backend as source of truth, a Python vision service, and admin
+                monitoring tools for disputes, policy enforcement, and
+                operations.
+              </Text>
+            </Stack>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.08 }}
+        >
+          <Card id="contact" withBorder radius="lg" padding="lg" bg="var(--mantine-color-violet-0)" h="100%">
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
               Contact
-            </p>
-            <p className="text-sm font-semibold text-[var(--brand-ink)]">
+            </Text>
+            <Text size="sm" fw={700} mt="sm">
               Engineering Thesis Team
-            </p>
-            <p className="text-sm text-[var(--brand-muted)]">
+            </Text>
+            <Text size="sm" c="dimmed">
               University of Cebu Lapu-Lapu and Mandaue
-            </p>
-            <p className="text-sm text-[var(--brand-muted)]">
+            </Text>
+            <Text size="sm" c="dimmed">
               support@engirenthub.com
-            </p>
-          </CardBody>
-        </Card>
-      </div>
+            </Text>
+          </Card>
+        </motion.div>
+      </SimpleGrid>
     </div>
   );
 }

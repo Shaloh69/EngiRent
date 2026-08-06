@@ -1,9 +1,5 @@
 @import "tailwindcss";
 
-@plugin '../hero.ts';
-
-@source '../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
-
 @custom-variant dark (&:is(.dark *));
 
 @theme {
@@ -11,34 +7,104 @@
   --font-mono: "JetBrains Mono", monospace;
 }
 
+/* EngiRent Spectrum (docs/planning/02-design-mandate.md §1) — "Campus Day"
+   mode (warm off-white, not stark white). Same hex values as
+   config/theme.ts's Mantine theme and client/admin's — one palette, reused
+   across surfaces. Replaces the prior ad hoc blue/emerald/amber scheme. */
 :root {
-  --brand-bg: #f4f8ff;
+  --brand-bg: #fdfbf7;
   --brand-surface: #ffffff;
-  --brand-soft: #eaf2ff;
-  --brand-border: #dbe7ff;
-  --brand-ink: #0f172a;
-  --brand-muted: #55627f;
-  --brand-primary: #2563eb;
-  --brand-secondary: #10b981;
-  --brand-accent: #f59e0b;
+  --brand-soft: #f3edfe;
+  --brand-border: #e4d6fc;
+  --brand-ink: #1a1625;
+  --brand-muted: #5d5580;
+  --brand-primary: #7c3aed;
+  --brand-secondary: #f5a623;
+  --brand-accent: #fb7185;
 }
 
 .dark {
-  --brand-bg: #0b1220;
-  --brand-surface: #111d35;
-  --brand-soft: #152647;
-  --brand-border: #28406d;
-  --brand-ink: #f5f9ff;
-  --brand-muted: #a8bcdd;
-  --brand-primary: #4f8bff;
-  --brand-secondary: #35c89a;
-  --brand-accent: #f9b233;
+  --brand-bg: #08060d;
+  --brand-surface: #12101c;
+  --brand-soft: #1b1829;
+  --brand-border: #2a2640;
+  --brand-ink: #f8fafc;
+  --brand-muted: #a394c9;
+  --brand-primary: #935cf0;
+  --brand-secondary: #f5a623;
+  --brand-accent: #fb7185;
 }
 
 body {
   background:
-    radial-gradient(circle at 10% 0%, rgba(37, 99, 235, 0.17), transparent 25%),
-    radial-gradient(circle at 95% 15%, rgba(16, 185, 129, 0.12), transparent 22%),
+    radial-gradient(circle at 10% 0%, rgba(124, 58, 237, 0.14), transparent 25%),
+    radial-gradient(circle at 95% 15%, rgba(245, 166, 35, 0.1), transparent 22%),
     var(--brand-bg);
   color: var(--brand-ink);
+}
+
+/* ── Site header/navbar ──────────────────────────────────────────────── */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--brand-border);
+  background: color-mix(in srgb, var(--brand-surface) 90%, transparent);
+  backdrop-filter: blur(10px);
+}
+.site-header-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+}
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.nav-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.nav-link:hover {
+  color: var(--brand-ink);
+}
+.nav-link--active {
+  color: var(--brand-primary);
+}
+.nav-link--mobile {
+  display: block;
+  padding: 10px 0;
+  font-size: 16px;
+}
+
+.focus-item {
+  border-radius: 12px;
+  border: 1px solid var(--brand-border);
+  background: var(--brand-soft);
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--brand-muted);
+}
+
+/* Tailwind's preflight (`@import "tailwindcss"`) resets `list-style: none`
+   globally, which silently strips Mantine's <List> bullet/number markers
+   too (it relies on the browser default marker box, not its own icon,
+   unless an `icon` prop is passed) — caught via screenshot on the
+   pricing/docs pages, where the feature lists rendered with no markers at
+   all despite correct spacing. */
+.mantine-List-root {
+  list-style: revert;
+}
+.mantine-List-item {
+  display: list-item;
 }

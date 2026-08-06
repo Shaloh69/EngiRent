@@ -1,4 +1,7 @@
-import { Card, CardBody } from "@heroui/card";
+"use client";
+
+import { Card, SimpleGrid, Text } from "@mantine/core";
+import { motion } from "framer-motion";
 import { title, subtitle } from "@/components/primitives";
 
 const posts = [
@@ -33,26 +36,28 @@ export default function BlogPage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {posts.map((post) => (
-          <Card
+      <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
+        {posts.map((post, i) => (
+          <motion.div
             key={post.title}
-            className="border border-[var(--brand-border)] bg-[var(--brand-surface)]"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: i * 0.06 }}
           >
-            <CardBody className="space-y-3 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
+            <Card withBorder radius="lg" padding="lg" h="100%">
+              <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
                 {post.date}
-              </p>
-              <h2 className="text-lg font-bold text-[var(--brand-ink)]">
+              </Text>
+              <Text fw={700} size="lg" mt="xs" mb={4}>
                 {post.title}
-              </h2>
-              <p className="text-sm text-[var(--brand-muted)]">
+              </Text>
+              <Text size="sm" c="dimmed">
                 {post.excerpt}
-              </p>
-            </CardBody>
-          </Card>
+              </Text>
+            </Card>
+          </motion.div>
         ))}
-      </div>
+      </SimpleGrid>
     </div>
   );
 }
