@@ -1,16 +1,19 @@
 import { createTheme, MantineColorsTuple } from "@mantine/core";
 
-// EngiRent Spectrum — mandated palette (docs/planning/02-design-mandate.md §1),
+// "EngiRent Vault" — mandated palette (docs/planning/02-design-mandate.md §1),
 // "Campus Day" mode (warm off-white, not stark white) for this surface.
+// Replaces the prior violet-primary "Spectrum" palette, which shipped
+// reading as a generic blue/violet SaaS default.
+//
 // Mantine needs a 10-shade tuple per color; shades were generated around
 // each mandated hex so it lands as Mantine's default "shade 6" (its primary
 // interactive shade) — the mandate only specifies the one reference hex per
 // role, the surrounding tints/shades are this implementation's own scale.
-const violet: MantineColorsTuple = [
-  "#f3edfe", "#e4d6fc", "#c9adf8", "#ac82f3", "#935cf0",
-  "#7C3AED", "#6f2fe0", "#5f24c7", "#521faf", "#451a96",
+const teal: MantineColorsTuple = [
+  "#e6f7f5", "#c0ebe6", "#93ddd4", "#63cfc1", "#3ec3b3",
+  "#0D9488", "#0c857a", "#0a7169", "#085d57", "#064a45",
 ];
-const amber: MantineColorsTuple = [
+const gold: MantineColorsTuple = [
   "#fef6e7", "#fce8c2", "#fad89a", "#f8c86f", "#f6ba4d",
   "#F5A623", "#e0951a", "#c78314", "#ad710f", "#935f0a",
 ];
@@ -18,9 +21,11 @@ const coral: MantineColorsTuple = [
   "#ffeef0", "#ffd7dc", "#ffb0ba", "#fd8797", "#fc6478",
   "#FB7185", "#e35f72", "#c94d60", "#af3c4f", "#952b3d",
 ];
+// Distinct from the teal brand primary (mandate §1) so "success" never reads
+// as just another brand-colored element.
 const emerald: MantineColorsTuple = [
-  "#e6faf3", "#c1f2e0", "#96e8cb", "#68deb6", "#43d6a5",
-  "#10B981", "#0ea371", "#0b8c62", "#097553", "#065f44",
+  "#e9fbef", "#c6f5d6", "#9aecb8", "#6ce399", "#45dc80",
+  "#22C55E", "#1eb054", "#199748", "#147e3c", "#0f6530",
 ];
 const warn: MantineColorsTuple = [
   "#fef5e6", "#fce4bd", "#fad090", "#f8bc61", "#f6ad3d",
@@ -32,15 +37,15 @@ const danger: MantineColorsTuple = [
 ];
 
 export const theme = createTheme({
-  primaryColor: "violet",
-  colors: { violet, amber, coral, emerald, warn, danger },
+  primaryColor: "teal",
+  colors: { teal, gold, coral, emerald, warn, danger },
   fontFamily:
     "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   headings: { fontWeight: "700" },
   defaultRadius: "md",
   // "Campus Day" — warm off-white, not stark #FFFFFF (mandate §1).
   white: "#FDFBF7",
-  black: "#1A1625",
+  black: "#0f2622",
 });
 
 // Semantic aliases so page code reads by role, not by raw color name —
@@ -50,7 +55,7 @@ export const roleColor = {
   success: "emerald",
   warning: "warn",
   critical: "danger",
-  brand: "violet",
-  accent: "amber",
+  brand: "teal",
+  accent: "gold",
   cta: "coral",
 } as const;

@@ -15,6 +15,7 @@ import {
   Alert,
   ThemeIcon,
   Stack,
+  Center,
 } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
 import { motion } from "framer-motion";
@@ -59,13 +60,28 @@ const STATUS_COLOR: Record<string, string> = {
   DISPUTED: roleColor.critical,
 };
 
+// Colors are the theme's own role aliases — "blue"/"violet"/"amber" were
+// left here after the palette pivot and no longer exist in theme.ts, so
+// Mantine silently fell back to its library defaults (generic blue/gray),
+// which is a large part of why the shipped dashboard read as unbranded.
+// All three brand colors (teal, gold, coral) appear here by design, per
+// mandate §1's "all three must be visibly present" rule.
 const KPI_CARDS = [
-  { key: "totalUsers", label: "Total Users", icon: Users, color: "blue" },
-  { key: "totalItems", label: "Total Items", icon: Package, color: "emerald" },
-  { key: "activeRentals", label: "Active Rentals", icon: Receipt, color: "violet" },
-  { key: "pendingVerifications", label: "Pending Verification", icon: CheckCircle2, color: "warn" },
-  { key: "totalRevenue", label: "Revenue", icon: DollarSign, color: "amber" },
+  { key: "totalUsers", label: "Total Users", icon: Users, color: roleColor.brand },
+  { key: "totalItems", label: "Total Items", icon: Package, color: roleColor.success },
+  { key: "activeRentals", label: "Active Rentals", icon: Receipt, color: roleColor.cta },
+  { key: "pendingVerifications", label: "Pending Verification", icon: CheckCircle2, color: roleColor.warning },
+  { key: "totalRevenue", label: "Revenue", icon: DollarSign, color: roleColor.accent },
 ] as const;
+
+// Rendered by the Popular Categories chart when there are zero rentals, so
+// the axes/grid still draw instead of the component disappearing entirely.
+const EMPTY_CHART_SCAFFOLD = [
+  { category: "Academic Tools", Rentals: 0 },
+  { category: "Electronics", Rentals: 0 },
+  { category: "Dev Kits", Rentals: 0 },
+  { category: "Measurement", Rentals: 0 },
+];
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -187,19 +203,42 @@ export default function DashboardPage() {
             <Text fw={700} mb="md">
               Popular Categories
             </Text>
-            {chartData.length === 0 ? (
-              <Text c="dimmed" size="sm">
-                No rental data yet.
-              </Text>
-            ) : (
+            {/* The chart shell always renders, including with zero rentals —
+                previously this swapped the whole BarChart out for a line of
+                text, so a fresh deployment showed no chart at all and the
+                dashboard read as broken (mandate §0/§3: a missing component
+                is a fail condition; an empty state is not). With no data,
+                the axes still render and an overlay explains why it's
+                empty. */}
+            <div style={{ position: "relative" }}>
               <BarChart
                 h={260}
-                data={chartData}
+                data={chartData.length > 0 ? chartData : EMPTY_CHART_SCAFFOLD}
                 dataKey="category"
-                series={[{ name: "Rentals", color: "violet.6" }]}
+                series={[{ name: "Rentals", color: "teal.6" }]}
                 withLegend={false}
+                withYAxis
+                gridAxis="xy"
               />
-            )}
+              {chartData.length === 0 && (
+                <Center
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    flexDirection: "column",
+                    gap: 4,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <Text c="dimmed" size="sm" fw={600}>
+                    No rentals yet
+                  </Text>
+                  <Text c="dimmed" size="xs">
+                    Category volume appears here once rentals start coming in.
+                  </Text>
+                </Center>
+              )}
+            </div>
           </Card>
 
           <Card withBorder radius="md" padding="lg">

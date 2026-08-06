@@ -83,13 +83,13 @@ export default function AdminLayout({
         }}
         padding="md"
       >
-        <AppShell.Header>
+        <AppShell.Header bg="var(--color-surface)">
           <Group h="100%" px="md" justify="space-between">
             <Group gap="sm">
               <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="lg" size="sm" />
               <Link href="/dashboard" style={{ textDecoration: "none" }}>
                 <Group gap="xs">
-                  <ThemeIcon size={36} radius="md" variant="filled" color="violet">
+                  <ThemeIcon size={36} radius="md" variant="filled" color="teal">
                     <Text fw={800} size="sm">ER</Text>
                   </ThemeIcon>
                   <div>
@@ -124,7 +124,7 @@ export default function AdminLayout({
               </Badge>
               <Menu position="bottom-end" shadow="md" width={180}>
                 <Menu.Target>
-                  <Avatar radius="xl" color="violet" style={{ cursor: "pointer" }}>
+                  <Avatar radius="xl" color="teal" style={{ cursor: "pointer" }}>
                     A
                   </Avatar>
                 </Menu.Target>
@@ -142,7 +142,13 @@ export default function AdminLayout({
           </Group>
         </AppShell.Header>
 
-        <AppShell.Navbar p="sm">
+        {/* Explicit bg/borders on Header and Navbar: both default to
+            transparent, so they inherited whatever the page body painted
+            behind them. That's how the sidebar's dark nav text ended up
+            invisible against a dark body background. Pinning them to a real
+            surface color makes this section's contrast independent of the
+            body, rather than accidentally correct. */}
+        <AppShell.Navbar p="sm" bg="var(--color-surface)">
           {menuItems.map((item) => (
             <NavLink
               key={item.href}
@@ -152,7 +158,7 @@ export default function AdminLayout({
               leftSection={<item.icon size={18} />}
               active={isActive(item.href)}
               variant="filled"
-              color="violet"
+              color="teal"
               onClick={toggleMobile}
               styles={{ root: { borderRadius: "var(--mantine-radius-md)", marginBottom: 4 } }}
             />

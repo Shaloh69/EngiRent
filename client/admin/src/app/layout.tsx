@@ -24,8 +24,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // `light` is pinned explicitly rather than left to default: this surface
+  // is light-only ("Campus Day") by mandate, and leaving it unset let
+  // HeroUI-styled components pick up the viewer's OS dark preference while
+  // Mantine and the CSS variables stayed light — producing unreadable
+  // light-on-light text for dark-mode users. colorScheme also tells the
+  // browser to keep form controls/scrollbars light.
   return (
-    <html lang="en">
+    <html lang="en" className="light" style={{ colorScheme: "light" }}>
       <body className={`${manrope.className} ${manrope.variable} app-shell`}>
         <Providers>{children}</Providers>
       </body>

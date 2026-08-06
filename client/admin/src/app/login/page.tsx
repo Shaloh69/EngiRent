@@ -82,7 +82,14 @@ export default function LoginPage() {
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-primary)] text-white">
               <ShieldCheck size={24} />
             </div>
-            <h2 className="text-2xl font-extrabold">Secure Admin Login</h2>
+            {/* Explicit color: with no text color set, this inherited
+                HeroUI's own theme default, which follows the OS dark-mode
+                preference — rendering light text on this card's hardcoded
+                light background and leaving the heading nearly unreadable
+                for anyone whose machine is set to dark mode. */}
+            <h2 className="text-2xl font-extrabold text-[var(--color-ink)]">
+              Secure Admin Login
+            </h2>
             <p className="text-sm app-muted">
               {isDemoMode
                 ? "Dev demo mode is active. Any email/password can log in."
@@ -115,10 +122,14 @@ export default function LoginPage() {
                   {error}
                 </p>
               )}
+              {/* This is a HeroUI Button, so `color="primary"` resolves to
+                  HeroUI's own default blue, not the Mantine theme's teal —
+                  the palette pivot doesn't reach it. Pinned to the shared
+                  CSS variable so it tracks the real brand color until this
+                  page is migrated off HeroUI. */}
               <Button
                 type="submit"
-                color="primary"
-                className="h-11 w-full font-semibold"
+                className="h-11 w-full bg-[var(--color-primary)] font-semibold text-white"
                 isLoading={loading}
               >
                 Access Dashboard

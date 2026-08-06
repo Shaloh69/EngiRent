@@ -8,55 +8,42 @@
   --font-sans: "Manrope", sans-serif;
 }
 
+/* "EngiRent Vault" palette (docs/planning/02-design-mandate.md §1) — teal
+   primary, gold secondary, coral tertiary. These variables predate the
+   Mantine migration and are still used by the not-yet-migrated pages
+   (users/items/rentals/payments/verifications/reports/kiosk/health/login),
+   so they're kept and re-themed rather than deleted — but their values now
+   match Mantine's theme.ts instead of the old ad-hoc blue scheme.
+
+   There is deliberately NO `prefers-color-scheme: dark` override here.
+   A previous version had one, which flipped the page background to
+   near-black on any machine set to dark mode while MantineProvider stayed
+   pinned to `defaultColorScheme="light"` — so Mantine's Cards/Tables kept
+   rendering light surfaces on a dark page and the sidebar text became
+   nearly invisible. Two unsynchronized theming systems on one page. This
+   surface is light-only ("Campus Day") by mandate; the Kiosk is the
+   surface that gets a real dark theme ("Vault"). If dark mode is ever
+   wanted here, it must be driven by Mantine's own color scheme so both
+   systems switch together — not by a bare media query. */
 :root {
-  --color-bg: #f4f8ff;
+  --color-bg: #FDFBF7;
   --color-surface: #ffffff;
-  --color-surface-soft: #eef4ff;
-  --color-border: #dbe7ff;
-  --color-ink: #0f172a;
-  --color-muted: #5b6b88;
-  --color-primary: #2563eb;
-  --color-secondary: #10b981;
-  --color-accent: #f59e0b;
-  --color-danger: #ef4444;
-  --shadow-soft: 0 10px 30px rgba(28, 63, 128, 0.08);
-}
-
-.dark {
-  --color-bg: #0b1220;
-  --color-surface: #111d35;
-  --color-surface-soft: #152647;
-  --color-border: #28406d;
-  --color-ink: #f5f9ff;
-  --color-muted: #a8bcdd;
-  --color-primary: #4f8bff;
-  --color-secondary: #35c89a;
-  --color-accent: #f9b233;
-  --color-danger: #ff6b6b;
-  --shadow-soft: 0 14px 40px rgba(0, 0, 0, 0.35);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0b1220;
-    --color-surface: #111d35;
-    --color-surface-soft: #152647;
-    --color-border: #28406d;
-    --color-ink: #f5f9ff;
-    --color-muted: #a8bcdd;
-    --color-primary: #4f8bff;
-    --color-secondary: #35c89a;
-    --color-accent: #f9b233;
-    --color-danger: #ff6b6b;
-    --shadow-soft: 0 14px 40px rgba(0, 0, 0, 0.35);
-  }
+  --color-surface-soft: #f1faf8;
+  --color-border: #d9ece8;
+  --color-ink: #0f2622;
+  --color-muted: #55706b;
+  --color-primary: #0D9488;
+  --color-secondary: #F5A623;
+  --color-accent: #FB7185;
+  --color-danger: #EF4444;
+  --shadow-soft: 0 10px 30px rgba(13, 148, 136, 0.08);
 }
 
 body {
   color: var(--color-ink);
   background:
-    radial-gradient(circle at 5% 5%, rgba(37, 99, 235, 0.18), transparent 28%),
-    radial-gradient(circle at 95% 0%, rgba(16, 185, 129, 0.13), transparent 24%),
+    radial-gradient(circle at 5% 5%, rgba(13, 148, 136, 0.16), transparent 28%),
+    radial-gradient(circle at 95% 0%, rgba(245, 166, 35, 0.12), transparent 24%),
     var(--color-bg);
 }
 
