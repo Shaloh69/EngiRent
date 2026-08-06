@@ -5,6 +5,7 @@ import {
   LockerStatus,
   ItemCategory,
   ItemCondition,
+  RentalStatus,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -88,13 +89,21 @@ async function seedStudents() {
   for (const s of STUDENTS) {
     const user = await prisma.user.upsert({
       where: { email: s.email },
-      update: {},
+      // profileComplete/biometricConsentAt set directly here rather than via
+      // the real /auth/register-face + /auth/id-photo + /auth/profile/complete
+      // flow — that flow needs a live ML service and real photos, which
+      // seed data doesn't have. Fine for dev/test seeding: the point is a
+      // usable account past the _AuthGuard profile-setup gate, not a test
+      // of the biometric pipeline itself.
+      update: { profileComplete: true, biometricConsentAt: new Date() },
       create: {
         ...s,
         password: hashed,
         role: UserRole.STUDENT,
         isVerified: true,
         isActive: true,
+        profileComplete: true,
+        biometricConsentAt: new Date(),
       },
     });
     log(`  ✓ Student     ${user.email}`);
@@ -252,6 +261,99 @@ async function seedItems(ownerIds: string[]) {
   }
 }
 
+// ── Sample rentals (+ notifications) ──────────────────────────────────────────
+// One rental per lifecycle status the Phone App actually needs to render —
+// gives the Rentals tab / Rental Detail screen real, varied content instead
+// of an empty state.
+
+async function seedRentals(students: { id: string }[]) {
+  if (students.length < 2) return;
+  const [renter, owner] = students;
+
+  const items = await prisma.item.findMany({ where: { ownerId: owner.id } });
+  if (items.length === 0) return;
+
+  const now = new Date();
+  const day = 24 * 60 * 60 * 1000;
+
+  const scenarios: {
+    status: RentalStatus;
+    startOffsetDays: number;
+    endOffsetDays: number;
+    extra?: Record<string, unknown>;
+  }[] = [
+    { status: RentalStatus.PENDING, startOffsetDays: 1, endOffsetDays: 4 },
+    { status: RentalStatus.AWAITING_DEPOSIT, startOffsetDays: 0, endOffsetDays: 3 },
+    {
+      status: RentalStatus.ACTIVE,
+      startOffsetDays: -2,
+      endOffsetDays: 5,
+      extra: { depositedAt: new Date(now.getTime() - 2 * day) },
+    },
+    {
+      status: RentalStatus.COMPLETED,
+      startOffsetDays: -10,
+      endOffsetDays: -3,
+      extra: {
+        depositedAt: new Date(now.getTime() - 10 * day),
+        completedAt: new Date(now.getTime() - 3 * day),
+      },
+    },
+  ];
+
+  for (let i = 0; i < scenarios.length; i++) {
+    const item = items[i % items.length];
+    const scenario = scenarios[i];
+
+    const exists = await prisma.rental.findFirst({
+      where: { itemId: item.id, renterId: renter.id, status: scenario.status },
+    });
+    if (exists) {
+      log(`  · Rental      ${item.title} (${scenario.status}, already exists, skipped)`);
+      continue;
+    }
+
+    const rental = await prisma.rental.create({
+      data: {
+        itemId: item.id,
+        renterId: renter.id,
+        ownerId: owner.id,
+        startDate: new Date(now.getTime() + scenario.startOffsetDays * day),
+        endDate: new Date(now.getTime() + scenario.endOffsetDays * day),
+        status: scenario.status,
+        totalPrice: item.pricePerDay * 3,
+        securityDeposit: item.securityDeposit,
+        ...scenario.extra,
+      },
+    });
+    log(`  ✓ Rental      ${item.title} → ${rental.status}`);
+
+    if (scenario.status === RentalStatus.ACTIVE) {
+      await prisma.notification.create({
+        data: {
+          userId: renter.id,
+          title: "Rental Active",
+          message: `Your rental of ${item.title} is now active. Return by ${rental.endDate.toLocaleDateString("en-PH")}.`,
+          type: "RENTAL_STARTED",
+          relatedEntityId: rental.id,
+          relatedEntityType: "rental",
+        },
+      });
+    } else if (scenario.status === RentalStatus.COMPLETED) {
+      await prisma.notification.create({
+        data: {
+          userId: renter.id,
+          title: "Rental Completed",
+          message: `Your rental of ${item.title} is complete. Leave a review?`,
+          type: "REVIEW_REQUEST",
+          relatedEntityId: rental.id,
+          relatedEntityType: "rental",
+        },
+      });
+    }
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -269,6 +371,9 @@ async function main() {
 
   log("\n📦 Sample Items");
   await seedItems(students.map((s) => s.id));
+
+  log("\n📄 Sample Rentals");
+  await seedRentals(students);
 
   log("\n✅ Seed complete!\n");
   log("─────────────────────────────────────────────");

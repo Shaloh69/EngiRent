@@ -9,6 +9,7 @@ pnpm-lock.yaml
 .env.local
 .env.production
 .env.test
+.env.dev
 
 # Build output
 dist/
@@ -48,3 +49,9 @@ temp/
 # Phase 0.5's Supabase→local-filesystem migration lands)
 data/
 storage/
+
+# Disposable Docker-based dev environment (Start-Dev.bat) — mirrors storage/'s
+# structure (items/, verifications/, users/) but is a separate folder so dev
+# and production images never mix.
+storage-dev/
+data-dev/
