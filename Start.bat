@@ -31,16 +31,16 @@ REM be the real deployment. dotenv.config() (env.ts) never overrides an
 REM already-set process env var, so this wins over .env's own NODE_ENV.
 
 echo [1/4] Building and starting Node API (server\node_server, port 5000)...
-start "EngiRent - Node API" cmd /k "cd /d "%ROOT%server\node_server" && set NODE_ENV=production && npm run build && npm start"
+start "EngiRent - Node API" cmd /k "cd /d "%ROOT%server\node_server" && set "NODE_ENV=production" && npm run build && npm start"
 
 echo [2/4] Starting ML Service (server\python_server\services\ml, port 8001)...
 start "EngiRent - ML Service" cmd /k "cd /d "%ROOT%server\python_server\services\ml" && call venv\Scripts\activate && uvicorn app.main:app --host 0.0.0.0 --port 8001"
 
 echo [3/4] Building and starting Admin Console (client\admin, port 3001)...
-start "EngiRent - Admin Console" cmd /k "cd /d "%ROOT%client\admin" && set NODE_ENV=production && npm run build && npm start -- -p 3001"
+start "EngiRent - Admin Console" cmd /k "cd /d "%ROOT%client\admin" && set "NODE_ENV=production" && npm run build && npm start -- -p 3001"
 
 echo [4/4] Building and starting Public Site (client\web, port 3000)...
-start "EngiRent - Public Site" cmd /k "cd /d "%ROOT%client\web" && set NODE_ENV=production && npm run build && npm start"
+start "EngiRent - Public Site" cmd /k "cd /d "%ROOT%client\web" && set "NODE_ENV=production" && npm run build && npm start"
 
 echo.
 echo Building from source takes longer than a dev server to come up — polling
