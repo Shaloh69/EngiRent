@@ -98,16 +98,19 @@ kiosk/
 │   ├── camera_manager.py            # 5× USB cameras via GStreamer MJPEG
 │   └── __init__.py
 │
-├── kiosk_ui/                        # Local Flask web server
-│   ├── server.py                    # Flask app & status endpoints
-│   ├── static/                      # Frontend assets (CSS, JS, images)
-│   ├── templates/                   # HTML templates (touchscreen UI)
+├── kiosk_ui/                        # Local Flask web server (backend half only)
+│   ├── server.py                    # Flask app, state/session REST endpoints, MJPEG stream
 │   └── __init__.py
+│                                     # (serves ../kiosk_ui_react/dist — see below)
+│
+├── kiosk_ui_react/                  # Touchscreen UI — React + Vite + TypeScript
+│   ├── src/                         # Screens, state machine, Framer Motion/theme
+│   └── dist/                        # `npm run build` output, served by server.py
 │
 ├── services/                        # Background services
 │   ├── socket_client.py             # Socket.io client (backend comms)
 │   ├── face_service.py              # Face detection & recognition
-│   ├── image_uploader.py            # Upload images to Supabase
+│   ├── image_uploader.py            # Upload images via the Node API's local storage
 │   └── __init__.py
 │
 ├── provisioning/                    # WiFi setup & AP mode
@@ -223,9 +226,19 @@ Persistent Socket.io connection to Node.js backend.
 
 ### **kiosk_ui/server.py** – Touchscreen Interface
 
-Flask server running on `http://localhost:8080`.
+Flask server running on `http://localhost:8080`, serving the built
+`kiosk_ui_react/dist/` (React + Vite + TypeScript — migrated from a prior
+Flask-templates + vanilla-JS UI so the kiosk shares the same Framer
+Motion/animation stack as the phone app and admin console). Run `npm run
+build` inside `kiosk_ui_react/` after any UI change — Flask serves whatever
+is currently in `dist/`, it doesn't rebuild it. For UI development, `npm run
+dev` inside `kiosk_ui_react/` runs a hot-reloading Vite dev server on
+`:5173` that proxies `/api`, `/camera`, and `/socket.io` to this Flask
+server; `?demo=<screen>` (idle/main/qr/confirm/face/verifying/success/error)
+forces a screen with placeholder data for design work without a live kiosk
+backend.
 
-- `GET /` – Main touchscreen UI
+- `GET /` – Main touchscreen UI (React build's `index.html`)
 - `GET /api/status` – Current locker/hardware state (used by UI polling)
 
 ---

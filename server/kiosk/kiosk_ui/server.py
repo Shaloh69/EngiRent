@@ -2,8 +2,13 @@
 Local Flask server driving the HDMI kiosk display.
 Port UI_PORT (default 8080).
 
+The frontend itself is the React/Vite app in ../kiosk_ui_react (built to
+dist/, served as static files below) — this module is now purely the
+backend half: state/session REST endpoints, the MJPEG camera stream, and
+the local Socket.IO channel the frontend uses for real-time state pushes.
+
 Routes:
-  GET  /                     → Kiosk UI HTML
+  GET  /                     → Kiosk UI (React build's index.html)
   GET  /api/state            → current kiosk state
   POST /api/ui               → push state from socket_client
   GET  /camera/face/stream   → MJPEG stream (face / QR camera)
@@ -16,14 +21,25 @@ import threading
 import time
 import uuid
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 
 from config import UI_PORT, MOCK_CAMERA
 
 log = logging.getLogger("kiosk.ui")
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
+# Serves the built React/Vite frontend (server/kiosk/kiosk_ui_react/dist) —
+# migrated from the prior Flask-templates + vanilla-JS UI (design mandate,
+# docs/planning/02-design-mandate.md, resolved 2026-08-06: React/Vite so the
+# kiosk shares the same Framer Motion/animation stack as the other surfaces).
+# `npm run build` in kiosk_ui_react/ regenerates dist/ after any UI change.
+_REACT_DIST = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "kiosk_ui_react",
+    "dist",
+)
+
+app = Flask(__name__, static_folder=_REACT_DIST, static_url_path="")
 app.config["SECRET_KEY"] = "kiosk-local-ui-secret"
 local_sio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
@@ -197,7 +213,7 @@ def _mjpeg_gen():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return send_from_directory(_REACT_DIST, "index.html")
 
 
 @app.route("/api/state")

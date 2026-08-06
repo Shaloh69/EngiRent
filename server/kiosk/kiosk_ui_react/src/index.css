@@ -1,0 +1,2 @@
+/* Global reset lives in theme.css (imported by App.tsx) — kept minimal here
+   since Vite's template scaffold expects this file to exist. */
