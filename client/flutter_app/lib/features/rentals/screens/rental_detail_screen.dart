@@ -299,9 +299,26 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          _StatusBadge(
-                            label: AppConstants.rentalStatus[_rental!.status] ?? _rental!.status,
-                            color: _statusColor(_rental!.status),
+                          // AnimatedSwitcher (keyed by status) + a pulsing
+                          // dot on ACTIVE — the design mandate calls for
+                          // "every state transition in the active-rental
+                          // flow" to animate, "not a static status badge."
+                          // No Lottie/Rive asset was available in this
+                          // environment (see AnimatedLock's equivalent note
+                          // in the Kiosk migration); this is the same
+                          // hand-built-animation substitute applied here.
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 350),
+                            transitionBuilder: (child, anim) => ScaleTransition(
+                              scale: anim,
+                              child: FadeTransition(opacity: anim, child: child),
+                            ),
+                            child: _StatusBadge(
+                              key: ValueKey(_rental!.status),
+                              label: AppConstants.rentalStatus[_rental!.status] ?? _rental!.status,
+                              color: _statusColor(_rental!.status),
+                              pulse: _rental!.status == 'ACTIVE',
+                            ),
                           ),
                         ],
                       ),
@@ -458,22 +475,55 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
 
 // ── Sub-widgets ──────────────────────────────────────────────────────────────
 
-class _StatusBadge extends StatelessWidget {
+class _StatusBadge extends StatefulWidget {
   final String label;
   final Color color;
-  const _StatusBadge({required this.label, required this.color});
+  final bool pulse;
+  const _StatusBadge({super.key, required this.label, required this.color, this.pulse = false});
+
+  @override
+  State<_StatusBadge> createState() => _StatusBadgeState();
+}
+
+class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: widget.color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 11),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.pulse) ...[
+            FadeTransition(
+              opacity: Tween(begin: 0.35, end: 1.0).animate(_pulseCtrl),
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            widget.label,
+            style: TextStyle(color: widget.color, fontWeight: FontWeight.w700, fontSize: 11),
+          ),
+        ],
       ),
     );
   }

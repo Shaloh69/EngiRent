@@ -113,11 +113,13 @@ class _HomeTab extends StatelessWidget {
                   ],
                 ),
               ),
-              title: const Text(
-                'EngiRent Hub',
-                style: TextStyle(color: AppColors.white, fontWeight: FontWeight.w800, fontSize: 17),
-              ),
-              titlePadding: const EdgeInsets.only(left: 16, bottom: 12),
+              // No FlexibleSpaceBar.title here — it renders bottom-aligned in
+              // the same space as `background`'s own bottom-aligned greeting
+              // Column and doesn't reliably fade out at full expansion,
+              // which visually collided with "Hello, {name}" (caught via
+              // screenshot verification, not visible in a code read). The
+              // greeting text already carries the personalization; a
+              // separate "EngiRent Hub" collapsed-state title isn't needed.
             ),
           ),
 
