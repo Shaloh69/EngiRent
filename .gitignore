@@ -48,6 +48,11 @@ dist/
 .cache/
 .vercel/
 
+# TypeScript incremental build cache (tsc -b) — every TS project in this
+# repo (node_server, client/admin, client/web, kiosk_ui_react) can generate
+# one of these; it's a machine-local cache, not source.
+*.tsbuildinfo
+
 # ======== PYTHON ========
 
 **pycache**/
