@@ -76,7 +76,7 @@ if "%ALL_OK%"=="1" (
   echo ============================================================
   echo  One or more checks FAILED — see [FAIL]/[WARN] lines above.
   echo  Services are still running in their own windows; fix the
-  echo  reported issue(s) and re-run this script to re-check.
+  echo  reported issue^(s^) and re-run this script to re-check.
   echo ============================================================
 )
 echo.

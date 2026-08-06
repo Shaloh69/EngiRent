@@ -43,7 +43,7 @@ docker start engirent-mysql-dev >nul 2>&1
 if not "%errorlevel%"=="0" (
   echo   [FAIL] engirent-mysql-dev container doesn't exist yet. Create it once with:
   echo          docker run -d --name engirent-mysql-dev -e MYSQL_ROOT_PASSWORD=^<pw^> -e MYSQL_DATABASE=engirent_dev -p 3308:3306 --restart unless-stopped mysql:8.0
-  echo          then: npx prisma db push  (from server\node_server, with DATABASE_URL pointed at it)
+  echo          then: npx prisma db push  ^(from server\node_server, with DATABASE_URL pointed at it^)
   echo.
   pause
   exit /b 1
@@ -85,7 +85,7 @@ echo Waiting for services to come up before running the Components Check...
 call :wait_for_http "Node API" "http://localhost:5000/api/v1/health"
 call :wait_for_http "Admin Console" "http://localhost:3001"
 call :wait_for_http "Public Site" "http://localhost:3000"
-if exist "%ROOT%server\kiosk\venv\Scripts\python.exe" call :wait_for_http "Kiosk UI (mocked)" "http://localhost:8090/api/state"
+if exist "%ROOT%server\kiosk\venv\Scripts\python.exe" call :wait_for_http "Kiosk UI - mocked" "http://localhost:8090/api/state"
 
 echo.
 echo ============================================================
@@ -100,7 +100,7 @@ call :check_port "engirent-mysql-dev" 3308
 call :check_storage_dir
 call :check_env_file "server\node_server\.env.dev"
 if exist "%ROOT%server\kiosk\venv\Scripts\python.exe" (
-  call :check_http "Kiosk UI (mocked)" "http://localhost:8090/api/state"
+  call :check_http "Kiosk UI - mocked" "http://localhost:8090/api/state"
 ) else (
   echo   [WARN] Kiosk UI check skipped — venv not set up ^(see [5/6] above^)
 )
