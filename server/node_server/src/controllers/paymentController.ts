@@ -352,6 +352,36 @@ export const confirmPayment = async (
 
     if (!transaction) throw new NotFoundError("Transaction not found");
 
+    // Dev-only: simulate a failed payment (client/web's /payments/mock
+    // page). A real PayMongo webhook never reports "this payment failed"
+    // through this endpoint — an actual failed checkout just never fires a
+    // paid webhook — so this branch only exists outside production, gated
+    // the same way the manual-confirm branch below is.
+    if (
+      !isRealWebhook &&
+      env.NODE_ENV !== "production" &&
+      req.body.status === "FAILED"
+    ) {
+      if (
+        transaction.status === "COMPLETED" ||
+        transaction.status === "REFUNDED"
+      ) {
+        res.json({ success: true, message: "Already confirmed" });
+        return;
+      }
+      const failedTransaction = await prisma.transaction.update({
+        where: { id: transactionId },
+        data: { status: "FAILED" },
+      });
+      logger.info(`Payment marked FAILED (dev/demo): ${transactionId}`);
+      res.json({
+        success: true,
+        message: "Payment marked as failed",
+        data: { transaction: failedTransaction },
+      });
+      return;
+    }
+
     // Idempotency: webhook may fire multiple times — safe to ack without re-processing
     if (
       transaction.status === "COMPLETED" ||
@@ -452,6 +482,32 @@ export const confirmPayment = async (
       message: "Payment confirmed successfully",
       data: { transaction: updatedTransaction },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Polled by the Phone App's checkout WebView (payment_webview_screen.dart's
+// "Check Status" button) as a fallback to the primary success/cancel
+// redirect-navigation detection.
+export const getPaymentStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+
+    const transactionId = req.params.transactionId as string;
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+    });
+    if (!transaction) throw new NotFoundError("Transaction not found");
+    if (transaction.userId !== req.user.userId) {
+      throw new ForbiddenError("You can only check your own transactions");
+    }
+
+    res.json({ success: true, data: { status: transaction.status } });
   } catch (error) {
     next(error);
   }

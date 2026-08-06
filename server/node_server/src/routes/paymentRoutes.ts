@@ -3,6 +3,7 @@ import { body, param } from "express-validator";
 import {
   createPayment,
   confirmPayment,
+  getPaymentStatus,
   getTransactions,
   refundPayment,
   getReceivingInstitutions,
@@ -39,6 +40,10 @@ router.post("/confirm", confirmPayment);
 
 // Get transactions (protected)
 router.get("/", authenticate, getTransactions);
+
+// Poll a single transaction's status (protected) — used by the Phone App's
+// checkout WebView as a fallback to redirect-navigation detection.
+router.get("/status/:transactionId", authenticate, getPaymentStatus);
 
 // List real PayMongo-recognized banks/e-wallets for a payout rail (protected)
 // — used to populate the payout-destination picker in PUT /auth/payout-destination
