@@ -13,8 +13,10 @@ Start order:
 import asyncio
 import logging
 import os
+import platform
 import sys
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -80,13 +82,33 @@ def _setup_logging():
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
+    # Log messages use box-drawing/checkmark characters (─, ✓, →); Windows'
+    # default console codepage (cp1252) can't encode them and logging swallows
+    # the resulting UnicodeEncodeError into a noisy "--- Logging error ---"
+    # traceback on every such line instead of raising. Force UTF-8 on stdout
+    # where possible so real Pi (already UTF-8) behaves identically to a
+    # Windows/PC dev console.
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     # Terminal handler – colored
     sh = logging.StreamHandler(sys.stdout)
     sh.setLevel(logging.DEBUG)
     sh.setFormatter(ColorFormatter())
 
-    # File handler – plain text
-    fh = logging.FileHandler("/var/log/engirent-kiosk.log", encoding="utf-8")
+    # File handler – plain text. /var/log/ is the real Pi deployment path
+    # (setup.sh pre-creates it with the right ownership); it doesn't exist on
+    # a Windows/PC dev machine, so fall back to a local logs/ folder there.
+    if platform.system() == "Linux":
+        log_path = "/var/log/engirent-kiosk.log"
+    else:
+        log_dir = Path(__file__).parent / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_path = str(log_dir / "engirent-kiosk.log")
+    fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setLevel(logging.INFO)
     fh.setFormatter(logging.Formatter(
         "%(asctime)s  %(levelname)-8s  %(name)s – %(message)s"
