@@ -267,14 +267,14 @@ class _ItemCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: item.isAvailable
-                              ? AppColors.secondary.withValues(alpha: 0.12)
+                              ? AppColors.success.withValues(alpha: 0.12)
                               : AppColors.warning.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           item.isAvailable ? 'Available' : 'In Use',
                           style: TextStyle(
-                            color: item.isAvailable ? AppColors.secondaryDark : AppColors.accentDark,
+                            color: item.isAvailable ? AppColors.successDark : AppColors.accentDark,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),

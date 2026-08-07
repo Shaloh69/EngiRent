@@ -149,7 +149,7 @@ class _HomeTab extends StatelessWidget {
                       icon: Icons.search_rounded,
                       title: 'Browse',
                       subtitle: 'Find equipment',
-                      color: AppColors.secondary,
+                      color: AppColors.success,
                       onTap: () => Navigator.pushNamed(context, '/items'),
                     ),
                     _QuickActionCard(
@@ -499,7 +499,7 @@ class _NotificationsTabState extends State<_NotificationsTab> {
     'BOOKING_CONFIRMED' => AppColors.success,
     'ITEM_READY_FOR_CLAIM' => AppColors.accent,
     'RENTAL_STARTED' => AppColors.primary,
-    'PAYMENT_RECEIVED' => AppColors.secondary,
+    'PAYMENT_RECEIVED' => AppColors.success,
     _ => AppColors.info,
   };
 

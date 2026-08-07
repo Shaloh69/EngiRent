@@ -552,8 +552,8 @@ class _LockerGrid extends StatelessWidget {
         Color bg;
         Color fg;
         if (isAvailable) {
-          bg = AppColors.secondary.withValues(alpha: 0.12);
-          fg = AppColors.secondaryDark;
+          bg = AppColors.success.withValues(alpha: 0.12);
+          fg = AppColors.successDark;
         } else if (status == 'RESERVED') {
           bg = AppColors.warning.withValues(alpha: 0.12);
           fg = AppColors.warning;
@@ -567,7 +567,7 @@ class _LockerGrid extends StatelessWidget {
             color: bg,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isAvailable ? AppColors.secondary.withValues(alpha: 0.3) : Colors.transparent,
+              color: isAvailable ? AppColors.success.withValues(alpha: 0.3) : Colors.transparent,
             ),
           ),
           child: Column(

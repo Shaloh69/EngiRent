@@ -263,14 +263,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                   decoration: BoxDecoration(
-                                    color: AppColors.secondary.withValues(alpha: 0.1),
+                                    color: AppColors.success.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: Text(
                                     '${item.totalRentals} rentals',
                                     style: const TextStyle(
                                       fontSize: 11,
-                                      color: AppColors.secondaryDark,
+                                      color: AppColors.successDark,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -436,7 +436,7 @@ class _AvailabilityBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: available
-            ? AppColors.secondary.withValues(alpha: 0.12)
+            ? AppColors.success.withValues(alpha: 0.12)
             : AppColors.grey.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
@@ -447,7 +447,7 @@ class _AvailabilityBadge extends StatelessWidget {
             width: 7,
             height: 7,
             decoration: BoxDecoration(
-              color: available ? AppColors.secondary : AppColors.grey,
+              color: available ? AppColors.success : AppColors.grey,
               shape: BoxShape.circle,
             ),
           ),
@@ -455,7 +455,7 @@ class _AvailabilityBadge extends StatelessWidget {
           Text(
             available ? 'Available' : 'In Use',
             style: TextStyle(
-              color: available ? AppColors.secondaryDark : AppColors.greyDark,
+              color: available ? AppColors.successDark : AppColors.greyDark,
               fontWeight: FontWeight.w600,
               fontSize: 12,
             ),
