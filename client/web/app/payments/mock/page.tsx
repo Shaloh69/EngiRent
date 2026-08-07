@@ -2,13 +2,12 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Alert, Button, Card, Stack, Text } from "@mantine/core";
-import { title, subtitle } from "@/components/primitives";
+import { AlertTriangle } from "lucide-react";
 
 // Shown inside the Phone App's WebView whenever the Node API has no
 // PAYMONGO_SECRET_KEY configured (see createPayment in paymentController.ts)
-// — a disposable-dev-database stand-in for a real PayMongo checkout, not
-// something a production deployment with a real key ever reaches.
+// — a dev stand-in for a real PayMongo checkout, not something a production
+// deployment with a real key ever reaches.
 function MockCheckout() {
   const router = useRouter();
   const params = useSearchParams();
@@ -40,78 +39,68 @@ function MockCheckout() {
 
   if (!tid) {
     return (
-      <Alert color="danger" title="Missing transaction">
-        No `tid` was provided — this page is only meant to be opened from the Phone App&apos;s
-        checkout WebView.
-      </Alert>
+      <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4">
+        <div className="flex gap-3 rounded-2xl border border-[var(--brand-border)] bg-[var(--brand-soft)] p-5">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[#ef4444]" />
+          <p className="text-sm text-[var(--brand-muted)]">
+            No <code>tid</code> was provided — this page is only meant to be
+            opened from the Phone App&apos;s checkout WebView.
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card withBorder radius="lg" padding="xl" maw={480} mx="auto">
-      <Stack gap="md">
-        <div>
-          <Text fw={700} size="lg">
-            Mock Payment
-          </Text>
-          <Text size="sm" c="dimmed" mt={4}>
-            No PayMongo sandbox key is configured on this dev backend, so checkout falls back to
-            this page. Pick an outcome to simulate — it calls the same confirm endpoint a real
-            PayMongo webhook would.
-          </Text>
-        </div>
+    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
+      <div className="rounded-2xl border border-[var(--brand-border)] bg-[var(--brand-surface)] p-6">
+        <h1 className="text-lg font-extrabold">Mock Payment</h1>
+        <p className="mt-1 text-sm text-[var(--brand-muted)]">
+          No PayMongo sandbox key is configured on this backend, so checkout
+          falls back to this page. Pick an outcome to simulate — it calls the
+          same confirm endpoint a real PayMongo webhook would.
+        </p>
 
-        <Text size="xs" c="dimmed" ff="monospace">
+        <p className="mt-4 font-mono text-xs text-[var(--brand-muted)]">
           transaction: {tid}
-        </Text>
+        </p>
 
         {error && (
-          <Alert color="danger" title="Failed to resolve">
+          <p className="mt-4 rounded-xl bg-[color-mix(in_srgb,#ef4444_12%,transparent)] px-3 py-2 text-sm text-[#ef4444]">
             {error}
-          </Alert>
+          </p>
         )}
 
-        {/* Stacked, not side-by-side (Group grow) — at the 390px width the
-            Phone App's WebView actually renders this in, two same-row
-            buttons clipped their own labels ("Simulate Succes[s]",
-            "Simulate Failed [Payment]"), caught by screenshotting this page
-            at that exact viewport rather than a wider desktop one. */}
-        <Stack gap="xs">
-          <Button
-            color="emerald"
-            fullWidth
-            loading={loading === "success"}
+        {/* Stacked, not side-by-side: at the 390px width the Phone App's
+            WebView actually renders this in, two same-row buttons clipped
+            their own labels. */}
+        <div className="mt-5 flex flex-col gap-2">
+          <button
+            type="button"
             disabled={loading !== null}
             onClick={() => resolve("success")}
+            className="w-full rounded-xl bg-[#22c55e] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
-            Simulate Successful Payment
-          </Button>
-          <Button
-            color="danger"
-            variant="outline"
-            fullWidth
-            loading={loading === "failure"}
+            {loading === "success" ? "Processing…" : "Simulate Successful Payment"}
+          </button>
+          <button
+            type="button"
             disabled={loading !== null}
             onClick={() => resolve("failure")}
+            className="w-full rounded-xl border border-[#ef4444] px-4 py-3 text-sm font-semibold text-[#ef4444] disabled:opacity-60"
           >
-            Simulate Failed Payment
-          </Button>
-        </Stack>
-      </Stack>
-    </Card>
+            {loading === "failure" ? "Processing…" : "Simulate Failed Payment"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export default function MockPaymentPage() {
   return (
-    <div className="space-y-6">
-      <header className="space-y-3">
-        <h1 className={title({ fullWidth: true })}>Mock Checkout</h1>
-        <p className={subtitle()}>Dev-only stand-in for a real PayMongo checkout session.</p>
-      </header>
-      <Suspense>
-        <MockCheckout />
-      </Suspense>
-    </div>
+    <Suspense>
+      <MockCheckout />
+    </Suspense>
   );
 }

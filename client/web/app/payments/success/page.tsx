@@ -2,8 +2,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Card, Stack, Text, ThemeIcon } from "@mantine/core";
-import { title, subtitle } from "@/components/primitives";
+import { Check } from "lucide-react";
 
 // Landing page for both the real PayMongo checkout's successUrl and the
 // dev-only /payments/mock page's "success" outcome — same destination
@@ -14,39 +13,27 @@ function SuccessContent() {
   const tid = params.get("tid");
 
   return (
-    <Card withBorder radius="lg" padding="xl" maw={480} mx="auto">
-      <Stack align="center" gap="sm">
-        <ThemeIcon color="emerald" size={56} radius="xl">
-          <Text size="xl" fw={700}>
-            ✓
-          </Text>
-        </ThemeIcon>
-        <Text fw={700} size="lg">
-          Payment Successful
-        </Text>
-        <Text size="sm" c="dimmed" ta="center">
-          You can close this window and return to the app.
-        </Text>
-        {tid && (
-          <Text size="xs" c="dimmed" ff="monospace">
-            transaction: {tid}
-          </Text>
-        )}
-      </Stack>
-    </Card>
+    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
+      <div className="flex size-14 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,#22c55e_16%,transparent)] text-[#22c55e]">
+        <Check size={28} />
+      </div>
+      <h1 className="text-2xl font-extrabold">Payment Successful</h1>
+      <p className="text-sm text-[var(--brand-muted)]">
+        You can close this window and return to the app.
+      </p>
+      {tid && (
+        <p className="font-mono text-xs text-[var(--brand-muted)]">
+          transaction: {tid}
+        </p>
+      )}
+    </div>
   );
 }
 
 export default function PaymentSuccessPage() {
   return (
-    <div className="space-y-6">
-      <header className="space-y-3">
-        <h1 className={title({ fullWidth: true })}>Payment Successful</h1>
-        <p className={subtitle()}>Your payment has been recorded.</p>
-      </header>
-      <Suspense>
-        <SuccessContent />
-      </Suspense>
-    </div>
+    <Suspense>
+      <SuccessContent />
+    </Suspense>
   );
 }

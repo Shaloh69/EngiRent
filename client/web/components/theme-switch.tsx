@@ -1,31 +1,36 @@
 "use client";
 
-import { FC } from "react";
-import { ActionIcon } from "@mantine/core";
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { useIsSSR } from "@react-aria/ssr";
+import { Moon, Sun } from "lucide-react";
 
-import { SunFilledIcon, MoonFilledIcon } from "@/components/icons";
-
-export interface ThemeSwitchProps {
-  className?: string;
-}
-
-export const ThemeSwitch: FC<ThemeSwitchProps> = ({ className }) => {
+export const ThemeSwitch = () => {
   const { theme, setTheme } = useTheme();
-  const isSSR = useIsSSR();
-  const isLight = theme === "light" || isSSR;
+  const [mounted, setMounted] = useState(false);
+
+  // Theme is only known client-side; rendering the real icon before mount
+  // would mismatch the server HTML, so a same-size placeholder holds the
+  // space instead of the layout jumping once hydration lands.
+  useEffect(() => setMounted(true), []);
+
+  const isDark = theme === "dark";
 
   return (
-    <ActionIcon
-      aria-label={`Switch to ${isLight ? "dark" : "light"} mode`}
-      className={className}
-      color="gray"
-      size="lg"
-      variant="subtle"
-      onClick={() => setTheme(isLight ? "dark" : "light")}
+    <button
+      type="button"
+      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className="inline-flex size-9 items-center justify-center rounded-lg border border-[var(--brand-border)] text-[var(--brand-muted)] transition-colors hover:text-[var(--brand-ink)]"
     >
-      {isLight ? <SunFilledIcon size={20} /> : <MoonFilledIcon size={20} />}
-    </ActionIcon>
+      {mounted ? (
+        isDark ? (
+          <Sun size={16} />
+        ) : (
+          <Moon size={16} />
+        )
+      ) : (
+        <span className="size-4" />
+      )}
+    </button>
   );
 };

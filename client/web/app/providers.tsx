@@ -1,26 +1,18 @@
 "use client";
 
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 import type { ThemeProviderProps } from "next-themes";
 
-import * as React from "react";
-import { ThemeProvider as NextThemesProvider } from "next-themes";
-import { MantineProvider } from "@mantine/core";
-import { theme } from "@/config/theme";
-
-export interface ProvidersProps {
+// Mantine is deliberately absent from this surface (design mandate §3.5:
+// client/web uses Velora UI's shadcn/Tailwind stack, kept separate from the
+// app surfaces). next-themes drives the .dark class that globals.css and
+// Velora's components key off.
+export function Providers({
+  children,
+  themeProps,
+}: {
   children: React.ReactNode;
   themeProps?: ThemeProviderProps;
-}
-
-// HeroUIProvider removed — the last @heroui/* component import in this app
-// (theme-switch.tsx's useSwitch) was replaced with a plain Mantine
-// ActionIcon during the design-mandate migration. Mantine is now the sole
-// component base for this surface (docs/planning/02-design-mandate.md §1:
-// "Not HeroUI, not a HeroUI reskin").
-export function Providers({ children, themeProps }: ProvidersProps) {
-  return (
-    <MantineProvider theme={theme} defaultColorScheme="light">
-      <NextThemesProvider {...themeProps}>{children}</NextThemesProvider>
-    </MantineProvider>
-  );
+}) {
+  return <NextThemesProvider {...themeProps}>{children}</NextThemesProvider>;
 }

@@ -1,18 +1,22 @@
 "use client";
 
-import { Group, Burger, Button, Text, ThemeIcon, Drawer, Stack, Box } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useState } from "react";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { Menu, X } from "lucide-react";
 import clsx from "clsx";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Logo } from "@/components/icons";
 
+// Rebuilt on Velora's plain Tailwind/Motion stack — Mantine is deliberately
+// not used on this surface (design mandate §3.5).
 export const Navbar = () => {
   const pathname = usePathname();
-  const [opened, { toggle, close }] = useDisclosure();
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
 
   const navLink = (item: { label: string; href: string }, mobile = false) => (
     <NextLink
@@ -31,52 +35,58 @@ export const Navbar = () => {
   return (
     <header className="site-header">
       <div className="site-header-inner">
-        <Group gap="xs">
-          <NextLink href="/" className="brand-link">
-            <ThemeIcon size={36} radius="md" variant="filled" color="violet">
-              <Logo size={18} />
-            </ThemeIcon>
-            <div>
-              <Text size="10px" fw={700} tt="uppercase" c="dimmed" lh={1.1} style={{ letterSpacing: 2 }}>
-                Smart Kiosk
-              </Text>
-              <Text size="sm" fw={800} lh={1.2}>
-                {siteConfig.name}
-              </Text>
-            </div>
-          </NextLink>
-        </Group>
+        <NextLink href="/" className="brand-link">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-[var(--brand-primary)] text-white">
+            <Logo size={18} />
+          </span>
+          <span>
+            <span className="block text-[10px] font-bold uppercase leading-none tracking-[2px] text-[var(--brand-muted)]">
+              Smart Kiosk
+            </span>
+            <span className="block text-[15px] font-extrabold leading-tight">
+              {siteConfig.name}
+            </span>
+          </span>
+        </NextLink>
 
-        <Group gap={28} visibleFrom="md">
+        <nav className="hidden items-center gap-7 md:flex">
           {siteConfig.navItems.map((item) => navLink(item))}
-        </Group>
+        </nav>
 
-        <Group gap="sm">
-          <Box visibleFrom="sm">
-            <ThemeSwitch />
-          </Box>
-          <Button
-            component={NextLink}
-            href={siteConfig.links.docs}
-            color="violet"
-            radius="sm"
-            visibleFrom="sm"
+        <div className="flex items-center gap-2">
+          <ThemeSwitch />
+          <NextLink
+            href="/docs"
+            className="hidden rounded-lg bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.03] sm:inline-block"
           >
             Read Docs
-          </Button>
-          <Burger opened={opened} onClick={toggle} hiddenFrom="md" size="sm" />
-        </Group>
+          </NextLink>
+          <button
+            type="button"
+            aria-label={open ? "Close menu" : "Open menu"}
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex size-9 items-center justify-center rounded-lg border border-[var(--brand-border)] md:hidden"
+          >
+            {open ? <X size={17} /> : <Menu size={17} />}
+          </button>
+        </div>
       </div>
 
-      <Drawer opened={opened} onClose={close} position="right" size="xs" title="Menu">
-        <Stack gap="md">
-          {siteConfig.navItems.map((item) => navLink(item, true))}
-          <ThemeSwitch />
-          <Button component={NextLink} href={siteConfig.links.docs} color="violet" onClick={close}>
-            Read Docs
-          </Button>
-        </Stack>
-      </Drawer>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden border-t border-[var(--brand-border)] bg-[var(--brand-surface)] md:hidden"
+          >
+            <div className="mx-auto flex max-w-7xl flex-col px-6 py-3">
+              {siteConfig.navItems.map((item) => navLink(item, true))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 };

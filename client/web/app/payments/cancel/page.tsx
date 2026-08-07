@@ -2,8 +2,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Card, Stack, Text, ThemeIcon } from "@mantine/core";
-import { title, subtitle } from "@/components/primitives";
+import { X } from "lucide-react";
 
 // Landing page for both the real PayMongo checkout's cancelUrl and the
 // dev-only /payments/mock page's "failure" outcome.
@@ -12,40 +11,28 @@ function CancelContent() {
   const tid = params.get("tid");
 
   return (
-    <Card withBorder radius="lg" padding="xl" maw={480} mx="auto">
-      <Stack align="center" gap="sm">
-        <ThemeIcon color="danger" size={56} radius="xl">
-          <Text size="xl" fw={700}>
-            ✕
-          </Text>
-        </ThemeIcon>
-        <Text fw={700} size="lg">
-          Payment Not Completed
-        </Text>
-        <Text size="sm" c="dimmed" ta="center">
-          The payment was cancelled or failed. You can close this window and try again from the
-          app.
-        </Text>
-        {tid && (
-          <Text size="xs" c="dimmed" ff="monospace">
-            transaction: {tid}
-          </Text>
-        )}
-      </Stack>
-    </Card>
+    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
+      <div className="flex size-14 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,#ef4444_14%,transparent)] text-[#ef4444]">
+        <X size={28} />
+      </div>
+      <h1 className="text-2xl font-extrabold">Payment Not Completed</h1>
+      <p className="text-sm text-[var(--brand-muted)]">
+        The payment was cancelled or failed. You can close this window and try
+        again from the app.
+      </p>
+      {tid && (
+        <p className="font-mono text-xs text-[var(--brand-muted)]">
+          transaction: {tid}
+        </p>
+      )}
+    </div>
   );
 }
 
 export default function PaymentCancelPage() {
   return (
-    <div className="space-y-6">
-      <header className="space-y-3">
-        <h1 className={title({ fullWidth: true })}>Payment Not Completed</h1>
-        <p className={subtitle()}>The payment was cancelled or failed.</p>
-      </header>
-      <Suspense>
-        <CancelContent />
-      </Suspense>
-    </div>
+    <Suspense>
+      <CancelContent />
+    </Suspense>
   );
 }

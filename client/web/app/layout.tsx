@@ -1,4 +1,3 @@
-import "@mantine/core/styles.css";
 import "@/styles/globals.css";
 import { Metadata, Viewport } from "next";
 import NextLink from "next/link";
@@ -44,9 +43,10 @@ export default function RootLayout({
         <Providers themeProps={{ attribute: "class", defaultTheme: "light" }}>
           <div className="relative flex min-h-screen flex-col">
             <Navbar />
-            <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-8 pt-20 sm:px-6 sm:pt-24">
-              {children}
-            </main>
+            {/* Full-bleed: each page owns its own max-width and padding, so
+                the aurora hero sections can span the viewport instead of
+                being boxed in by a shared container. */}
+            <main className="flex-1">{children}</main>
             <footer className="border-t border-[var(--brand-border)] px-4 py-5 sm:px-6">
               <div className="mx-auto flex max-w-7xl flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[var(--brand-muted)]">

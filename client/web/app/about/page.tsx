@@ -1,70 +1,118 @@
 "use client";
 
-import { Card, Text, SimpleGrid, Stack } from "@mantine/core";
-import { motion } from "framer-motion";
-import { title, subtitle } from "@/components/primitives";
+import { Cpu, GraduationCap, Layers, Radio, ShieldCheck, Smartphone } from "lucide-react";
+import { AuroraBackground } from "@/components/velora/aurora-background";
+import { Card, Reveal, Section, SectionHeading } from "@/components/velora/section";
+
+const SURFACES = [
+  {
+    icon: Smartphone,
+    title: "Phone App",
+    body: "Flutter. Browse and list items, book rentals, pay, and unlock lockers with a QR token plus face verification.",
+  },
+  {
+    icon: Layers,
+    title: "Admin Console",
+    body: "Next.js + Mantine. Rental lifecycle, dispute queue, payment ledger, kiosk telemetry, and system health.",
+  },
+  {
+    icon: Cpu,
+    title: "Smart Kiosk",
+    body: "Raspberry Pi 5 driving solenoid locks, linear actuators, and five cameras, with a React touchscreen UI.",
+  },
+  {
+    icon: Radio,
+    title: "AI Service",
+    body: "FastAPI running an 8-stage hybrid computer-vision pipeline that scores deposit-versus-return condition.",
+  },
+];
+
+const PRINCIPLES = [
+  {
+    title: "Trust is enforced, not assumed",
+    body: "Payment is escrowed and handover is camera-verified, so neither student has to take the other at their word.",
+  },
+  {
+    title: "Evidence over recollection",
+    body: "Condition disputes are settled against timestamped images captured at the locker, not competing memories.",
+  },
+  {
+    title: "Nobody has to staff it",
+    body: "Identity checks, locker control, and settlement all run without a person mediating the exchange.",
+  },
+];
 
 export default function AboutPage() {
   return (
-    <div className="space-y-6">
-      <header className="space-y-3">
-        <h1 className={title({ fullWidth: true })}>About EngiRent Hub</h1>
-        <p className={subtitle()}>
-          EngiRent Hub is an IoT-powered rental platform developed for UCLM
-          Engineering students to access academic tools affordably while
-          reducing risks from informal peer-to-peer borrowing.
-        </p>
-      </header>
+    <>
+      <section className="relative overflow-hidden px-4 py-20 sm:px-6">
+        <AuroraBackground intensity="subtle" />
+        <div className="relative mx-auto w-full max-w-6xl">
+          <SectionHeading
+            align="left"
+            eyebrow="About"
+            title="A thesis project about making peer-to-peer rental safe"
+            description="EngiRent Hub is an undergraduate engineering thesis at the University of Cebu Lapu-Lapu and Mandaue. It tackles a specific problem: students own equipment other students need for a week, but lending it means trusting a stranger with something expensive."
+          />
+        </div>
+      </section>
 
-      <SimpleGrid cols={{ base: 1, lg: 3 }}>
-        <motion.div
-          style={{ gridColumn: "span 2" }}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <Card withBorder radius="lg" padding="lg" h="100%">
-            <Text fw={700} size="lg" mb="sm">
-              Project Intent
-            </Text>
-            <Stack gap="sm">
-              <Text size="sm" c="dimmed">
-                Build a complete end-to-end flow where trust is enforced by
-                system controls: identity verification, kiosk automation,
-                payment hold/release logic, and machine-assisted item
-                validation on deposit and return.
-              </Text>
-              <Text size="sm" c="dimmed">
-                The architecture combines Flutter mobile clients, a Node.js
-                backend as source of truth, a Python vision service, and admin
-                monitoring tools for disputes, policy enforcement, and
-                operations.
-              </Text>
-            </Stack>
-          </Card>
-        </motion.div>
+      <Section className="pt-0">
+        <SectionHeading
+          eyebrow="Architecture"
+          title="Four surfaces, one lifecycle"
+          description="Each surface owns a distinct part of the rental flow and talks to the same API and database."
+        />
+        <div className="mt-12 grid gap-4 sm:grid-cols-2">
+          {SURFACES.map((s, i) => (
+            <Reveal key={s.title} delay={i * 0.06}>
+              <Card className="h-full">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-primary)]">
+                  <s.icon size={20} />
+                </div>
+                <h3 className="mt-4 text-lg font-bold">{s.title}</h3>
+                <p className="mt-1 text-sm text-[var(--brand-muted)]">{s.body}</p>
+              </Card>
+            </Reveal>
+          ))}
+        </div>
+      </Section>
 
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.08 }}
-        >
-          <Card id="contact" withBorder radius="lg" padding="lg" bg="var(--mantine-color-violet-0)" h="100%">
-            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
-              Contact
-            </Text>
-            <Text size="sm" fw={700} mt="sm">
-              Engineering Thesis Team
-            </Text>
-            <Text size="sm" c="dimmed">
-              University of Cebu Lapu-Lapu and Mandaue
-            </Text>
-            <Text size="sm" c="dimmed">
-              support@engirenthub.com
-            </Text>
+      <Section className="pt-0">
+        <SectionHeading
+          eyebrow="Design principles"
+          title="What the system refuses to leave to chance"
+        />
+        <div className="mt-12 grid gap-4 sm:grid-cols-3">
+          {PRINCIPLES.map((p, i) => (
+            <Reveal key={p.title} delay={i * 0.06}>
+              <Card className="h-full">
+                <ShieldCheck size={19} className="text-[var(--brand-secondary)]" />
+                <h3 className="mt-3 text-base font-bold">{p.title}</h3>
+                <p className="mt-1 text-sm text-[var(--brand-muted)]">{p.body}</p>
+              </Card>
+            </Reveal>
+          ))}
+        </div>
+      </Section>
+
+      <Section className="pt-0">
+        <Reveal>
+          <Card className="flex flex-col items-start gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-primary)]">
+              <GraduationCap size={20} />
+            </div>
+            <h3 className="text-xl font-bold">Academic context</h3>
+            <p className="max-w-3xl text-sm text-[var(--brand-muted)]">
+              Built as a capstone engineering thesis covering embedded hardware,
+              computer vision, payment integration, and full-stack development.
+              The kiosk hardware, the verification pipeline, and the escrow
+              settlement logic were each designed, implemented, and evaluated as
+              part of the study.
+            </p>
           </Card>
-        </motion.div>
-      </SimpleGrid>
-    </div>
+        </Reveal>
+      </Section>
+    </>
   );
 }

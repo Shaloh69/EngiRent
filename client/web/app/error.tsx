@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Button, Card, Text } from "@mantine/core";
+import { AlertTriangle } from "lucide-react";
 
 export default function Error({
   error,
@@ -15,20 +15,22 @@ export default function Error({
   }, [error]);
 
   return (
-    <Card withBorder radius="lg" padding="xl" maw={480} mx="auto" ta="center">
-      <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
-        Unexpected Error
-      </Text>
-      <Text size="xl" fw={800} mt={4}>
-        Something went wrong
-      </Text>
-      <Text size="sm" c="dimmed" mt="sm">
+    <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center gap-4 px-4 text-center">
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,#ef4444_14%,transparent)] text-[#ef4444]">
+        <AlertTriangle size={24} />
+      </div>
+      <h1 className="text-2xl font-extrabold">Something went wrong</h1>
+      <p className="text-sm text-[var(--brand-muted)]">
         We could not render this section. Retry the action or return to the
         previous page.
-      </Text>
-      <Button color="violet" mt="lg" onClick={reset}>
+      </p>
+      <button
+        type="button"
+        onClick={reset}
+        className="mt-2 rounded-xl bg-[var(--brand-primary)] px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
+      >
         Try again
-      </Button>
-    </Card>
+      </button>
+    </div>
   );
 }

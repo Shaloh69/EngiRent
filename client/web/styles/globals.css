@@ -2,44 +2,106 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Velora UI's registry declares these theme tokens (its aurora component
+   reads bg-brand-from / bg-brand-via / bg-brand-to and the animate-aurora-*
+   utilities). Mapped to CSS variables below so the whole aurora re-themes
+   from one place. */
 @theme {
   --font-sans: "Manrope", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
+
+  --color-brand: var(--brand-primary);
+  --color-brand-from: var(--brand-from);
+  --color-brand-via: var(--brand-via);
+  --color-brand-to: var(--brand-to);
+
+  --animate-aurora-1: aurora-1 14s ease-in-out infinite alternate;
+  --animate-aurora-2: aurora-2 18s ease-in-out infinite alternate;
+  --animate-aurora-3: aurora-3 22s ease-in-out infinite alternate;
 }
 
-/* EngiRent Spectrum (docs/planning/02-design-mandate.md §1) — "Campus Day"
-   mode (warm off-white, not stark white). Same hex values as
-   config/theme.ts's Mantine theme and client/admin's — one palette, reused
-   across surfaces. Replaces the prior ad hoc blue/emerald/amber scheme. */
+/* EngiRent Vault (docs/planning/02-design-mandate.md §1) — "Campus Day"
+   mode (warm off-white, not stark white). Teal primary, gold secondary,
+   coral tertiary; same hex values as client/admin's Mantine theme and the
+   Kiosk's theme.css. --brand-from/via/to drive Velora's aurora blobs and
+   deliberately use all three brand colors so the hero carries the full
+   palette rather than a single tint. */
 :root {
   --brand-bg: #fdfbf7;
   --brand-surface: #ffffff;
-  --brand-soft: #f3edfe;
-  --brand-border: #e4d6fc;
-  --brand-ink: #1a1625;
-  --brand-muted: #5d5580;
-  --brand-primary: #7c3aed;
+  --brand-soft: #f1faf8;
+  --brand-border: #d9ece8;
+  --brand-ink: #0f2622;
+  --brand-muted: #55706b;
+  --brand-primary: #0d9488;
   --brand-secondary: #f5a623;
   --brand-accent: #fb7185;
+
+  --brand-from: #0d9488;
+  --brand-via: #f5a623;
+  --brand-to: #fb7185;
 }
 
 .dark {
-  --brand-bg: #08060d;
-  --brand-surface: #12101c;
-  --brand-soft: #1b1829;
-  --brand-border: #2a2640;
-  --brand-ink: #f8fafc;
-  --brand-muted: #a394c9;
-  --brand-primary: #935cf0;
+  --brand-bg: #04100e;
+  --brand-surface: #0a1a18;
+  --brand-soft: #102725;
+  --brand-border: #1d3d39;
+  --brand-ink: #f2fbfa;
+  --brand-muted: #8fb5b0;
+  --brand-primary: #3ec3b3;
   --brand-secondary: #f5a623;
   --brand-accent: #fb7185;
+
+  --brand-from: #0d9488;
+  --brand-via: #f5a623;
+  --brand-to: #fb7185;
+}
+
+/* Velora's aurora drift — keyframes ship with the registry component. */
+@keyframes aurora-1 {
+  0% {
+    transform: translate(-10%, -12%) scale(1);
+  }
+  50% {
+    transform: translate(12%, 8%) scale(1.25);
+  }
+  100% {
+    transform: translate(-6%, 14%) scale(0.95);
+  }
+}
+@keyframes aurora-2 {
+  0% {
+    transform: translate(12%, 10%) scale(1.1);
+  }
+  50% {
+    transform: translate(-14%, -6%) scale(0.9);
+  }
+  100% {
+    transform: translate(8%, -12%) scale(1.2);
+  }
+}
+@keyframes aurora-3 {
+  0% {
+    transform: translate(0%, 16%) scale(0.95);
+  }
+  50% {
+    transform: translate(10%, -10%) scale(1.15);
+  }
+  100% {
+    transform: translate(-12%, 4%) scale(1);
+  }
+}
+
+/* Anyone who prefers reduced motion gets the gradient without the drift. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="aurora-background"] > * {
+    animation: none !important;
+  }
 }
 
 body {
-  background:
-    radial-gradient(circle at 10% 0%, rgba(124, 58, 237, 0.14), transparent 25%),
-    radial-gradient(circle at 95% 15%, rgba(245, 166, 35, 0.1), transparent 22%),
-    var(--brand-bg);
+  background: var(--brand-bg);
   color: var(--brand-ink);
 }
 
@@ -85,26 +147,4 @@ body {
   display: block;
   padding: 10px 0;
   font-size: 16px;
-}
-
-.focus-item {
-  border-radius: 12px;
-  border: 1px solid var(--brand-border);
-  background: var(--brand-soft);
-  padding: 12px 16px;
-  font-size: 14px;
-  color: var(--brand-muted);
-}
-
-/* Tailwind's preflight (`@import "tailwindcss"`) resets `list-style: none`
-   globally, which silently strips Mantine's <List> bullet/number markers
-   too (it relies on the browser default marker box, not its own icon,
-   unless an `icon` prop is passed) — caught via screenshot on the
-   pricing/docs pages, where the feature lists rendered with no markers at
-   all despite correct spacing. */
-.mantine-List-root {
-  list-style: revert;
-}
-.mantine-List-item {
-  display: list-item;
 }
