@@ -1,35 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
+  ActionIcon,
+  Alert,
+  Anchor,
+  Card,
+  Group,
+  Progress,
+  SimpleGrid,
+  Stack,
   Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
-  Chip,
-  Button,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  useDisclosure,
-  Spinner,
-} from "@heroui/react";
-import { CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+  Text,
+  ThemeIcon,
+  Tooltip,
+} from "@mantine/core";
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  ScanFace,
+  ThumbsDown,
+  ThumbsUp,
+  TimerReset,
+} from "lucide-react";
 import api from "@/lib/api";
-import type { Verification } from "@/types";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { DataTableCard } from "@/components/ui/DataTableCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { roleColor } from "../theme";
 
 export default function VerificationsPage() {
-  const [verifications, setVerifications] = useState<Verification[]>([]);
-  const [selectedVerification, setSelectedVerification] =
-    useState<Verification | null>(null);
+  const [verifications, setVerifications] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [decision, setDecision] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { isOpen, onOpen, onClose } = useDisclosure();
 
   useEffect(() => {
     void fetchVerifications();
@@ -42,186 +51,196 @@ export default function VerificationsPage() {
       const response = await api.get("/admin/verifications");
       setVerifications(response.data.data?.verifications || []);
     } catch (apiError: any) {
-      setError(
-        apiError?.response?.data?.error || "Failed to fetch verifications.",
-      );
+      setError(apiError?.response?.data?.error || "Failed to fetch verifications.");
       setVerifications([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdate = async (id: string, status: "APPROVED" | "REJECTED") => {
+  const updateStatus = async (id: string, status: string) => {
     try {
       await api.patch(`/admin/verifications/${id}`, { status });
       await fetchVerifications();
-      onClose();
     } catch (apiError: any) {
-      setError(
-        apiError?.response?.data?.error ||
-          `Failed to ${status.toLowerCase()} verification.`,
-      );
+      setError(apiError?.response?.data?.error || "Failed to update verification.");
     }
   };
 
-  const getDecisionColor = (decision: string) => {
-    const colors: Record<string, any> = {
-      APPROVED: "success",
-      PENDING: "warning",
-      RETRY: "secondary",
-      REJECTED: "danger",
-    };
-    return colors[decision] || "default";
-  };
+  const filtered = useMemo(
+    () =>
+      verifications.filter((v) => {
+        const term = search.toLowerCase();
+        const title = v.rental?.item?.title ?? "";
+        const matchesSearch = !term || title.toLowerCase().includes(term);
+        const matchesDecision = !decision || v.decision === decision;
+        return matchesSearch && matchesDecision;
+      }),
+    [verifications, search, decision],
+  );
 
-  const openDetails = (verification: Verification) => {
-    setSelectedVerification(verification);
-    onOpen();
-  };
+  const stats = useMemo(() => {
+    const scores = verifications
+      .map((v) => Number(v.confidenceScore ?? 0))
+      .filter((n) => !Number.isNaN(n));
+    const avg = scores.length
+      ? scores.reduce((a, b) => a + b, 0) / scores.length
+      : 0;
+    return {
+      total: verifications.length,
+      approved: verifications.filter((v) => v.decision === "APPROVED").length,
+      needsReview: verifications.filter(
+        (v) => v.decision === "RETRY" || v.decision === "REJECTED",
+      ).length,
+      avg,
+    };
+  }, [verifications]);
 
   return (
     <AdminLayout>
-      <div className="space-y-5 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">
-              AI Review
-            </p>
-            <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">
-              Verification Queue
-            </h1>
-          </div>
-          <Button
-            variant="flat"
-            startContent={<RefreshCw size={16} />}
-            onPress={fetchVerifications}
-          >
-            Refresh
-          </Button>
-        </div>
+      <Stack gap="lg">
+        <PageHeader
+          eyebrow="AI Checks"
+          title="Verifications"
+          description="Deposit and return image checks with the model's confidence score for each decision."
+          onRefresh={fetchVerifications}
+          refreshing={loading}
+        />
 
         {error && (
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <Alert icon={<AlertCircle size={16} />} color={roleColor.critical} variant="light">
             {error}
-          </div>
+          </Alert>
         )}
 
-        <div className="app-surface overflow-x-auto rounded-2xl border border-[var(--color-border)] p-3 sm:p-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner label="Loading verifications..." />
-            </div>
-          ) : (
-            <Table aria-label="Verifications table" removeWrapper>
-              <TableHeader>
-                <TableColumn>VERIFICATION ID</TableColumn>
-                <TableColumn>DECISION</TableColumn>
-                <TableColumn>CONFIDENCE</TableColumn>
-                <TableColumn>STATUS</TableColumn>
-                <TableColumn>CREATED</TableColumn>
-                <TableColumn>ACTIONS</TableColumn>
-              </TableHeader>
-              <TableBody emptyContent="No verification records found.">
-                {verifications.map((verification) => (
-                  <TableRow key={verification.id}>
-                    <TableCell className="font-mono text-xs">
-                      {verification.id.slice(0, 8)}...
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        color={getDecisionColor(verification.decision)}
-                        size="sm"
-                      >
-                        {verification.decision}
-                      </Chip>
-                    </TableCell>
-                    <TableCell>
-                      {verification.confidenceScore.toFixed(1)}%
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        color={
-                          verification.status === "MANUAL_REVIEW"
-                            ? "warning"
-                            : "primary"
-                        }
-                        size="sm"
-                      >
-                        {verification.status.replace(/_/g, " ")}
-                      </Chip>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(verification.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        onPress={() => openDetails(verification)}
-                      >
-                        Review
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </div>
-
-      <Modal isOpen={isOpen} onClose={onClose} size="2xl">
-        <ModalContent>
-          <>
-            <ModalHeader>Verification Details</ModalHeader>
-            <ModalBody>
-              {selectedVerification && (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-[var(--color-border)] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] app-muted">
-                      Confidence
-                    </p>
-                    <p className="text-3xl font-extrabold text-[var(--color-ink)]">
-                      {selectedVerification.confidenceScore.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <Chip
-                      color={getDecisionColor(selectedVerification.decision)}
-                    >
-                      {selectedVerification.decision}
-                    </Chip>
-                    <Chip>{selectedVerification.status}</Chip>
-                  </div>
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+          {[
+            { label: "Total Checks", value: stats.total, icon: ScanFace, color: roleColor.brand },
+            { label: "Approved", value: stats.approved, icon: CheckCircle2, color: roleColor.success },
+            { label: "Needs Review", value: stats.needsReview, icon: TimerReset, color: roleColor.warning },
+            { label: "Avg Confidence", value: `${stats.avg.toFixed(1)}%`, icon: Camera, color: roleColor.accent },
+          ].map((s) => (
+            <Card key={s.label} withBorder radius="md" padding="lg">
+              <Group justify="space-between" align="flex-start">
+                <div>
+                  <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                    {s.label}
+                  </Text>
+                  <Text size="xl" fw={800} mt={4}>
+                    {s.value}
+                  </Text>
                 </div>
-              )}
-            </ModalBody>
-            <ModalFooter>
-              <Button
-                color="danger"
-                variant="flat"
-                startContent={<XCircle size={16} />}
-                onPress={() =>
-                  selectedVerification &&
-                  handleUpdate(selectedVerification.id, "REJECTED")
-                }
-              >
-                Reject
-              </Button>
-              <Button
-                color="success"
-                startContent={<CheckCircle2 size={16} />}
-                onPress={() =>
-                  selectedVerification &&
-                  handleUpdate(selectedVerification.id, "APPROVED")
-                }
-              >
-                Approve
-              </Button>
-            </ModalFooter>
-          </>
-        </ModalContent>
-      </Modal>
+                <ThemeIcon size={40} radius="md" variant="light" color={s.color}>
+                  <s.icon size={20} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+
+        <DataTableCard
+          columns={["Item", "Decision", "Confidence", "Checked", "Actions"]}
+          loading={loading}
+          isEmpty={filtered.length === 0}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Search by item…",
+          }}
+          filters={[
+            {
+              value: decision,
+              onChange: setDecision,
+              placeholder: "Decision",
+              data: [
+                { value: "APPROVED", label: "Approved" },
+                { value: "PENDING", label: "Pending" },
+                { value: "RETRY", label: "Retry" },
+                { value: "REJECTED", label: "Rejected" },
+              ],
+            },
+          ]}
+          emptyState={
+            <EmptyState
+              icon={ScanFace}
+              title={verifications.length === 0 ? "No verifications yet" : "No matching checks"}
+              description={
+                verifications.length === 0
+                  ? "AI checks appear here as items are deposited and returned at the kiosk."
+                  : "Try clearing the search or filters."
+              }
+            />
+          }
+        >
+          {filtered.map((v) => {
+            const score = Number(v.confidenceScore ?? 0);
+            const rentalId = v.rentalId ?? v.rental?.id;
+            return (
+              <Table.Tr key={v.id}>
+                <Table.Td>
+                  {rentalId ? (
+                    <Anchor component={Link} href={`/rentals/${rentalId}`} fw={600} size="sm">
+                      {v.rental?.item?.title ?? "View rental"}
+                    </Anchor>
+                  ) : (
+                    <Text size="sm" fw={600}>
+                      {v.rental?.item?.title ?? "—"}
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <StatusBadge status={v.decision} />
+                </Table.Td>
+                <Table.Td>
+                  <Stack gap={2} w={120}>
+                    <Text size="xs" fw={600}>
+                      {score.toFixed(1)}%
+                    </Text>
+                    <Progress
+                      value={score}
+                      size="xs"
+                      color={
+                        score >= 85
+                          ? roleColor.success
+                          : score >= 60
+                            ? roleColor.warning
+                            : roleColor.critical
+                      }
+                    />
+                  </Stack>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm">{new Date(v.createdAt).toLocaleString()}</Text>
+                </Table.Td>
+                <Table.Td>
+                  <Group gap="xs">
+                    <Tooltip label="Approve">
+                      <ActionIcon
+                        variant="light"
+                        color={roleColor.success}
+                        onClick={() => updateStatus(v.id, "APPROVED")}
+                        aria-label="Approve verification"
+                      >
+                        <ThumbsUp size={15} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Reject">
+                      <ActionIcon
+                        variant="light"
+                        color={roleColor.critical}
+                        onClick={() => updateStatus(v.id, "REJECTED")}
+                        aria-label="Reject verification"
+                      >
+                        <ThumbsDown size={15} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </DataTableCard>
+      </Stack>
     </AdminLayout>
   );
 }

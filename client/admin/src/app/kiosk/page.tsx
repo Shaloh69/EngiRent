@@ -3,17 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
+  Badge,
   Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Chip,
   Divider,
-  Input,
-  Spinner,
-  Tab,
+  Loader,
+  NumberInput,
   Tabs,
-} from "@heroui/react";
+} from "@mantine/core";
 import {
   Activity,
   Camera,
@@ -119,14 +115,14 @@ function NumInput({
         {label}
       </span>
       <div className="flex items-center gap-2">
-        <Input
-          type="number"
-          size="sm"
+        <NumberInput
+          size="xs"
           min={min}
           max={max}
-          value={String(value)}
-          onChange={(e) => onChange(Number(e.target.value))}
-          classNames={{ input: "text-center", base: "w-24" }}
+          value={value}
+          onChange={(v) => onChange(Number(v))}
+          w={96}
+          styles={{ input: { textAlign: "center" } }}
         />
         <span className="text-xs text-[var(--color-muted)]">{unit}</span>
       </div>
@@ -382,7 +378,7 @@ export default function KioskPage() {
     return (
       <AdminLayout>
         <div className="flex h-64 items-center justify-center">
-          <Spinner size="lg" />
+          <Loader size="lg" />
         </div>
       </AdminLayout>
     );
@@ -403,13 +399,13 @@ export default function KioskPage() {
     return (
       <div className="space-y-4">
         {/* Camera snapshot */}
-        <Card className="border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <CardHeader className="pb-2 flex items-center gap-2 font-semibold text-[var(--color-ink)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="pb-2 flex items-center gap-2 font-semibold text-[var(--color-ink)]">
             <Camera size={15} />
             <span>Camera Snapshot — Locker {String(id).padStart(2, "0")}</span>
-          </CardHeader>
+          </div>
           <Divider />
-          <CardBody className="pt-3 space-y-3">
+          <div className="pt-3 space-y-3">
             <div
               className="relative w-full overflow-hidden rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
               style={{ aspectRatio: "4/3" }}
@@ -432,38 +428,38 @@ export default function KioskPage() {
               )}
               {snapLoading[sid] && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-xl">
-                  <Spinner size="lg" />
+                  <Loader size="lg" />
                 </div>
               )}
             </div>
             <Button
               size="sm"
-              variant="flat"
-              startContent={<Camera size={14} />}
-              isLoading={snapLoading[sid]}
-              isDisabled={!isOnline && !isDemoMode}
-              onPress={() => takeSnapshot(id)}
+              variant="light"
+              leftSection={<Camera size={14} />}
+              loading={snapLoading[sid]}
+              disabled={!isOnline && !isDemoMode}
+              onClick={() => takeSnapshot(id)}
             >
               Take Snapshot
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </div>
 
         {/* Door status */}
-        <Card className="border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <CardHeader className="pb-1 font-semibold text-[var(--color-ink)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="pb-1 font-semibold text-[var(--color-ink)]">
             <Monitor size={15} className="mr-2" />
             Door Status
-          </CardHeader>
-          <CardBody className="pt-2 flex flex-row gap-3">
+          </div>
+          <div className="pt-2 flex flex-row gap-3">
             {(["main", "bottom"] as const).map((door) => {
               const unlocked =
                 (doors as Record<string, string>)?.[door] === "unlocked";
               return (
-                <Chip
+                <Badge
                   key={door}
                   size="sm"
-                  startContent={
+                  leftSection={
                     unlocked ? <LockOpen size={12} /> : <Lock size={12} />
                   }
                   className={
@@ -474,33 +470,33 @@ export default function KioskPage() {
                 >
                   {door === "main" ? "Main" : "Bottom"}{" "}
                   {unlocked ? "Open" : "Locked"}
-                </Chip>
+                </Badge>
               );
             })}
-          </CardBody>
-        </Card>
+          </div>
+        </div>
 
         {/* Manual controls */}
-        <Card className="border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <CardHeader className="pb-2 font-semibold text-[var(--color-ink)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="pb-2 font-semibold text-[var(--color-ink)]">
             <Activity size={15} className="mr-2" />
             Manual Controls
-          </CardHeader>
-          <CardBody className="pt-0 flex flex-wrap gap-2">
+          </div>
+          <div className="pt-0 flex flex-wrap gap-2">
             {(["main", "bottom"] as const).map((door) => {
               const doorKey = door === "main" ? "main_door" : "bottom_door";
               return (
                 <Button
                   key={door}
                   size="sm"
-                  variant="flat"
+                  variant="light"
                   color="primary"
-                  startContent={<LockOpen size={13} />}
-                  isLoading={
+                  leftSection={<LockOpen size={13} />}
+                  loading={
                     cmdLoading === cmdKey("open_door", { door: doorKey })
                   }
-                  isDisabled={!isOnline && !isDemoMode}
-                  onPress={() =>
+                  disabled={!isOnline && !isDemoMode}
+                  onClick={() =>
                     sendCommand("open_door", { locker_id: id, door: doorKey })
                   }
                 >
@@ -510,33 +506,33 @@ export default function KioskPage() {
             })}
             <Button
               size="sm"
-              variant="flat"
-              isLoading={cmdLoading === cmdKey("actuator_extend")}
-              isDisabled={!isOnline && !isDemoMode}
-              onPress={() => sendCommand("actuator_extend", { locker_id: id })}
+              variant="light"
+              loading={cmdLoading === cmdKey("actuator_extend")}
+              disabled={!isOnline && !isDemoMode}
+              onClick={() => sendCommand("actuator_extend", { locker_id: id })}
             >
               Extend
             </Button>
             <Button
               size="sm"
-              variant="flat"
-              isLoading={cmdLoading === cmdKey("actuator_retract")}
-              isDisabled={!isOnline && !isDemoMode}
-              onPress={() => sendCommand("actuator_retract", { locker_id: id })}
+              variant="light"
+              loading={cmdLoading === cmdKey("actuator_retract")}
+              disabled={!isOnline && !isDemoMode}
+              onClick={() => sendCommand("actuator_retract", { locker_id: id })}
             >
               Retract
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </div>
 
         {/* Timing */}
-        <Card className="border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <CardHeader className="pb-2 font-semibold text-[var(--color-ink)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="pb-2 font-semibold text-[var(--color-ink)]">
             <Clock size={15} className="mr-2" />
             Timing Configuration
-          </CardHeader>
+          </div>
           <Divider />
-          <CardBody className="pt-3 space-y-4">
+          <div className="pt-3 space-y-4">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <NumInput
                 label="Main Door Open"
@@ -572,14 +568,14 @@ export default function KioskPage() {
             <Button
               size="sm"
               color="primary"
-              startContent={<Save size={14} />}
-              isLoading={saving[sid]}
-              onPress={() => saveTiming(sid)}
+              leftSection={<Save size={14} />}
+              loading={saving[sid]}
+              onClick={() => saveTiming(sid)}
             >
               Save Locker {String(id).padStart(2, "0")} Timing
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -589,13 +585,13 @@ export default function KioskPage() {
     const snap = snapshots["face"];
     return (
       <div className="space-y-4">
-        <Card className="border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <CardHeader className="pb-2 flex items-center gap-2 font-semibold text-[var(--color-ink)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="pb-2 flex items-center gap-2 font-semibold text-[var(--color-ink)]">
             <Camera size={15} />
             <span>Face Camera (Index 4)</span>
-          </CardHeader>
+          </div>
           <Divider />
-          <CardBody className="pt-3 space-y-3">
+          <div className="pt-3 space-y-3">
             <div
               className="relative w-full overflow-hidden rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
               style={{ aspectRatio: "4/3" }}
@@ -616,16 +612,16 @@ export default function KioskPage() {
             </div>
             <Button
               size="sm"
-              variant="flat"
-              startContent={<RotateCcw size={14} />}
-              isLoading={cmdLoading === "capture_face-{}"}
-              isDisabled={!isOnline && !isDemoMode}
-              onPress={() => sendCommand("capture_face")}
+              variant="light"
+              leftSection={<RotateCcw size={14} />}
+              loading={cmdLoading === "capture_face-{}"}
+              disabled={!isOnline && !isDemoMode}
+              onClick={() => sendCommand("capture_face")}
             >
               Test Face Capture
             </Button>
-          </CardBody>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -684,9 +680,9 @@ export default function KioskPage() {
 
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-2">
-                <Chip
+                <Badge
                   size="sm"
-                  startContent={
+                  leftSection={
                     isOnline ? <Wifi size={12} /> : <WifiOff size={12} />
                   }
                   className={
@@ -700,12 +696,12 @@ export default function KioskPage() {
                     : kiosk?.status === "error"
                       ? "Error"
                       : "Offline"}
-                </Chip>
+                </Badge>
                 <Button
                   size="sm"
-                  variant="flat"
-                  startContent={<RefreshCw size={13} />}
-                  onPress={fetchState}
+                  variant="light"
+                  leftSection={<RefreshCw size={13} />}
+                  onClick={fetchState}
                 >
                   Refresh
                 </Button>
@@ -753,11 +749,11 @@ export default function KioskPage() {
             <Button
               size="sm"
               color="danger"
-              variant="flat"
-              startContent={<Lock size={13} />}
-              isLoading={cmdLoading === "lock_all-{}"}
-              isDisabled={!isOnline && !isDemoMode}
-              onPress={() => sendCommand("lock_all")}
+              variant="light"
+              leftSection={<Lock size={13} />}
+              loading={cmdLoading === "lock_all-{}"}
+              disabled={!isOnline && !isDemoMode}
+              onClick={() => sendCommand("lock_all")}
               title="This is a software command over the network — it depends on the kiosk's process and connection being alive. It is not a substitute for a physical emergency-stop button."
             >
               Emergency Stop — Lock All Doors
@@ -767,27 +763,33 @@ export default function KioskPage() {
 
         {/* ── Tab navigation ───────────────────────────────────────────────── */}
         <Tabs
-          selectedKey={activeTab}
-          onSelectionChange={(k) => setActiveTab(k as string)}
-          variant="underlined"
-          classNames={{ tabList: "gap-4", cursor: "bg-[var(--color-primary)]" }}
+          value={activeTab}
+          onChange={(v) => setActiveTab(v ?? "locker-1")}
+          variant="outline"
+          color="teal"
         >
+          <Tabs.List mb="md">
+            {[1, 2, 3, 4].map((id) => (
+              <Tabs.Tab key={`locker-${id}`} value={`locker-${id}`}>
+                {`Locker ${String(id).padStart(2, "0")}`}
+              </Tabs.Tab>
+            ))}
+            <Tabs.Tab value="face">Face Cam</Tabs.Tab>
+          </Tabs.List>
+
           {[1, 2, 3, 4].map((id) => (
-            <Tab
-              key={`locker-${id}`}
-              title={`Locker ${String(id).padStart(2, "0")}`}
-            >
+            <Tabs.Panel key={`locker-${id}`} value={`locker-${id}`}>
               <LockerTab id={id} />
-            </Tab>
+            </Tabs.Panel>
           ))}
-          <Tab key="face" title="Face Cam">
+          <Tabs.Panel value="face">
             <FaceCamTab />
-          </Tab>
+          </Tabs.Panel>
         </Tabs>
 
         {/* ── Live Pi Log terminal ─────────────────────────────────────────── */}
-        <Card className="border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <CardHeader className="pb-2 flex items-center justify-between">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="pb-2 flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold text-[var(--color-ink)]">
               <Terminal size={15} />
               <span>Live Pi Logs</span>
@@ -799,15 +801,15 @@ export default function KioskPage() {
             </div>
             <Button
               size="sm"
-              variant="flat"
-              onPress={() => setLogs([])}
+              variant="light"
+              onClick={() => setLogs([])}
               className="text-xs text-[var(--color-muted)]"
             >
               Clear
             </Button>
-          </CardHeader>
+          </div>
           <Divider />
-          <CardBody className="p-0">
+          <div className="p-0">
             <div className="h-72 overflow-y-auto bg-black/40 rounded-b-xl font-mono text-[12px] p-4 space-y-0.5">
               {logs.length === 0 ? (
                 <p className="text-[var(--color-muted)] opacity-50 text-center mt-8">
@@ -837,8 +839,8 @@ export default function KioskPage() {
               )}
               <div ref={logEndRef} />
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </div>
       </div>
     </AdminLayout>
   );

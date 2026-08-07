@@ -2,9 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Input, Card, CardBody, CardHeader } from "@heroui/react";
-import { Lock, ShieldCheck } from "lucide-react";
+import {
+  Alert,
+  Button,
+  Card,
+  Center,
+  Group,
+  PasswordInput,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Title,
+} from "@mantine/core";
+import { motion } from "framer-motion";
+import { AlertCircle, Eye, Lock, ShieldCheck } from "lucide-react";
 import api, { isDemoMode } from "@/lib/api";
+import { roleColor } from "../theme";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +39,6 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-
       localStorage.setItem("admin_token", "demo-admin-token");
       router.push("/dashboard");
       setLoading(false);
@@ -44,100 +58,112 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen px-4 py-10 sm:px-6">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 lg:flex-row lg:items-stretch">
-        <section className="app-surface flex-1 rounded-3xl border border-[var(--color-border)] p-7 sm:p-10">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] app-muted">
-            EngiRent Hub
-          </p>
-          <h1 className="text-3xl font-extrabold text-[var(--color-ink)] sm:text-5xl">
-            Admin Command Center
-          </h1>
-          <p className="mt-4 max-w-lg text-sm leading-relaxed app-muted sm:text-base">
-            Monitor kiosk health, rental lifecycle, verification outcomes, and
-            transaction integrity from one secure console.
-          </p>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
-            <div className="app-soft rounded-2xl border border-[var(--color-border)] p-4">
-              <p className="text-sm font-semibold text-[var(--color-ink)]">
-                Live Monitoring
-              </p>
-              <p className="mt-1 text-xs app-muted">
-                Track lockers, rentals, and payout states in real-time.
-              </p>
-            </div>
-            <div className="app-soft rounded-2xl border border-[var(--color-border)] p-4">
-              <p className="text-sm font-semibold text-[var(--color-ink)]">
-                Audit Visibility
-              </p>
-              <p className="mt-1 text-xs app-muted">
-                Every action is logged for dispute handling and compliance.
-              </p>
-            </div>
-          </div>
-        </section>
+    <Center mih="100vh" px="md" py="xl">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        style={{ width: "100%", maxWidth: 980 }}
+      >
+        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+          <Card withBorder radius="lg" padding="xl">
+            <Stack gap="sm">
+              <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 2 }}>
+                EngiRent Hub
+              </Text>
+              <Title order={1} size="h1">
+                Admin Command Center
+              </Title>
+              <Text size="sm" c="dimmed" maw={460}>
+                Monitor kiosk health, rental lifecycle, verification outcomes, and
+                transaction integrity from one secure console.
+              </Text>
 
-        <Card className="app-surface w-full rounded-3xl border border-[var(--color-border)] lg:max-w-md">
-          <CardHeader className="flex flex-col items-center gap-2 px-8 pb-0 pt-8 text-center">
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-primary)] text-white">
-              <ShieldCheck size={24} />
-            </div>
-            {/* Explicit color: with no text color set, this inherited
-                HeroUI's own theme default, which follows the OS dark-mode
-                preference — rendering light text on this card's hardcoded
-                light background and leaving the heading nearly unreadable
-                for anyone whose machine is set to dark mode. */}
-            <h2 className="text-2xl font-extrabold text-[var(--color-ink)]">
-              Secure Admin Login
-            </h2>
-            <p className="text-sm app-muted">
-              {isDemoMode
-                ? "Dev demo mode is active. Any email/password can log in."
-                : "Use your authorized EngiRent account."}
-            </p>
-          </CardHeader>
-          <CardBody className="px-8 pb-8 pt-6">
-            <form onSubmit={handleLogin} className="space-y-4">
-              <Input
-                type="email"
-                label="Email"
-                placeholder="admin@uclm.edu.ph"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                variant="bordered"
-              />
-              <Input
-                type="password"
-                label="Password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                variant="bordered"
-                startContent={<Lock size={16} className="text-default-400" />}
-              />
-              {error && (
-                <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">
-                  {error}
-                </p>
-              )}
-              {/* This is a HeroUI Button, so `color="primary"` resolves to
-                  HeroUI's own default blue, not the Mantine theme's teal —
-                  the palette pivot doesn't reach it. Pinned to the shared
-                  CSS variable so it tracks the real brand color until this
-                  page is migrated off HeroUI. */}
-              <Button
-                type="submit"
-                className="h-11 w-full bg-[var(--color-primary)] font-semibold text-white"
-                isLoading={loading}
-              >
-                Access Dashboard
-              </Button>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md">
+                {[
+                  {
+                    title: "Live Monitoring",
+                    body: "Track lockers, rentals, and payout states in real-time.",
+                    icon: Eye,
+                    color: roleColor.brand,
+                  },
+                  {
+                    title: "Audit Visibility",
+                    body: "Every action is logged for dispute handling and compliance.",
+                    icon: ShieldCheck,
+                    color: roleColor.accent,
+                  },
+                ].map((f) => (
+                  <Card key={f.title} withBorder radius="md" padding="md" bg="var(--color-surface-soft)">
+                    <ThemeIcon size={32} radius="md" variant="light" color={f.color} mb="xs">
+                      <f.icon size={16} />
+                    </ThemeIcon>
+                    <Text size="sm" fw={700}>
+                      {f.title}
+                    </Text>
+                    <Text size="xs" c="dimmed" mt={2}>
+                      {f.body}
+                    </Text>
+                  </Card>
+                ))}
+              </SimpleGrid>
+            </Stack>
+          </Card>
+
+          <Card withBorder radius="lg" padding="xl">
+            <Stack align="center" gap={6} mb="lg">
+              <ThemeIcon size={52} radius="md" variant="filled" color={roleColor.brand}>
+                <ShieldCheck size={26} />
+              </ThemeIcon>
+              <Title order={2} size="h3">
+                Secure Admin Login
+              </Title>
+              <Text size="sm" c="dimmed">
+                {isDemoMode
+                  ? "Dev demo mode is active. Any email/password can log in."
+                  : "Use your authorized EngiRent account."}
+              </Text>
+            </Stack>
+
+            <form onSubmit={handleLogin}>
+              <Stack gap="md">
+                <TextInput
+                  label="Email"
+                  placeholder="admin@uclm.edu.ph"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.currentTarget.value)}
+                  required
+                  size="md"
+                />
+                <PasswordInput
+                  label="Password"
+                  placeholder="Enter your password"
+                  leftSection={<Lock size={16} />}
+                  value={password}
+                  onChange={(e) => setPassword(e.currentTarget.value)}
+                  required
+                  size="md"
+                />
+
+                {error && (
+                  <Alert
+                    icon={<AlertCircle size={16} />}
+                    color={roleColor.critical}
+                    variant="light"
+                  >
+                    {error}
+                  </Alert>
+                )}
+
+                <Button type="submit" size="md" fullWidth loading={loading} mt="xs">
+                  Access Dashboard
+                </Button>
+              </Stack>
             </form>
-          </CardBody>
-        </Card>
-      </div>
-    </div>
+          </Card>
+        </SimpleGrid>
+      </motion.div>
+    </Center>
   );
 }

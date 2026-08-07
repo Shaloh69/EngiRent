@@ -1,26 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
+  Alert,
+  Anchor,
+  Card,
+  Group,
+  SimpleGrid,
+  Stack,
   Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
-  Chip,
-  Select,
-  SelectItem,
-  Spinner,
-  Button,
-} from "@heroui/react";
+  Text,
+  ThemeIcon,
+} from "@mantine/core";
+import { AlertCircle, AlertTriangle, CircleDot, Receipt, CheckCircle2 } from "lucide-react";
 import api from "@/lib/api";
 import type { Rental } from "@/types";
-import { format } from "date-fns";
-import { RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { DataTableCard } from "@/components/ui/DataTableCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { roleColor } from "../theme";
 
-const statuses = [
+const peso = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  maximumFractionDigits: 0,
+});
+
+const RENTAL_STATUSES = [
   "PENDING",
   "AWAITING_DEPOSIT",
   "DEPOSITED",
@@ -31,15 +40,10 @@ const statuses = [
   "DISPUTED",
 ];
 
-const peso = new Intl.NumberFormat("en-PH", {
-  style: "currency",
-  currency: "PHP",
-  maximumFractionDigits: 0,
-});
-
 export default function RentalsPage() {
   const [rentals, setRentals] = useState<Rental[]>([]);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -61,114 +65,136 @@ export default function RentalsPage() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, any> = {
-      ACTIVE: "success",
-      PENDING: "warning",
-      COMPLETED: "primary",
-      CANCELLED: "danger",
-      VERIFICATION: "secondary",
-    };
-    return colors[status] || "default";
-  };
-
-  const filteredRentals = useMemo(
+  const filtered = useMemo(
     () =>
-      rentals.filter(
-        (rental) => statusFilter === "" || rental.status === statusFilter,
-      ),
-    [rentals, statusFilter],
+      rentals.filter((r) => {
+        const term = search.toLowerCase();
+        const matchesSearch =
+          !term ||
+          (r.item?.title ?? "").toLowerCase().includes(term) ||
+          `${r.renter?.firstName ?? ""} ${r.renter?.lastName ?? ""}`
+            .toLowerCase()
+            .includes(term);
+        const matchesStatus = !status || r.status === status;
+        return matchesSearch && matchesStatus;
+      }),
+    [rentals, search, status],
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: rentals.length,
+      active: rentals.filter((r) => r.status === "ACTIVE").length,
+      completed: rentals.filter((r) => r.status === "COMPLETED").length,
+      disputed: rentals.filter((r) => r.status === "DISPUTED").length,
+    }),
+    [rentals],
   );
 
   return (
     <AdminLayout>
-      <div className="space-y-5 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">
-              Operations
-            </p>
-            <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">
-              Rental Management
-            </h1>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Select
-              aria-label="Filter by status"
-              placeholder="Filter by status"
-              selectedKeys={statusFilter ? [statusFilter] : []}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full sm:w-64"
-              variant="bordered"
-            >
-              {statuses.map((status) => (
-                <SelectItem key={status}>
-                  {status.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </Select>
-            <Button
-              variant="flat"
-              startContent={<RefreshCw size={16} />}
-              onPress={fetchRentals}
-            >
-              Refresh
-            </Button>
-          </div>
-        </div>
+      <Stack gap="lg">
+        <PageHeader
+          eyebrow="Transactions"
+          title="Rental Management"
+          description="Every rental across the platform, with drill-down into the full lifecycle timeline."
+          onRefresh={fetchRentals}
+          refreshing={loading}
+        />
 
         {error && (
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <Alert icon={<AlertCircle size={16} />} color={roleColor.critical} variant="light">
             {error}
-          </div>
+          </Alert>
         )}
 
-        <div className="app-surface overflow-x-auto rounded-2xl border border-[var(--color-border)] p-3 sm:p-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner label="Loading rentals..." />
-            </div>
-          ) : (
-            <Table aria-label="Rentals table" removeWrapper>
-              <TableHeader>
-                <TableColumn>RENTAL ID</TableColumn>
-                <TableColumn>ITEM</TableColumn>
-                <TableColumn>RENTER</TableColumn>
-                <TableColumn>START DATE</TableColumn>
-                <TableColumn>END DATE</TableColumn>
-                <TableColumn>STATUS</TableColumn>
-                <TableColumn>TOTAL</TableColumn>
-              </TableHeader>
-              <TableBody emptyContent="No rentals found.">
-                {filteredRentals.map((rental) => (
-                  <TableRow key={rental.id}>
-                    <TableCell className="font-mono text-xs">
-                      {rental.id.slice(0, 8)}...
-                    </TableCell>
-                    <TableCell>{rental.item?.title || "Unknown"}</TableCell>
-                    <TableCell>
-                      {rental.renter?.firstName || "N/A"}{" "}
-                      {rental.renter?.lastName || ""}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(rental.startDate), "MMM dd, yyyy")}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(rental.endDate), "MMM dd, yyyy")}
-                    </TableCell>
-                    <TableCell>
-                      <Chip color={getStatusColor(rental.status)} size="sm">
-                        {rental.status.replace(/_/g, " ")}
-                      </Chip>
-                    </TableCell>
-                    <TableCell>{peso.format(rental.totalPrice || 0)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </div>
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+          {[
+            { label: "Total Rentals", value: stats.total, icon: Receipt, color: roleColor.brand },
+            { label: "Active Now", value: stats.active, icon: CircleDot, color: roleColor.success },
+            { label: "Completed", value: stats.completed, icon: CheckCircle2, color: roleColor.accent },
+            { label: "Disputed", value: stats.disputed, icon: AlertTriangle, color: roleColor.critical },
+          ].map((s) => (
+            <Card key={s.label} withBorder radius="md" padding="lg">
+              <Group justify="space-between" align="flex-start">
+                <div>
+                  <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                    {s.label}
+                  </Text>
+                  <Text size="xl" fw={800} mt={4}>
+                    {s.value}
+                  </Text>
+                </div>
+                <ThemeIcon size={40} radius="md" variant="light" color={s.color}>
+                  <s.icon size={20} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+
+        <DataTableCard
+          columns={["Item", "Renter", "Period", "Status", "Total"]}
+          loading={loading}
+          isEmpty={filtered.length === 0}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Search item or renter…",
+          }}
+          filters={[
+            {
+              value: status,
+              onChange: setStatus,
+              placeholder: "Status",
+              data: RENTAL_STATUSES.map((s) => ({
+                value: s,
+                label: s.replace(/_/g, " ").toLowerCase(),
+              })),
+            },
+          ]}
+          emptyState={
+            <EmptyState
+              icon={Receipt}
+              title={rentals.length === 0 ? "No rentals yet" : "No matching rentals"}
+              description={
+                rentals.length === 0
+                  ? "Rentals appear here once students start booking items."
+                  : "Try clearing the search or filters."
+              }
+            />
+          }
+        >
+          {filtered.map((r) => (
+            <Table.Tr key={r.id}>
+              <Table.Td>
+                <Anchor component={Link} href={`/rentals/${r.id}`} fw={600} size="sm">
+                  {r.item?.title ?? "—"}
+                </Anchor>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">
+                  {r.renter ? `${r.renter.firstName} ${r.renter.lastName}` : "—"}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">
+                  {new Date(r.startDate).toLocaleDateString()} →{" "}
+                  {new Date(r.endDate).toLocaleDateString()}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <StatusBadge status={r.status} />
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm" fw={600}>
+                  {peso.format(Number(r.totalPrice || 0))}
+                </Text>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </DataTableCard>
+      </Stack>
     </AdminLayout>
   );
 }

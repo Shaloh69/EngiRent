@@ -1,35 +1,33 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
-  Card,
-  CardBody,
-  CardHeader,
-  Chip,
+  Alert,
+  Badge,
   Button,
-  Select,
-  SelectItem,
-} from "@heroui/react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+  Card,
+  Center,
+  Group,
+  Loader,
+  SegmentedControl,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
+import { BarChart, DonutChart } from "@mantine/charts";
+import { AlertCircle, BarChart3, Download, Star, Trophy } from "lucide-react";
 import api from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { roleColor } from "../theme";
 
 const PERIOD_OPTIONS = [
-  { key: "7d", label: "Last 7 days" },
-  { key: "30d", label: "Last 30 days" },
-  { key: "90d", label: "Last 90 days" },
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "90d", label: "90 days" },
 ];
 
 function periodDates(key: string): { from: string; to: string } {
@@ -40,14 +38,17 @@ function periodDates(key: string): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-const PIE_COLORS = [
-  "#2563eb",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#06b6d4",
-  "#f97316",
+// Chart series colors come from the theme's own scale so reports match the
+// rest of the console — the previous version hardcoded a separate hex list
+// that had nothing to do with the palette.
+const DONUT_COLORS = ["teal.6", "emerald.6", "gold.6", "coral.6", "danger.6", "teal.3"];
+
+// Rendered when a chart has no data, so the component still occupies its
+// slot instead of vanishing (mandate: missing component = fail).
+const EMPTY_BAR = [
+  { label: "—", count: 0 },
+  { label: "—", count: 0 },
+  { label: "—", count: 0 },
 ];
 
 export default function ReportsPage() {
@@ -63,316 +64,230 @@ export default function ReportsPage() {
       const { from, to } = periodDates(period);
       const resp = await api.get(`/admin/reports?from=${from}&to=${to}`);
       setData(resp.data.data);
-    } catch {
-      setError("Failed to load report data");
+    } catch (e: any) {
+      setError(e?.response?.data?.error ?? "Failed to load report data.");
+      setData(null);
     } finally {
       setLoading(false);
     }
   }, [period]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const handleExportCSV = async () => {
     const { from, to } = periodDates(period);
-    const url = `/admin/reports?from=${from}&to=${to}&format=csv`;
     try {
-      const resp = await api.get(url, { responseType: "blob" });
+      const resp = await api.get(
+        `/admin/reports?from=${from}&to=${to}&format=csv`,
+        { responseType: "blob" },
+      );
       const blob = new Blob([resp.data as BlobPart], { type: "text/csv" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `engirent-report-${period}.csv`;
       a.click();
+      URL.revokeObjectURL(a.href);
     } catch {
-      alert("CSV export failed");
+      setError("CSV export failed.");
     }
   };
 
-  // Build chart data from API response
-  const rentalStatusData = data
+  const rentalStatusData = data?.rentalsByStatus
     ? Object.entries(data.rentalsByStatus as Record<string, number>).map(
-        ([status, count]) => ({
-          status: status.replace(/_/g, " "),
-          count,
-        }),
+        ([status, count]) => ({ label: status.replace(/_/g, " "), count }),
       )
     : [];
 
-  const categoryData = data
+  const categoryData = data?.categoryBreakdown
     ? Object.entries(data.categoryBreakdown as Record<string, number>).map(
-        ([cat, count]) => ({
-          category: cat.replace(/_/g, " "),
-          count,
-        }),
+        ([cat, count]) => ({ label: cat.replace(/_/g, " "), count }),
       )
     : [];
 
-  const verificationData = data
-    ? Object.entries(
-        data.verificationsByDecision as Record<string, number>,
-      ).map(([d, count]) => ({
-        name: d,
-        value: count,
-      }))
+  const verificationData = data?.verificationsByDecision
+    ? Object.entries(data.verificationsByDecision as Record<string, number>)
+        .filter(([, v]) => Number(v) > 0)
+        .map(([name, value], i) => ({
+          name,
+          value: Number(value),
+          color: DONUT_COLORS[i % DONUT_COLORS.length],
+        }))
     : [];
 
-  const topItems: Array<{
-    title: string;
-    totalRentals: number;
-    averageRating: number;
-  }> = data?.topItems ?? [];
+  const topItems: Array<{ title: string; totalRentals: number; averageRating: number }> =
+    data?.topItems ?? [];
 
   return (
     <AdminLayout>
-      <div className="space-y-5 sm:space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">
-              Analytics
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">
-                Reports &amp; Trends
-              </h1>
-              <Chip
+      <Stack gap="lg">
+        <PageHeader
+          eyebrow="Analytics"
+          title="Reports &amp; Trends"
+          description="Rental volume, category mix, and verification outcomes over the selected period."
+          onRefresh={load}
+          refreshing={loading}
+          actions={
+            <Group gap="sm">
+              <SegmentedControl
+                value={period}
+                onChange={setPeriod}
+                data={PERIOD_OPTIONS}
                 size="sm"
-                variant="flat"
-                color={loading ? "default" : "success"}
+              />
+              <Button
+                variant="light"
+                color={roleColor.accent}
+                leftSection={<Download size={16} />}
+                onClick={handleExportCSV}
               >
-                {loading ? "Loading…" : "Live Data"}
-              </Chip>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select
-              size="sm"
-              selectedKeys={new Set([period])}
-              onSelectionChange={(keys) => {
-                const val = Array.from(keys as Set<string>)[0];
-                if (val) setPeriod(val);
-              }}
-              className="w-40"
-              aria-label="Period"
-            >
-              {PERIOD_OPTIONS.map((o) => (
-                <SelectItem key={o.key}>{o.label}</SelectItem>
-              ))}
-            </Select>
-            <Button
-              size="sm"
-              variant="flat"
-              onPress={handleExportCSV}
-              isDisabled={loading || !data}
-            >
-              Export CSV
-            </Button>
-          </div>
-        </div>
+                Export CSV
+              </Button>
+            </Group>
+          }
+        />
 
         {error && (
-          <div className="rounded-lg border border-red-400 bg-red-50 px-4 py-3 text-red-700">
-            {error} —{" "}
-            <button className="underline" onClick={load}>
-              retry
-            </button>
-          </div>
+          <Alert icon={<AlertCircle size={16} />} color={roleColor.critical} variant="light">
+            {error}
+          </Alert>
         )}
 
-        {/* Summary cards */}
-        {data && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {[
-              {
-                label: "Total Revenue",
-                value: `PHP ${(data.summary?.totalRevenue ?? 0).toLocaleString()}`,
-              },
-              {
-                label: "Total Rentals",
-                value: data.summary?.totalRentals ?? 0,
-              },
-              {
-                label: "Verifications",
-                value: data.summary?.totalVerifications ?? 0,
-              },
-            ].map((s) => (
-              <Card
-                key={s.label}
-                className="app-surface rounded-2xl border border-[var(--color-border)]"
-              >
-                <CardBody className="py-3 px-4">
-                  <p className="text-xs app-muted font-medium">{s.label}</p>
-                  <p className="text-xl font-extrabold text-[var(--color-ink)] mt-1">
-                    {s.value}
-                  </p>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* Rental Status distribution */}
-          <Card className="app-surface rounded-2xl border border-[var(--color-border)]">
-            <CardHeader>
-              <h2 className="text-lg font-bold text-[var(--color-ink)]">
-                Rentals by Status
-              </h2>
-            </CardHeader>
-            <CardBody>
-              {loading ? (
-                <div className="h-64 animate-pulse bg-gray-100 rounded-xl" />
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={rentalStatusData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="status" tick={{ fontSize: 11 }} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar
-                      dataKey="count"
-                      fill="#2563eb"
-                      name="Count"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Verifications pie */}
-          <Card className="app-surface rounded-2xl border border-[var(--color-border)]">
-            <CardHeader>
-              <h2 className="text-lg font-bold text-[var(--color-ink)]">
-                Verification Decisions
-              </h2>
-            </CardHeader>
-            <CardBody>
-              {loading ? (
-                <div className="h-64 animate-pulse bg-gray-100 rounded-xl" />
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie
-                      data={verificationData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label
-                    >
-                      {verificationData.map((_, i) => (
-                        <Cell
-                          key={i}
-                          fill={PIE_COLORS[i % PIE_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Category breakdown */}
-          <Card className="app-surface rounded-2xl border border-[var(--color-border)]">
-            <CardHeader>
-              <h2 className="text-lg font-bold text-[var(--color-ink)]">
-                Items by Category
-              </h2>
-            </CardHeader>
-            <CardBody>
-              {loading ? (
-                <div className="h-64 animate-pulse bg-gray-100 rounded-xl" />
-              ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={categoryData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis
-                      dataKey="category"
-                      type="category"
-                      width={120}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip />
-                    <Bar
-                      dataKey="count"
-                      fill="#f59e0b"
-                      name="Items"
-                      radius={[0, 4, 4, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Top items table */}
-          <Card className="app-surface rounded-2xl border border-[var(--color-border)]">
-            <CardHeader>
-              <h2 className="text-lg font-bold text-[var(--color-ink)]">
-                Top 10 Rented Items
-              </h2>
-            </CardHeader>
-            <CardBody>
-              {loading ? (
-                <div className="h-64 animate-pulse bg-gray-100 rounded-xl" />
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--color-border)]">
-                        <th className="py-2 text-left font-semibold app-muted">
-                          Item
-                        </th>
-                        <th className="py-2 text-right font-semibold app-muted">
-                          Rentals
-                        </th>
-                        <th className="py-2 text-right font-semibold app-muted">
-                          Rating
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topItems.map((item) => (
-                        <tr
-                          key={item.title}
-                          className="border-b border-[var(--color-border)] last:border-0"
-                        >
-                          <td className="py-2 font-medium text-[var(--color-ink)] truncate max-w-[160px]">
-                            {item.title}
-                          </td>
-                          <td className="py-2 text-right">
-                            {item.totalRentals}
-                          </td>
-                          <td className="py-2 text-right">
-                            {item.averageRating.toFixed(1)} ★
-                          </td>
-                        </tr>
-                      ))}
-                      {topItems.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={3}
-                            className="py-4 text-center app-muted"
-                          >
-                            No items yet
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+        {loading ? (
+          <Center mih={320}>
+            <Loader />
+          </Center>
+        ) : (
+          <>
+            <SimpleGrid cols={{ base: 1, lg: 2 }}>
+              <Card withBorder radius="md" padding="lg">
+                <Text fw={700} mb="md">
+                  Rentals by Status
+                </Text>
+                <div style={{ position: "relative" }}>
+                  <BarChart
+                    h={260}
+                    data={rentalStatusData.length ? rentalStatusData : EMPTY_BAR}
+                    dataKey="label"
+                    series={[{ name: "count", label: "Rentals", color: "teal.6" }]}
+                    withLegend={false}
+                    withYAxis
+                    gridAxis="xy"
+                  />
+                  {rentalStatusData.length === 0 && (
+                    <Center style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                      <Text size="sm" c="dimmed" fw={600}>
+                        No rentals in this period
+                      </Text>
+                    </Center>
+                  )}
                 </div>
-              )}
-            </CardBody>
-          </Card>
-        </div>
-      </div>
+              </Card>
+
+              <Card withBorder radius="md" padding="lg">
+                <Text fw={700} mb="md">
+                  Category Breakdown
+                </Text>
+                <div style={{ position: "relative" }}>
+                  <BarChart
+                    h={260}
+                    data={categoryData.length ? categoryData : EMPTY_BAR}
+                    dataKey="label"
+                    series={[{ name: "count", label: "Rentals", color: "gold.6" }]}
+                    withLegend={false}
+                    withYAxis
+                    gridAxis="xy"
+                  />
+                  {categoryData.length === 0 && (
+                    <Center style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                      <Text size="sm" c="dimmed" fw={600}>
+                        No category data in this period
+                      </Text>
+                    </Center>
+                  )}
+                </div>
+              </Card>
+            </SimpleGrid>
+
+            <SimpleGrid cols={{ base: 1, lg: 2 }}>
+              <Card withBorder radius="md" padding="lg">
+                <Text fw={700} mb="md">
+                  Verification Outcomes
+                </Text>
+                {verificationData.length === 0 ? (
+                  <EmptyState
+                    icon={BarChart3}
+                    title="No verifications in this period"
+                    description="AI check outcomes appear here once items are deposited and returned."
+                    minHeight={240}
+                  />
+                ) : (
+                  <Center>
+                    <DonutChart
+                      data={verificationData}
+                      size={200}
+                      thickness={28}
+                      withLabelsLine
+                      withLabels
+                      paddingAngle={2}
+                    />
+                  </Center>
+                )}
+              </Card>
+
+              <Card withBorder radius="md" padding="lg">
+                <Group justify="space-between" mb="md">
+                  <Text fw={700}>Top Items</Text>
+                  <Badge variant="light" color={roleColor.accent} leftSection={<Trophy size={12} />}>
+                    Most rented
+                  </Badge>
+                </Group>
+                {topItems.length === 0 ? (
+                  <EmptyState
+                    icon={Trophy}
+                    title="No ranking yet"
+                    description="The most-rented items in this period will be listed here."
+                    minHeight={240}
+                  />
+                ) : (
+                  <Table highlightOnHover verticalSpacing="sm">
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Item</Table.Th>
+                        <Table.Th>Rentals</Table.Th>
+                        <Table.Th>Rating</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {topItems.map((it) => (
+                        <Table.Tr key={it.title}>
+                          <Table.Td>
+                            <Text size="sm" fw={600}>
+                              {it.title}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{it.totalRentals}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={4}>
+                              <Star size={13} />
+                              <Text size="sm">
+                                {Number(it.averageRating ?? 0).toFixed(1)}
+                              </Text>
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                )}
+              </Card>
+            </SimpleGrid>
+          </>
+        )}
+      </Stack>
     </AdminLayout>
   );
 }

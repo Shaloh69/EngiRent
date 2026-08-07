@@ -29,6 +29,8 @@ import {
   HeartPulse,
   Search,
   Bell,
+  ShieldAlert,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -37,11 +39,16 @@ const menuItems = [
   { name: "Users", icon: Users, href: "/users" },
   { name: "Items", icon: Package, href: "/items" },
   { name: "Rentals", icon: Receipt, href: "/rentals" },
+  // Deliberately its own top-level entry rather than a filter on /rentals —
+  // the mandate calls out dispute resolution as a distinct admin
+  // responsibility that shouldn't be buried in the general rentals table.
+  { name: "Disputes", icon: ShieldAlert, href: "/disputes" },
   { name: "Payments", icon: CreditCard, href: "/payments" },
   { name: "Verifications", icon: CheckCircle2, href: "/verifications" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Kiosk", icon: MonitorSpeaker, href: "/kiosk" },
   { name: "Health Check", icon: HeartPulse, href: "/health" },
+  { name: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export default function AdminLayout({

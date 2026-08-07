@@ -3,33 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
+  Alert,
+  Card,
+  Group,
+  SimpleGrid,
+  Stack,
   Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
-  Chip,
-  Button,
-  Input,
-  Select,
-  SelectItem,
-  Spinner,
-} from "@heroui/react";
-import { Search, Eye, Trash2, RefreshCw } from "lucide-react";
+  Text,
+  ThemeIcon,
+} from "@mantine/core";
+import { AlertCircle, Package, PackageCheck, PackageX, Tag } from "lucide-react";
 import api from "@/lib/api";
 import type { Item } from "@/types";
-
-const categories = [
-  "SCHOOL_ATTIRE",
-  "ACADEMIC_TOOLS",
-  "ELECTRONICS",
-  "DEVELOPMENT_KITS",
-  "MEASUREMENT_TOOLS",
-  "AUDIO_VISUAL",
-  "SPORTS_EQUIPMENT",
-  "OTHER",
-];
+import { PageHeader } from "@/components/ui/PageHeader";
+import { DataTableCard } from "@/components/ui/DataTableCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { roleColor } from "../theme";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -37,10 +27,22 @@ const peso = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
+const CATEGORY_LABELS: Record<string, string> = {
+  SCHOOL_ATTIRE: "School Attire",
+  ACADEMIC_TOOLS: "Academic Tools",
+  ELECTRONICS: "Electronics",
+  DEVELOPMENT_KITS: "Dev Kits",
+  MEASUREMENT_TOOLS: "Measurement",
+  AUDIO_VISUAL: "Audio/Visual",
+  SPORTS_EQUIPMENT: "Sports",
+  OTHER: "Other",
+};
+
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [category, setCategory] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -62,146 +64,150 @@ export default function ItemsPage() {
     }
   };
 
-  const deleteItem = async (itemId: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
-    try {
-      await api.delete(`/items/${itemId}`);
-      await fetchItems();
-    } catch (apiError: any) {
-      setError(apiError?.response?.data?.error || "Failed to delete item.");
-    }
-  };
-
-  const filteredItems = useMemo(
+  const filtered = useMemo(
     () =>
-      items.filter((item) => {
-        const keyword = search.toLowerCase();
-        const textMatch =
-          item.title.toLowerCase().includes(keyword) ||
-          item.description.toLowerCase().includes(keyword);
-        const categoryMatch =
-          categoryFilter === "" || item.category === categoryFilter;
-        return textMatch && categoryMatch;
+      items.filter((i) => {
+        const term = search.toLowerCase();
+        const matchesSearch =
+          !term ||
+          i.title.toLowerCase().includes(term) ||
+          `${i.owner?.firstName ?? ""} ${i.owner?.lastName ?? ""}`
+            .toLowerCase()
+            .includes(term);
+        const matchesCategory = !category || i.category === category;
+        const matchesAvailability =
+          !availability || String(i.isAvailable) === availability;
+        return matchesSearch && matchesCategory && matchesAvailability;
       }),
-    [items, search, categoryFilter],
+    [items, search, category, availability],
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: items.length,
+      available: items.filter((i) => i.isAvailable).length,
+      unavailable: items.filter((i) => !i.isAvailable).length,
+      categories: new Set(items.map((i) => i.category)).size,
+    }),
+    [items],
   );
 
   return (
     <AdminLayout>
-      <div className="space-y-5 sm:space-y-6">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] app-muted">
-                Inventory
-              </p>
-              <h1 className="text-2xl font-extrabold text-[var(--color-ink)] sm:text-3xl">
-                Item Management
-              </h1>
-            </div>
-            <Button
-              variant="flat"
-              startContent={<RefreshCw size={16} />}
-              className="w-full sm:w-auto"
-              onPress={fetchItems}
-            >
-              Refresh
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Select
-              label="Category"
-              selectedKeys={categoryFilter ? [categoryFilter] : []}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              variant="bordered"
-            >
-              {categories.map((cat) => (
-                <SelectItem key={cat}>{cat.replace(/_/g, " ")}</SelectItem>
-              ))}
-            </Select>
-            <Input
-              label="Search"
-              placeholder="Search title or description"
-              startContent={<Search size={18} />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              variant="bordered"
-            />
-          </div>
-        </div>
+      <Stack gap="lg">
+        <PageHeader
+          eyebrow="Catalog"
+          title="Item Management"
+          description="Listing moderation, category coverage, and availability across the marketplace."
+          onRefresh={fetchItems}
+          refreshing={loading}
+        />
 
         {error && (
-          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <Alert icon={<AlertCircle size={16} />} color={roleColor.critical} variant="light">
             {error}
-          </div>
+          </Alert>
         )}
 
-        <div className="app-surface overflow-x-auto rounded-2xl border border-[var(--color-border)] p-3 sm:p-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner label="Loading items..." />
-            </div>
-          ) : (
-            <Table aria-label="Items table" removeWrapper>
-              <TableHeader>
-                <TableColumn>TITLE</TableColumn>
-                <TableColumn>CATEGORY</TableColumn>
-                <TableColumn>CONDITION</TableColumn>
-                <TableColumn>PRICE / DAY</TableColumn>
-                <TableColumn>OWNER</TableColumn>
-                <TableColumn>STATUS</TableColumn>
-                <TableColumn>ACTIONS</TableColumn>
-              </TableHeader>
-              <TableBody emptyContent="No items found.">
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-semibold">
-                      {item.title}
-                    </TableCell>
-                    <TableCell>{item.category.replace(/_/g, " ")}</TableCell>
-                    <TableCell>{item.condition.replace(/_/g, " ")}</TableCell>
-                    <TableCell>{peso.format(item.pricePerDay)}</TableCell>
-                    <TableCell>
-                      {item.owner?.firstName || "N/A"}{" "}
-                      {item.owner?.lastName || ""}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        color={item.isAvailable ? "success" : "warning"}
-                        size="sm"
-                      >
-                        {item.isAvailable ? "Available" : "In Use"}
-                      </Chip>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          color="primary"
-                          variant="flat"
-                          startContent={<Eye size={15} />}
-                        >
-                          View
-                        </Button>
-                        <Button
-                          size="sm"
-                          color="danger"
-                          variant="flat"
-                          startContent={<Trash2 size={15} />}
-                          onPress={() => deleteItem(item.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </div>
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+          {[
+            { label: "Total Listings", value: stats.total, icon: Package, color: roleColor.brand },
+            { label: "Available", value: stats.available, icon: PackageCheck, color: roleColor.success },
+            { label: "Unavailable", value: stats.unavailable, icon: PackageX, color: roleColor.warning },
+            { label: "Categories Used", value: stats.categories, icon: Tag, color: roleColor.accent },
+          ].map((s) => (
+            <Card key={s.label} withBorder radius="md" padding="lg">
+              <Group justify="space-between" align="flex-start">
+                <div>
+                  <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                    {s.label}
+                  </Text>
+                  <Text size="xl" fw={800} mt={4}>
+                    {s.value}
+                  </Text>
+                </div>
+                <ThemeIcon size={40} radius="md" variant="light" color={s.color}>
+                  <s.icon size={20} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+
+        <DataTableCard
+          columns={["Item", "Owner", "Category", "Price / day", "Deposit", "Status"]}
+          loading={loading}
+          isEmpty={filtered.length === 0}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Search item or owner…",
+          }}
+          filters={[
+            {
+              value: category,
+              onChange: setCategory,
+              placeholder: "Category",
+              data: Object.entries(CATEGORY_LABELS).map(([value, label]) => ({
+                value,
+                label,
+              })),
+            },
+            {
+              value: availability,
+              onChange: setAvailability,
+              placeholder: "Availability",
+              data: [
+                { value: "true", label: "Available" },
+                { value: "false", label: "Unavailable" },
+              ],
+            },
+          ]}
+          emptyState={
+            <EmptyState
+              icon={Package}
+              title={items.length === 0 ? "No listings yet" : "No matching items"}
+              description={
+                items.length === 0
+                  ? "Items students list for rent appear here."
+                  : "Try clearing the search or filters."
+              }
+            />
+          }
+        >
+          {filtered.map((i) => (
+            <Table.Tr key={i.id}>
+              <Table.Td>
+                <Text fw={600} size="sm">
+                  {i.title}
+                </Text>
+                <Text size="xs" c="dimmed" lineClamp={1} maw={320}>
+                  {i.description}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">
+                  {i.owner ? `${i.owner.firstName} ${i.owner.lastName}` : "—"}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">{CATEGORY_LABELS[i.category] ?? i.category}</Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm" fw={600}>
+                  {peso.format(Number(i.pricePerDay || 0))}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="sm">{peso.format(Number(i.securityDeposit || 0))}</Text>
+              </Table.Td>
+              <Table.Td>
+                <StatusBadge status={i.isAvailable ? "ACTIVE" : "CANCELLED"} />
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </DataTableCard>
+      </Stack>
     </AdminLayout>
   );
 }

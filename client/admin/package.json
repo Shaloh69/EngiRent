@@ -9,8 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@heroui/react": "^2.6.10",
-    "@heroui/theme": "^2.3.5",
     "@mantine/charts": "^7.17.8",
     "@mantine/core": "^7.17.8",
     "@mantine/dates": "^7.17.8",

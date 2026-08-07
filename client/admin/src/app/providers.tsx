@@ -1,23 +1,19 @@
 "use client";
 
-import { HeroUIProvider } from "@heroui/react";
-import { useRouter } from "next/navigation";
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { theme } from "./theme";
 
-// Transitional: both providers nested during the Mantine migration (design
-// mandate — HeroUI is being fully replaced, not reskinned). Pages migrate to
-// Mantine one at a time; HeroUIProvider stays until the last HeroUI-based
-// page is gone, so unmigrated pages keep working in the meantime. Remove
-// HeroUIProvider (and the @heroui/* deps) once nothing imports @heroui/react.
+// HeroUI is fully removed as of the delete-and-rebuild pass — every page is
+// on Mantine now, so the transitional nested-provider setup is gone. Keeping
+// both would have meant two component libraries each following their own
+// color-scheme rules, which is exactly what produced the unreadable
+// light-on-light text this rebuild fixed.
 export function Providers({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-
   return (
-    <MantineProvider theme={theme} defaultColorScheme="light">
+    <MantineProvider theme={theme} defaultColorScheme="light" forceColorScheme="light">
       <Notifications position="top-right" />
-      <HeroUIProvider navigate={router.push}>{children}</HeroUIProvider>
+      {children}
     </MantineProvider>
   );
 }

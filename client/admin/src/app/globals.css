@@ -1,19 +1,13 @@
 @import "tailwindcss";
 
-@plugin "../../hero.js";
-
-@source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
-
 @theme {
   --font-sans: "Manrope", sans-serif;
 }
 
 /* "EngiRent Vault" palette (docs/planning/02-design-mandate.md §1) — teal
-   primary, gold secondary, coral tertiary. These variables predate the
-   Mantine migration and are still used by the not-yet-migrated pages
-   (users/items/rentals/payments/verifications/reports/kiosk/health/login),
-   so they're kept and re-themed rather than deleted — but their values now
-   match Mantine's theme.ts instead of the old ad-hoc blue scheme.
+   primary, gold secondary, coral tertiary. Values mirror Mantine's
+   theme.ts. Still used by the Kiosk page, which keeps its own Tailwind
+   layout styling rather than being rebuilt on Mantine primitives.
 
    There is deliberately NO `prefers-color-scheme: dark` override here.
    A previous version had one, which flipped the page background to

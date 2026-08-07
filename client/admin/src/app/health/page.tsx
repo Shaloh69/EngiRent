@@ -3,16 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
+  Alert,
+  Badge,
   Button,
   Card,
-  CardBody,
-  CardHeader,
-  Chip,
+  Center,
   Divider,
-  Spinner,
-} from "@heroui/react";
-import { CheckCircle2, XCircle, RefreshCw, Server, Cpu } from "lucide-react";
+  Group,
+  Loader,
+  SimpleGrid,
+  Stack,
+  Text,
+  ThemeIcon,
+} from "@mantine/core";
+import { CheckCircle2, XCircle, Server, Cpu, AlertCircle } from "lucide-react";
 import api, { isDemoMode } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { roleColor } from "../theme";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -208,82 +215,78 @@ export default function HealthCheckPage() {
     }
   };
 
-  const StatusIcon = ({ ok }: { ok: boolean }) =>
-    ok ? (
-      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-    ) : (
-      <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-    );
+  const StatusIcon = ({ ok }: { ok: boolean }) => (
+    <ThemeIcon
+      size={22}
+      radius="xl"
+      variant="light"
+      color={ok ? roleColor.success : roleColor.critical}
+    >
+      {ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+    </ThemeIcon>
+  );
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Health Check</h1>
-            <p className="text-sm text-default-500">
-              PC-side software components and live per-kiosk hardware status —
-              the single source of truth for &quot;is everything actually
-              working.&quot;
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="flat"
-            startContent={<RefreshCw className="h-4 w-4" />}
-            onPress={fetchHealth}
-            isLoading={healthLoading}
-          >
-            Refresh
-          </Button>
-        </div>
+      <Stack gap="lg">
+        <PageHeader
+          eyebrow="Diagnostics"
+          title="Health Check"
+          description={
+            'PC-side software components and live per-kiosk hardware status — the single source of truth for "is everything actually working."'
+          }
+          onRefresh={fetchHealth}
+          refreshing={healthLoading}
+        />
 
         {/* PC software checks */}
-        <Card>
-          <CardHeader className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            <span className="font-semibold">PC Software Components</span>
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="sm" mb="md">
+            <ThemeIcon size={38} radius="md" variant="light" color={roleColor.brand}>
+              <Server size={19} />
+            </ThemeIcon>
+            <Text fw={700}>PC Software Components</Text>
             {health && (
-              <Chip
-                size="sm"
-                color={health.overall === "ok" ? "success" : "warning"}
-                variant="flat"
+              <Badge
+                variant="light"
+                color={health.overall === "ok" ? roleColor.success : roleColor.warning}
               >
                 {health.overall === "ok" ? "All OK" : "Degraded"}
-              </Chip>
+              </Badge>
             )}
-          </CardHeader>
-          <Divider />
-          <CardBody>
-            {healthLoading && !health ? (
-              <div className="flex justify-center py-8">
-                <Spinner size="sm" />
-              </div>
-            ) : !health ? (
-              <p className="text-sm text-danger">
-                Could not reach the Node API to run the Components Check.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {health.checks.map((c) => (
-                  <div
-                    key={c.name}
-                    className="flex items-start gap-2 rounded-lg border border-default-200 p-3"
-                  >
+          </Group>
+          <Divider mb="md" />
+
+          {healthLoading && !health ? (
+            <Center mih={140}>
+              <Loader size="sm" />
+            </Center>
+          ) : !health ? (
+            <Alert icon={<AlertCircle size={16} />} color={roleColor.critical} variant="light">
+              Could not reach the Node API to run the Components Check.
+            </Alert>
+          ) : (
+            <Stack gap="xs">
+              {health.checks.map((c) => (
+                <Card key={c.name} withBorder radius="sm" padding="sm">
+                  <Group gap="sm" align="flex-start" wrap="nowrap">
                     <StatusIcon ok={c.ok} />
                     <div>
-                      <div className="text-sm font-medium">{c.name}</div>
-                      <div className="text-xs text-default-500">{c.detail}</div>
+                      <Text size="sm" fw={600}>
+                        {c.name}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {c.detail}
+                      </Text>
                     </div>
-                  </div>
-                ))}
-                <p className="pt-1 text-xs text-default-400">
-                  Last checked:{" "}
-                  {new Date(health.checkedAt).toLocaleTimeString()}
-                </p>
-              </div>
-            )}
-          </CardBody>
+                  </Group>
+                </Card>
+              ))}
+              <Text size="xs" c="dimmed" mt={4}>
+                Last checked: {new Date(health.checkedAt).toLocaleTimeString()}
+              </Text>
+            </Stack>
+          )}
         </Card>
 
         {/* Per-kiosk hardware self-test */}
@@ -291,75 +294,71 @@ export default function HealthCheckPage() {
           const test = selfTests[kioskId];
           const online = kioskOnline[kioskId];
           return (
-            <Card key={kioskId}>
-              <CardHeader className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Cpu className="h-5 w-5" />
-                  <span className="font-semibold">Kiosk: {kioskId}</span>
+            <Card key={kioskId} withBorder radius="md" padding="lg">
+              <Group justify="space-between" wrap="wrap" mb="md">
+                <Group gap="sm">
+                  <ThemeIcon size={38} radius="md" variant="light" color={roleColor.accent}>
+                    <Cpu size={19} />
+                  </ThemeIcon>
+                  <Text fw={700}>Kiosk: {kioskId}</Text>
                   {online !== undefined && (
-                    <Chip
-                      size="sm"
-                      color={online ? "success" : "default"}
-                      variant="flat"
+                    <Badge
+                      variant="light"
+                      color={online ? roleColor.success : "gray"}
                     >
                       {online ? "Online" : "Offline"}
-                    </Chip>
+                    </Badge>
                   )}
                   {test && (
-                    <Chip
-                      size="sm"
-                      color={test.overall === "ok" ? "success" : "warning"}
-                      variant="flat"
+                    <Badge
+                      variant="light"
+                      color={test.overall === "ok" ? roleColor.success : roleColor.warning}
                     >
-                      {test.overall === "ok"
-                        ? "Hardware OK"
-                        : "Hardware Degraded"}
-                    </Chip>
+                      {test.overall === "ok" ? "Hardware OK" : "Hardware Degraded"}
+                    </Badge>
                   )}
-                </div>
+                </Group>
                 <Button
-                  size="sm"
-                  color="primary"
-                  variant="flat"
-                  isLoading={testRunning[kioskId]}
-                  onPress={() => runSelfTest(kioskId)}
+                  variant="light"
+                  loading={testRunning[kioskId]}
+                  onClick={() => runSelfTest(kioskId)}
                 >
                   Run Self-Test
                 </Button>
-              </CardHeader>
-              <Divider />
-              <CardBody>
-                {!test ? (
-                  <p className="text-sm text-default-500">
-                    No self-test has been run yet this session. Press &quot;Run
-                    Self-Test&quot; to pulse every solenoid/actuator and check
-                    every camera remotely.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {test.components.map((c) => (
-                      <div
-                        key={c.component}
-                        className="flex items-start gap-2 rounded-lg border border-default-200 p-2"
-                      >
+              </Group>
+              <Divider mb="md" />
+
+              {!test ? (
+                <Text size="sm" c="dimmed">
+                  No self-test has been run yet this session. Press &quot;Run
+                  Self-Test&quot; to pulse every solenoid/actuator and check every
+                  camera remotely.
+                </Text>
+              ) : (
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="xs">
+                  {test.components.map((c) => (
+                    <Card key={c.component} withBorder radius="sm" padding="sm">
+                      <Group gap="sm" align="flex-start" wrap="nowrap">
                         <StatusIcon ok={c.ok} />
                         <div>
-                          <div className="text-xs font-medium">
+                          <Text size="xs" fw={600} ff="monospace">
                             {c.component}
-                          </div>
+                          </Text>
                           {c.error && (
-                            <div className="text-xs text-danger">{c.error}</div>
+                            <Text size="xs" c={roleColor.critical}>
+                              {c.error}
+                            </Text>
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardBody>
+                      </Group>
+                    </Card>
+                  ))}
+                </SimpleGrid>
+              )}
             </Card>
           );
         })}
-      </div>
+      </Stack>
     </AdminLayout>
   );
 }
