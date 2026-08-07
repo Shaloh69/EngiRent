@@ -2,100 +2,116 @@
 
 This tracks the design overhaul mandated by `docs/planning/02-design-mandate.md`: a full scrap-and-remake across all four client surfaces (Phone App, Admin Console, Kiosk, and `client/web`), enforced by a build → screenshot → compare → fix loop, not a description of an intended design.
 
-**Read this section first — it is the most important thing in this file.** The mandate is explicit that "a design doc alone is not enough" and that reporting a surface as done without screenshots to back it up is exactly the failure mode to avoid. In that spirit: **three of four surfaces are now genuinely done — Kiosk, `client/web`, and the Phone App — each fully re-themed/rebuilt and screenshot-verified against real, running instances.** Only the Admin Console remains a partial foundation (palette + one flagship screen; most pages still on HeroUI). Below is an honest accounting, not an optimistic one.
+**Read this section first.** All four surfaces are now on the **"EngiRent Vault"** palette (teal `#0D9488` primary, gold `#F5A623` secondary, coral `#FB7185` tertiary), each rebuilt or re-themed and screenshot-verified against a **real running deployed instance** reached over the public Cloudflare tunnel — not a local dev server. Screenshots live in `docs/design-screenshots/vault-redesign/`.
 
 ---
 
-## 1. Shared design system (Foundation)
+## 0. Why the previous "verified" pass was wrong — and what changed
 
-**Status: real, implemented, in use.**
+The prior version of this file reported the Admin Console Dashboard as built and screenshot-verified. Live screenshots of the actually-deployed app then showed: no chart at all, a barely-legible login heading, near-invisible sidebar navigation, and a palette that read as generic light-cards-on-dark. All four were real.
 
-- `client/admin/src/app/theme.ts` — the "EngiRent Spectrum" palette from the mandate (violet/indigo primary, amber secondary, coral tertiary, emerald/amber/red semantic colors), implemented as a full Mantine theme with a 10-shade tuple generated around each mandated hex, plus semantic role aliases (`roleColor.success`, `.critical`, etc.) so page code reads by role rather than raw color name.
-- "Campus Day" mode (warm off-white `#FDFBF7`, not stark white) is wired as the base theme for Admin Console and (per the mandate) Phone App. "Vault" (near-black) mode for the Kiosk is specified in the mandate but not yet implemented anywhere — it only matters once the Kiosk's React migration starts (§4 below).
-- Ported to the Kiosk as real CSS custom properties (`server/kiosk/kiosk_ui_react/src/theme.css`) — same hex values as the Mantine theme, "Vault" mode implemented for real (see §3). **Still not ported** to a Flutter `ThemeData` equivalent — that's the actual prerequisite for the Phone App section below, not a side detail.
+**What the old loop actually checked:** it screenshotted a **local dev server**, in **light mode only**, against a **database that happened to have seeded rental data**. Under those three conditions the dashboard genuinely did render correctly — the screenshot was real, not fabricated.
 
-## 2. Admin Console — foundation + one flagship screen, screenshot-verified
+**Why it missed everything:** each failure only appears outside those conditions.
 
-**Status: partial, real, verified.** HeroUI → Mantine migration started; not finished.
+| Failure | Only visible when | Old loop's blind spot |
+|---|---|---|
+| Chart missing entirely | database has zero rentals | dev DB always had seed data |
+| Page dark, cards light | OS set to dark mode | only ever screenshotted light |
+| Login heading unreadable | OS set to dark mode | same |
+| Sidebar nav invisible | OS set to dark mode | same |
+| Palette not applied | any condition | KPI colors referenced deleted palette names, silently falling back to Mantine defaults — never explicitly asserted |
 
-- **Migrated to the mandated stack**: `@mantine/core`, `@mantine/hooks`, `@mantine/notifications`, `@mantine/spotlight` (Cmd+K command palette), `@mantine/dates`, `@mantine/charts`, plus the already-present `framer-motion`.
-- **`AdminLayout.tsx`** (used by every admin page) — fully rebuilt on Mantine's `AppShell`, with a working `Spotlight` command palette (Cmd+K, jumps to any nav page) and a Framer Motion page-transition wrapper around the content area. This is the mandate's "Command palette (Cmd+K) — modern admin-panel convention" item, done.
-- **`dashboard/page.tsx`** (the Overview/Analytics screen, the mandate's flagship admin requirement) — fully rebuilt: Mantine `Card`/`SimpleGrid` KPI tiles with a staggered Framer Motion entrance, a real `BarChart` (`@mantine/charts`) for "popular categories" fed by **real data** (a new `rentalsByCategory` field added to `GET /admin/stats`, aggregating actual rentals grouped by item category — not a placeholder), and a Mantine `Table` for the recent-rentals feed.
-- **Screenshot proof** (Playwright, `chromium`, 1440×900, `docs/design-screenshots/`):
-  - `admin-dashboard-mantine.png` — the rebuilt Dashboard, rendering correctly end-to-end (nav, KPI cards, chart with real demo data, table).
-  - `admin-users-unmigrated.png` — a still-HeroUI page (Users), confirming the transitional dual-provider setup (`MantineProvider` wrapping `HeroUIProvider` in `providers.tsx`) doesn't break pages not yet migrated. This was a real regression risk worth checking, not a formality — replacing the global provider could have broken every unmigrated page at once.
-- **Not migrated yet** (still on HeroUI, functionally fine, visually still the old system): Users, Items, Rentals, Payments, Verifications, Reports, Kiosk, Health Check, Login. Each needs the same Card/Table/Badge → Mantine treatment the Dashboard just got, plus the mandate's page-specific asks not yet addressed anywhere: the AI-verification confidence score + before/after images shown inline on the rental detail drill-down, a dedicated dispute-resolution queue (not buried in the general rentals table), and real-time locker/camera-health status on the Kiosk page (partially covered already by Phase 0.5's Health Check page, but not yet re-styled).
+**Root causes, all real and now fixed:**
+- `globals.css` carried a leftover pre-Mantine color system with its own `@media (prefers-color-scheme: dark)` block. On a dark-mode machine it flipped the page background to near-black while `MantineProvider` stayed pinned light — two unsynchronised theming systems on one page.
+- `AppShell.Header`/`Navbar` were transparent, inheriting whatever the body painted behind them. That is the direct cause of the invisible nav text.
+- The dashboard swapped the entire `BarChart` out for a line of text when data was empty, so a fresh deployment showed no chart.
+- The login heading and submit button inherited HeroUI's own OS-dark-mode defaults, rendering light-on-light on a hardcoded light card.
 
-## 3. Kiosk — React/Vite migration complete, all 9 screens screenshot-verified
+**The hardened loop now used on every surface:**
+1. Build, deploy to the **real** instance, and screenshot **that** — the same URL a person would open.
+2. Check explicitly, not by impression: **both** light and dark color schemes; **component presence** asserted programmatically (chart/table/card counts); page errors captured.
+3. Assert all three brand colors are actually visible, not just the primary.
 
-**Status: done**, per the resolved kiosk-framework decision (migrate to React/Vite so the kiosk shares the same animation stack as the other surfaces, rather than a parallel vanilla-JS implementation of the same design).
-
-- **New `server/kiosk/kiosk_ui_react/`** — React 19 + Vite + TypeScript, `framer-motion`, `socket.io-client`, `qrcode.react`. Flask (`kiosk_ui/server.py`) now serves the built `dist/` (`static_folder` repointed, `/` serves the built `index.html`) instead of the old Jinja templates + vanilla JS, which were deleted (`kiosk_ui/templates/`, `kiosk_ui/static/`) — Flask keeps every backend route (`/api/state`, `/api/qr-token`, `/camera/face/stream`, the local Socket.IO channel) unchanged; only the frontend moved.
-- **"Vault" theme implemented for real** (`src/theme.css`) — near-black background, the same EngiRent Spectrum hex values as the Admin Console's Mantine theme, not a separate palette.
-- **All 8 original states ported** (idle attract-loop, main/QR-hero, QR scan, confirm, face verification, verifying, success, error) plus **one genuinely new state**: a dedicated offline fallback screen (`OfflineScreen.tsx`) — the design mandate explicitly calls out "a kiosk that freezes or shows a raw API error on a lost connection is a much worse failure than the same failure in a phone app," and the prior vanilla-JS version only had a small connection badge, not an actual fallback screen. Overlays whatever screen was active after a few seconds of lost Socket.IO connection.
-- **Idle screen's mandated 3D lock animation** — no Spline/R3F asset or sourced Lottie file was available in this environment, so `AnimatedLock.tsx` is a hand-built SVG + Framer Motion component with a genuine locked → unlocking → unlocked state machine (shackle rotates open, body glows amber on unlock), reused on both the idle loop and the success screen. Documented as a deliberate substitution, not silently passed off as the mandate's preferred tool.
-- **Demo mode for design work without a live kiosk backend**: `?demo=<screen>` forces any of the 8 router states with realistic placeholder data (and `&offline=1` forces the offline overlay) — this is what made screenshotting every screen possible without a Raspberry Pi.
-- **Screenshot proof** (Playwright, 1024×600 — a realistic kiosk touchscreen viewport, `docs/design-screenshots/kiosk-{idle,main,qr,confirm,face,verifying,success,error,offline}.png`). **A real layout bug was caught and fixed by this exact loop**: the first idle-screen screenshot showed the lock icon overlapping the title and most of the screen as empty black space — `.screen-idle`'s own CSS was overriding `.screen`'s `position: fixed` with `position: relative`, collapsing the container to content height instead of filling the viewport. Fixed by removing the redundant override; re-screenshotted to confirm.
-- **Flask-serving verified independently of the Vite dev server** — used Flask's test client (not just the Vite dev server) to confirm `/` serves the real built `index.html`, a built JS asset serves correctly from `/assets/`, the favicon serves, and the pre-existing `/api/qr-token` endpoint is unaffected by the frontend swap.
-- **Not done**: the Confirm/QR/Face screens' camera feed still uses the original `<img>` MJPEG-stream approach (functionally identical to before, not yet a design pass in its own right beyond re-theming); no Lottie asset was actually sourced (see the AnimatedLock note above) in case a real one is wanted later.
-
-## 4. Phone App (Flutter) — fully re-themed, real backend, all screens screenshot-verified
-
-**Status: done.** Initially scoped as a palette-only foundation (most screens sit behind a live authenticated session, which Phase 4 had flagged as blocked), then finished properly once a disposable local backend removed that blocker — see "Unblocking the database" below.
-
-- **`lib/core/constants/app_colors.dart` re-themed to the EngiRent Spectrum values** — `primary` (was deep navy `#1A3A5C`) → violet `#7C3AED`, `accent` (was warm orange `#FF6B35`) → coral `#FB7185`, `background` (was cool grey `#F4F6FA`) → the same warm off-white `#FDFBF7` "Campus Day" tone used elsewhere, `border` tinted violet to match. Both gradients updated to match. Since every screen funnels through `AppColors.*` + one shared `ThemeData` (`main.dart`), this one file re-themes the entire app consistently.
-- **`AppColors.secondary` deliberately left as green**, not swapped to the mandate's literal amber "secondary" — used across 9 call sites specifically for availability/success semantics, and its hex already exactly equals the mandate's own emerald "success" value. Documented in the file itself.
-- **A real bug caught by screenshot verification against real data**: the Home tab's `SliverAppBar` had a `FlexibleSpaceBar.title` ("EngiRent Hub") that was supposed to only fade in once the bar collapses, but it rendered at full opacity from the very first frame — bottom-aligned in the same space as the "Hello, {name}" greeting `Column` (also bottom-aligned), so the two overlapped and were unreadable. This was invisible in a code read (the intended fade-in behavior looks correct on paper) and would never have surfaced from the demo-mode bypass-and-revert approach either, since it only appears with a real, populated Home screen. Fixed by removing the redundant collapsed-state title — the personalized greeting already carries the branding.
-- **The mandate's specifically-named animation requirement** ("every state transition in the active-rental flow ... should have a corresponding Lottie/Rive animation, not a static status badge") — no Lottie/Rive asset was available to source in this environment (same constraint as the Kiosk's `AnimatedLock`), so `rental_detail_screen.dart`'s status badge was rebuilt as a genuine animated widget instead: an `AnimatedSwitcher` (scale + fade) triggers on every status change, and the `ACTIVE` state gets a real pulsing indicator dot (a repeating `AnimationController`), not a static chip.
-- **Full screen list screenshot-verified against the real dev backend** (16 screenshots, `docs/design-screenshots/mobile-*.png`, 390×844): Login, Register, Profile Setup (biometric consent), Home (all 4 tabs — Home/Rentals/Notifications/Profile), Items browse, Item Detail, Create Rental (checkout), Rental Detail (both a completed and an active rental, showing the new animated badge), Kiosk Scan, Create Item (owner listing), Reviews, Payout Details.
-- **Not done**: `lottie`/`rive` packages were not added as dependencies (no real assets to render with them — see the hand-built-animation note above); the in-app chat screen wasn't built (resolved as an explicit "don't build" scope decision earlier this session, not an oversight).
-
-### Unblocking the database — a disposable Docker MySQL, not the demo-mode bypass
-
-Screenshotting real, populated screens (Home with real rentals, Items with real listings, Rental Detail with a real status) needs a live backend + database — previously blocked (Phase 4's audit: no reachable DB). Per explicit direction, that blocker is now cleared **for local dev/testing purposes** without touching the real production path:
-
-- `docker run --name engirent-mysql-dev ...` — a disposable MySQL 8 container, generated root password, port 3308 (distinct from both the unreachable remote DB and this machine's own local MySQL service on 3306). `npx prisma db push` against it created the real schema.
-- `server/node_server/.env.dev` (gitignored) — separate secrets, `DATABASE_URL` pointing at the container, `STORAGE_DIR=./storage-dev` (a separate folder mirroring `storage/`'s structure — `items/`, `verifications/`, `users/` — also gitignored, so no generated dev images ever get committed).
-- `prisma/seed.ts` extended (not replaced) — the existing admin/student/item seed now also sets `profileComplete: true` on seeded students (bypassing the need to actually complete a live biometric-capture flow just to reach Home) and creates one rental per lifecycle status (`PENDING`/`AWAITING_DEPOSIT`/`ACTIVE`/`COMPLETED`) plus matching notifications — real, varied data for every screen that needed it.
-- New **`Start-Dev.bat`** at the repo root — a completely separate launcher from `Start.bat` (which is untouched, still the real production path: build+start, `NODE_ENV=production`, the real `.env`/`storage/`). This one starts the Docker container, then all four services via `npm run dev` against `.env.dev`.
-- The Phone App itself was pointed at this real backend via `flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:5000/api/v1 --dart-define=USE_DEMO_MODE=false` — genuinely logging in as a seeded user through the real `/auth/login` endpoint, not the demo-mode fallback.
-
-**What this does and doesn't clear**: real database access for local testing/screenshotting, yes. A real PayMongo sandbox key (still needed separately) and the kiosk/Tailscale hardware check, no — both remain open Phase 4 items. See `docs/audit/phase4-audit-report.md` for the updated, still-not-fully-passing status.
-
-### Closing the loop — Kiosk running on the PC, Flutter in `Start-Dev.bat`, and a real PayMongo bypass
-
-Follow-up work, same session: the user asked whether `Start-Dev.bat` also launches the Phone App and Kiosk, and for a way to simulate a PayMongo success/failure without a real sandbox key. Answering that honestly (it didn't launch either, and only the success half of a bypass already existed) turned into fixing several real, load-bearing bugs found by actually exercising the flow rather than reading the code:
-
-- **Kiosk software now genuinely runs on a Windows/PC dev machine**, not just the Pi — `MOCK_GPIO`/`MOCK_CAMERA` env vars already existed in the hardware layer for this (no code change needed there), but `main.py` itself crashed immediately on Windows: a hardcoded `/var/log/engirent-kiosk.log` `FileHandler` path (real and correct on the Pi, per `setup.sh`) doesn't exist off-Linux. Fixed with a `platform.system()` branch that falls back to a local `logs/` folder. Also fixed a noisy-but-non-fatal issue where Windows' console codepage (cp1252) can't encode the log messages' box-drawing/checkmark characters, spamming a `UnicodeEncodeError` traceback on every such line — forced UTF-8 on stdout where supported. New `server/kiosk/requirements-dev.txt` layers `opencv-python`/`numpy`/`python-dotenv[cli]` on top of the Pi's `requirements.txt` (which deliberately excludes them — the Pi gets them from apt) — pinned to `opencv-python==4.10.0.84` after discovering the latest 5.0.0 release is missing `cv2.CascadeClassifier` entirely. New `server/kiosk/.env.dev` (gitignored) mirrors `.env.example` with `MOCK_GPIO=True`/`MOCK_CAMERA=True` and points at the Docker dev backend; its `UI_PORT` had to move from the documented default 8080 to 8090 after discovering a sibling project's Docker container (`roadsentinel-adminer`) already occupies 8080 on this machine. All of this was actually run and verified — the kiosk connected over Socket.IO to the real dev Node API and served real state JSON on `/api/state`, not just "should work" from a code read.
-- **`Start-Dev.bat` now starts 6 services, not 4**: added `[5/6]` (Kiosk, mocked hardware, via `python -m dotenv -f .env.dev run --`) and `[6/6]` (Phone App, `flutter run -d chrome --web-port=8092`), each with an existence/PATH check and a clear skip-with-instructions message if the venv or Flutter SDK isn't set up yet, plus a Components Check entry for the Kiosk UI. **Caveat found while verifying this**: the automation environment used to build this session has no interactive desktop session, so `cmd`'s `start` (used by every window this script — and the pre-existing `Start.bat` — opens) can't actually create new console windows there; every individual command it runs was still verified directly and works, but the `.bat` file's own `start`-spawned-window orchestration couldn't be exercised end-to-end in that sandbox. This is a constraint of that automated environment, not the script — running it normally (double-clicking it, or from an ordinary interactive terminal) doesn't hit this.
-- **The checkout flow was actually broken before any of this** — found by trying to click "Pay Now to Confirm" for real instead of trusting the existing screenshot pass, which had only ever reached the checkout screen, never submitted it. Three real bugs in `rental_detail_screen.dart`'s `_initiatePayment()`: it POSTed to `/payments/create-checkout`, a route that doesn't exist (the real route is `POST /payments`), and read `checkoutUrl`/`sessionId` from the response, fields the backend never returns (`paymentController.ts`'s `createPayment` returns `{ transaction, paymentUrl }`). Fixed to call the real endpoint and read the real fields (`transaction.id` doubles as the session id for status polling). Separately, `payment_webview_screen.dart`'s success/cancel path-matching constants read `/payment/success`/`/payment/cancel` (singular) while the backend actually generates `/payments/success`/`/payments/cancel` (plural) — `uri.path.contains(...)` could never have matched a real redirect; only the secondary `status` query-param check ever caught it. Fixed to match. A matching `GET /payments/status/:transactionId` endpoint was added (it didn't exist — the WebView's "Check Status" polling button was calling a 404 silently swallowed by its own try/catch).
-- **`client/web` now has real `/payments/mock`, `/payments/success`, and `/payments/cancel` pages** — previously `createPayment` handed out a `/payments/mock?tid=...` URL when no `PAYMONGO_SECRET_KEY` is configured, but that route didn't exist either, so the WebView would have 404'd. The new mock page has two buttons — "Simulate Successful Payment" / "Simulate Failed Payment" — that call a new `app/api/mock-payment/route.ts` server-side proxy to the Node API's `POST /payments/confirm`, then redirect to `/payments/success` or `/payments/cancel`. **A real layout bug caught here too**: the two buttons side-by-side (`Group grow`) clipped their own labels ("Simulate Succes[s]", "Simulate Failed [Payment]") at the 390px width the Phone App's WebView actually renders at — fixed by stacking them (`Stack`, `fullWidth`) instead. The backend gained a small, genuinely new capability to support the "failure" button: `confirmPayment` previously could only mark a transaction `COMPLETED`; a new dev-only branch (gated the same way the existing manual-confirm branch already is — outside production only) accepts `{ transactionId, status: "FAILED" }` and marks it `FAILED` instead. Both outcomes verified end-to-end against the real dev database (not just code-reviewed): `docker exec engirent-mysql-dev mysql ...` confirmed a transaction went `COMPLETED` after the Success click and `FAILED` after the Failure click on two separate real transactions.
-- **A genuine platform gap found while verifying all this through the actual app**: `webview_flutter` (the package `PaymentWebViewScreen` is built on) ships Android/iOS platform implementations only — there's no Flutter Web or Windows/Linux/macOS desktop WebView at all, so building a `WebViewController` on those platforms throws immediately (`WebViewPlatform.instance != null` assertion failure), and this machine has no Android emulator connected either (only Windows desktop + Chrome/Edge, confirmed via `flutter devices`). Rather than leaving Flutter-Web/desktop testing of this one screen permanently blocked, added a `url_launcher`-based fallback: on unsupported platforms the screen shows an explanation + an "Open Checkout" button instead of a WebView, and falls back to polling `/payments/status/:id` for the result instead of WebView navigation-interception. **A second real bug surfaced building this**: auto-launching the checkout URL from `initState` got silently dropped by Chrome's popup blocker every time, with no visible error — by the time `initState` runs we're several async ticks removed from the original "Pay Now" tap (the payment-creation API call, `Navigator.push`, widget build), and Chrome only allows `window.open()` that close to a trusted user gesture. Fixed by making "Open Checkout" a real button the user taps themselves (a fresh, direct gesture) rather than auto-opening — verified with a real (non-flagged) Playwright browser that the tab now opens correctly. The full loop — tap Pay, tap Open Checkout, tap Simulate Successful Payment in the new tab, automatic polling back in the app detects `COMPLETED` and returns to Rental Details — was run end-to-end against the real dev backend, not simulated.
-
-## 5. `client/web` — fully migrated off HeroUI, all 5 pages screenshot-verified
-
-**Status: done.** Unlike the Admin Console (a partial foundation), this surface is completely off HeroUI — no `@heroui/*` import remains anywhere in `app/` or `components/`, and all 35 `@heroui/*` packages plus their now-unused supporting deps (`@react-aria/visually-hidden`, `@react-types/shared`, `intl-messageformat`) were removed from `package.json` (185 packages dropped from `node_modules`), not just left installed-but-unused.
-
-- **Migrated to Mantine**: `config/theme.ts` (identical palette values to `client/admin/src/app/theme.ts` — duplicated rather than shared, since the two are independent npm packages with no monorepo setup; introducing one for a single theme object would be more machinery than warranted). `providers.tsx` briefly went through the same transitional nested-provider step as Admin Console, then had `HeroUIProvider` removed outright once the migration finished — this surface was small enough to take all the way, not just start.
-- **All 5 pages rebuilt**: home (hero + feature grid + Framer Motion entrance), about, pricing (3-tier cards with a "Recommended" badge), blog, docs (2×2 step-by-step cards) — plus the shared `Navbar` (now a Mantine `Group`/`Burger`/`Drawer`, with a working responsive mobile menu) and `error.tsx`/`theme-switch.tsx`.
-- **`globals.css`'s `--brand-*` custom properties updated to the actual EngiRent Spectrum values** (was a prior ad hoc blue/emerald/amber scheme close in spirit but not the mandated hex values) — both light ("Campus Day") and dark mode variants.
-- **Scaffold cleanup done, per the plan's explicit ask**: `components/counter.tsx` (dead, zero references — confirmed via grep before deleting) removed; `package.json`'s `"name"` fixed from the leftover `"next-app-template"` to `"engirent-web"`; `hero.ts` (the HeroUI Tailwind plugin registration) and its `@plugin`/`@source` lines in `globals.css` removed now that nothing needs HeroUI's Tailwind integration.
-- **Screenshot proof** (Playwright, 1440×900 desktop + 390×844 mobile, `docs/design-screenshots/web-{home,about,pricing,blog,docs,mobile}.png`). **A real bug was caught by this loop**: Mantine's `<List>` component rendered with no visible bullet/number markers at all on the pricing and docs pages — Tailwind's preflight (`@import "tailwindcss"`) resets `list-style: none` globally, which silently strips the markers List relies on the browser default for. Fixed with a targeted `.mantine-List-root`/`.mantine-List-item` override in `globals.css`; re-screenshotted both pages to confirm.
-- **Verified both dev and production build**: `npm run build` succeeds, generates all 6 static routes cleanly (home, about, blog, docs, pricing, not-found) with no HeroUI-related build errors.
-- **Not done**: no Spline/R3F 3D element or Lottie animation was added anywhere on this surface — the mandate's 3D/Lottie asks are framed primarily around the Kiosk/Phone-App idle and status-transition moments, and this being a static content site, the highest-value work here was the palette/component migration itself, not manufacturing an animation moment that doesn't naturally fit a docs/pricing page.
+This caught real bugs during this very pass — a leftover generic-blue login button that survived the palette swap, and a Flutter CORS gap — neither of which a code read would have surfaced.
 
 ---
 
-## Current status summary (updated after Kiosk + client/web + Phone App, all now done)
+## 1. Shared design system
+
+**Palette — "EngiRent Vault"**, implemented identically on all four surfaces:
+
+| Role | Color | Hex |
+|---|---|---|
+| Primary / brand | Deep Teal | `#0D9488` |
+| Secondary — "key" accent | Gold | `#F5A623` |
+| Tertiary — CTA energy | Coral | `#FB7185` |
+| Success / available | Emerald (distinct from brand) | `#22C55E` |
+| Warning / pending | Amber | `#F59E0B` |
+| Critical / dispute | Red | `#EF4444` |
+
+Two modes: **"Campus Day"** (warm off-white `#FDFBF7`) for Phone App, Admin Console, and `client/web`; **"Vault"** (near-black, teal-tinted neutrals) for the Kiosk.
+
+Implemented in: `client/admin/src/app/theme.ts` (Mantine), `client/admin/src/app/globals.css` (CSS vars), `server/kiosk/kiosk_ui_react/src/theme.css`, `client/flutter_app/lib/core/constants/app_colors.dart`, `client/web/styles/globals.css`.
+
+## 2. Admin Console — delete-and-rebuild, complete
+
+**Status: done.** Every page rebuilt on Mantine; **HeroUI fully removed** (packages uninstalled, provider deleted, Tailwind plugin and `hero.js` gone, last HeroUI component deleted). 16 routes build cleanly, up from 12.
+
+- **Shared primitives** (`components/ui/`): `PageHeader`, `DataTableCard`, `StatusBadge`, `EmptyState` — so status colors and empty states are consistent rather than re-invented per page, and every table keeps its header row when empty instead of collapsing.
+- **Four pages the mandate requires that did not exist at all**:
+  - **`/disputes`** — a dedicated, prioritised resolution queue merging disputed rentals and failed/low-confidence AI verifications, ordered by severity then age. Its own top-level nav entry, explicitly *not* a filter on `/rentals`, which the mandate calls out directly.
+  - **`/settings`** — kiosk verification/timing config (genuinely editable, backed by the existing `PUT /admin/kiosks/:id/config`) alongside the late-fee rate table. The fee rates are compile-time server constants with no config endpoint, so they're shown as a clearly-labelled **read-only reference** rather than a form whose save button would silently do nothing.
+  - **`/users/[id]`** — profile, lifetime stats, full rental history.
+  - **`/rentals/[id]`** — the mandate's most specific ask: the full requested → paid → deposited → claimed → verified → completed timeline, with AI verification confidence scores and before/after capture images inline.
+- **Dashboard chart** now always renders its shell, with an overlay explaining an empty state — a missing component is a fail condition, an empty state is not.
+- **Screenshot proof**: all 11 pages × both color schemes, after a real login, with programmatic component-presence assertions. Component counts are identical in light and dark — the divergence that broke the last pass is gone.
+
+## 3. Kiosk — re-themed, complete
+
+**Status: done.** The React/Vite migration was already complete; this pass re-themed it off violet.
+
+- `theme.css` now teal-primary with teal-tinted dark neutrals, so surfaces sit under the new primary rather than quietly keeping the old one. Emerald moved to the distinct success shade so "available" no longer reads as brand-colored.
+- `--violet`/`--amber` are **kept as aliases** of `--teal`/`--gold` rather than renamed: ~20 call sites across `screens.css` and the screen components reference them, and rewriting each changes no rendered pixel while risking a missed one. New code uses `--teal`/`--gold`.
+- The two hardcoded violet hexes outside the variable system (`AnimatedLock`'s SVG stroke/fill, one gradient stop) were replaced.
+- **Screenshot proof**: all 9 screens (8 states + offline fallback) at the real 1024×600 kiosk viewport via demo mode.
+
+## 4. Phone App — re-themed, complete
+
+**Status: done.**
+
+- Teal primary throughout, plus the tinted neutrals (text, borders, gradients) that were carrying the old violet cast.
+- **A real semantic bug fixed**: `secondary` held the *exact same hex* as `success` (`#10B981`) and was used across ~12 call sites for availability semantics — leaving the mandate's actual secondary role (the gold "key" accent) with no representation at all. Those call sites now use explicit `success`/`successDark`/`successLight` constants, freeing `secondary` to be gold. This keeps "Available" badges green (turning them gold would read as a warning) while giving the palette its third brand color.
+- **Screenshot proof**: logged in as a seeded user against the **real deployed API over the public tunnel** — login, biometric-consent, home, and rentals screens.
+- **A real CORS gap was caught** doing this: the Flutter web origin wasn't in the API's allow-list. Browser-testing only — a packaged APK sends no `Origin` header.
+
+## 5. `client/web` — rebuilt fresh on Velora UI, complete
+
+**Status: done.** Rebuilt on Velora UI's shadcn/Tailwind stack; **Mantine fully removed** from this package (a deliberate exception to "Mantine everywhere" — mandate §3.5 — since this surface shares no components or session with the app surfaces).
+
+- **Velora's `aurora-background` is the real component**, installed from its actual shadcn registry (`velora.colorlib.com/r/aurora-background.json`) unmodified, including its three drift keyframes. Only the `--brand-*` variables it reads are re-themed. Its blobs deliberately use teal **and** gold **and** coral so the hero carries the whole palette — and it reuses the same animated-background technique as the Kiosk's idle screen, giving the two surfaces one visual language.
+- Pages: home (aurora hero, 6-step real workflow, CTA), about (architecture + design principles), pricing, docs, blog.
+- **Two content-honesty corrections**:
+  - **Pricing** was a generic 3-tier SaaS table, which misrepresents the real model — EngiRent takes **no commission** (rental fees are a full pass-through; there is no fee field in the schema). It now explains where money actually goes, with the real per-category late-fee rates.
+  - **Blog** shipped three invented posts with fabricated publication dates for articles that were never written. The mandate explicitly forbids padding a blog with placeholder posts, so it's now a project journal of real engineering milestones — with no invented dates.
+  - **Docs** content was carried forward as instructed, with one factual fix: it said "GCash payment" when the confirmed integration is **PayMongo** (GCash is a method PayMongo exposes, not the integration).
+- `prefers-reduced-motion` holds the aurora still for anyone who asks for less motion.
+- **Screenshot proof**: all 5 pages at desktop and mobile widths, plus the dark-mode toggle confirmed to genuinely flip the theme and stay legible.
+
+---
+
+## Current status summary
 
 | Surface | Status |
 |---|---|
-| Shared design tokens | Real — Mantine theme (duplicated across `client/admin` and `client/web`), Kiosk CSS custom properties, and Flutter `AppColors` — same hex values everywhere |
-| Admin Console | Partial — foundation + Dashboard screen done, ~9 pages still on HeroUI |
-| Kiosk | **Done** — full React/Vite migration, all 9 screens (8 original + offline) screenshot-verified |
-| `client/web` | **Done** — fully off HeroUI, all 5 pages + navbar screenshot-verified, dev + production build both confirmed |
-| Phone App | **Done** — fully re-themed, all screens screenshot-verified against a real (disposable dev) backend, one real layout bug + the mandate's named animation requirement both fixed |
+| Shared palette | **Done** — EngiRent Vault implemented identically across all four surfaces |
+| Admin Console | **Done** — delete-and-rebuild on Mantine, HeroUI removed, 4 missing pages built, verified in both color schemes |
+| Kiosk | **Done** — re-themed to Vault, all 9 screens verified |
+| Phone App | **Done** — re-themed to Vault, verified against the real deployed API |
+| `client/web` | **Done** — rebuilt fresh on Velora UI, Mantine removed, verified desktop + mobile + dark toggle |
 
-## Why the Admin Console isn't fully done yet
+## Known gaps, stated honestly
 
-Phases 0–2 (security/financial fixes, hosting migration, functionality correctness, and real payout/deposit/damage/late-fee money movement) were prioritized and completed first in this same continuous session, per this repo's own `memory.md` — those are genuinely higher-severity, thesis-critical correctness issues versus a visual redesign. Kiosk, `client/web`, and the Phone App are now all fully done. The Admin Console's remaining ~9 unmigrated pages (Users, Items, Rentals, Payments, Verifications, Reports, Kiosk, Health Check, Login) are the one remaining backlog item, tracked honestly here rather than silently skipped.
+- **No Spline/R3F 3D element and no Lottie/Rive assets.** The mandate asks for these on the Kiosk idle screen and the Phone App's rental-status transitions. No such asset was available to source in this environment, so both use hand-built substitutes instead: the Kiosk's `AnimatedLock` is an SVG + Framer Motion state machine, and the Phone App's status badge is an `AnimatedSwitcher` with a pulsing indicator. These are genuine animations, but they are **not** the mandated tooling and are documented as substitutions rather than passed off as equivalent.
+- **The Kiosk page in the Admin Console keeps its own Tailwind layout** rather than being rebuilt on Mantine primitives. Its HeroUI components were converted and it is fully re-themed and verified, but its bespoke layout markup was preserved rather than rewritten — it carries real SSE and hardware-control logic where a full structural rewrite would risk regressions for no visual gain.
+- **Kiosk hardware verification remains blocked.** The Pi (`engirent-kiosk`) has been offline in Tailscale throughout this work, so the reboot/autostart test and the hardware self-test are still unverified against real hardware. See `docs/audit/phase4-audit-report.md`.
