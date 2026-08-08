@@ -7,8 +7,13 @@
    utilities). Mapped to CSS variables below so the whole aurora re-themes
    from one place. */
 @theme {
-  --font-sans: "Manrope", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /* Mandate §1.2 — resolve from the next/font variables set in layout.tsx
+     rather than naming families here, so the loaded font and the CSS
+     reference can't drift apart (they had: this said "JetBrains Mono" while
+     config/fonts.ts now loads IBM Plex Mono). */
+  --font-sans: var(--font-sans-loaded), "Manrope", sans-serif;
+  --font-mono: var(--font-mono-loaded), ui-monospace, monospace;
+  --font-display: var(--font-display-loaded), "Space Grotesk", sans-serif;
 
   --color-brand: var(--brand-primary);
   --color-brand-from: var(--brand-from);

@@ -5,7 +5,7 @@ import clsx from "clsx";
 
 import { Providers } from "./providers";
 import { siteConfig } from "@/config/site";
-import { fontSans } from "@/config/fonts";
+import { fontSans, fontDisplay, fontMono } from "@/config/fonts";
 import { Navbar } from "@/components/navbar";
 
 export const metadata: Metadata = {
@@ -38,9 +38,22 @@ export default function RootLayout({
         className={clsx(
           "min-h-screen font-sans antialiased",
           fontSans.variable,
+          fontDisplay.variable,
+          fontMono.variable,
         )}
       >
-        <Providers themeProps={{ attribute: "class", defaultTheme: "light" }}>
+        {/* Mandate §1.6 — both schemes are first-class and the default follows
+            the OS. This previously pinned defaultTheme:"light" with no
+            enableSystem, so a visitor on a dark-mode machine always got the
+            light site and the toggle was the only way to reach dark. */}
+        <Providers
+          themeProps={{
+            attribute: "class",
+            defaultTheme: "system",
+            enableSystem: true,
+            disableTransitionOnChange: true,
+          }}
+        >
           <div className="relative flex min-h-screen flex-col">
             <Navbar />
             {/* Full-bleed: each page owns its own max-width and padding, so
