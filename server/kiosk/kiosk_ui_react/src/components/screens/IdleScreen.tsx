@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AnimatedLock, type LockState } from "../AnimatedLock";
+import { AuroraBackground } from "../AuroraBackground";
 
 const SLIDE_MS = 4500;
 
@@ -92,6 +93,26 @@ export function IdleScreen({ onTap }: { onTap: () => void }) {
 
   return (
     <div className="screen screen-idle" role="button" aria-label="Touch to start" onClick={onTap}>
+      {/* Mandate §1.5 — the idle attract loop is the kiosk's showpiece screen
+          and carries the full-bleed aurora. The Kiosk is deliberately excluded
+          from §1.6's light/dark requirement: it is a fixed public display in
+          one known lighting environment with no per-user preference to
+          persist, and the permanently-dark "Vault" ground is what makes the
+          lock and accents read from across a corridor.
+
+          This runs on Raspberry Pi hardware this repo cannot currently reach
+          to test, so the component's CSS-gradient fallback matters more here
+          than anywhere else — if the Pi's WebGL context fails, the screen
+          still shows a themed gradient rather than a black rectangle. */}
+      <AuroraBackground
+        colorStops={["#0D9488", "#F5A623", "#FB7185"]}
+        amplitude={1.25}
+        blend={0.5}
+        speed={0.35}
+        opacity={0.55}
+      />
+      <div className="idle-scrim" aria-hidden />
+
       <div className="idle-lock">
         <AnimatedLock state={lockState} size={100} />
       </div>

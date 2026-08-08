@@ -24,6 +24,35 @@
     radial-gradient(ellipse 80% 60% at 50% 30%, var(--violet-glow) 0%, transparent 70%),
     linear-gradient(180deg, #08060d 0%, #0b0816 100%);
 }
+
+/* Mandate §1.5 — the aurora sits at the very back; a scrim sits between it
+   and the copy so the drifting bright bands can never drop the eyebrow/body
+   text below readable contrast, and every foreground element is lifted above
+   both. Without the explicit z-index the absolutely-positioned lock and CTA
+   would stack under the canvas. */
+.screen-idle > .idle-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(6, 12, 10, 0.72) 0%, rgba(6, 12, 10, 0.42) 55%, transparent 100%),
+    linear-gradient(180deg, rgba(6, 12, 10, 0.55) 0%, transparent 35%, rgba(6, 12, 10, 0.6) 100%);
+}
+/* z-index ONLY — do not set `position` here. idle-lock/idle-dots/idle-cta are
+   position:absolute against the fixed .screen box; forcing them to relative
+   (as a first attempt did) drops them out of that box and they pile up at
+   the right edge in source order. Same trap the .screen-idle comment above
+   already documents. */
+.screen-idle > .idle-lock,
+.screen-idle > .idle-slide,
+.screen-idle > .idle-dots,
+.screen-idle > .idle-cta {
+  z-index: 2;
+}
+.idle-slide {
+  position: relative;
+}
 .idle-lock {
   position: absolute;
   top: 64px;
