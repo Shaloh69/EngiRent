@@ -185,7 +185,10 @@ export default function DashboardPage() {
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">
                       {card.label}
                     </Text>
-                    <Text size="xl" fw={800} mt={4}>
+                    {/* Mandate §1.2 — KPI figures and currency are set in
+                        IBM Plex Mono with tabular figures, so a column of
+                        numbers aligns and reads as instrument output. */}
+                    <Text size="28px" fw={600} mt={4} className="mono-num">
                       {kpiValue(card.key)}
                     </Text>
                   </div>

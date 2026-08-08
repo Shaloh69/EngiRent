@@ -37,12 +37,53 @@ Do not report a surface as "done" without the screenshots to back it up in `DESI
 
 **Add more, don't just reskin what's there.** Every surface's screen/component list in this document is a floor, not a ceiling — where a screen could reasonably use an additional component (a stat card, a secondary chart, an empty-state illustration, a related-items rail), add it. The goal is a genuinely fuller product, not the same page count in nicer colors.
 
+### 1.0 Named aesthetic direction — commit to this one, don't average across all of them
+
+**Direction: "Machined Vault" — engineering instrument, not SaaS dashboard.**
+
+The reference objects are the things these students actually handle: a Vernier caliper, an oscilloscope faceplate, a machined aluminium enclosure, a blueprint, a brass padlock. Precise, dense, high-contrast, built for reading at a glance under bad lighting. **Not** friendly-startup, not soft-and-rounded, not pastel.
+
+Adjectives to design toward: *machined, instrument-grade, dense, deliberate, legible, engineered.*
+Anti-examples to design away from: *airy, playful, bubbly, "clean minimal SaaS", Linear-clone, Stripe-clone.*
+
+**Why this section exists:** a generic direction produces generic output. Without one named direction, the fallback is the aggregate of every well-designed interface ever seen — which is exactly the failure this document already caught once. Pick this direction and apply it consistently; do not blend it with a second one.
+
+### 1.1 Banned by default — these are the specific tells of machine-generated UI
+
+Each of these is a **fail condition** in §0's verification checklist, not a preference. Every one is present in some form in the current build; that's the point.
+
+| Banned | Use instead |
+|---|---|
+| **Inter, Geist, or system-default sans** as the primary typeface | The type stack in §1.2 — Inter in particular is the single most common tell |
+| Blue or indigo as primary accent | Teal `#0D9488` (§1.3) |
+| Border-radius above **6px** on cards/buttons/inputs; pill-shaped buttons | 2px (inputs, chips), 4px (buttons), 6px (cards/panels) — machined edges, not lozenges |
+| Multi-layer / soft "elevation" drop shadows | A single 1px border in a palette tint, plus at most one hard low-opacity shadow |
+| Full-width hero with centred headline + subheadline + one CTA | Asymmetric split layouts, off-centre composition, real content in the second column |
+| Icon-grid "features" section (3 or 4 identical icon+title+blurb cards) | A real sequenced walkthrough, a labelled diagram, or a comparison table |
+| Testimonial carousel; three-column footer link farm | Omit unless real content exists — do not ship placeholder testimonials |
+| Uniform 50px+ padding everywhere | The 8px scale in §1.4, varied deliberately by density |
+| Generic gray `#6B7280`-family neutrals | Palette-tinted neutrals (§1.3) so gray reads as part of the brand, not a library default |
+
+### 1.2 Typography — exact families, no substitutions
+
+Three families, each with a distinct job. All three are on Google Fonts and available to Flutter via `google_fonts`, so every surface can use the identical stack.
+
+| Role | Family | Weights | Used for |
+|---|---|---|---|
+| Display / headings | **Space Grotesk** | 500, 700 | Screen titles, section headers, KPI numbers, hero type. Technical/geometric character with quirks that read as engineered rather than neutral |
+| Data / numerals | **IBM Plex Mono** | 400, 600 | IDs, locker numbers, timers, currency amounts, transaction refs, countdowns, anything tabular. IBM Plex was literally drawn for technical work |
+| Body / UI | **Manrope** | 400, 500, 600 | Paragraphs, labels, buttons, form fields, table body |
+
+**Every monetary amount, rental ID, locker number, and countdown must be set in IBM Plex Mono.** This is the single cheapest, highest-impact move that makes the product read as an instrument rather than a template — do not skip it.
+
+### 1.3 Palette
+
 - **Component base: Mantine.** Not HeroUI, not a HeroUI reskin. Genuinely different theming architecture (prop-driven, not TailwindVariants), 120+ components, strong dark mode support needed for the Kiosk's dark theme (§4 of the palette section below). This applies to Admin Console and Kiosk (once migrated); `client/web` uses a different, deliberately separate stack — see §3.5.
 - **Animation/3D layer, layered on top of Mantine — this is where "beautiful" actually comes from:**
   - **Framer Motion** — page/element transitions, micro-interactions, everywhere.
   - **Spline** (fastest path to real 3D, designer-friendly, exports a ready React component) or **React Three Fiber + drei** if the 3D needs to be more data-driven — for the rotating 3D lock and item-preview elements.
   - **Lottie** (`lottie-react` for web/kiosk, `lottie_flutter` for the phone app — same JSON files reused across all three surfaces) — thousands of free, ready-to-use lock/unlock/key animations confirmed available on LottieFiles and IconScout. Do not hand-animate these from scratch.
-  - **react-bits** — animated backgrounds (same tool already validated for the sibling Road Sentinel project; framework-agnostic, no registry lock-in).
+  - **react-bits** — animated backgrounds; see §1.5 for the exact per-surface assignment.
   - **Rive** (Flutter-specific, phone app only) — for the lock icon to have a real state machine (locked → unlocking → unlocked), not just a fire-and-forget clip.
 
 - **Color palette — pivoted, and here's why.** The prior palette (violet primary) is being replaced, not just re-enforced — when it actually shipped, it rendered as a generic blue button and a mostly colorless UI, which is exactly the failure mode of relying on the single most common SaaS brand color (over 70% of SaaS products default to blue/violet). **New palette: "EngiRent Vault"** — deep teal/emerald as primary, distinctive rather than generic, still reads as trustworthy/secure (validated as a genuine alternative to blue for exactly that purpose), and pairs naturally with gold for the literal lock-and-key motif:
@@ -58,7 +99,37 @@ Do not report a surface as "done" without the screenshots to back it up in `DESI
 
 **All three brand colors (teal, gold, coral) must be visibly present on every major screen** — not one used once for a nav highlight while everything else defaults to library gray. This is now an explicit item in §0's verification checklist; treat "only one brand color visible" as a fail condition, the same as a missing component.
 
-Two modes, not one theme stretched across contexts: **"Campus Day"** (warm off-white, not stark `#FFFFFF`) for Phone App, Admin Console, and `client/web`; **"Vault"** (near-black, deliberate dark mode) for the Kiosk specifically — the dark background is what makes the 3D lock and accent colors actually pop on a public always-on display.
+**Palette-tinted neutrals, not library gray.** Every surface, border, and muted-text neutral is mixed toward the teal primary rather than taken from a default gray ramp. Reference values (light mode): surface `#FFFFFF`, app background `#FDFBF7` ("Campus Day" warm off-white, never stark white), border `#D9ECE8`, muted text `#55706B`, ink `#0F2622`. Dark mode: app background `#071310`, surface `#0E1F1B`, border `#1E3B35`, muted text `#7FA39C`, ink `#EAF5F2`.
+
+### 1.4 Spacing, radius, borders
+
+- **8px base grid, no exceptions.** Every margin, padding, and gap is a multiple of 8 (4px permitted only for icon-to-label gaps and inline chip padding). Arbitrary values like 13px/22px/37px are the fastest tell of generated layout — if a value isn't on the scale, it's wrong.
+- **Radius scale, hard cap 6px**: 2px inputs/chips/badges · 4px buttons · 6px cards/panels/modals. Nothing is fully rounded except avatars and status dots.
+- **Borders do the work shadows used to.** 1px, palette-tinted. At most one shadow token exists (`0 1px 2px rgba(7,19,16,.06)`); there is no elevation ladder.
+
+### 1.5 Animated backgrounds — mandatory, one named component per surface
+
+Static flat backgrounds are a fail condition on the screens listed below. Use **[react-bits](https://reactbits.dev)** for the three web surfaces — its registry serves raw source (`https://reactbits.dev/r/<Name>-JS-CSS.json`), so components are vendored into the repo as real files, not added as an opaque dependency.
+
+| Surface | Component | Renderer | Where it appears |
+|---|---|---|---|
+| `client/web` | **Aurora** | WebGL (`ogl`, ~30KB) | Hero section, full-bleed behind the fold |
+| Admin Console | **Aurora** (login, full-bleed) + **Squares/Waves** (app shell, very low opacity) | WebGL + canvas2d | Login screen; subtle grid drift behind the dashboard |
+| Kiosk | **Aurora** | WebGL (`ogl`) | Idle attract-loop and success screens |
+| Phone App | `AnimatedMeshGradient` (Flutter, `mesh_gradient` pkg) — react-bits is React-only | Fragment shader | Login/register/onboarding, and behind the active-rental status hero |
+
+**Hard constraints on all of them:**
+- **Never behind body copy or tabular data at full strength.** Backgrounds sit behind hero/auth/idle content, or at ≤8% opacity behind dense screens. Legibility beats decoration every time — a beautiful background that costs contrast is a §0 fail.
+- **`prefers-reduced-motion` must freeze the animation** to a static first frame on every surface.
+- **WebGL must degrade gracefully.** If context creation fails, fall back to a CSS gradient rather than rendering a blank rectangle. The Kiosk runs on Raspberry Pi hardware that this repo cannot currently test against — assume it may fail and handle it.
+
+### 1.6 Light and dark modes — required on three of four surfaces
+
+**Phone App, Admin Console, and `client/web` must each ship both a light and a dark theme, with a user-facing toggle** that persists across reloads/restarts and defaults to following the OS setting.
+
+**The Kiosk is deliberately excluded** and stays permanently dark ("Vault"): it is a fixed public display in one known lighting environment, has no per-user preference to persist, and its dark background is what makes the accents and 3D lock read from a distance.
+
+Both modes are first-class — dark is not "the light theme with inverted grays." Each mode has its own surface/border/muted values (§1.3). **Both modes must be screenshot-verified separately** under §0; a surface verified only in light mode is not verified. This is exactly how the last dark-mode failure shipped: light-mode Cards left on hardcoded white while the page background followed the OS to near-black.
 
 ---
 
@@ -83,6 +154,20 @@ Two modes, not one theme stretched across contexts: **"Campus Day"** (warm off-w
 - Rating/review screen after a completed rental
 
 **Animation mandate for the phone app specifically:** every state transition in the active-rental flow (pending → confirmed → ready → returned) should have a corresponding Lottie/Rive animation, not a static status badge. This is the app's core emotional moment — reducing anxiety about "is my stuff safe" — treat it accordingly, not as an afterthought.
+
+### 2.1 Full rebuild — the phone app is torn down to its theme layer and rebuilt
+
+The prior pass re-themed this surface by swapping palette constants; the structure, spacing, and component vocabulary underneath are unchanged from the original generic build, and it ships **light mode only**. That is not what §1 now describes. **Delete and rebuild the presentation layer** — services, models, providers, and API wiring stay exactly as they are and must not be rewritten.
+
+**Design-system layer to build first (before touching any screen):**
+- `core/theme/app_theme.dart` — a real `ThemeData` pair (light + dark) built from `ColorScheme.fromSeed` overrides using the §1.3 hexes, with `textTheme` wired to the §1.2 three-family stack via `google_fonts`.
+- `core/theme/theme_controller.dart` — `ChangeNotifier` holding `ThemeMode`, persisted to `shared_preferences`, defaulting to `ThemeMode.system`. Surfaced as a real toggle in Profile.
+- `core/theme/tokens.dart` — the 8px spacing scale and the ≤6px radius scale as named constants. Screens reference `AppSpacing.md`, never a bare `16`.
+- `core/widgets/` — shared primitives every screen composes from, so spacing/radius can't drift per screen: `AppScaffold`, `AppButton`, `AppTextField`, `AppCard`, `StatusPill`, `MonoText` (the IBM Plex Mono numeral wrapper from §1.2), `AnimatedAuthBackground`.
+
+**Auth screens are a named deliverable, not a checkbox.** Login, Register, and Profile Setup each get: the `mesh_gradient` animated background from §1.5, a real branded lockup, staggered entrance animation on the form fields, inline per-field validation with visible error states, a loading state on the submit button, and correct behaviour in both themes. The current login screen is a white card on a flat background with two unstyled fields — it is the first thing any user sees and it currently looks like a scaffold.
+
+**Every screen must be verified in both light and dark** per §1.6 before it counts as done.
 
 ---
 

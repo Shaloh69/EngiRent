@@ -33,6 +33,7 @@ import {
   Settings,
 } from "lucide-react";
 import Link from "next/link";
+import { ColorSchemeToggle } from "@/components/ui/ColorSchemeToggle";
 
 const menuItems = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
@@ -121,6 +122,9 @@ export default function AdminLayout({
               >
                 <Search size={16} />
               </ActionIcon>
+              {/* Mandate §1.6 — the scheme toggle lives in the shell header so
+                  it's reachable from every page, not just login. */}
+              <ColorSchemeToggle />
               <Badge
                 variant="light"
                 color="gray"
