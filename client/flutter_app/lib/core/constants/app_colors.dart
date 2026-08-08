@@ -71,4 +71,25 @@ class AppColors {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
+
+  // ── Dark scheme ("Vault") — mandate §1.3/§1.6 ───────────────────────────
+  // Dark is a first-class theme, not the light one with inverted greys: it
+  // gets its own surface/border/muted values, and they're tinted toward the
+  // teal primary so dark mode doesn't read as a generic slate library
+  // default. Values are identical to client/admin's Mantine `dark` tuple and
+  // globals.css, so all three surfaces render the same dark.
+  static const Color backgroundDarkMode = Color(0xFF071310);
+  static const Color surfaceDarkMode = Color(0xFF0E1F1B);
+  static const Color surfaceAltDarkMode = Color(0xFF12271F);
+  static const Color borderDarkMode = Color(0xFF1E3B35);
+  static const Color textPrimaryDark = Color(0xFFEAF5F2);
+  static const Color textSecondaryDark = Color(0xFF7FA39C);
+  static const Color textDisabledDark = Color(0xFF4E706A);
+
+  // Brand hues lifted for dark backgrounds — the light-mode teal (#0D9488)
+  // sits at roughly 3.1:1 on #071310, under the 4.5:1 body-text floor, so
+  // dark mode uses the lighter tints for anything that carries meaning.
+  static const Color primaryOnDark = Color(0xFF3EC3B3);
+  static const Color secondaryOnDark = Color(0xFFF6BA4D);
+  static const Color accentOnDark = Color(0xFFFC8797);
 }

@@ -10,6 +10,14 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Typography — mandate §1.2 three-family stack (Space Grotesk /
+  # IBM Plex Mono / Manrope), same families as every other surface.
+  google_fonts: ^6.2.1
+
+  # Animated mesh-gradient background — mandate §1.5. react-bits is
+  # React-only, so the phone app uses a Flutter shader-based equivalent.
+  mesh_gradient: ^1.3.8
+
   # UI Components
   cupertino_icons: ^1.0.6
   cached_network_image: ^3.3.0

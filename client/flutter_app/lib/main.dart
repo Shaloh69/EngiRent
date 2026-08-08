@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toastification/toastification.dart';
-import 'core/constants/app_colors.dart';
+import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'core/models/item_model.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -29,95 +30,27 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        // Mandate §1.6 — light/dark is a first-class, persisted user choice.
+        // `..load()` kicks off the restore without blocking first paint; the
+        // controller starts on ThemeMode.system, so the pre-restore frame is
+        // already the correct OS-following default rather than a flash of
+        // the wrong theme.
+        ChangeNotifierProvider(create: (_) => ThemeController()..load()),
       ],
-      child: MaterialApp(
-        title: 'EngiRent Hub',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTheme(),
-        initialRoute: '/login',
-        onGenerateRoute: _onGenerateRoute,
+      child: Consumer<ThemeController>(
+        builder: (context, themeController, _) => MaterialApp(
+          title: 'EngiRent Hub',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: themeController.mode,
+          initialRoute: '/login',
+          onGenerateRoute: _onGenerateRoute,
+        ),
       ),
     );
   }
 
-  ThemeData _buildTheme() {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      primary: AppColors.primary,
-      secondary: AppColors.secondary,
-      tertiary: AppColors.accent,
-      error: AppColors.error,
-      brightness: Brightness.light,
-      surface: AppColors.surface,
-    );
-
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.background,
-      fontFamily: 'Inter',
-      appBarTheme: const AppBarTheme(
-        centerTitle: false,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
-        titleTextStyle: TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        color: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.border),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: AppColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-        ),
-      ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.grey,
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
-        unselectedLabelStyle: TextStyle(fontSize: 11),
-      ),
-      chipTheme: ChipThemeData(
-        backgroundColor: AppColors.greyLight,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-        side: BorderSide.none,
-      ),
-    );
-  }
 
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
