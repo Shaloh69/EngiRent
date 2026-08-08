@@ -100,18 +100,65 @@ Implemented in: `client/admin/src/app/theme.ts` (Mantine), `client/admin/src/app
 
 ---
 
+---
+
+## 6. Animated backgrounds, anti-slop rules, and light/dark — the second design pass
+
+Feedback after the Vault pass was that the result still read as bland. Research into what specifically makes generated UI *look* generated produced a concrete list — and several of those tells were in this codebase. The mandate gained four new sections (§1.0–§1.6) as a result, and this pass implements them.
+
+**What the mandate now bans, and what was actually here:**
+
+| Tell | Was it present? |
+|---|---|
+| **Inter** as the primary typeface | Yes — Admin Console's Mantine theme, and the Flutter app's `fontFamily: 'Inter'` (which wasn't even a declared asset, so it silently fell back to the platform default) |
+| Border-radius above 6px, pill buttons | Yes — Mantine's default `md` radius is 8px, already over the cap |
+| Multi-layer elevation shadows | Yes — a `0 10px 30px` soft shadow token |
+| Generic gray neutrals | Yes — Mantine's stock `dark` tuple is neutral slate, so dark mode read as a library default on a teal-tinted page |
+| Icon-grid feature section | Yes — `client/web`'s homepage (still present, see gaps) |
+
+**Named aesthetic direction, committed to once: "Machined Vault"** — engineering instrument rather than SaaS dashboard. The reference objects are the things these students actually handle: a caliper, an oscilloscope faceplate, a machined enclosure, a brass padlock.
+
+**Type stack (§1.2), now identical on all four surfaces:** Space Grotesk (display) · IBM Plex Mono (all numerals, IDs, currency, countdowns — with tabular figures) · Manrope (body).
+
+**Animated backgrounds (§1.5), one named component per surface:**
+- **Admin Console, Kiosk** — Aurora, vendored from react-bits' registry as real source files rather than an opaque dependency, rendering through `ogl` (~30KB) instead of a 600KB three.js.
+- **`client/web`** — Velora UI's CSS aurora, already present and animating.
+- **Phone App** — `mesh_gradient` fragment shader, since react-bits is React-only.
+
+Every one carries two guarantees: `prefers-reduced-motion` freezes it to a static frame, and renderer failure degrades to a CSS/static gradient rather than an empty rectangle. That fallback matters most on the Kiosk, whose Pi hardware this repo still cannot reach to test.
+
+**Light and dark (§1.6) on three of four surfaces.** The Kiosk stays permanently dark by design — fixed public display, one lighting environment, no per-user preference to persist.
+
+**Two real bugs this pass found and fixed:**
+- **`client/web` never followed the OS.** `defaultTheme` was pinned to `"light"` with `enableSystem` off, so a visitor on a dark-mode machine always got the light site; the toggle was the only route to dark.
+- **`client/web`'s mono font was a phantom.** `globals.css` declared `"JetBrains Mono"` while `config/fonts.ts` loaded a different family — the CSS reference and the loaded font had drifted apart.
+
+**And two caught by the screenshot loop mid-pass, before they shipped:**
+- The Admin login's aurora washed body copy to roughly 1.5:1 in light mode. Fixed with a scheme-aware scrim between the animation and the text.
+- Lifting the Kiosk idle content above the new canvas with `position: relative` dropped it out of the fixed `.screen` box and piled everything at the right edge — the exact trap a comment already in that file warned about. Fixed by setting `z-index` only.
+
 ## Current status summary
 
 | Surface | Status |
 |---|---|
 | Shared palette | **Done** — EngiRent Vault implemented identically across all four surfaces |
-| Admin Console | **Done** — delete-and-rebuild on Mantine, HeroUI removed, 4 missing pages built, verified in both color schemes |
-| Kiosk | **Done** — re-themed to Vault, all 9 screens verified |
-| Phone App | **Done** — re-themed to Vault, verified against the real deployed API |
-| `client/web` | **Done** — rebuilt fresh on Velora UI, Mantine removed, verified desktop + mobile + dark toggle |
+| Shared type stack | **Done** — Space Grotesk / IBM Plex Mono / Manrope on all four; Inter fully removed |
+| Admin Console | **Done** — delete-and-rebuild on Mantine, HeroUI removed, 4 missing pages built, plus Aurora background, real dark mode with persisted toggle, teal-tinted dark surfaces, mono KPI figures. Verified in both schemes |
+| Kiosk | **Done** — re-themed to Vault, all 9 screens verified, Aurora on the idle attract loop. Dark-only by design |
+| `client/web` | **Done** — rebuilt fresh on Velora UI, animated aurora, follow-OS dark mode fixed, type stack aligned. Verified in both schemes |
+| Phone App | **Partial** — see below |
+
+**Phone App, precisely:** the design-system layer is complete and real — light/dark `ThemeData` pair, persisted `ThemeController` defaulting to system, 8px/6px token scales, the animated mesh background, and the full type stack. The **Login screen is rebuilt** against it and verified in both themes. Because every screen resolves through `ThemeData`, all ~13 screens *inherit* the new fonts, palette, radius, and dark mode automatically — that is a genuine improvement and it is verifiable. But **Register, Profile Setup, and the ~10 remaining screens have not been individually rebuilt** against §2.1's structural spec; they inherit the theme without having had their layout, spacing, or component vocabulary reworked. Calling the Phone App "done" would repeat exactly the overclaim §0 of the mandate exists to prevent.
 
 ## Known gaps, stated honestly
 
 - **No Spline/R3F 3D element and no Lottie/Rive assets.** The mandate asks for these on the Kiosk idle screen and the Phone App's rental-status transitions. No such asset was available to source in this environment, so both use hand-built substitutes instead: the Kiosk's `AnimatedLock` is an SVG + Framer Motion state machine, and the Phone App's status badge is an `AnimatedSwitcher` with a pulsing indicator. These are genuine animations, but they are **not** the mandated tooling and are documented as substitutions rather than passed off as equivalent.
 - **The Kiosk page in the Admin Console keeps its own Tailwind layout** rather than being rebuilt on Mantine primitives. Its HeroUI components were converted and it is fully re-themed and verified, but its bespoke layout markup was preserved rather than rewritten — it carries real SSE and hardware-control logic where a full structural rewrite would risk regressions for no visual gain.
 - **Kiosk hardware verification remains blocked.** The Pi (`engirent-kiosk`) has been offline in Tailscale throughout this work, so the reboot/autostart test and the hardware self-test are still unverified against real hardware. See `docs/audit/phase4-audit-report.md`.
+
+### Gaps introduced or left open by the animated-background pass (§6)
+
+- **Phone App: 12 of 13 screens are theme-inherited, not rebuilt.** Stated in full in the status table above. Login is the only screen rebuilt against §2.1's spec.
+- **`client/web`'s homepage still uses the banned icon-grid feature pattern** — three identical icon + title + blurb cards, which §1.1 now explicitly lists as a tell. The palette, fonts, dark mode, and animated background on that page are fixed; the section's *structure* is not, and redesigning it is outstanding.
+- **This pass was verified against local production builds, not the deployed instance.** §0 requires screenshots of the real deployed URL. Every screenshot backing §6 came from a local `next start` / `vite preview` / `flutter run` of the production build. That is a stronger check than a dev server, but it is **not** what §0 asks for, and the deploy-and-reverify step has not been run. The previous pass's deployed-instance screenshots remain the last real-deployment evidence.
+- **The Kiosk's Aurora is unverified on Pi hardware.** Verified in desktop Chromium at the kiosk's 1024×600 viewport only. Whether the Pi's WebGL context supports it — or falls back to the CSS gradient — is untested, because the Pi is offline.

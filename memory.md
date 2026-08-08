@@ -86,6 +86,25 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-07 — Animated backgrounds, anti-slop mandate rules, real light/dark on three surfaces
+
+Feedback was that the Vault redesign still read as bland, plus: add animated backgrounds everywhere, rebuild the Phone App design from scratch, and make light/dark available on every surface except the Kiosk.
+
+Researched what specifically makes generated UI *look* generated before writing anything (react-bits' registry for backgrounds; anti-AI-slop design-system writeups for the rest). Several named tells were genuinely present in this codebase: **Inter** as the primary typeface on two surfaces (and in Flutter it wasn't even a declared asset, so it silently fell back to the platform default), radii above the cap, multi-layer elevation shadows, and Mantine's neutral-slate `dark` tuple making dark mode read as a library default on a teal-tinted page.
+
+Mandate gained §1.0–§1.6: one named aesthetic direction ("Machined Vault" — engineering instrument, not SaaS dashboard), an explicit ban table, an exact three-family type stack (Space Grotesk / IBM Plex Mono / Manrope), an 8px grid with a 6px radius cap, per-surface animated-background assignments, and light/dark as a hard requirement everywhere but the Kiosk.
+
+**Backgrounds**: vendored react-bits source (Aurora through `ogl`, ~30KB, deliberately not three.js) on Admin + Kiosk; Velora's existing CSS aurora on `client/web`; a `mesh_gradient` fragment shader on Flutter since react-bits is React-only. All four carry the same two guarantees — `prefers-reduced-motion` freezes them, and renderer failure degrades to a static gradient rather than an empty box.
+
+**Two real pre-existing bugs found**: `client/web`'s `defaultTheme` was pinned to `"light"` with `enableSystem` off, so it never followed the OS regardless of the visitor's setting; and its `globals.css` declared `"JetBrains Mono"` while `config/fonts.ts` loaded a different family, so the CSS reference and the loaded font had drifted apart.
+
+**Two caught by the screenshot loop before they shipped**: the Admin login's aurora washed light-mode body copy to roughly 1.5:1 (fixed with a scheme-aware scrim between animation and text); and lifting the Kiosk idle content above the new canvas with `position: relative` dropped it out of the fixed `.screen` box and piled everything at the right edge — the exact trap a comment already in that file warned about. Fixed with `z-index` only.
+
+**Honest scope on the Phone App**: the design-system layer is complete and real — light/dark `ThemeData` pair, `ThemeController` persisted to `shared_preferences` defaulting to system, 8px/6px token scales, the animated mesh background, and the full type stack. **Login is rebuilt** against it and verified in both themes. Every other screen *inherits* the new fonts/palette/radius/dark-mode automatically through `ThemeData`, which is a genuine improvement — but the other ~12 screens have **not** been individually rebuilt against §2.1's structural spec. The Phone App is not "done", and saying otherwise would repeat the exact overclaim §0 exists to prevent.
+
+**Verification caveat that matters for the next session**: everything in this pass was screenshotted against *local production builds* (`next start`, `vite preview`, `flutter run`), not the deployed instance. §0 requires the real deployed URL. The deploy-and-reverify step has **not** been run, so the previous pass's deployed screenshots are still the last real-deployment evidence. Also unchanged: the Kiosk Pi has been offline in Tailscale throughout, so the Aurora's behaviour on real Pi hardware (including whether it falls back) is untested.
+
+
 ### 2026-08-07 — Design redo: all four surfaces on the "EngiRent Vault" palette, Admin Console delete-and-rebuilt, client/web rebuilt on Velora UI
 
 The user updated `docs/planning/02-design-mandate.md` and `03-revamp-master.md` substantially (verified as real edits on disk via `git diff`, not an injected instruction) and added `EngiRent_04_CONTINUE_DESIGN_REDO.md`. Palette pivoted from violet "Spectrum" to teal/gold/coral "Vault"; the verification loop was hardened after a real reported failure.
