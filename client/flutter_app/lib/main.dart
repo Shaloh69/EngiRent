@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toastification/toastification.dart';
+import 'core/observability/crash_reporting.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/models/item_model.dart';
@@ -19,12 +20,18 @@ import 'features/rentals/screens/rental_detail_screen.dart';
 import 'features/reviews/screens/reviews_screen.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Mandate §2.3 — resolve the first-run flag before the first frame, so a
-  // fresh install opens straight onto onboarding rather than flashing the
-  // login screen and then replacing it.
-  final showOnboarding = await OnboardingScreen.shouldShow();
-  runApp(ToastificationWrapper(child: MyApp(showOnboarding: showOnboarding)));
+  // Mandate §2.10.1 — crash reporting wraps everything, including startup.
+  // A crash while resolving the first-run flag or restoring the theme is
+  // exactly the kind that used to be invisible: the app dies on a white
+  // screen before any of our own error handling exists.
+  await CrashReporting.run(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // Mandate §2.3 — resolve the first-run flag before the first frame, so a
+    // fresh install opens straight onto onboarding rather than flashing the
+    // login screen and then replacing it.
+    final showOnboarding = await OnboardingScreen.shouldShow();
+    runApp(ToastificationWrapper(child: MyApp(showOnboarding: showOnboarding)));
+  });
 }
 
 class MyApp extends StatelessWidget {

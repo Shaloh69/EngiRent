@@ -48,7 +48,10 @@ class AppConstants {
 
   // App Info
   static const String appName = 'EngiRent Hub';
-  static const String appVersion = '1.0.0';
+  // Version deliberately not a constant here: this one said '1.0.0' while
+  // pubspec was on 1.5.2+15, and nothing referenced it, so it was pure
+  // misinformation waiting to be believed. Read the real value from the
+  // bundle instead — CrashReporting.release, via package_info_plus.
 
   // Default Values
   static const int defaultPageSize = 10;

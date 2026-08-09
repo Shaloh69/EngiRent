@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import '../../../core/observability/crash_reporting.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/notification_model.dart';
@@ -1231,6 +1234,8 @@ class _ProfileTab extends StatelessWidget {
                     }
                   },
                 ),
+                const Divider(height: 1, indent: 56),
+                const _VersionRow(),
               ],
             ),
           ),
@@ -1348,6 +1353,79 @@ class _ProfileTile extends StatelessWidget {
           (onTap != null
               ? Icon(Icons.chevron_right_rounded, color: p.muted)
               : null),
+    );
+  }
+}
+
+/// Shows the build the student is actually running.
+///
+/// This is the first thing worth asking for in a bug report, and until now
+/// there was nowhere in the app to find it — `AppConstants.appVersion` was a
+/// hardcoded '1.0.0' that had drifted five minor versions and was referenced
+/// by nothing.
+///
+/// In debug builds a long-press fires a deliberate exception through the
+/// crash reporter, so the pipeline can be proven from a real build on a real
+/// device rather than assumed from the code.
+class _VersionRow extends StatefulWidget {
+  const _VersionRow();
+
+  @override
+  State<_VersionRow> createState() => _VersionRowState();
+}
+
+class _VersionRowState extends State<_VersionRow> {
+  String _version = '…';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _version = '${info.version} (build ${info.buildNumber})');
+    } catch (_) {
+      if (mounted) setState(() => _version = 'unknown');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final reporting = CrashReporting.isEnabled
+        ? 'Crash reporting on'
+        : 'Crash reporting off for this build';
+
+    return GestureDetector(
+      onLongPress: kDebugMode
+          ? () async {
+              await CrashReporting.sendTestEvent();
+              if (!context.mounted) return;
+              AppToast.info(
+                context,
+                'Crash reporting test',
+                CrashReporting.isEnabled
+                    ? 'Test event sent to the crash reporter.'
+                    : 'No DSN in this build — test error logged locally.',
+              );
+            }
+          : null,
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: p.muted.withValues(alpha: 0.12),
+            borderRadius: AppRadius.button,
+          ),
+          child: Icon(Icons.info_outline_rounded, color: p.muted, size: 20),
+        ),
+        title: Text('EngiRent Hub $_version',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: p.ink)),
+        subtitle: Text(reporting, style: TextStyle(fontSize: 12, color: p.muted)),
+      ),
     );
   }
 }

@@ -68,6 +68,17 @@ dependencies:
   # Notifications / Toasts
   toastification: ^2.1.0
 
+  # Crash reporting — mandate §2.10.1. Before this the app had no reporter and
+  # no FlutterError.onError handler at all, so a crash on a student's phone
+  # was completely invisible. The DSN is supplied at build time via
+  # --dart-define=SENTRY_DSN=…; with none supplied the app still runs and
+  # installs its global handlers, it just reports locally.
+  sentry_flutter: ^8.9.0
+
+  # Real version+build for crash tagging. AppConstants.appVersion was a
+  # hardcoded '1.0.0' that had drifted five minor versions from pubspec.
+  package_info_plus: ^8.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

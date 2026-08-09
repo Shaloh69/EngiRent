@@ -17,12 +17,16 @@ This is **not** a single-sitting job. Fifteen work items span the Flutter app, t
 ## Stage 1 — Observability (do this first)
 
 ### 1.1 Crash reporting
-- [ ] Add `sentry_flutter`; wrap `runApp` in `SentryFlutter.init`
-- [ ] Install a global `FlutterError.onError` + `PlatformDispatcher.instance.onError` handler
-- [ ] Scrub PII before send — never ship face encodings, tokens, or ID photos in a breadcrumb
-- [ ] Tag events with app version + build number from `release.ts`
+**STATUS: built and unit-verified 2026-08-09; one acceptance step needs a DSN from the user.**
+- [x] Added `sentry_flutter`; the whole of `main()` is wrapped, not just `runApp` — a crash while resolving the first-run flag or restoring the theme is exactly the kind that used to be invisible
+- [x] Global `FlutterError.onError` + `PlatformDispatcher.instance.onError` handlers, installed **even when no DSN is configured**, so the failure mode of a missing secret is "reports go nowhere", never "errors are silently swallowed" or "the app won't start"
+- [x] PII scrubbed before send — `lib/core/observability/pii_scrubber.dart`, deliberately free of any Sentry import so it is testable without a DSN or a network
+- [x] Version + build read from the bundle via `package_info_plus`. **Not** from `release.ts` as this line originally said, and not from `AppConstants.appVersion`, which said `'1.0.0'` while pubspec was on `1.5.2+15` — five minor versions of drift on a constant nothing referenced. That constant is now deleted rather than corrected.
+- [x] Screenshots/view hierarchy disabled and `sendDefaultPii = false`: a screenshot attached to a crash on the profile screen would be an ID photo.
 - **Template:** [Sentry Flutter docs](https://docs.sentry.io/platforms/dart/guides/flutter/)
-- **Done when:** a deliberately-thrown test exception appears in the dashboard with the right version tag, and the scrubber is proven by asserting a token-bearing event is redacted.
+- **Done when:** …the scrubber is proven by asserting a token-bearing event is redacted — **met.** `test/pii_scrubber_test.dart`, 16 assertions, all passing, using the payloads this app really produces: a JWT of the shape `/auth/login` returns, a 128-float face encoding, a signed media URL (which grants access on its own), stored `users/{id}/id.jpg` paths, and PH mobile numbers. It also asserts the scrubber does *not* over-match ordinary diagnostic text, because a scrubber that redacts everything is the same as having no logs.
+- ⚠️ **Blocked, needs the user: "a deliberately-thrown test exception appears in the dashboard".** That needs a real Sentry DSN and project, which I will not create on someone's behalf. Everything up to the network hop is wired and provably correct. To finish it: `flutter build apk --release --dart-define=SENTRY_DSN=…`, then long-press the version row at the bottom of Profile (debug builds) or call `CrashReporting.sendTestEvent()`.
+- **Verified alongside:** the app still reaches first paint with the new startup wrapper (release web build, onboarding renders, zero console errors) — `flutter analyze` cannot catch a wrapper that throws.
 
 ### 1.2 Analytics funnel
 - [ ] Instrument: browse → item detail → checkout → paid → collected → returned
