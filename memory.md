@@ -86,6 +86,30 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-09 — Stage 3.5 (account verification) deployed and verified live; three real bugs found, two of them invisible to API tests
+
+Picked up from a commit that honestly flagged itself as "not deployed or exercised end-to-end". Did both.
+
+**Deployed to `desktop-gklhcri`** the same way as before — source files copied directly, not via git, since the remote working tree still carries uncommitted changes from earlier deploys. `npx prisma db push` applied the new verification columns to the live MySQL (all nullable or defaulted, so additive — no data loss). Rebuilt and relaunched the Node API and the Admin Console.
+
+**One deployment gotcha worth remembering:** `prisma generate` fails with `EPERM: operation not permitted, rename ... query_engine-windows.dll.node` while the API is running — the running process holds the engine DLL open. Stop the service first, then generate/build, then relaunch. `Invoke-CimMethod Win32_Process Create` remains the only reliable way to launch something that survives the SSH session.
+
+**Wrote a real end-to-end harness** rather than clicking through: `server/node_server/scripts/e2e-verification.mjs`, committed so it can be re-run. It drives the exact sequence the Flutter app drives (register → register-face against the **real ML service**, which really does run face detection → id-photo → profile/complete), then exercises the admin queue, both decisions, authorisation, and what the student's own `/auth/profile` returns. **57/57 assertions pass against the live API and its real database.**
+
+**Three real bugs, all found by testing rather than reading:**
+
+1. **Re-submitting after a rejection kept the stale reason.** Status went back to `PENDING` but `verificationReason` was never cleared, so the student's profile said "Under review" and "the photo was unreadable" at the same time — no way to tell whether the new photo had landed. Fixed in `completeProfile` (which also deliberately does *not* reset `isVerified`, so an already-approved student re-uploading doesn't lose access mid-rental).
+2. **The admin console could not display the evidence at all.** `app.use(helmet())` sets `Cross-Origin-Resource-Policy: same-origin` globally; the console runs on a different origin from the API, so every ID and face photo was blocked with `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` and rendered as an **empty pane with no visible error**. The whole page exists to show that photo. Media responses now set `cross-origin` explicitly — not a loosening of access control, since the bytes are already gated by the signed token; CORP governs who may *embed* an authorised response.
+3. **Content-Type came from the path, not the bytes.** Uploads are stored at fixed `.jpg` paths whatever format was sent, and the upload middleware genuinely accepts PNG and WebP. With `nosniff` set, a student who uploaded a PNG got an unrenderable image. Media now sniffs magic bytes.
+
+**The lesson, and it generalises:** bugs 2 and 3 passed *every* JSON assertion — the endpoint returned a perfectly good signed URL — while making the page useless to a human. The API test was 55/55 green at the moment the page was completely broken. What caught them was asserting `naturalWidth > 0` on the `<img>` elements in a real browser. **A payload containing a URL is not evidence that anyone can see the image.** Both checks are now in the harness.
+
+**Privacy call worth recording:** the ML service really does run face detection, so the face payload had to be a genuine face photo — I reused one already in storage. That meant the screenshots would have published a real person's face. Before screenshotting I replaced the test accounts' stored face photos with a generated placeholder (via the ML venv's OpenCV, the only image encoder on that box), and deleted all six test accounts from the live DB afterwards. **Don't screenshot real biometric or ID images into the repo.**
+
+**Evidence:** `docs/design-screenshots/verification/` — the queue in both colour schemes plus the rejection modal, all with decoded images, taken against the deployed instance through its real tunnel URL.
+
+**Still open on this stage:** viewing someone's ID is not audit-logged (only the decision is) — carried to Stage 9. Review is mouse-only, no keyboard flow. The Flutter profile screen renders the new three-state status from fields asserted live, but has not been re-screenshotted on a device since.
+
 ### 2026-08-07 — Animated backgrounds, anti-slop mandate rules, real light/dark on three surfaces
 
 Feedback was that the Vault redesign still read as bland, plus: add animated backgrounds everywhere, rebuild the Phone App design from scratch, and make light/dark available on every surface except the Kiosk.

@@ -17,6 +17,40 @@ const CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+/**
+ * Content type from the file's own magic bytes, falling back to its
+ * extension.
+ *
+ * The extension alone is not trustworthy here: uploads are stored at fixed
+ * paths (`users/{id}/id.jpg`, `face.jpg`) whatever format the client actually
+ * sent, and the upload middleware genuinely accepts PNG and WebP as well as
+ * JPEG. Combined with the `nosniff` header helmet sets, mislabelling a PNG as
+ * image/jpeg makes the browser refuse to decode it — which showed up as an
+ * admin staring at a blank evidence pane with no error.
+ */
+function sniffContentType(buffer: Buffer): string | null {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    return "image/png";
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
+    return "video/mp4";
+  }
+  return null;
+}
+
 function contentTypeFor(filename: string): string {
   return CONTENT_TYPES[path.extname(filename).toLowerCase()] ?? "application/octet-stream";
 }
@@ -31,8 +65,23 @@ async function serveRelativePath(
       throw new NotFoundError("Image not found");
     }
     const buffer = await readStoredFile(relativePath);
-    res.setHeader("Content-Type", contentTypeFor(relativePath));
+    res.setHeader(
+      "Content-Type",
+      sniffContentType(buffer) ?? contentTypeFor(relativePath),
+    );
     res.setHeader("Cache-Control", "private, max-age=300");
+    // helmet() sets Cross-Origin-Resource-Policy: same-origin globally, which
+    // is right for the API's JSON but wrong for images that are *meant* to be
+    // embedded by our own front-ends. The Admin Console runs on a different
+    // origin from the API, so every evidence photo it tried to display was
+    // blocked with ERR_BLOCKED_BY_RESPONSE.NotSameOrigin and rendered as an
+    // empty box — no console error the reviewer would ever see.
+    //
+    // This is not a loosening of access control: these bytes are already
+    // gated by the signed token (or by authenticate()) on the way in. CORP
+    // governs who may *embed* an already-authorised response, not who may
+    // fetch it.
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.send(buffer);
   } catch (error) {
     next(error);

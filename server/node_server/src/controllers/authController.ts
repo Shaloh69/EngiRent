@@ -523,6 +523,17 @@ export const completeProfile = async (
         // completed profile sat in no state at all and no admin surface could
         // find it (mandate 2.11).
         verificationStatus: "PENDING",
+        // Clear the previous decision. This path is also the re-submit path
+        // after a rejection, and leaving the old reason attached made the
+        // profile read "Under review" and "the photo was unreadable" at the
+        // same time — the student cannot tell whether their new photo landed.
+        // `isVerified` is deliberately NOT reset: an already-approved student
+        // re-uploading a photo shouldn't lose access mid-rental. A rejected
+        // student is already false, so the gate stays correct either way.
+        verificationReason: null,
+        verificationNote: null,
+        verifiedById: null,
+        verifiedAt: null,
       },
       select: PROFILE_SELECT,
     });

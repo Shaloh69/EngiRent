@@ -94,27 +94,42 @@ The only ways `isVerified` is ever set are (a) automatically when an admin accou
 
 **The Admin Console's existing `/verifications` page is a different thing entirely** — it lists `prisma.verification` records, which are the AI condition checks comparing deposit and return photos on a rental. The naming collision has been hiding this gap.
 
+**STATUS: DONE — deployed and verified end-to-end on the live stack 2026-08-09.**
+57/57 assertions pass in `server/node_server/scripts/e2e-verification.mjs`, run against the running API and its real MySQL; the admin page is screenshot-verified in both colour schemes (`docs/design-screenshots/verification/`).
+
 ### 3.5.1 Server
-- [ ] Serve the ID photo to admins only: `GET /media/users/:userId/id.jpg`, admin-role gated, audit-logged on every access
-- [ ] `GET /admin/id-verifications` — pending queue with the student's submitted data
-- [ ] `POST /admin/id-verifications/:userId` — decision (approve / reject), reason, reviewer ID, timestamp
-- [ ] Reject reasons as an enum (unreadable / not a student ID / name mismatch / expired / suspected forgery)
-- [ ] Notify the student on decision, with the reason if rejected
-- **Done when:** approving a student flips `isVerified`, writes a decision record naming the reviewer, and the student is notified.
+- [x] Serve the ID photo to admins — done via the existing signed-token mechanism (`signedMediaUrl(userIdPath(id))`) rather than a new admin-gated route. **Deliberate change from the line below:** a short-lived signed URL is already the pattern for every other sensitive image, and adding a second, role-gated path to the same bytes would have meant two access rules to keep in sync. Access is still admin-only, because only the admin queue endpoint ever mints the token.
+- [x] `GET /admin/id-verifications` — queue with the student's submitted data, filterable, **oldest-first**
+- [x] `POST /admin/id-verifications/:userId` — decision, reason, reviewer ID, timestamp, in one transaction with the notification
+- [x] Reject reasons as a closed set (unreadable / not a student ID / name mismatch / expired / suspected forgery); an unknown reason is a 400
+- [x] Notify the student on decision, with the reason if rejected
+- [x] `completeProfile` sets `PENDING` — **nothing set this before, so the queue would have been permanently empty no matter how many students signed up**
+- **Done when:** approving a student flips `isVerified`, writes a decision record naming the reviewer, and the student is notified. — **met, asserted live**
+- ⚠️ **Not done: audit-logging each evidence view.** The decision is recorded; *looking* at someone's ID is not. Carry to Stage 9's audit-log work.
 
 ### 3.5.2 Admin: ID verification queue (new page)
-- [ ] Side-by-side: submitted ID photo next to the registered face photo and the typed name/student number
-- [ ] Approve / reject with reason, keyboard-driven for volume
-- [ ] Filter by pending / approved / rejected; show reviewer and timestamp on decided rows
-- [ ] **Rename the existing `/verifications` page to "Condition checks"** so the two stop colliding
+- [x] Side-by-side: submitted ID photo next to the registered face photo and the typed name/student number
+- [x] Approve / reject with reason; rejection blocked in both UI and API until a reason is chosen
+- [x] Filter by pending / approved / rejected / all; decided rows show the timestamp
+- [x] **Renamed the existing `/verifications` page to "Condition checks"**
 - **Template:** [identity-verification review UI walkthrough](https://ubongabasieka.medium.com/identity-verification-web-application-design-eee5d03a5945) for the side-by-side evidence + decision pattern; queue mechanics per [approve/reject account-request patterns](https://support.higherlogic.com/hc/en-us/articles/10177279816596-Approve-Reject-User-Account-Requests)
-- **Done when:** a real pending student can be approved from this page and the app reflects it.
+- **Done when:** a real pending student can be approved from this page and the app reflects it. — **met**
+- ⚠️ **Not done: keyboard-driven review.** Mouse only. Fine at thesis volume, wrong at real volume.
 
 ### 3.5.3 App: verification status is visible
-- [ ] Profile shows submitted / under review / approved / rejected with the rejection reason
-- [ ] Re-submit path after rejection
-- [ ] **Currently the student sees "Pending review" forever with no ETA and no route to ask** — pair this with Stage 3's feedback channel
-- **Done when:** a rejected student sees why and can re-submit.
+- [x] Profile distinguishes not-submitted / under review / approved / rejected, and shows the rejection reason
+- [x] Re-submit path after rejection
+- **Done when:** a rejected student sees why and can re-submit. — **met at the API level (asserted live); the Flutter screen renders it from the same fields but has not been re-screenshotted on a device since**
+
+### 3.5.4 Three real bugs the verification run found
+
+Worth recording, because two of them were invisible to every API-level check:
+
+1. **Re-submitting kept the old rejection reason.** Status returned to `PENDING` but `verificationReason` was never cleared, so the profile read "Under review" and "the photo was unreadable" simultaneously and the student could not tell whether the new photo had landed. Fixed in `completeProfile`.
+2. **The admin console could not display the evidence at all.** `helmet()` sets `Cross-Origin-Resource-Policy: same-origin` globally, and the console runs on a different origin from the API, so every photo was blocked with `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` and rendered as an empty pane — no visible error for the reviewer. Media responses now set `cross-origin` explicitly.
+3. **Content type was taken from the path, not the bytes.** Uploads are stored at fixed `.jpg` paths whatever format was sent, and the middleware genuinely accepts PNG and WebP; combined with `nosniff`, a PNG upload was unrenderable. Media now sniffs magic bytes.
+
+**Rule:** bugs 2 and 3 both passed every JSON assertion while making the page useless. A queue endpoint returning a URL is not evidence that a human can see the photo — assert on `naturalWidth > 0` in a browser, not on the URL's presence in a payload.
 
 ---
 
