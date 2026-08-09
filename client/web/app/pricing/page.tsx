@@ -75,7 +75,7 @@ export default function PricingPage() {
               <Card className="h-full">
                 <div className="flex items-start justify-between gap-3">
                   <div
-                    className="flex size-10 items-center justify-center rounded-xl"
+                    className="flex size-10 items-center justify-center rounded-md"
                     style={{
                       background: `color-mix(in srgb, ${m.accent} 14%, transparent)`,
                       color: m.accent,
@@ -83,7 +83,7 @@ export default function PricingPage() {
                   >
                     <m.icon size={20} />
                   </div>
-                  <span className="rounded-full border border-[var(--brand-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-muted)]">
+                  <span className="rounded-xs border border-[var(--brand-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-muted)]">
                     {m.who}
                   </span>
                 </div>
@@ -125,7 +125,7 @@ export default function PricingPage() {
         </Reveal>
 
         <Reveal delay={0.1}>
-          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-[var(--brand-border)] bg-[var(--brand-soft)] p-5">
+          <div className="mt-6 flex items-start gap-3 rounded-md border border-[var(--brand-border)] bg-[var(--brand-soft)] p-5">
             <Info size={18} className="mt-0.5 shrink-0 text-[var(--brand-primary)]" />
             <p className="text-sm text-[var(--brand-muted)]">
               Late and damage fees are never charged as a new payment — they&apos;re
@@ -151,7 +151,7 @@ export default function PricingPage() {
               </p>
               <a
                 href="/docs"
-                className="mt-2 inline-flex items-center gap-2 rounded-xl bg-[var(--brand-primary)] px-5 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
+                className="mt-2 inline-flex items-center gap-2 rounded-md bg-[var(--brand-primary)] px-5 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02]"
               >
                 Read the docs
                 <ArrowRight size={16} />

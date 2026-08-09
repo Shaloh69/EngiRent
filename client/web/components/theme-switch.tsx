@@ -20,7 +20,7 @@ export const ThemeSwitch = () => {
       type="button"
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="inline-flex size-9 items-center justify-center rounded-lg border border-[var(--brand-border)] text-[var(--brand-muted)] transition-colors hover:text-[var(--brand-ink)]"
+      className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--brand-border)] text-[var(--brand-muted)] transition-colors hover:text-[var(--brand-ink)]"
     >
       {mounted ? (
         isDark ? (

@@ -67,7 +67,7 @@ export default function AboutPage() {
           {SURFACES.map((s, i) => (
             <Reveal key={s.title} delay={i * 0.06}>
               <Card className="h-full">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-primary)]">
+                <div className="flex size-10 items-center justify-center rounded-md bg-[var(--brand-soft)] text-[var(--brand-primary)]">
                   <s.icon size={20} />
                 </div>
                 <h3 className="mt-4 text-lg font-bold">{s.title}</h3>
@@ -99,7 +99,7 @@ export default function AboutPage() {
       <Section className="pt-0">
         <Reveal>
           <Card className="flex flex-col items-start gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-primary)]">
+            <div className="flex size-10 items-center justify-center rounded-md bg-[var(--brand-soft)] text-[var(--brand-primary)]">
               <GraduationCap size={20} />
             </div>
             <h3 className="text-xl font-bold">Academic context</h3>

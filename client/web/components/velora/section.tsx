@@ -22,7 +22,7 @@ export function Section({
 
 export function Eyebrow({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-[var(--brand-border)] bg-[var(--brand-soft)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-primary)]">
+    <span className="inline-flex items-center rounded-xs border border-[var(--brand-border)] bg-[var(--brand-soft)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-primary)]">
       {children}
     </span>
   );
@@ -63,7 +63,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-[var(--brand-border)] bg-[var(--brand-surface)] p-6 transition-shadow hover:shadow-[0_12px_40px_rgba(13,148,136,0.10)]",
+        "rounded-md border border-[var(--brand-border)] bg-[var(--brand-surface)] p-6 transition-shadow hover:shadow-[0_12px_40px_rgba(13,148,136,0.10)]",
         className,
       )}
       {...props}

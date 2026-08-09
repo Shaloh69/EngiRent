@@ -40,7 +40,7 @@ function MockCheckout() {
   if (!tid) {
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4">
-        <div className="flex gap-3 rounded-2xl border border-[var(--brand-border)] bg-[var(--brand-soft)] p-5">
+        <div className="flex gap-3 rounded-md border border-[var(--brand-border)] bg-[var(--brand-soft)] p-5">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[#ef4444]" />
           <p className="text-sm text-[var(--brand-muted)]">
             No <code>tid</code> was provided — this page is only meant to be
@@ -53,7 +53,7 @@ function MockCheckout() {
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
-      <div className="rounded-2xl border border-[var(--brand-border)] bg-[var(--brand-surface)] p-6">
+      <div className="rounded-md border border-[var(--brand-border)] bg-[var(--brand-surface)] p-6">
         <h1 className="text-lg font-extrabold">Mock Payment</h1>
         <p className="mt-1 text-sm text-[var(--brand-muted)]">
           No PayMongo sandbox key is configured on this backend, so checkout
@@ -66,7 +66,7 @@ function MockCheckout() {
         </p>
 
         {error && (
-          <p className="mt-4 rounded-xl bg-[color-mix(in_srgb,#ef4444_12%,transparent)] px-3 py-2 text-sm text-[#ef4444]">
+          <p className="mt-4 rounded-md bg-[color-mix(in_srgb,#ef4444_12%,transparent)] px-3 py-2 text-sm text-[#ef4444]">
             {error}
           </p>
         )}
@@ -79,7 +79,7 @@ function MockCheckout() {
             type="button"
             disabled={loading !== null}
             onClick={() => resolve("success")}
-            className="w-full rounded-xl bg-[#22c55e] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            className="w-full rounded-md bg-[#22c55e] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
             {loading === "success" ? "Processing…" : "Simulate Successful Payment"}
           </button>
@@ -87,7 +87,7 @@ function MockCheckout() {
             type="button"
             disabled={loading !== null}
             onClick={() => resolve("failure")}
-            className="w-full rounded-xl border border-[#ef4444] px-4 py-3 text-sm font-semibold text-[#ef4444] disabled:opacity-60"
+            className="w-full rounded-md border border-[#ef4444] px-4 py-3 text-sm font-semibold text-[#ef4444] disabled:opacity-60"
           >
             {loading === "failure" ? "Processing…" : "Simulate Failed Payment"}
           </button>

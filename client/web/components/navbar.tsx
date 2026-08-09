@@ -36,7 +36,7 @@ export const Navbar = () => {
     <header className="site-header">
       <div className="site-header-inner">
         <NextLink href="/" className="brand-link">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-[var(--brand-primary)] text-white">
+          <span className="flex size-9 items-center justify-center rounded-md bg-[var(--brand-primary)] text-white">
             <Logo size={18} />
           </span>
           <span>
@@ -57,7 +57,7 @@ export const Navbar = () => {
           <ThemeSwitch />
           <NextLink
             href="/docs"
-            className="hidden rounded-lg bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.03] sm:inline-block"
+            className="hidden rounded-md bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.03] sm:inline-block"
           >
             Read Docs
           </NextLink>
@@ -65,7 +65,7 @@ export const Navbar = () => {
             type="button"
             aria-label={open ? "Close menu" : "Open menu"}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex size-9 items-center justify-center rounded-lg border border-[var(--brand-border)] md:hidden"
+            className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--brand-border)] md:hidden"
           >
             {open ? <X size={17} /> : <Menu size={17} />}
           </button>

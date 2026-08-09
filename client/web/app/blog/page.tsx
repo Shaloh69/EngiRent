@@ -78,7 +78,7 @@ export default function BlogPage() {
               <Card className="h-full">
                 <div className="flex items-center gap-3">
                   <div
-                    className="flex size-10 items-center justify-center rounded-xl"
+                    className="flex size-10 items-center justify-center rounded-md"
                     style={{
                       background: `color-mix(in srgb, ${m.accent} 14%, transparent)`,
                       color: m.accent,

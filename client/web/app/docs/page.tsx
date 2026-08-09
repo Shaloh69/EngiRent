@@ -86,7 +86,7 @@ export default function DocsPage() {
               <Card id={s.id} className="h-full">
                 <div className="flex items-center gap-3">
                   <div
-                    className="flex size-10 items-center justify-center rounded-xl"
+                    className="flex size-10 items-center justify-center rounded-md"
                     style={{
                       background: `color-mix(in srgb, ${s.accent} 14%, transparent)`,
                       color: s.accent,

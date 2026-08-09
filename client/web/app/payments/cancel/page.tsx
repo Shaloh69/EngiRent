@@ -12,7 +12,7 @@ function CancelContent() {
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
-      <div className="flex size-14 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,#ef4444_14%,transparent)] text-[#ef4444]">
+      <div className="flex size-14 items-center justify-center rounded-md bg-[color-mix(in_srgb,#ef4444_14%,transparent)] text-[#ef4444]">
         <X size={28} />
       </div>
       <h1 className="text-2xl font-extrabold">Payment Not Completed</h1>
