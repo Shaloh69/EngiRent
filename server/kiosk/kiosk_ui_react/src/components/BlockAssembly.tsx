@@ -24,6 +24,9 @@ import { motion } from "framer-motion";
  * the rectangle *exhaustively* — every cell belongs to exactly one panel, so
  * there is nothing to see through. An opaque backdrop underneath makes that
  * guarantee belt-and-braces.
+ *
+ * Layout and quote are both re-rolled on every run, so no two loads look the
+ * same.
  */
 
 const COLS = 12;
@@ -164,6 +167,45 @@ const QUOTES: { text: string; attrib: string }[] = [
   },
 ];
 
+const LAST_QUOTE_KEY = "engirent_kiosk_last_quote";
+
+/** Remembers the previous pick so the same line never shows twice running.
+ *
+ *  Persisted rather than held in a module variable. A module variable dies
+ *  with the JS context, so it only prevented repeats *within* one page
+ *  session — verification caught the quote repeating back-to-back across
+ *  reloads, which is exactly the case that matters on a kiosk that reloads
+ *  and reboots. */
+function readLastQuote(): number {
+  try {
+    const v = window.localStorage.getItem(LAST_QUOTE_KEY);
+    return v === null ? -1 : Number.parseInt(v, 10);
+  } catch {
+    // Private mode / storage disabled — degrade to allowing a repeat rather
+    // than breaking the boot screen.
+    return -1;
+  }
+}
+
+function writeLastQuote(i: number): void {
+  try {
+    window.localStorage.setItem(LAST_QUOTE_KEY, String(i));
+  } catch {
+    /* no-op */
+  }
+}
+
+function pickQuoteIndex(): number {
+  if (QUOTES.length < 2) return 0;
+  const last = readLastQuote();
+  let i = last;
+  while (i === last) {
+    i = Math.floor(Math.random() * QUOTES.length);
+  }
+  writeLastQuote(i);
+  return i;
+}
+
 export type AssemblyPhase = "assembling" | "clearing" | "done";
 
 interface Props {
@@ -179,23 +221,27 @@ export function BlockAssembly({ runKey, boot = false, onFinished }: Props) {
   const [phase, setPhase] = useState<AssemblyPhase>("assembling");
   const finished = useRef(false);
 
-  // Seed from the run key so each screen gets its own stable arrangement:
-  // recognisably the same effect, never a literal repeat.
-  const seed = useMemo(() => {
-    const str = String(runKey);
-    let h = 2166136261;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
-  }, [runKey]);
+  // A fresh seed per run, so the wall is laid out differently every reload and
+  // every screen change. `useMemo` keyed on runKey means it is drawn once per
+  // run and stays stable while that run animates — re-rolling on each render
+  // would make panels jump mid-slide.
+  //
+  // This was deterministic at first, on the reasoning that a fixed display
+  // running the same animation hundreds of times a day should look identical
+  // every time. Reversed on review: nothing functional depends on the layout,
+  // and on an attract-loop screen variety is worth more than repeatability.
+  const seed = useMemo(
+    () => (Math.random() * 0xffffffff) >>> 0,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runKey],
+  );
 
   const panels = useMemo(() => buildPanels(seed), [seed]);
 
-  // Which quote this run shows. Derived from the seed, so it changes between
-  // runs without needing state.
-  const quote = QUOTES[seed % QUOTES.length];
+  // Random per run, and never the same line twice in a row — a repeat reads as
+  // a bug rather than as chance.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const quote = useMemo(() => QUOTES[pickQuoteIndex()], [runKey]);
 
   const slideMs = 420;
   // A second longer than the first version, per review — the card was gone
