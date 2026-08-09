@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   CircleDashed,
   Camera,
+  MessageSquare,
   Package,
   User as UserIcon,
   Wallet,
@@ -62,6 +63,9 @@ export default function RentalDetailPage() {
 
   const [rental, setRental] = useState<Rental | null>(null);
   const [verifications, setVerifications] = useState<Verification[]>([]);
+  const [messages, setMessages] = useState<
+    { id: string; body: string; createdAt: string; sender: { id: string; firstName: string; lastName: string } }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -74,15 +78,22 @@ export default function RentalDetailPage() {
     setLoading(true);
     setError("");
     try {
-      const [rentalsRes, verifsRes] = await Promise.all([
+      const [rentalsRes, verifsRes, messagesRes] = await Promise.all([
         api.get("/admin/rentals"),
         api.get("/admin/verifications"),
+        // Checklist Stage 5 — "attach the transcript to disputes". Fetched
+        // for every rental, not only disputed ones: a transcript is useful
+        // context whenever an admin opens a rental, and there's no reason
+        // to make them switch views to see it once a dispute is filed.
+        api.get(`/admin/rentals/${rentalId}/conversation`).catch(() => null),
       ]);
       const all: Rental[] = rentalsRes.data.data?.rentals || [];
       setRental(all.find((r) => r.id === rentalId) ?? null);
 
       const allVerifs: any[] = verifsRes.data.data?.verifications || [];
       setVerifications(allVerifs.filter((v) => v.rentalId === rentalId || v.rental?.id === rentalId));
+
+      setMessages(messagesRes?.data?.data?.messages ?? []);
     } catch (apiError: any) {
       setError(apiError?.response?.data?.error || "Failed to load rental.");
     } finally {
@@ -305,6 +316,51 @@ export default function RentalDetailPage() {
                 )}
               </Card>
             </SimpleGrid>
+
+            {/* Checklist Stage 5 — the reason messaging ranks above nicer
+                chat features at all: a dispute needs the transcript, not
+                just the two parties' say-so after the fact. */}
+            <Card withBorder radius="md" padding="lg">
+              <Group justify="space-between" mb="md">
+                <Text fw={700}>Message Transcript</Text>
+                {rental.status === "DISPUTED" && (
+                  <Badge color={roleColor.critical} leftSection={<AlertCircle size={12} />}>
+                    Disputed rental
+                  </Badge>
+                )}
+              </Group>
+              {messages.length === 0 ? (
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No messages"
+                  description="The renter and owner haven't messaged each other about this rental."
+                  minHeight={140}
+                />
+              ) : (
+                <Stack gap="sm" mah={420} style={{ overflowY: "auto" }}>
+                  {messages.map((m) => (
+                    <Group key={m.id} align="flex-start" gap="sm" wrap="nowrap">
+                      <ThemeIcon size={28} radius="xl" variant="light" color={roleColor.brand}>
+                        <Text size="xs" fw={700}>
+                          {m.sender.firstName?.[0]?.toUpperCase() ?? "?"}
+                        </Text>
+                      </ThemeIcon>
+                      <div style={{ flex: 1 }}>
+                        <Group gap={6}>
+                          <Text size="sm" fw={600}>
+                            {m.sender.firstName} {m.sender.lastName}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {new Date(m.createdAt).toLocaleString()}
+                          </Text>
+                        </Group>
+                        <Text size="sm">{m.body}</Text>
+                      </div>
+                    </Group>
+                  ))}
+                </Stack>
+              )}
+            </Card>
           </>
         )}
       </Stack>

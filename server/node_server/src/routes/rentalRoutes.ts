@@ -7,6 +7,7 @@ import {
   updateRentalStatus,
   cancelRental,
 } from "../controllers/rentalController";
+import { getConversation, sendMessage } from "../controllers/messageController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validation";
 
@@ -63,6 +64,24 @@ router.post(
   authenticate,
   validate([param("id").isUUID().withMessage("Valid rental ID is required")]),
   cancelRental,
+);
+
+// ── In-app messaging (checklist Stage 5) ────────────────────────────────────
+router.get(
+  "/:id/conversation",
+  authenticate,
+  validate([param("id").isUUID().withMessage("Valid rental ID is required")]),
+  getConversation,
+);
+
+router.post(
+  "/:id/conversation/messages",
+  authenticate,
+  validate([
+    param("id").isUUID().withMessage("Valid rental ID is required"),
+    body("body").notEmpty().withMessage("Message body is required"),
+  ]),
+  sendMessage,
 );
 
 export default router;

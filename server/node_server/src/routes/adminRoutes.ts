@@ -30,6 +30,7 @@ import {
   moderateItem,
   deleteReview,
 } from "../controllers/adminController";
+import { getConversationForAdmin } from "../controllers/messageController";
 
 const router = Router();
 
@@ -64,6 +65,15 @@ router.post(
   "/rentals/:id/complete",
   validate([param("id").isUUID()]),
   forceCompleteRental,
+);
+
+// Checklist Stage 5 — "attach the transcript to disputes": the reason this
+// ranks above general chat features. Read-only, no participant check — an
+// admin reviewing a dispute is not one of the two people in it.
+router.get(
+  "/rentals/:id/conversation",
+  validate([param("id").isUUID()]),
+  getConversationForAdmin,
 );
 
 router.post(

@@ -86,6 +86,22 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — Stage 5 (in-app messaging) built, deployed and verified live
+
+Continuation of the same session, after Stage 4.
+
+**Scope kept deliberately narrow**: one `Conversation` per `Rental`, not a general DM system. The mandate ranks this above nicer chat features specifically because a dispute needs the transcript, not because messaging is a goal on its own — a general system would have no single rental to attach a transcript to. Real-time delivery reuses each participant's existing `user:{id}` Socket.IO room (the same one every other rental event already broadcasts to) rather than a new per-conversation room, following the exact `req.app.get("io")` pattern `sendKioskCommand` already established — no new delivery machinery.
+
+**A real ordering bug, found only because the test checked a field's actual value, not just its presence.** `getConversation`'s read-receipt update ran correctly, but the response was built from a Prisma `include` fetched *before* that update executed — so opening a thread genuinely marked the other party's message read in the database, while the very same response that did it still reported `readAt: null`. Every other assertion in the test passed while this was broken; it only surfaced because one check asserted the actual post-update value instead of just checking the request succeeded. Fixed by re-querying messages after the update rather than trusting the pre-update include — a small, generalizable lesson: an `upsert`'s `include` reflects state at upsert time, not response time, if something else mutates the same rows afterward in the same handler.
+
+**App**: one conversation screen (bubbles, live via a new `SocketService.onNewMessage` stream, compose bar) rather than a separate thread-list screen — with one conversation per rental, My Rentals already is the thread list. Two real entry points, both actually wired: rental detail (an AppBar icon, shown once the other party is resolved from `RentalModel.otherParty()`) and item detail (checks for an existing rental of that item via the already-existing `GET /rentals` list — deliberately not a new itemId-filtered endpoint — and opens that conversation, or explains honestly that messaging opens once you've rented the item, rather than pretending a "message about a listing" feature exists when only rental-scoped messaging does).
+
+**Admin**: `GET /admin/rentals/:id/conversation`, no participant check (an admin reviewing a dispute is not one of the two people in it), rendered on the existing admin rental detail page — fetched for every rental, not gated to `DISPUTED` only, since a transcript is useful context the moment an admin opens any rental, with a visible badge when the rental actually is disputed.
+
+**Verification**: `server/node_server/scripts/e2e-messaging.mjs`, 28/28 against the live API and its real database — get-or-create, authorisation (only the two participants, not a stranger), validation, send/persist/order, the notification created per message, read receipts (post-fix), and the admin transcript endpoint including its own authorisation boundary. Admin dispute-transcript view screenshotted in both colour schemes with a real 3-message seeded conversation. **Honest scope boundary, same category as Stage 3's kiosk event log**: real-time Socket.IO delivery itself isn't exercised by the live test — proving it needs a second authenticated client genuinely listening on a socket, which an HTTP-only script can't do without adding a `socket.io-client` dependency for one check.
+
+Both the Node API/Admin Console and the Phone App were redeployed with Stage 5's changes (including a new `profileImage` field on the rental detail endpoint's owner/renter selects, needed for message-thread avatars) and confirmed live.
+
 ### 2026-08-10 — Stage 4 (offline resilience) built and verified live against real network emulation
 
 Continuation of the same session, after the origin/main push and Phone App web deployment above.

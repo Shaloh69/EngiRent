@@ -72,6 +72,9 @@ export const createRental = async (
                 lastName: true,
                 email: true,
                 phoneNumber: true,
+                // For the checklist Stage 5 "message the owner" avatar —
+                // additive, doesn't change anything that already reads this.
+                profileImage: true,
               },
             },
           },
@@ -83,6 +86,7 @@ export const createRental = async (
             lastName: true,
             email: true,
             phoneNumber: true,
+            profileImage: true,
           },
         },
       },
@@ -218,6 +222,9 @@ export const getRentalById = async (
                 lastName: true,
                 email: true,
                 phoneNumber: true,
+                // For the checklist Stage 5 "message the owner" avatar —
+                // additive, doesn't change anything that already reads this.
+                profileImage: true,
               },
             },
           },
@@ -229,6 +236,7 @@ export const getRentalById = async (
             lastName: true,
             email: true,
             phoneNumber: true,
+            profileImage: true,
           },
         },
         transactions: true,

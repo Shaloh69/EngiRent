@@ -8,9 +8,11 @@ import '../../../core/widgets/rental_widgets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/socket_service.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../kiosk/screens/kiosk_scan_screen.dart';
+import '../../messages/screens/conversation_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
 import '../../reviews/screens/reviews_screen.dart';
 
@@ -33,6 +35,27 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   // problem" link can appear right where it happened (checklist 3.2)
   // instead of only being reachable from Profile after the fact.
   bool _paymentIssue = false;
+
+  RentalParty? get _otherParty {
+    final myId = SocketService.instance.currentUserId;
+    if (_rental == null || myId == null) return null;
+    return _rental!.otherParty(myId);
+  }
+
+  void _openConversation() {
+    final other = _otherParty;
+    if (other == null || _rental == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConversationScreen(
+          rentalId: _rental!.id,
+          otherPartyName: other.fullName,
+          otherPartyImage: other.profileImage,
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -264,6 +287,14 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       appBar: AppBar(
         title: const Text('Rental Details'),
         actions: [
+          // Checklist Stage 5.2 — reachable from rental detail. Only shown
+          // once the rental (and so the other party) has actually loaded.
+          if (_rental != null && _otherParty != null)
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              tooltip: 'Message ${_otherParty!.fullName}',
+              onPressed: _openConversation,
+            ),
           if (_canCancel)
             IconButton(
               icon: const Icon(Icons.cancel_outlined),

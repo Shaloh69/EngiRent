@@ -1,13 +1,19 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'dart:convert';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
+import '../../../core/models/rental_model.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/socket_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../messages/screens/conversation_screen.dart';
 import '../../reviews/screens/reviews_screen.dart';
 
 /// Product detail — rebuilt on the shopping-template pattern (mandate §2.2).
@@ -26,6 +32,8 @@ class ItemDetailScreen extends StatefulWidget {
 
 class _ItemDetailScreenState extends State<ItemDetailScreen> {
   final _pageController = PageController();
+  final _api = ApiService();
+  bool _findingConversation = false;
 
   @override
   void dispose() {
@@ -39,6 +47,49 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       '/rentals/create',
       arguments: {'item': widget.item},
     );
+  }
+
+  /// Checklist Stage 5.2's second entry point. Messaging is scoped to a
+  /// rental, and item detail doesn't carry one — so this looks for an
+  /// existing rental of this item by the signed-in student (reusing
+  /// GET /rentals, already used elsewhere, rather than adding a new
+  /// itemId-filtered endpoint just for this) and opens that conversation.
+  /// Absent one, it says so rather than pretending a "message the owner
+  /// about a listing" feature exists when only rental-scoped messaging does.
+  Future<void> _messageOwner() async {
+    if (_findingConversation) return;
+    setState(() => _findingConversation = true);
+    try {
+      final resp = await _api.get('/rentals?type=rented&limit=50');
+      final data = jsonDecode(resp.body);
+      if (!mounted) return;
+      if (resp.statusCode != 200 || data['success'] != true) {
+        AppToast.error(context, 'Could not check your rentals', 'Please try again.');
+        return;
+      }
+      final rentals = (data['data']['rentals'] as List<dynamic>)
+          .map((j) => RentalModel.fromJson(j as Map<String, dynamic>))
+          .toList();
+      final match = rentals.where((r) => r.item.id == widget.item.id).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      if (match.isEmpty) {
+        AppToast.info(context, 'No active rental for this item',
+            'Messaging opens once you\'ve rented it — book it, then message from Rental Details.');
+        return;
+      }
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConversationScreen(
+            rentalId: match.first.id,
+            otherPartyName: '${widget.item.owner.firstName} ${widget.item.owner.lastName}',
+            otherPartyImage: widget.item.owner.profileImage,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _findingConversation = false);
+    }
   }
 
   @override
@@ -237,6 +288,18 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             ],
                           ),
                         ),
+                        if (item.owner.id != SocketService.instance.currentUserId)
+                          IconButton(
+                            icon: _findingConversation
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.chat_bubble_outline_rounded, size: 19),
+                            tooltip: 'Message ${item.owner.firstName}',
+                            onPressed: _findingConversation ? null : _messageOwner,
+                          ),
                         TextButton(
                           onPressed: () => Navigator.push(
                             context,

@@ -29,6 +29,8 @@ class SocketService {
   final _returnDisputed = StreamController<Map<String, dynamic>>.broadcast();
   final _returnRetry = StreamController<Map<String, dynamic>>.broadcast();
   final _kioskScanError = StreamController<Map<String, dynamic>>.broadcast();
+  // Checklist Stage 5 — real-time message delivery.
+  final _newMessage = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onRentalCompleted => _rentalCompleted.stream;
   Stream<Map<String, dynamic>> get onDepositApproved => _depositApproved.stream;
@@ -41,6 +43,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onReturnDisputed => _returnDisputed.stream;
   Stream<Map<String, dynamic>> get onReturnRetry => _returnRetry.stream;
   Stream<Map<String, dynamic>> get onKioskScanError => _kioskScanError.stream;
+  Stream<Map<String, dynamic>> get onNewMessage => _newMessage.stream;
 
   String? get currentUserId => _userId;
 
@@ -92,7 +95,13 @@ class SocketService {
       ..on('return:under_review', _handle(_returnUnderReview))
       ..on('return:disputed', _handle(_returnDisputed))
       ..on('return:retry', _handle(_returnRetry))
-      ..on('kiosk:scan_error', _handle(_kioskScanError));
+      ..on('kiosk:scan_error', _handle(_kioskScanError))
+      // Not routed through _handle()/_anyRentalChange — a new message isn't
+      // a rental status change, and piggybacking it there would make every
+      // rentals-list screen refetch on every incoming chat message.
+      ..on('message:new', (data) {
+        _newMessage.add(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      });
   }
 
   void emit(String event, Map<String, dynamic> data) {
@@ -127,6 +136,7 @@ class SocketService {
     _returnDisputed.close();
     _returnRetry.close();
     _kioskScanError.close();
+    _newMessage.close();
     _anyRentalChange.close();
   }
 }

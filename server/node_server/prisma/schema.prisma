@@ -91,6 +91,7 @@ model User {
   reviews         Review[]       @relation("ReviewAuthor")
   reviewsReceived Review[]       @relation("ReviewRecipient")
   feedback        Feedback[]
+  messagesSent    Message[]
 
   @@index([email])
   @@index([studentId])
@@ -227,6 +228,7 @@ model Rental {
   depositLocker       Locker?       @relation("DepositLocker", fields: [depositLockerId], references: [id])
   claimLocker         Locker?       @relation("ClaimLocker", fields: [claimLockerId], references: [id])
   returnLocker        Locker?       @relation("ReturnLocker", fields: [returnLockerId], references: [id])
+  conversation        Conversation?
 
   @@index([itemId])
   @@index([renterId])
@@ -237,6 +239,44 @@ model Rental {
   // a filtered scan across every ACTIVE rental to compare endDate.
   @@index([status, endDate])
   @@map("rentals")
+}
+
+// Checklist Stage 5 — in-app messaging, scoped one-to-one with a rental.
+// Before this a renter with a question for the owner (or vice versa) had no
+// route to reach them inside the app at all, and a dispute had no
+// conversation history to adjudicate — only whatever screenshots either
+// side happened to bring. One Conversation per rental (not a general DM
+// system) keeps the scope to what mandate §2.10.1 actually asks for: it
+// ranks above nicer general chat features specifically because a dispute
+// needs the transcript, not because messaging itself is the goal.
+model Conversation {
+  id        String   @id @default(uuid())
+  rentalId  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rental   Rental    @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+
+  body String @db.Text
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
 }
 
 // Transaction model - Payment records
