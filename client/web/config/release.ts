@@ -28,18 +28,18 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.2.0",
-  buildNumber: 10,
-  fileName: "Engirent_Prerelease10.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.3.0",
+  buildNumber: 11,
+  fileName: "Engirent_Prerelease11.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-08-09",
   sizeMb: 72,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Dark mode now works correctly on every screen, not just sign-in",
-    "New Appearance setting in your profile — light, dark, or follow your phone",
-    "Rebuilt sign-up form with clearer validation and a progress indicator",
-    "Rebuilt sign-in screen with an animated background",
-    "New type system shared with the web and kiosk surfaces",
+    'Browse rebuilt as a proper shop — product cards with photos, prices and deposits',
+    'New home screen showing the latest listings, not just buttons',
+    'Item pages now show the full cost breakdown before you commit',
+    'A first-time walkthrough, plus a "?" button that explains each control',
+    'Dark mode across every screen',
   ],
 };
 
