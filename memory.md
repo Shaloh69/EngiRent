@@ -386,3 +386,19 @@ All 8 Phase 0 items from `docs/planning/03-revamp-master.md` §3, done in a cont
 - Created this file.
 - Created `LICENSE` (MIT) at repo root — the old README claimed an MIT license and linked to a `LICENSE` file that never actually existed in the repo. Added the file to make that claim true rather than leave a broken reference or silently drop the claim.
 - **Did not start Phase 0.** This session's instructions were reorg/memory/README only — no code changes to `client/`/`server/` were made.
+
+## v1.5.1 — remaining Phone App screens rebuilt + text-scaling fix (2026-08-09)
+
+Finished the "TRUE REVAMP" sweep: Profile Setup, Create Rental (checkout), Kiosk Scan, Create Item, Reviews, Payout Details, the Alerts tab and the Profile tab, all against mandate §2.2, on a new shared form kit at `core/widgets/form_widgets.dart`.
+
+**Two real bugs surfaced by the rebuild, both shipped previously:**
+- Profile tab rendered "Identity Verified" as static text while the API's `isVerified` flag said otherwise — unverified users were told they were verified.
+- `create_rental_screen.dart`'s `showDateRangePicker` hardcoded `ColorScheme.light`, giving a white-on-white picker in dark mode.
+
+**§1.7 added to the design mandate** after the user reported v1.4.0 text being "too big and scrollable" on other phones. Root cause was `childAspectRatio: 0.63` on the two product grids — a constant tuned at one font scale, so a two-line title pushed the price/deposit lines out of the tile. Fixed with a 0.9–1.3 `textScaler` clamp in `MaterialApp.builder`, a measuring `itemGridDelegate` (computes `mainAxisExtent` from real text metrics at the active scale), and `scaledHeight()` for chip rails and the photo strip. Verified at 390px/1.0x both themes, 390px/1.3x, and 360px/1.3x.
+
+**Harness trap worth remembering.** A sweep early in this pass screenshotted a *stale build* and looked entirely convincing. A leftover `dart` web server from a previous session still held `[::1]:8092` while the new server bound only `127.0.0.1:8092`; Chromium resolves `localhost` to `::1` first, so every screenshot came from the old bundle. Caught by grepping the built `main.dart.js` for a string that only existed in the new code, then `netstat -ano | grep :8092` showing two listeners. Check for duplicate listeners before trusting a screenshot loop.
+
+Also learned: `shared_preferences` on web stores **strings JSON-encoded** (`"dark"` with quotes) but bools raw — seeding `localStorage` for a test needs `JSON.stringify` for the string keys, or the app silently falls back to its default.
+
+Deployed to `desktop-gklhcri` (`D:\ENG\EngiRent`, SSH as `transfer@`). Restarting the Next server over SSH needs `Invoke-CimMethod Win32_Process Create` — `Start-Process` dies with the SSH session. Live: v1.5.1 / Prerelease14, 76,011,780 bytes, hash-matched end to end.

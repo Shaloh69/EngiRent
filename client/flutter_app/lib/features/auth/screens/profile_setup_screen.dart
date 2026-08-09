@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/form_widgets.dart';
 import '../providers/auth_provider.dart';
 
 enum _SetupStep { consent, facePhoto, idPhoto, uploading, done }
@@ -197,267 +200,590 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Consent is a full screen with its own chrome; the capture steps are
+    // viewfinders and stay dark in both themes so the preview isn't washed
+    // out (same reasoning as the kiosk scanner).
+    return switch (_step) {
+      _SetupStep.consent => _buildConsent(),
+      _SetupStep.facePhoto => _buildCapture(
+          step: 2,
+          title: 'Take a selfie',
+          instruction:
+              'Line your face up inside the oval. Good, even light — no hats, '
+              'sunglasses or masks.',
+          why:
+              'The kiosk matches this photo when you collect or return an item, '
+              'so nobody else can open your locker.',
+          oval: true,
+        ),
+      _SetupStep.idPhoto => _buildCapture(
+          step: 3,
+          title: 'Photograph your student ID',
+          instruction:
+              'Fill the frame with your ID card. Make sure your name and student '
+              'number are sharp and readable.',
+          why:
+              'An admin checks this once to confirm you\'re enrolled. It is never '
+              'shown to other students.',
+          oval: false,
+        ),
+      _SetupStep.uploading => _buildUploading(),
+      _SetupStep.done => _buildDone(),
+    };
+  }
+
+  // ── Step 1: consent ─────────────────────────────────────────────────────────
+
+  Widget _buildConsent() {
+    final p = AppPalette.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Complete Your Profile'),
-        automaticallyImplyLeading: false,
-      ),
-      body: switch (_step) {
-        _SetupStep.consent => _ConsentView(
-            checked: _consentChecked,
-            onCheckedChanged: (v) => setState(() => _consentChecked = v),
-            onContinue: _consentChecked ? _acceptConsent : null,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(title: const Text('Verify your identity')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.lg),
+        children: [
+          const StepHeader(
+            step: 1,
+            total: 3,
+            title: 'Before we start',
+            subtitle:
+                'EngiRent lockers open with your face. That means we need to store '
+                'a biometric template — here is exactly what that involves.',
           ),
-        _SetupStep.done => _DoneView(onContinue: () => Navigator.pushReplacementNamed(context, '/home')),
-        _SetupStep.uploading => const Center(
+          const SizedBox(height: AppSpacing.lg),
+
+          if (_errorMsg != null) ...[
+            NoticeBanner(kind: NoticeKind.danger, message: _errorMsg!),
+            const SizedBox(height: AppSpacing.md),
+          ],
+
+          const SectionLabel('What we collect'),
+          AppCard(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Setting up your profile…', style: TextStyle(fontWeight: FontWeight.w600)),
+              children: const [
+                _ConsentPoint(
+                  icon: Icons.face_retouching_natural_rounded,
+                  title: 'A face template',
+                  body:
+                      'Your selfie is converted into a numeric encoding. The kiosk '
+                      'compares against that encoding — it does not send your photo '
+                      'anywhere at collection time.',
+                ),
+                _ConsentPoint(
+                  icon: Icons.badge_outlined,
+                  title: 'A photo of your student ID',
+                  body:
+                      'Reviewed once by an administrator to confirm enrolment, then '
+                      'kept only as proof of verification.',
+                ),
               ],
             ),
           ),
-        _SetupStep.facePhoto || _SetupStep.idPhoto => _CameraView(
-            step: _step,
-            camCtrl: _camCtrl,
-            camReady: _camReady,
-            errorMsg: _errorMsg,
-            parentNameCtrl: _parentNameCtrl,
-            parentContactCtrl: _parentContactCtrl,
-            onCapture: _capture,
+          const SizedBox(height: AppSpacing.lg),
+
+          const SectionLabel('Your rights'),
+          AppCard(
+            child: Column(
+              children: const [
+                _ConsentPoint(
+                  icon: Icons.visibility_off_outlined,
+                  title: 'Not visible to other students',
+                  body:
+                      'Neither your ID photo nor your face encoding is shown on your '
+                      'public profile or to anyone you rent from.',
+                ),
+                _ConsentPoint(
+                  icon: Icons.delete_outline_rounded,
+                  title: 'Withdraw at any time',
+                  body:
+                      'Deleting your account removes the encoding and both photos. '
+                      'You can also ask an administrator to erase them and switch to '
+                      'manual kiosk unlock.',
+                ),
+              ],
+            ),
           ),
-      },
-    );
-  }
-}
+          const SizedBox(height: AppSpacing.lg),
 
-/// Explicit, separate biometric consent capture — distinct from general
-/// terms-of-service acceptance, per RA 10173 (Data Privacy Act) expectations
-/// for processing sensitive personal information. Must be affirmatively
-/// checked before any camera/capture UI becomes reachable.
-class _ConsentView extends StatelessWidget {
-  final bool checked;
-  final ValueChanged<bool> onCheckedChanged;
-  final VoidCallback? onContinue;
+          FormSection(
+            title: 'Guardian contact',
+            icon: Icons.family_restroom_rounded,
+            caption:
+                'Optional, and only used if a dispute needs escalating for a minor.',
+            children: [
+              AppField(
+                label: 'Guardian name',
+                controller: _parentNameCtrl,
+                hint: 'Optional',
+                textCapitalization: TextCapitalization.words,
+              ),
+              AppField(
+                label: 'Guardian contact number',
+                controller: _parentContactCtrl,
+                hint: 'Optional',
+                keyboardType: TextInputType.phone,
+              ),
+            ],
+          ),
 
-  const _ConsentView({
-    required this.checked,
-    required this.onCheckedChanged,
-    required this.onContinue,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.fingerprint, size: 48, color: AppColors.primary),
-            const SizedBox(height: 16),
-            const Text(
-              'Before we continue',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'To use EngiRent Hub\'s kiosk, we need to collect a selfie, a photo '
-              'of your school ID, and a face-recognition template derived from '
-              'your selfie. This is biometric data, and we\'re asking for your '
-              'explicit consent before capturing it — separate from the general '
-              'terms of service.',
-              style: TextStyle(fontSize: 14, height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'What this is used for:',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              '• Verifying it\'s really you when you deposit, claim, or return an '
-              'item at the kiosk\n'
-              '• Nothing else — this data is never used for attendance, '
-              'analytics, or any purpose beyond kiosk identity verification',
-              style: TextStyle(fontSize: 13, height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'You can request permanent deletion of this data at any time from '
-              'your Profile settings, which also deactivates your account.',
-              style: TextStyle(fontSize: 13, height: 1.4, fontStyle: FontStyle.italic),
-            ),
-            const Spacer(),
-            InkWell(
-              onTap: () => onCheckedChanged(!checked),
+          // The checkbox is a real gate, not a formality — the value is sent
+          // to the backend as the record that consent was given.
+          GestureDetector(
+            onTap: () => setState(() => _consentChecked = !_consentChecked),
+            behavior: HitTestBehavior.opaque,
+            child: AppCard(
+              borderColor: _consentChecked ? p.primary : null,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Checkbox(value: checked, onChanged: (v) => onCheckedChanged(v ?? false)),
-                  const SizedBox(width: 4),
-                  const Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Text(
-                        'I understand and explicitly consent to EngiRent Hub capturing '
-                        'and storing my face photo, ID photo, and face-recognition '
-                        'template as described above.',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  Icon(
+                    _consentChecked
+                        ? Icons.check_box_rounded
+                        : Icons.check_box_outline_blank_rounded,
+                    size: 21,
+                    color: _consentChecked ? p.primary : p.muted,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      'I consent to EngiRent storing a face encoding and a photo of my '
+                      'student ID for the purpose of kiosk verification.',
+                      style: TextStyle(fontSize: 13, height: 1.45, color: p.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: StickyActionBar(
+        label: 'Agree and continue',
+        icon: Icons.arrow_forward_rounded,
+        onPressed: _consentChecked ? _acceptConsent : null,
+      ),
+    );
+  }
+
+  // ── Steps 2 & 3: capture ────────────────────────────────────────────────────
+
+  Widget _buildCapture({
+    required int step,
+    required String title,
+    required String instruction,
+    required String why,
+    required bool oval,
+  }) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF07100E),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      for (var i = 1; i <= 3; i++) ...[
+                        Expanded(
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: i <= step
+                                  ? AppColors.primaryOnDark
+                                  : Colors.white.withValues(alpha: 0.16),
+                              borderRadius: AppRadius.circle,
+                            ),
+                          ),
+                        ),
+                        if (i < 3) const SizedBox(width: AppSpacing.hair),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'STEP $step OF 3',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.1,
+                      color: AppColors.primaryOnDark,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.hair),
+                  Text(
+                    instruction,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: Color(0xFF9FBFB8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (_errorMsg != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
+                child: Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.14),
+                    borderRadius: AppRadius.input,
+                    border:
+                        Border.all(color: AppColors.error.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          size: 17, color: AppColors.error),
+                      const SizedBox(width: AppSpacing.xs),
+                      Expanded(
+                        child: Text(
+                          _errorMsg!,
+                          style: const TextStyle(
+                              fontSize: 12.5, height: 1.4, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                child: _camReady && _camCtrl != null
+                    ? ClipRRect(
+                        borderRadius: AppRadius.card,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _camCtrl!.value.previewSize?.height ?? 1,
+                                height: _camCtrl!.value.previewSize?.width ?? 1,
+                                child: CameraPreview(_camCtrl!),
+                              ),
+                            ),
+                            // Alignment guide. Without it people photographed
+                            // their whole torso, or an ID at an angle, and the
+                            // encoding step failed with no obvious cause.
+                            CustomPaint(
+                              painter: _GuidePainter(oval: oval),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primaryOnDark),
+                            ),
+                            SizedBox(height: AppSpacing.sm),
+                            Text(
+                              'Starting the camera…',
+                              style: TextStyle(
+                                  fontSize: 13, color: Color(0xFF9FBFB8)),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.lock_outline_rounded,
+                          size: 14, color: Color(0xFF7FA39C)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          why,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: Color(0xFF7FA39C),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  GestureDetector(
+                    onTap: _camReady ? _capture : null,
+                    child: Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _camReady
+                              ? AppColors.primaryOnDark
+                              : Colors.white24,
+                          width: 3,
+                        ),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _camReady
+                                ? AppColors.primaryOnDark
+                                : Colors.white24,
+                          ),
+                          child: Icon(
+                            Icons.camera_alt_rounded,
+                            size: 22,
+                            color: _camReady
+                                ? const Color(0xFF04211D)
+                                : Colors.white54,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: onContinue,
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
-              child: const Text('I Agree — Continue'),
-            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── Step 4: uploading ───────────────────────────────────────────────────────
+
+  Widget _buildUploading() {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 34,
+                height: 34,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                'Setting up your profile',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: AppPalette.of(context).ink,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Building your face encoding and uploading your ID. '
+                'This usually takes a few seconds — keep the app open.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: AppPalette.of(context).muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Step 5: done ────────────────────────────────────────────────────────────
+
+  Widget _buildDone() {
+    final p = AppPalette.of(context);
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: AppColors.success.withValues(alpha: 0.4),
+                      width: 1.5),
+                ),
+                child: const Icon(Icons.verified_rounded,
+                    size: 44, color: AppColors.success),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                'You\'re verified',
+                style: TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  color: p.ink,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Your student ID is pending a quick admin check. You can browse and '
+                'rent right away — kiosk lockers now open with your face.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13.5, height: 1.5, color: p.muted),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                      context, '/home', (_) => false),
+                  child: const Text(
+                    'Start browsing',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _CameraView extends StatelessWidget {
-  final _SetupStep step;
-  final CameraController? camCtrl;
-  final bool camReady;
-  final String? errorMsg;
-  final TextEditingController parentNameCtrl;
-  final TextEditingController parentContactCtrl;
-  final VoidCallback onCapture;
-
-  const _CameraView({
-    required this.step,
-    required this.camCtrl,
-    required this.camReady,
-    required this.errorMsg,
-    required this.parentNameCtrl,
-    required this.parentContactCtrl,
-    required this.onCapture,
+/// One point in the consent list. Keeps icon/title/body alignment consistent
+/// so the disclosure reads as a checklist rather than a wall of legal text.
+class _ConsentPoint extends StatelessWidget {
+  const _ConsentPoint({
+    required this.icon,
+    required this.title,
+    required this.body,
   });
+
+  final IconData icon;
+  final String title;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
-    final isFace = step == _SetupStep.facePhoto;
-    return Column(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          color: AppColors.primary.withValues(alpha: 0.08),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                    child: Center(child: Text(isFace ? '1' : '2', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    isFace ? 'Step 1 of 3 — Take a Selfie' : 'Step 2 of 3 — Photograph Your ID',
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                isFace
-                    ? 'Face the camera directly. Ensure good lighting. This photo will be used to verify your identity at the kiosk.'
-                    : 'Hold your school ID card flat and fully in frame. Both sides are not required.',
-                style: const TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: camReady && camCtrl != null
-              ? ClipRect(child: CameraPreview(camCtrl!))
-              : const Center(child: CircularProgressIndicator()),
-        ),
-        if (isFace) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
+    final p = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: p.primary),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: parentNameCtrl,
-                    decoration: const InputDecoration(labelText: 'Parent/Guardian Name (optional)', isDense: true),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: p.ink,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: parentContactCtrl,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(labelText: 'Parent/Guardian Phone (optional)', isDense: true),
-                  ),
+                const SizedBox(height: 2),
+                Text(
+                  body,
+                  style: TextStyle(fontSize: 12.5, height: 1.45, color: p.muted),
                 ),
               ],
             ),
           ),
         ],
-        if (errorMsg != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Text(errorMsg!, style: const TextStyle(color: AppColors.error), textAlign: TextAlign.center),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: ElevatedButton.icon(
-            onPressed: onCapture,
-            icon: const Icon(Icons.camera_alt),
-            label: Text(isFace ? 'Capture Selfie' : 'Capture ID Photo'),
-            style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _DoneView extends StatelessWidget {
-  final VoidCallback onContinue;
-  const _DoneView({required this.onContinue});
+/// Alignment guide over the camera preview — an oval for the selfie, a
+/// card-shaped rectangle for the student ID.
+class _GuidePainter extends CustomPainter {
+  _GuidePainter({required this.oval});
+  final bool oval;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, size: 80, color: AppColors.success),
-            const SizedBox(height: 20),
-            const Text('Profile Complete!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 10),
-            const Text(
-              'Your identity photos have been saved. You can now access kiosk workflows.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 28),
-            ElevatedButton(
-              onPressed: onContinue,
-              style: ElevatedButton.styleFrom(minimumSize: const Size(200, 52)),
-              child: const Text('Go to Home'),
-            ),
-          ],
-        ),
-      ),
+  void paint(Canvas canvas, Size size) {
+    final Rect target = oval
+        ? Rect.fromCenter(
+            center: Offset(size.width / 2, size.height * 0.44),
+            width: size.width * 0.66,
+            height: size.width * 0.86,
+          )
+        : Rect.fromCenter(
+            center: Offset(size.width / 2, size.height / 2),
+            width: size.width * 0.86,
+            // ID-1 card ratio (85.6 × 54 mm).
+            height: size.width * 0.86 * (54 / 85.6),
+          );
+
+    final guide = Path();
+    if (oval) {
+      guide.addOval(target);
+    } else {
+      guide.addRRect(
+          RRect.fromRectAndRadius(target, const Radius.circular(6)));
+    }
+
+    canvas.drawPath(
+      Path.combine(
+          PathOperation.difference, Path()..addRect(Offset.zero & size), guide),
+      Paint()..color = const Color(0xFF07100E).withValues(alpha: 0.55),
+    );
+
+    canvas.drawPath(
+      guide,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = AppColors.primaryOnDark,
     );
   }
+
+  @override
+  bool shouldRepaint(_GuidePainter old) => old.oval != oval;
 }

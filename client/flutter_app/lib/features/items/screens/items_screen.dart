@@ -278,17 +278,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
     );
   }
 
-  /// Two columns on a phone (§2.2), widening on tablets. childAspectRatio is
-  /// tuned to the card's 4:3 image plus its fixed info block — too tall and
-  /// cards clip their deposit line, too short and they letterbox.
-  SliverGridDelegate _gridDelegate(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final columns = w > 900 ? 4 : (w > 600 ? 3 : 2);
-    return SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: columns,
-      crossAxisSpacing: AppSpacing.sm,
-      mainAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 0.63,
-    );
-  }
+  /// Two columns on a phone (§2.2), widening on tablets. Height comes from
+  /// itemGridDelegate, which measures the card's text at the user's font
+  /// scale instead of assuming a fixed aspect ratio.
+  SliverGridDelegate _gridDelegate(BuildContext context) =>
+      itemGridDelegate(context);
 }

@@ -53,6 +53,29 @@ class MyApp extends StatelessWidget {
           themeMode: themeController.mode,
           initialRoute: showOnboarding ? '/onboarding' : '/login',
           onGenerateRoute: _onGenerateRoute,
+          builder: (context, child) {
+            // Mandate §1.7. Android's display "Font size" setting goes up to
+            // 2.0x (and Samsung/Xiaomi skins go further still). At those
+            // scales our labels overflowed their rows and fixed-height
+            // elements — the tab bar, the sticky action bar, card headers —
+            // clipped or spilled, which is what users on other phones were
+            // seeing.
+            //
+            // Clamping rather than ignoring: honouring scale up to 1.3x
+            // covers the large majority of people who enlarge text for real
+            // legibility reasons, while keeping layouts intact. The floor
+            // stops the "small" setting shrinking captions below readable.
+            final media = MediaQuery.of(context);
+            return MediaQuery(
+              data: media.copyWith(
+                textScaler: media.textScaler.clamp(
+                  minScaleFactor: 0.9,
+                  maxScaleFactor: 1.3,
+                ),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
         ),
       ),
     );

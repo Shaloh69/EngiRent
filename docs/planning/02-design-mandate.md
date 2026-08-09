@@ -133,6 +133,24 @@ Both modes are first-class — dark is not "the light theme with inverted grays.
 
 ---
 
+### 1.7 Text scaling and device variation — layouts must survive both
+
+Reported from the field on v1.4.0: on other people's phones "the texts are too big and scrollable." That was not a font-size choice, it was a layout failure. Android's display **Font size** setting scales every label — up to 2.0x on stock Android, further on some Samsung/Xiaomi skins — and layouts built around fixed heights and fixed aspect ratios clip, stripe, or spill when it moves. A design verified only at the default scale on one device is **not verified**.
+
+Three rules, all mandatory:
+
+**1. Clamp the scale, never ignore it.** `MaterialApp.builder` wraps the tree in a `MediaQuery` whose `textScaler` is clamped to **0.9–1.3**. Honouring scale up to 1.3x covers the large majority of people who enlarge text for genuine legibility reasons; the cap is what keeps layouts intact at the extremes. Never pin the scaler to 1.0 — that overrides an accessibility setting outright and is not an acceptable fix.
+
+**2. Never encode a text block's height as a constant or an aspect ratio.** This is the specific bug that shipped. Product grids used `childAspectRatio: 0.63`, a number tuned by eye at one scale on one screen width; when the title wrapped to a second line the tile could not grow and the price and deposit lines were cut off. Grids must compute `mainAxisExtent` from the actual content — image ratio plus the sum of the text line boxes run through the active `TextScaler` (see `itemGridDelegate`). The same applies to any horizontal chip rail: it needs a bounded cross-axis extent, so state the height via `scaledHeight(context, base)`, not a literal.
+
+**3. Let text wrap and let containers grow.** Chip groups use `Wrap`, not a single `Row`. Anything that can overflow gets `maxLines` + `TextOverflow.ellipsis` deliberately, so truncation is a decision rather than a stripe. Fixed-height containers may only hold non-text content.
+
+**Verification (extends §0).** Every surface must be screenshot-verified at **the 1.3x cap as well as 1.0x**. For the Phone App this is done by temporarily forcing `TextScaler.linear(1.3)` in `MaterialApp.builder`, rebuilding, sweeping the screens, and reverting — the forced override must never be committed. Check specifically for: clipped price/deposit lines in grid tiles, chips cut off at a rail's edge, sticky action bars overlapping content, and labels colliding with their values in two-column rows.
+
+**Screen size is the other half.** Verify at **390px wide** (the common phone), **360px** (the narrow floor — many budget Android devices), and **≥600px** (tablet, where grids widen to 3–4 columns). Onboarding and other centred content caps its measure at `maxWidth: 460` and centres — an earlier version let both title and body run edge-to-edge independently and clipped mid-word on anything wider than a phone.
+
+---
+
 ## 2. Phone App
 
 **Explicit template references, with real links — pull actual structure and screen inventory from these, don't design from a blank page:**

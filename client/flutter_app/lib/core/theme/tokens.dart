@@ -72,3 +72,14 @@ class AppMotion {
   /// (a panel entering, a badge swapping) decelerates identically everywhere.
   static const Curve ease = Cubic(0.16, 1, 0.3, 1);
 }
+
+/// Height helpers for elements that must not clip when the user enlarges
+/// system text — mandate §1.7.
+///
+/// A horizontal chip rail can't use intrinsic sizing (it lives inside a
+/// `ListView`, which needs a bounded cross-axis extent), so its height is
+/// stated explicitly. Stating it as a constant is what made chips clip at
+/// Android's larger font settings; scaling it by the active [TextScaler]
+/// keeps the same design at every scale.
+double scaledHeight(BuildContext context, double base) =>
+    MediaQuery.textScalerOf(context).scale(base);

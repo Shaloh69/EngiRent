@@ -3,11 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/app_widgets.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../core/utils/toast_utils.dart';
+import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/form_widgets.dart';
 
+/// Checkout — mandate §2.2, modelled on the FlutterShop checkout screen.
+///
+/// The previous version asked for a date range and then showed a bare total,
+/// with the security deposit folded in silently. The single most common
+/// question about this product is "why is it charging me more than the rental
+/// price" — so the breakdown is now itemised, the deposit is labelled
+/// refundable, and escrow is explained on the screen where the money is
+/// committed rather than three screens later.
 class CreateRentalScreen extends StatefulWidget {
   final ItemModel item;
   const CreateRentalScreen({super.key, required this.item});
@@ -18,12 +28,14 @@ class CreateRentalScreen extends StatefulWidget {
 
 class _CreateRentalScreenState extends State<CreateRentalScreen> {
   final _api = ApiService();
-  final _dateFmt = DateFormat('MMM d, yyyy');
+  final _dateFmt = DateFormat('EEE, MMM d');
+  final _shortFmt = DateFormat('MMM d');
 
   DateTime? _startDate;
   DateTime? _endDate;
   bool _submitting = false;
   bool _lockersLoading = false;
+  bool _dateError = false;
   List<Map<String, dynamic>> _lockers = [];
 
   @override
@@ -40,14 +52,15 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
         final data = jsonDecode(resp.body);
         if (data['success'] == true) {
           setState(() {
-            _lockers = List<Map<String, dynamic>>.from(data['data']['lockers'] ?? []);
+            _lockers =
+                List<Map<String, dynamic>>.from(data['data']['lockers'] ?? []);
           });
         }
       }
     } catch (_) {
-      // Non-critical — locker grid is informational only
+      // Non-critical — the locker line degrades to "checking availability".
     } finally {
-      setState(() => _lockersLoading = false);
+      if (mounted) setState(() => _lockersLoading = false);
     }
   }
 
@@ -55,30 +68,35 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
     final now = DateTime.now();
     final range = await showDateRangePicker(
       context: context,
-      firstDate: now,
+      firstDate: DateTime(now.year, now.month, now.day),
       lastDate: now.add(const Duration(days: 90)),
       initialDateRange: _startDate != null && _endDate != null
           ? DateTimeRange(start: _startDate!, end: _endDate!)
           : null,
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: AppColors.primary,
-            onPrimary: AppColors.white,
-            secondary: AppColors.accent,
-            onSecondary: AppColors.white,
-            surface: AppColors.surface,
-          ),
-        ),
-        child: child!,
-      ),
+      helpText: 'Rental period',
+      saveText: 'Set dates',
+      // Inherit the app theme. This previously hardcoded ColorScheme.light,
+      // which rendered a white-on-white picker in dark mode.
+      builder: (context, child) => child!,
     );
     if (range != null) {
       setState(() {
         _startDate = range.start;
         _endDate = range.end;
+        _dateError = false;
       });
     }
+  }
+
+  /// One-tap common durations. Most rentals here are "a few days" or "a week";
+  /// making that a preset removes a two-step calendar interaction.
+  void _applyPreset(int days) {
+    final start = DateTime.now();
+    setState(() {
+      _startDate = DateTime(start.year, start.month, start.day);
+      _endDate = _startDate!.add(Duration(days: days));
+      _dateError = false;
+    });
   }
 
   int get _days {
@@ -89,13 +107,19 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
   double get _rentalTotal => _days * widget.item.pricePerDay;
   double get _grandTotal => _rentalTotal + widget.item.securityDeposit;
 
+  int get _availableLockers =>
+      _lockers.where((l) => (l['status'] ?? l['state']) == 'AVAILABLE').length;
+
   Future<void> _confirm() async {
     if (_startDate == null || _endDate == null) {
-      AppToast.warning(context, 'Select Dates', 'Please choose your rental start and end dates.');
+      setState(() => _dateError = true);
+      AppToast.warning(context, 'Choose your dates',
+          'Pick when you need the item and when you\'ll return it.');
       return;
     }
     if (_lockers.isEmpty) {
-      AppToast.warning(context, 'No Lockers Available', 'All kiosk lockers are currently occupied. Try again later.');
+      AppToast.warning(context, 'No lockers available',
+          'All kiosk lockers are currently occupied. Try again later.');
       return;
     }
     setState(() => _submitting = true);
@@ -110,20 +134,18 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
       if (resp.statusCode == 201 || resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final rentalId = data['data']['rental']['id'] as String;
-        AppToast.success(
-          context,
-          'Rental Requested!',
-          'Pay now to confirm your booking for ${widget.item.title}.',
-        );
-        // Replace create screen with rental detail
+        AppToast.success(context, 'Rental requested',
+            'Pay now to confirm your booking for ${widget.item.title}.');
         Navigator.pushReplacementNamed(context, '/rentals/$rentalId');
       } else {
         final data = jsonDecode(resp.body);
-        final msg = data['message'] ?? data['error'] ?? 'Could not create rental. Please try again.';
-        AppToast.error(context, 'Request Failed', msg);
+        final msg = data['message'] ??
+            data['error'] ??
+            'Could not create rental. Please try again.';
+        AppToast.error(context, 'Request failed', msg);
       }
     } catch (e) {
-      if (mounted) AppToast.error(context, 'Network Error', e.toString());
+      if (mounted) AppToast.error(context, 'Network error', e.toString());
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -132,473 +154,369 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
-    final item = widget.item;
+    final hasDates = _startDate != null && _endDate != null;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Book Item'),
-        backgroundColor: AppColors.surface,
-        foregroundColor: p.ink,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: p.border),
-        ),
-      ),
+      appBar: AppBar(title: const Text('Checkout')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.lg),
         children: [
-          // ── Item summary ─────────────────────────────────────────────────
-          _SectionCard(
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: item.images.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: item.images.first,
-                          width: 72,
-                          height: 72,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => _imgFallback(),
-                        )
-                      : _imgFallback(),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: p.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'PHP ${item.pricePerDay.toStringAsFixed(0)}/day  ·  Deposit PHP ${item.securityDeposit.toStringAsFixed(0)}',
-                        style: TextStyle(
-                          color: p.muted,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'by ${item.owner.fullName}',
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
+          _ItemSummary(item: widget.item),
+          const SizedBox(height: AppSpacing.lg),
 
-          // ── Date selection ───────────────────────────────────────────────
-          _SectionCard(
+          FormSection(
+            title: 'Rental period',
+            icon: Icons.event_outlined,
+            caption: 'Day 1 starts when you collect from the kiosk.',
+            children: [
+              _PresetRow(
+                selectedDays: hasDates ? _days : null,
+                onSelect: _applyPreset,
+              ),
+              AppPickerField(
+                label: 'Dates',
+                icon: Icons.calendar_month_outlined,
+                hasValue: hasDates,
+                placeholder: 'Choose start and return dates',
+                value: hasDates
+                    ? '${_dateFmt.format(_startDate!)}  →  ${_dateFmt.format(_endDate!)}'
+                    : '',
+                helper: hasDates
+                    ? '$_days ${_days == 1 ? 'day' : 'days'} · return by ${_shortFmt.format(_endDate!)}'
+                    : null,
+                error: _dateError ? 'Pick a rental period to continue' : null,
+                onTap: _pickDates,
+              ),
+            ],
+          ),
+
+          FormSection(
+            title: 'Collection',
+            icon: Icons.storefront_outlined,
+            children: [
+              _LockerStatus(
+                loading: _lockersLoading,
+                total: _lockers.length,
+                available: _availableLockers,
+                onRetry: _fetchLockers,
+              ),
+            ],
+          ),
+
+          const SectionLabel('Cost breakdown'),
+          AppCard(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _SectionHeader(icon: Icons.calendar_month_rounded, label: 'Rental Dates'),
-                const SizedBox(height: 14),
-                if (_startDate == null)
-                  GestureDetector(
-                    onTap: _pickDates,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1.5),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(Icons.date_range_rounded, color: AppColors.primary, size: 32),
-                          SizedBox(height: 8),
-                          Text(
-                            'Tap to select rental dates',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
+                CostRow(
+                  label: 'Rental',
+                  note: hasDates
+                      ? '₱${widget.item.pricePerDay.toStringAsFixed(0)} × $_days ${_days == 1 ? 'day' : 'days'}'
+                      : '₱${widget.item.pricePerDay.toStringAsFixed(0)} per day',
+                  amount: hasDates ? '₱${_rentalTotal.toStringAsFixed(2)}' : '—',
+                ),
+                CostRow(
+                  label: 'Security deposit',
+                  note: 'Refunded after the return check',
+                  amount: '₱${widget.item.securityDeposit.toStringAsFixed(2)}',
+                  color: p.muted,
+                ),
+                const ThinDivider(),
+                CostRow(
+                  label: 'Pay now',
+                  amount: hasDates ? '₱${_grandTotal.toStringAsFixed(2)}' : '—',
+                  emphasis: true,
+                ),
+                if (hasDates) ...[
+                  const SizedBox(height: AppSpacing.xs),
                   Row(
                     children: [
+                      Icon(Icons.south_west_rounded,
+                          size: 13, color: AppColors.success),
+                      const SizedBox(width: AppSpacing.hair),
                       Expanded(
-                        child: _DateCell(
-                          label: 'Start',
-                          date: _dateFmt.format(_startDate!),
-                          icon: Icons.flight_takeoff_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _DateCell(
-                          label: 'End',
-                          date: _dateFmt.format(_endDate!),
-                          icon: Icons.flight_land_rounded,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: _pickDates,
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.edit_calendar_rounded, color: AppColors.primary, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ── Price breakdown ──────────────────────────────────────────────
-          AnimatedOpacity(
-            opacity: _startDate != null ? 1.0 : 0.35,
-            duration: const Duration(milliseconds: 250),
-            child: _SectionCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _SectionHeader(icon: Icons.receipt_long_rounded, label: 'Price Breakdown'),
-                  const SizedBox(height: 14),
-                  _PriceRow(
-                    label: 'PHP ${item.pricePerDay.toStringAsFixed(0)} × $_days day${_days == 1 ? '' : 's'}',
-                    value: 'PHP ${_rentalTotal.toStringAsFixed(2)}',
-                  ),
-                  const SizedBox(height: 8),
-                  _PriceRow(
-                    label: 'Security deposit (refundable)',
-                    value: 'PHP ${item.securityDeposit.toStringAsFixed(2)}',
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 10),
-                    child: Divider(),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total Due Now',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: p.ink),
-                      ),
-                      Text(
-                        'PHP ${_grandTotal.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: AppColors.accent,
+                        child: Text(
+                          'You get ₱${widget.item.securityDeposit.toStringAsFixed(2)} back — '
+                          'the true cost of this rental is ₱${_rentalTotal.toStringAsFixed(2)}.',
+                          style: TextStyle(
+                              fontSize: 11.5, height: 1.35, color: p.muted),
                         ),
                       ),
                     ],
                   ),
                 ],
-              ),
+              ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.lg),
 
-          // ── Locker availability ──────────────────────────────────────────
-          _SectionCard(
+          const NoticeBanner(
+            title: 'Your deposit is held, not spent',
+            message:
+                'Both amounts are held in escrow. When you return the item, an AI '
+                'condition check compares before and after photos — if nothing has '
+                'changed, your deposit is released automatically and the owner is paid.',
+            icon: Icons.shield_outlined,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          const NoticeBanner(
+            kind: NoticeKind.warning,
+            title: 'Returning late',
+            message:
+                'Late returns accrue the daily rate against your deposit. Return '
+                'through any kiosk locker before the due date to avoid this.',
+          ),
+        ],
+      ),
+      bottomNavigationBar: StickyActionBar(
+        label: 'Request rental',
+        icon: Icons.arrow_forward_rounded,
+        busy: _submitting,
+        summaryLabel: hasDates ? 'Pay now' : 'Select dates',
+        summaryValue: hasDates ? '₱${_grandTotal.toStringAsFixed(0)}' : '—',
+        onPressed: _confirm,
+      ),
+    );
+  }
+}
+
+/// The item being rented, restated at checkout. Standard e-commerce practice —
+/// nobody should have to hit back to check they picked the right thing.
+class _ItemSummary extends StatelessWidget {
+  const _ItemSummary({required this.item});
+  final ItemModel item;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: AppRadius.input,
+            child: SizedBox(
+              width: 62,
+              height: 62,
+              child: item.images.isEmpty
+                  ? Container(
+                      color: p.surfaceAlt,
+                      child: Icon(Icons.inventory_2_outlined,
+                          color: p.muted, size: 22),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: item.images.first,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: p.surfaceAlt),
+                      errorWidget: (_, __, ___) => Container(
+                        color: p.surfaceAlt,
+                        child: Icon(Icons.broken_image_outlined,
+                            color: p.muted, size: 20),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _SectionHeader(icon: Icons.lock_outline_rounded, label: 'Kiosk Locker Status'),
-                const SizedBox(height: 4),
                 Text(
-                  'A locker will be auto-assigned when you place the item.',
-                  style: TextStyle(fontSize: 12, color: p.muted),
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                    color: p.ink,
+                  ),
                 ),
-                const SizedBox(height: 14),
-                _lockersLoading
-                    ? const Center(child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ))
-                    : _lockers.isEmpty
-                        ? Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.error.withValues(alpha: 0.07),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  'No lockers available right now',
-                                  style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600, fontSize: 13),
-                                ),
-                              ],
-                            ),
-                          )
-                        : _LockerGrid(lockers: _lockers),
+                const SizedBox(height: AppSpacing.hair),
+                Row(
+                  children: [
+                    MonoText(
+                      '₱${item.pricePerDay.toStringAsFixed(0)}',
+                      size: 13,
+                      color: p.primary,
+                    ),
+                    Text(' / day',
+                        style: TextStyle(fontSize: 11.5, color: p.muted)),
+                  ],
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
 
-      // ── Confirm button ───────────────────────────────────────────────────
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-        decoration: BoxDecoration(
-          color: p.surface,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primaryDark.withValues(alpha: 0.1),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
+/// Quick-duration chips. Highlights whichever matches the current selection so
+/// a preset and a hand-picked range aren't visually indistinguishable.
+class _PresetRow extends StatelessWidget {
+  const _PresetRow({required this.selectedDays, required this.onSelect});
+
+  final int? selectedDays;
+  final ValueChanged<int> onSelect;
+
+  static const _presets = <({int days, String label})>[
+    (days: 1, label: '1 day'),
+    (days: 3, label: '3 days'),
+    (days: 7, label: '1 week'),
+    (days: 14, label: '2 weeks'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Quick pick',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: p.ink,
+          ),
         ),
-        child: _submitting
-            ? Container(
-                height: 54,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: AppColors.accentGradient,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                ),
-              )
-            : GestureDetector(
-                onTap: _confirm,
-                child: Container(
-                  height: 54,
-                  alignment: Alignment.center,
+        const SizedBox(height: AppSpacing.xs),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          children: [
+            for (final preset in _presets)
+              GestureDetector(
+                onTap: () => onSelect(preset.days),
+                child: AnimatedContainer(
+                  duration: AppMotion.fast,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm, vertical: 7),
                   decoration: BoxDecoration(
-                    gradient: _lockers.isEmpty || _startDate == null
-                        ? const LinearGradient(colors: [Color(0xFFCBD5E1), Color(0xFFCBD5E1)])
-                        : AppColors.accentGradient,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: _lockers.isNotEmpty && _startDate != null
-                        ? [BoxShadow(
-                            color: AppColors.accent.withValues(alpha: 0.35),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          )]
-                        : null,
+                    color: selectedDays == preset.days
+                        ? p.primary.withValues(alpha: 0.10)
+                        : Colors.transparent,
+                    borderRadius: AppRadius.input,
+                    border: Border.all(
+                      color: selectedDays == preset.days ? p.primary : p.border,
+                      width: selectedDays == preset.days ? 1.5 : 1,
+                    ),
                   ),
-                  child: const Text(
-                    'Confirm Rental',
+                  child: Text(
+                    preset.label,
                     style: TextStyle(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      letterSpacing: 0.3,
+                      fontSize: 12.5,
+                      fontWeight: selectedDays == preset.days
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color:
+                          selectedDays == preset.days ? p.primary : p.muted,
                     ),
                   ),
                 ),
               ),
-      ),
-    );
-  }
-
-  Widget _imgFallback() => Builder(
-    builder: (context) { final p = AppPalette.of(context); return Container(
-    width: 72,
-    height: 72,
-    color: p.surfaceAlt,
-    child: const Icon(Icons.inventory_2_rounded, color: AppColors.grey),
-  ); },
-  );
-}
-
-// ── Sub-widgets ──────────────────────────────────────────────────────────────
-
-class _SectionCard extends StatelessWidget {
-  final Widget child;
-  const _SectionCard({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: p.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _SectionHeader({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: AppColors.primary),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 15,
-            color: p.ink,
-          ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _DateCell extends StatelessWidget {
-  final String label;
-  final String date;
-  final IconData icon;
-  const _DateCell({required this.label, required this.date, required this.icon});
+/// Locker availability. The old grid rendered every locker as a coloured
+/// square, which looked informative but told the renter nothing actionable —
+/// they can't choose a locker. What matters is simply whether one is free.
+class _LockerStatus extends StatelessWidget {
+  const _LockerStatus({
+    required this.loading,
+    required this.total,
+    required this.available,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final int total;
+  final int available;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+
+    if (loading) {
+      return Row(
         children: [
-          Row(children: [
-            Icon(icon, size: 13, color: AppColors.primaryLight),
-            const SizedBox(width: 4),
-            Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
-          ]),
-          const SizedBox(height: 4),
-          Text(date, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: p.ink)),
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: p.muted),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text('Checking locker availability…',
+              style: TextStyle(fontSize: 12.5, color: p.muted)),
         ],
-      ),
-    );
-  }
-}
+      );
+    }
 
-class _PriceRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _PriceRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(color: p.muted, fontSize: 14)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      ],
-    );
-  }
-}
-
-class _LockerGrid extends StatelessWidget {
-  final List<Map<String, dynamic>> lockers;
-  const _LockerGrid({required this.lockers});
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1,
-      ),
-      itemCount: lockers.length,
-      itemBuilder: (_, i) {
-        final locker = lockers[i];
-        final status = locker['status'] as String? ?? 'AVAILABLE';
-        final number = locker['lockerNumber'] as String? ?? '?';
-        final isAvailable = status == 'AVAILABLE';
-
-        Color bg;
-        Color fg;
-        if (isAvailable) {
-          bg = AppColors.success.withValues(alpha: 0.12);
-          fg = AppColors.successDark;
-        } else if (status == 'RESERVED') {
-          bg = AppColors.warning.withValues(alpha: 0.12);
-          fg = AppColors.warning;
-        } else {
-          bg = AppColors.grey.withValues(alpha: 0.1);
-          fg = AppColors.grey;
-        }
-
-        return Container(
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isAvailable ? AppColors.success.withValues(alpha: 0.3) : Colors.transparent,
+    if (total == 0) {
+      return Row(
+        children: [
+          Icon(Icons.wifi_off_rounded, size: 17, color: p.muted),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              'Couldn\'t reach the kiosk.',
+              style: TextStyle(fontSize: 12.5, color: p.muted),
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isAvailable ? Icons.lock_open_rounded : Icons.lock_rounded,
-                color: fg,
-                size: 20,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                number.padLeft(2, '0'),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      );
+    }
+
+    final ok = available > 0;
+    final color = ok ? AppColors.success : AppColors.warning;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              ok ? Icons.check_circle_outline : Icons.hourglass_empty_rounded,
+              size: 17,
+              color: color,
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Text(
+                ok
+                    ? '$available of $total lockers free'
+                    : 'All $total lockers are occupied',
                 style: TextStyle(
-                  fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: fg,
+                  fontWeight: FontWeight.w600,
+                  color: p.ink,
                 ),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+            StatusPill(
+              label: ok ? 'Ready' : 'Full',
+              color: color,
+              dense: true,
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.hair + 2),
+        Text(
+          ok
+              ? 'The owner drops the item into a locker and you collect it with a code — you never need to meet.'
+              : 'A locker frees up as soon as someone collects or returns. You can still request; collection waits for a free locker.',
+          style: TextStyle(fontSize: 11.5, height: 1.4, color: p.muted),
+        ),
+      ],
     );
   }
 }

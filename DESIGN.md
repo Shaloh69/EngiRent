@@ -154,7 +154,20 @@ Every one carries two guarantees: `prefers-reduced-motion` freezes it to a stati
 
 **Onboarding and the in-app tutorial (§2.3)** are both built and working: a one-time `introduction_screen` walkthrough resolved before first paint, and a `showcaseview` "?" tour in the Home app bar that highlights the real controls one at a time — auto-running on first arrival, on demand thereafter.
 
-**Still outstanding — not rebuilt against §2.2 yet:** Profile Setup, Create Rental, Kiosk Scan, Create Item, Reviews, Payout Details, and the Alerts tab. These are theme-correct and functional and use the shared primitives in places, but their layout has not been reworked. Calling the Phone App finished would be the same overclaim §0 exists to prevent.
+**All remaining screens rebuilt (v1.5.1).** Profile Setup, Create Rental, Kiosk Scan, Create Item, Reviews, Payout Details, the Alerts tab and the Profile tab were each reworked against §2.2, on a new shared form kit (`core/widgets/form_widgets.dart`: `FormSection`, `AppField`, `AppPickerField`, `NoticeBanner`, `StickyActionBar`, `CostRow`, `StepHeader`). The recurring pattern replaced was a flat column of bare `TextFormField`s with the submit button scrolled off the bottom; forms are now grouped into titled sections with the primary action pinned.
+
+Two real defects were found and fixed while rebuilding, neither of them cosmetic:
+
+- **The Profile tab claimed "Identity Verified" unconditionally**, ignoring the `isVerified` flag that the API already returns. Users awaiting admin review were told the opposite of the truth. Both the header pill and the Identity row now read the real value.
+- **Create Rental's date picker hardcoded `ColorScheme.light`**, so in dark mode it rendered white-on-white. It now inherits the app theme.
+
+The Profile tab's gradient hero (banned by §1.1) is gone, replaced by a bordered identity card.
+
+**§1.7 text scaling — the user-reported v1.4.0 bug.** "On other phones the texts are too big and scrollable" was a layout failure, not a font choice: the product grids used `childAspectRatio: 0.63`, a constant tuned by eye, so when a title wrapped to a second line at a larger system font size the price and deposit lines were cut off. Fixed at three levels — a 0.9–1.3 `textScaler` clamp in `MaterialApp.builder`, a new `itemGridDelegate` that computes `mainAxisExtent` from the measured text at the active scale instead of a fixed ratio, and `scaledHeight()` for the chip rails and photo strip that need a stated height.
+
+**Verified at the extremes, not just the default.** Screenshot sweeps were run at 390px/1.0x in both themes, at 390px with `TextScaler.linear(1.3)` forced (the clamp ceiling), and at **360px combined with 1.3x** — the narrowest common Android screen at the largest scale the app will render. Grid tiles grow to fit, every deposit line stays intact, and the checkout's quick-pick chips wrap to a second row rather than overflowing. The forced-scale override was reverted before building the APK.
+
+**One verification-harness bug worth recording.** The first sweep of this pass screenshotted a *stale build* and would have "confirmed" work that wasn't running: a leftover `dart` web server from an earlier session still held `[::1]:8092` while the fresh server bound `127.0.0.1:8092`, and Chromium resolves `localhost` to `::1` first. The screenshots looked plausible — right app, right theme — which is exactly why it was nearly missed. Checking `netstat` for duplicate listeners is now part of the loop.
 
 **A real functional bug fixed alongside the design work:** user photos are served from an authenticated route (`GET /media/users/:id/face.jpg`, behind the `authenticate` middleware), but every avatar used a bare `NetworkImage`, which sends no credentials. Verified directly against the deployed API — 401 with no header, 404 with a valid Bearer token — so profile pictures could never have loaded for anyone. A new `AppAvatar` attaches the token, caches, and falls back to initials on both a missing URL and a failed fetch. Listing photos were unaffected (external URLs).
 

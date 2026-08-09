@@ -421,15 +421,8 @@ class _HomeTabState extends State<_HomeTab> {
     );
   }
 
-  SliverGridDelegate _homeGrid(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    return SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: w > 900 ? 4 : (w > 600 ? 3 : 2),
-      crossAxisSpacing: AppSpacing.sm,
-      mainAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 0.63,
-    );
-  }
+  SliverGridDelegate _homeGrid(BuildContext context) =>
+      itemGridDelegate(context);
 }
 
 /// The one action most people open the app to do. Full width, illustrated,
@@ -716,6 +709,7 @@ class _NotificationsTabState extends State<_NotificationsTab> {
   String? _error;
   List<NotificationModel> _notifications = [];
   StreamSubscription<Map<String, dynamic>>? _socketSub;
+  bool _unreadOnly = false;
 
   @override
   void initState() {
@@ -745,138 +739,324 @@ class _NotificationsTabState extends State<_NotificationsTab> {
   }
 
   IconData _notifIcon(String type) => switch (type) {
-    'BOOKING_CONFIRMED' => Icons.check_circle_rounded,
-    'ITEM_READY_FOR_CLAIM' => Icons.inventory_2_rounded,
-    'RENTAL_STARTED' => Icons.play_circle_rounded,
-    'PAYMENT_RECEIVED' => Icons.payments_rounded,
-    _ => Icons.notifications_rounded,
-  };
+        'BOOKING_CONFIRMED' => Icons.check_circle_outline_rounded,
+        'ITEM_READY_FOR_CLAIM' => Icons.inbox_rounded,
+        'RENTAL_STARTED' => Icons.play_circle_outline_rounded,
+        'RENTAL_DUE_SOON' => Icons.schedule_rounded,
+        'RENTAL_OVERDUE' => Icons.warning_amber_rounded,
+        'PAYMENT_RECEIVED' || 'PAYOUT_SENT' => Icons.payments_outlined,
+        'DEPOSIT_REFUNDED' => Icons.savings_outlined,
+        'REVIEW_RECEIVED' => Icons.star_outline_rounded,
+        'DISPUTE_OPENED' => Icons.gavel_rounded,
+        _ => Icons.notifications_none_rounded,
+      };
 
   Color _notifColor(String type) => switch (type) {
-    'BOOKING_CONFIRMED' => AppColors.success,
-    'ITEM_READY_FOR_CLAIM' => AppColors.accent,
-    'RENTAL_STARTED' => AppColors.primary,
-    'PAYMENT_RECEIVED' => AppColors.success,
-    _ => AppColors.info,
-  };
+        'BOOKING_CONFIRMED' ||
+        'PAYMENT_RECEIVED' ||
+        'PAYOUT_SENT' ||
+        'DEPOSIT_REFUNDED' =>
+          AppColors.success,
+        'ITEM_READY_FOR_CLAIM' => AppColors.accent,
+        'RENTAL_STARTED' => AppColors.primary,
+        'RENTAL_DUE_SOON' => AppColors.warning,
+        'RENTAL_OVERDUE' || 'DISPUTE_OPENED' => AppColors.error,
+        'REVIEW_RECEIVED' => AppColors.secondary,
+        _ => AppColors.info,
+      };
+
+  /// Buckets notifications by recency. A flat reverse-chronological list gives
+  /// no sense of whether something needs attention now or happened last week —
+  /// date headers are how every mature inbox solves that.
+  String _bucketOf(DateTime when) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(when.year, when.month, when.day);
+    final diff = today.difference(day).inDays;
+    if (diff <= 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return 'This week';
+    if (diff < 30) return 'This month';
+    return 'Earlier';
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
-    final hasUnread = _notifications.any((n) => !n.isRead);
+    final unread = _notifications.where((n) => !n.isRead).length;
+    final visible =
+        _unreadOnly ? _notifications.where((n) => !n.isRead).toList() : _notifications;
+
+    // Build a flat render list of headers + rows so a single ListView keeps
+    // scrolling cheap on long histories.
+    final rows = <Widget>[];
+    String? lastBucket;
+    for (var i = 0; i < visible.length; i++) {
+      final n = visible[i];
+      final bucket = _bucketOf(n.createdAt);
+      if (bucket != lastBucket) {
+        rows.add(Padding(
+          padding: EdgeInsets.only(
+              top: lastBucket == null ? 0 : AppSpacing.md, bottom: AppSpacing.xs),
+          child: SectionLabel(bucket),
+        ));
+        lastBucket = bucket;
+      }
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+        child: Stagger(
+          index: i,
+          child: _NotificationRow(
+            notification: n,
+            icon: _notifIcon(n.type),
+            color: _notifColor(n.type),
+            onTap: () async {
+              if (!n.isRead) {
+                await _service.markRead(n.id);
+                _load();
+              }
+            },
+          ),
+        ),
+      ));
+    }
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
-          if (hasUnread)
+          if (unread > 0)
             TextButton(
               onPressed: () async {
                 await _service.markAllRead();
                 _load();
               },
-              child: const Text('Mark all read', style: TextStyle(color: AppColors.primary)),
+              child: const Text('Mark all read'),
             ),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? ListView(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                children: const [
+                  _NotificationSkeleton(),
+                  SizedBox(height: AppSpacing.xs),
+                  _NotificationSkeleton(),
+                  SizedBox(height: AppSpacing.xs),
+                  _NotificationSkeleton(),
+                ],
+              )
             : _error != null
-                ? ListView(children: [const SizedBox(height: 100), Center(child: Text(_error!))])
+                ? AppEmptyState(
+                    icon: Icons.wifi_off_rounded,
+                    title: 'Couldn\'t load notifications',
+                    body: _error,
+                    action: OutlinedButton(
+                      onPressed: _load,
+                      child: const Text('Try again'),
+                    ),
+                  )
                 : _notifications.isEmpty
-                    ? ListView(children: [
-                        const SizedBox(height: 80),
-                        Center(
-                          child: Column(children: [
-                            Icon(Icons.notifications_off_outlined, size: 56, color: p.muted),
-                            SizedBox(height: 12),
-                            Text('All clear!', style: TextStyle(fontWeight: FontWeight.w600, color: p.muted)),
-                            SizedBox(height: 6),
-                            Text('No notifications yet', style: TextStyle(color: p.muted, fontSize: 13)),
-                          ]),
-                        ),
-                      ])
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _notifications.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final n = _notifications[index];
-                          final color = _notifColor(n.type);
-                          return GestureDetector(
-                            onTap: () async {
-                              if (!n.isRead) {
-                                await _service.markRead(n.id);
-                                _load();
-                              }
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: n.isRead ? AppColors.surface : AppColors.primary.withValues(alpha: 0.04),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: n.isRead ? p.border : AppColors.primary.withValues(alpha: 0.2),
+                    ? const AppEmptyState(
+                        icon: Icons.notifications_none_rounded,
+                        title: 'You\'re all caught up',
+                        body:
+                            'Updates about your rentals — payments, locker codes, '
+                            'return reminders — show up here.',
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(AppSpacing.md,
+                            AppSpacing.md, AppSpacing.md, AppSpacing.lg),
+                        children: [
+                          // Unread filter, shown only when it would do anything.
+                          if (unread > 0 || _unreadOnly) ...[
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: AppSpacing.xs, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: p.primary.withValues(alpha: 0.12),
+                                    borderRadius: AppRadius.input,
+                                  ),
+                                  child: MonoText(
+                                    '$unread UNREAD',
+                                    size: 10.5,
+                                    color: p.primary,
+                                  ),
                                 ),
-                              ),
-                              padding: const EdgeInsets.all(14),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(9),
-                                    decoration: BoxDecoration(
-                                      color: color.withValues(alpha: 0.12),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(_notifIcon(n.type), color: color, size: 18),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          n.title,
-                                          style: TextStyle(
-                                            fontWeight: n.isRead ? FontWeight.w600 : FontWeight.w800,
-                                            fontSize: 14,
-                                            color: p.ink,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(n.message, style: TextStyle(fontSize: 13, color: p.muted)),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                const Spacer(),
+                                GestureDetector(
+                                  onTap: () =>
+                                      setState(() => _unreadOnly = !_unreadOnly),
+                                  child: Row(
                                     children: [
-                                      Text(
-                                        timeago.format(n.createdAt, allowFromNow: true),
-                                        style: TextStyle(fontSize: 11, color: p.muted),
+                                      Icon(
+                                        _unreadOnly
+                                            ? Icons.check_box_rounded
+                                            : Icons.check_box_outline_blank_rounded,
+                                        size: 16,
+                                        color: _unreadOnly ? p.primary : p.muted,
                                       ),
-                                      if (!n.isRead) ...[
-                                        const SizedBox(height: 6),
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: const BoxDecoration(
-                                            color: AppColors.primary,
-                                            shape: BoxShape.circle,
-                                          ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Unread only',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: _unreadOnly ? p.primary : p.muted,
                                         ),
-                                      ],
+                                      ),
                                     ],
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
+                            const SizedBox(height: AppSpacing.md),
+                          ],
+                          if (visible.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: AppSpacing.xxl),
+                              child: Text(
+                                'Nothing unread.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 13, color: p.muted),
+                              ),
+                            )
+                          else
+                            ...rows,
+                        ],
                       ),
+      ),
+    );
+  }
+}
+
+/// A single notification. Unread state is carried by a left accent bar and
+/// weight rather than a tinted background — the old tinted card was nearly
+/// invisible in dark mode, where a 4% white overlay reads as noise.
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({
+    required this.notification,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final NotificationModel notification;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final unread = !notification.isRead;
+
+    return AppCard(
+      onTap: onTap,
+      padding: EdgeInsets.zero,
+      borderColor: unread ? color.withValues(alpha: 0.45) : null,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 3, color: unread ? color : Colors.transparent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: AppRadius.input,
+                      ),
+                      child: Icon(icon, color: color, size: 17),
+                    ),
+                    const SizedBox(width: AppSpacing.xs + 2),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  notification.title,
+                                  style: TextStyle(
+                                    fontWeight:
+                                        unread ? FontWeight.w800 : FontWeight.w600,
+                                    fontSize: 13.5,
+                                    height: 1.25,
+                                    color: p.ink,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                              Text(
+                                timeago.format(notification.createdAt,
+                                    allowFromNow: true, locale: 'en_short'),
+                                style: TextStyle(fontSize: 10.5, color: p.muted),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            notification.message,
+                            style: TextStyle(
+                                fontSize: 12.5, height: 1.4, color: p.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationSkeleton extends StatelessWidget {
+  const _NotificationSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 31,
+            height: 31,
+            decoration: BoxDecoration(
+                color: p.surfaceAlt, borderRadius: AppRadius.input),
+          ),
+          const SizedBox(width: AppSpacing.xs + 2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(height: 11, width: 140, color: p.surfaceAlt),
+                const SizedBox(height: AppSpacing.xs),
+                Container(height: 9, width: double.infinity, color: p.surfaceAlt),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -899,13 +1079,11 @@ class _ProfileTab extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // Avatar card
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
+          // Identity card. The gradient hero this replaces is banned by
+          // mandate §1.1, and it also buried the one thing this header should
+          // answer: whether this account is actually verified.
+          AppCard(
+            child: Row(
               children: [
                 // AppAvatar rather than a bare NetworkImage: the avatar
                 // endpoint requires a Bearer token, so the previous version
@@ -913,39 +1091,61 @@ class _ProfileTab extends StatelessWidget {
                 AppAvatar(
                   name: '${user?.firstName ?? ''} ${user?.lastName ?? ''}',
                   imageUrl: user?.profileImage,
-                  radius: 40,
-                  backgroundColor: Colors.white24,
+                  radius: 30,
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  user?.fullName ?? 'Student',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.white),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  user?.email ?? '',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-                if (user != null && user.studentId.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      user.studentId,
-                      style: const TextStyle(color: AppColors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user?.fullName ?? 'Student',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                          color: p.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        user?.email ?? '',
+                        style: TextStyle(fontSize: 12, color: p.muted),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Row(
+                        children: [
+                          if (user != null && user.studentId.isNotEmpty) ...[
+                            MonoText(
+                              user.studentId,
+                              size: 11,
+                              color: p.muted,
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                          ],
+                          // Reflects the real isVerified flag. The old row
+                          // read "Identity Verified" unconditionally, which
+                          // told unverified users the opposite of the truth.
+                          StatusPill(
+                            label: (user?.isVerified ?? false)
+                                ? 'Verified'
+                                : 'Pending review',
+                            color: (user?.isVerified ?? false)
+                                ? AppColors.success
+                                : AppColors.warning,
+                            dense: true,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.lg),
 
-          // Info items
+          const SectionLabel('Account'),
           Container(
             decoration: BoxDecoration(
               color: p.surface,
@@ -954,7 +1154,18 @@ class _ProfileTab extends StatelessWidget {
             ),
             child: Column(
               children: [
-                _ProfileTile(icon: Icons.verified_user_rounded, iconColor: AppColors.success, title: 'Identity Verified', subtitle: 'Face ID + QR workflow enabled'),
+                _ProfileTile(
+                  icon: (user?.isVerified ?? false)
+                      ? Icons.verified_user_rounded
+                      : Icons.pending_outlined,
+                  iconColor: (user?.isVerified ?? false)
+                      ? AppColors.success
+                      : AppColors.warning,
+                  title: 'Identity',
+                  subtitle: (user?.isVerified ?? false)
+                      ? 'Verified — face unlock is active at the kiosk'
+                      : 'Awaiting admin review of your student ID',
+                ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
                 const Divider(height: 1, indent: 56),
@@ -1159,7 +1370,7 @@ class _RentalFilterRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     return SizedBox(
-      height: 34,
+      height: scaledHeight(context, 34),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),

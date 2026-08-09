@@ -28,18 +28,21 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.4.0",
-  buildNumber: 12,
-  fileName: "Engirent_Prerelease12.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.5.1",
+  buildNumber: 14,
+  fileName: "Engirent_Prerelease14.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-08-09",
-  sizeMb: 72,
+  sizeMb: 73,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    'Profile photos now load — they were failing silently before',
-    'My Rentals rebuilt with filters, and a progress timeline on each rental',
-    'Browse rebuilt as a proper shop with product cards, prices and deposits',
-    'A first-time walkthrough, plus a help button that explains each control',
-    'Dark mode across every screen',
+    'Fixes text overflowing and getting cut off on phones with larger system font sizes',
+    'Checkout rebuilt — itemised cost breakdown showing what the deposit is and when you get it back',
+    'Listing an item rebuilt with photo cover selection and an earnings preview',
+    'Notifications grouped by day, with an unread filter',
+    'Reviews now open with an average and a tappable rating breakdown',
+    'Payout setup reworked with a searchable bank list and plain-English transfer rails',
+    'Kiosk scanning now shows the three steps and what happens at the kiosk itself',
+    'Profile no longer claims your identity is verified when it is still pending review',
   ],
 };
 

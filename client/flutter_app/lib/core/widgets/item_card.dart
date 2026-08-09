@@ -234,7 +234,8 @@ class CategoryRail extends StatelessWidget {
     final entries = AppConstants.categories.entries.toList();
 
     return SizedBox(
-      height: 34,
+      // Grows with the user's font scale so chips never clip (§1.7).
+      height: scaledHeight(context, 34),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
@@ -297,4 +298,53 @@ class _Chip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Grid delegate for item cards — mandate §1.7.
+///
+/// Replaces a hardcoded `childAspectRatio`, which assumed the card's text
+/// block was a fixed height. It isn't: Android's display font-size setting
+/// scales every label, and at the larger settings the title, price and
+/// deposit lines grew past the tile and clipped. That's what users on other
+/// phones were reporting.
+///
+/// Instead of guessing a ratio, this measures: the image is a known 4:3
+/// fraction of the tile width, and the info block below it is the sum of its
+/// own line heights run through the active [TextScaler] plus its fixed gaps.
+/// Tiles therefore get taller as text gets bigger, rather than clipping.
+SliverGridDelegate itemGridDelegate(
+  BuildContext context, {
+  double horizontalPadding = AppSpacing.md * 2,
+}) {
+  final media = MediaQuery.of(context);
+  final width = media.size.width;
+  final scaler = media.textScaler;
+
+  final columns = width > 900 ? 4 : (width > 600 ? 3 : 2);
+  final available =
+      width - horizontalPadding - AppSpacing.sm * (columns - 1);
+  final tileWidth = available / columns;
+
+  // Card image is AspectRatio(4/3).
+  final imageHeight = tileWidth * 3 / 4;
+
+  // Info block: two title lines, category, the price row, and the deposit
+  // line. Line box ≈ fontSize × height factor; 1.25 for the title (set
+  // explicitly), ~1.3 for the rest under the default Material text height.
+  final text = scaler.scale(13.5) * 1.25 * 2 // title, maxLines: 2
+      + scaler.scale(11) * 1.3 // category
+      + scaler.scale(16) * 1.3 // price row (tallest child)
+      + scaler.scale(10.5) * 1.3; // deposit line
+
+  const gaps = AppSpacing.hair + AppSpacing.xs + AppSpacing.hair;
+  const padding = AppSpacing.sm * 2;
+
+  return SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: columns,
+    crossAxisSpacing: AppSpacing.sm,
+    mainAxisSpacing: AppSpacing.sm,
+    // +2 absorbs sub-pixel rounding in the line-box estimate; without it a
+    // card can land a fraction of a logical pixel over and stripe.
+    mainAxisExtent: imageHeight + text + gaps + padding + 2,
+  );
 }
