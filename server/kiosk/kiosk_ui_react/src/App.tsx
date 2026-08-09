@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "./theme.css";
 import "./screens.css";
 import { useKioskState } from "./useKioskState";
-import { TetrisTransition } from "./components/TetrisTransition";
+import { BlockAssembly } from "./components/BlockAssembly";
 import { IdleScreen } from "./components/screens/IdleScreen";
 import { MainScreen } from "./components/screens/MainScreen";
 import { HowScreen } from "./components/screens/HowScreen";
@@ -49,7 +49,7 @@ export default function App() {
 
   // Screenshot verification needs the page visible without waiting out the
   // animation, and the Pi's own smoke test shouldn't depend on it either.
-  const skipTetris =
+  const skipAssembly =
     new URLSearchParams(window.location.search).get("notetris") === "1";
 
   return (
@@ -115,11 +115,11 @@ export default function App() {
 
       {showOffline && <OfflineScreen />}
 
-      {!skipTetris && booting && (
-        <TetrisTransition runKey="boot" boot onFinished={() => setBooting(false)} />
+      {!skipAssembly && booting && (
+        <BlockAssembly runKey="boot" boot onFinished={() => setBooting(false)} />
       )}
-      {!skipTetris && !booting && runKey > 0 && (
-        <TetrisTransition key={runKey} runKey={`${k.screen}-${runKey}`} />
+      {!skipAssembly && !booting && runKey > 0 && (
+        <BlockAssembly key={runKey} runKey={`${k.screen}-${runKey}`} />
       )}
     </>
   );

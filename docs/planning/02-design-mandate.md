@@ -301,18 +301,20 @@ The panel is **1080x1920, vertical**. The previous build was laid out as though 
 - **Nothing tappable below `--touch-min`** (~9-12mm of physical finger target; ~64-96px on this panel). Kiosk-industry floor, and it is stricter than any of the other three surfaces.
 - Radius cap and the no-shadow rule from §1.4 apply. The previous build ran 8/16/24/32px radii — the "large radius" tell.
 
-### 4.3 The Tetris assembly — the kiosk's signature motion
+### 4.3 The block assembly — the kiosk's signature motion
 
-**Every screen change passes through a tetromino assembly.** Blocks fall from above and stack until they have tiled the screen; the completed wall then clears downward to reveal the page beneath. Boot runs a longer version that holds the wordmark on a plate before clearing.
+**Every screen change passes through a modular block assembly.** Rectangular panels slide in from the edges and tile the screen completely; the finished wall then clears to reveal the page beneath. Boot runs a longer version that holds a card carrying the wordmark and a **rotating quote about the system**.
 
-- Implemented in `TetrisTransition.tsx`. Pieces are **packed onto a grid and animated into place**, not gravity-simulated — that is what makes the timing repeatable, which matters on a display that runs this hundreds of times a day.
+**Rectangles, not tetrominoes.** The first version used the seven standard Tetris pieces and read as a video game — the wrong register for a locker terminal in an Engineering building. The shapes are now Mondrian-style: varied rectangles produced by binary subdivision, which reads as architectural drawing and sits correctly with the Blueprint palette. References: [Mondrian generator on CSS Grid](https://codepen.io/vinvanbreugel/pen/pmzmmb), [random Mondrian on CSS Grid](https://codepen.io/nicksands/pen/LYEmbgb), [pure-CSS block preloader](https://codepen.io/wescouch/pen/OYYpWN).
+
+Rules, each of which exists because the first version broke it:
+
+- **The wall must cover the page completely, structurally.** Binary subdivision partitions the rectangle exhaustively, so every cell belongs to exactly one panel. Panel edges are drawn **inside** the panel via inset shadow — never as a grid `gap`, because a gap is a hole and a hole shows the page. An opaque backdrop sits under the panels as a second guarantee. The tetromino version packed greedily, left pockets, and had 2px grid gaps; the page was visible through the transition.
 - **Deterministic.** A seeded PRNG (mulberry32) keyed off the screen name, never `Math.random`, so a given screen assembles identically every time while different screens differ.
-- The packer **must always complete the wall**; leftover pockets are plugged with single cells. A partially-tiled wall lets the page show through mid-transition.
-- **Colour rotation must be coprime with the palette length** (currently 5 colours, step 2). A naive `id % length` correlates with placement order and bands the wall into vertical stripes — this was caught in verification and is easy to reintroduce.
-- The wall is **mostly blues** with brass and coral punctuation, so it reads as EngiRent rather than as generic Tetris.
+- **Colour step must be coprime with the palette length** (currently 8 colours, step 3). A step sharing a factor bands the wall into stripes — this happened and had to be fixed.
+- **Panels close inward** toward the centre card rather than sweeping in one direction, so the card is the last thing covered and the first thing read.
 - `pointer-events: none` on the layer, so a touch during a transition reaches the page underneath instead of being swallowed.
-- References: the [Tetris loader](https://codesandbox.io/s/tetris-loader-2fhyf3) (React + framer-motion) and [Tetris blocks with CSS Grid + GSAP](https://codepen.io/jh3y/pen/MQJBEN).
-- `?notetris=1` skips it for screenshot verification and for the Pi's own smoke test. It must never be the default.
+- **Hold long enough to read.** The boot card carries a full sentence; the first version cleared before it could be read. Boot holds ~1.7s after the wall completes.
 
 ### 4.4 The kiosk is a promotional surface, not only a terminal
 
