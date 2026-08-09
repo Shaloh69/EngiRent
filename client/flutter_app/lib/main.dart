@@ -6,6 +6,7 @@ import 'core/theme/theme_controller.dart';
 import 'core/models/item_model.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
+import 'features/onboarding/screens/onboarding_screen.dart';
 import 'features/auth/screens/register_screen.dart';
 import 'features/auth/screens/profile_setup_screen.dart';
 import 'features/home/screens/home_screen.dart';
@@ -19,11 +20,17 @@ import 'features/reviews/screens/reviews_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ToastificationWrapper(child: MyApp()));
+  // Mandate §2.3 — resolve the first-run flag before the first frame, so a
+  // fresh install opens straight onto onboarding rather than flashing the
+  // login screen and then replacing it.
+  final showOnboarding = await OnboardingScreen.shouldShow();
+  runApp(ToastificationWrapper(child: MyApp(showOnboarding: showOnboarding)));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.showOnboarding = false});
+
+  final bool showOnboarding;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +51,7 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: themeController.mode,
-          initialRoute: '/login',
+          initialRoute: showOnboarding ? '/onboarding' : '/login',
           onGenerateRoute: _onGenerateRoute,
         ),
       ),
@@ -54,6 +61,8 @@ class MyApp extends StatelessWidget {
 
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
+      case '/onboarding':
+        return MaterialPageRoute(builder: (_) => const OnboardingScreen());
       case '/login':
         return MaterialPageRoute(builder: (_) => const LoginScreen());
       case '/register':
@@ -61,7 +70,12 @@ class MyApp extends StatelessWidget {
       case '/profile/setup':
         return MaterialPageRoute(builder: (_) => const ProfileSetupScreen());
       case '/home':
-        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: HomeScreen()));
+        return MaterialPageRoute(
+          // No ShowCaseWidget wrapper: v5 replaced it with
+          // ShowcaseView.register(), which _HomeTabState already calls in
+          // initState. Wrapping as well would register the scope twice.
+          builder: (_) => const _AuthGuard(child: HomeScreen()),
+        );
       case '/items':
       case '/items/search':
         final itemsArgs = settings.arguments as Map<String, dynamic>? ?? {};

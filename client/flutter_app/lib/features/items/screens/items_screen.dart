@@ -1,13 +1,23 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/item_card.dart';
 import '../models/item_service.dart';
 import 'item_detail_screen.dart';
 
+/// Browse — rebuilt as a shopping grid per mandate §2.2.
+///
+/// Structure follows the FlutterShop reference: search, a horizontal category
+/// rail with visible active state, then a two-column product grid. Loading
+/// shows skeleton cards rather than a centred spinner, and both the empty and
+/// error cases render real components.
+///
+/// The paging/fetch logic below (`_loadItems`, `_loadMore`, the demo-service
+/// fallback) is carried over unchanged — only the presentation is new.
 class ItemsScreen extends StatefulWidget {
   final String? category;
   const ItemsScreen({super.key, this.category});
@@ -26,32 +36,44 @@ class _ItemsScreenState extends State<ItemsScreen> {
   bool _loadingMore = false;
   String? _error;
   List<ItemModel> _items = [];
+  String _activeCategory = '';
+  String _activeQuery = '';
   int _page = 1;
   int _totalPages = 1;
-  String _activeQuery = '';
-  String _activeCategory = '';
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _activeCategory = widget.category ?? '';
-    _loadItems(reset: true);
     _scrollController.addListener(_onScroll);
+    _loadItems(reset: true);
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 300 &&
         !_loadingMore &&
         _page < _totalPages) {
       _loadMore();
     }
+  }
+
+  /// Debounced so typing doesn't fire a request per keystroke — the previous
+  /// version searched on submit only, which made filtering feel unresponsive.
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      _loadItems(reset: true, query: value.trim());
+    });
   }
 
   Future<void> _loadItems({bool reset = false, String? query}) async {
@@ -82,7 +104,6 @@ class _ItemsScreenState extends State<ItemsScreen> {
           }
         });
       } else {
-        // fall back to demo
         final result = await _service.getItems(query: _activeQuery);
         if (!mounted) return;
         setState(() {
@@ -109,200 +130,165 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<void> _loadMore() async {
-    setState(() { _loadingMore = true; _page++; });
-    await _loadItems(reset: false);
-    setState(() => _loadingMore = false);
+    setState(() => _loadingMore = true);
+    _page++;
+    await _loadItems();
+    if (mounted) setState(() => _loadingMore = false);
+  }
+
+  void _selectCategory(String? key) {
+    setState(() => _activeCategory = key ?? '');
+    _loadItems(reset: true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Browse Items'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => Navigator.pushNamed(context, '/items/create').then((_) => _loadItems(reset: true)),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search by title or description',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadItems(reset: true, query: '');
-                        },
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.arrow_forward),
-                        onPressed: () => _loadItems(reset: true, query: _searchController.text.trim()),
-                      ),
-              ),
-              onSubmitted: (v) => _loadItems(reset: true, query: v.trim()),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          if (_activeCategory.isNotEmpty) ...[
-            const SizedBox(height: 8),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // Search header — sits outside the scroll view so filtering stays
+            // reachable while the grid scrolls.
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.sm),
               child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.filter_list_rounded, size: 14, color: AppColors.primary),
-                        const SizedBox(width: 6),
-                        Text(
-                          AppConstants.categories[_activeCategory] ?? _activeCategory,
-                          style: const TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(width: 6),
-                        GestureDetector(
-                          onTap: () { setState(() => _activeCategory = ''); _loadItems(reset: true); },
-                          child: const Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
-                        ),
-                      ],
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _onQueryChanged,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Search equipment…',
+                        prefixIcon: const Icon(Icons.search, size: 19),
+                        isDense: true,
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close, size: 17),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _loadItems(reset: true, query: '');
+                                },
+                              ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+
+            CategoryRail(
+              selected: _activeCategory.isEmpty ? null : _activeCategory,
+              onSelect: _selectCategory,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+
+            Expanded(child: _buildBody(p)),
           ],
-          const SizedBox(height: 6),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => _loadItems(reset: true),
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? ListView(children: [const SizedBox(height: 100), Center(child: Text(_error!))])
-                      : _items.isEmpty
-                          ? ListView(children: const [SizedBox(height: 100), Center(child: Text('No items found'))])
-                          : ListView.separated(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                              itemCount: _items.length + (_loadingMore ? 1 : 0),
-                              separatorBuilder: (_, __) => const SizedBox(height: 10),
-                              itemBuilder: (context, index) {
-                                if (index == _items.length) {
-                                  return const Center(child: Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: CircularProgressIndicator(),
-                                  ));
-                                }
-                                return _ItemCard(
-          item: _items[index],
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ItemDetailScreen(item: _items[index]),
-            ),
-          ),
-        );
-                              },
-                            ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ItemCard extends StatelessWidget {
-  final ItemModel item;
-  final VoidCallback onTap;
-  const _ItemCard({required this.item, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final categoryLabel = AppConstants.categories[item.category] ?? item.category;
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: item.images.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: item.images.first,
-                        width: 70,
-                        height: 70,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => _placeholderIcon(),
-                      )
-                    : _placeholderIcon(),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Expanded(child: Text(item.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: item.isAvailable
-                              ? AppColors.success.withValues(alpha: 0.12)
-                              : AppColors.warning.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          item.isAvailable ? 'Available' : 'In Use',
-                          style: TextStyle(
-                            color: item.isAvailable ? AppColors.successDark : AppColors.accentDark,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(height: 3),
-                    Text(categoryLabel, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    Text(item.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                    const SizedBox(height: 6),
-                    Text('PHP ${item.pricePerDay.toStringAsFixed(0)}/day', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 
-  Widget _placeholderIcon() {
-    return Container(
-      width: 70,
-      height: 70,
-      decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-      child: const Icon(Icons.inventory_2, color: AppColors.primary, size: 32),
+  Widget _buildBody(AppPalette p) {
+    if (_loading) {
+      // Skeletons, not a spinner (§2.2) — keeps the grid layout stable and
+      // tells the user what shape of content is coming.
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+        gridDelegate: _gridDelegate(context),
+        itemCount: 6,
+        itemBuilder: (_, __) => const ItemCardSkeleton(),
+      );
+    }
+
+    if (_error != null) {
+      return AppEmptyState(
+        icon: Icons.wifi_off_rounded,
+        title: 'Couldn\'t load equipment',
+        body: _error,
+        action: OutlinedButton(
+          onPressed: () => _loadItems(reset: true),
+          child: const Text('Try again'),
+        ),
+      );
+    }
+
+    if (_items.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.search_off_rounded,
+        title: _activeQuery.isNotEmpty || _activeCategory.isNotEmpty
+            ? 'Nothing matches that'
+            : 'No equipment listed yet',
+        body: _activeQuery.isNotEmpty || _activeCategory.isNotEmpty
+            ? 'Try a different search or category.'
+            : 'Be the first to list something for other students to rent.',
+        action: (_activeQuery.isNotEmpty || _activeCategory.isNotEmpty)
+            ? OutlinedButton(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _activeCategory = '');
+                  _loadItems(reset: true, query: '');
+                },
+                child: const Text('Clear filters'),
+              )
+            : ElevatedButton(
+                onPressed: () => Navigator.pushNamed(context, '/items/create'),
+                child: const Text('List an item'),
+              ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _loadItems(reset: true),
+      child: GridView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+        gridDelegate: _gridDelegate(context),
+        itemCount: _items.length + (_loadingMore ? 2 : 0),
+        itemBuilder: (context, i) {
+          if (i >= _items.length) return const ItemCardSkeleton();
+          final item = _items[i];
+          return Stagger(
+            index: i,
+            child: ItemCard(
+              item: item,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ItemDetailScreen(item: item),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Two columns on a phone (§2.2), widening on tablets. childAspectRatio is
+  /// tuned to the card's 4:3 image plus its fixed info block — too tall and
+  /// cards clip their deposit line, too short and they letterbox.
+  SliverGridDelegate _gridDelegate(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final columns = w > 900 ? 4 : (w > 600 ? 3 : 2);
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: columns,
+      crossAxisSpacing: AppSpacing.sm,
+      mainAxisSpacing: AppSpacing.sm,
+      childAspectRatio: 0.63,
     );
   }
 }

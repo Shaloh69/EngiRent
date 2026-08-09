@@ -8,7 +8,12 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:showcaseview/showcaseview.dart';
+import '../../../core/models/item_model.dart';
 import '../../../core/services/socket_service.dart';
+import '../../../core/widgets/item_card.dart';
+import '../../items/screens/item_detail_screen.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/app_widgets.dart';
@@ -75,195 +80,466 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ── Home Tab ─────────────────────────────────────────────────────────────────
-
-class _HomeTab extends StatelessWidget {
+class _HomeTab extends StatefulWidget {
   final VoidCallback onGoToRentals;
   const _HomeTab({required this.onGoToRentals});
+
+  @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> {
+  // Mandate §2.3 (part 2) — the "?" tour targets. Each key is attached to a
+  // real control below, so the tour highlights the actual button rather than
+  // describing it in the abstract.
+  final _kBrowse = GlobalKey();
+  final _kList = GlobalKey();
+  final _kKiosk = GlobalKey();
+  final _kRentals = GlobalKey();
+  final _kHelp = GlobalKey();
+
+  static const _tourSeenKey = 'engirent_home_tour_seen';
+
+  final _api = ApiService();
+  List<ItemModel> _featured = [];
+  bool _loadingFeatured = true;
+
+  @override
+  void initState() {
+    super.initState();
+    ShowcaseView.register(
+      autoPlayDelay: const Duration(seconds: 4),
+      globalTooltipActionConfig: const TooltipActionConfig(
+        position: TooltipActionPosition.inside,
+        alignment: MainAxisAlignment.spaceBetween,
+        actionGap: 16,
+      ),
+    );
+    _loadFeatured();
+    _maybeAutoStartTour();
+  }
+
+  /// Runs the tour automatically the first time Home is reached, then only on
+  /// demand from "?". Persisted so it doesn't re-run on every launch.
+  Future<void> _maybeAutoStartTour() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_tourSeenKey) ?? false) return;
+      await prefs.setBool(_tourSeenKey, true);
+    } catch (_) {
+      return; // never let a prefs failure trigger a surprise tour
+    }
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startTour());
+  }
+
+  void _startTour() {
+    if (!mounted) return;
+    ShowcaseView.get().startShowCase(
+      [_kBrowse, _kList, _kKiosk, _kRentals, _kHelp],
+    );
+  }
+
+  Future<void> _loadFeatured() async {
+    try {
+      final resp = await _api.get('/items?page=1&limit=6', authenticated: false);
+      final data = jsonDecode(resp.body);
+      if (!mounted) return;
+      if (resp.statusCode == 200 && data['success'] == true) {
+        setState(() {
+          _featured = (data['data']['items'] as List<dynamic>)
+              .map((j) => ItemModel.fromJson(j as Map<String, dynamic>))
+              .toList();
+          _loadingFeatured = false;
+        });
+      } else {
+        setState(() => _loadingFeatured = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingFeatured = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     final user = context.watch<AuthProvider>().user;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: CustomScrollView(
-        slivers: [
-          // Navy gradient header
-          SliverAppBar(
-            expandedHeight: 160,
-            pinned: true,
-            backgroundColor: AppColors.primaryDark,
-            foregroundColor: AppColors.white,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
-                padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+      body: RefreshIndicator(
+        onRefresh: _loadFeatured,
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 150,
+              pinned: true,
+              backgroundColor: AppColors.primaryDark,
+              foregroundColor: AppColors.white,
+              actions: [
+                // Mandate §2.3 — always-available help. Wrapped in its own
+                // Showcase so the tour finishes by pointing at the way to
+                // replay itself.
+                Showcase(
+                  key: _kHelp,
+                  title: 'Need a refresher?',
+                  description:
+                      'Tap here any time to replay this walkthrough.',
+                  targetBorderRadius: AppRadius.card,
+                  tooltipBackgroundColor: p.surface,
+                  textColor: p.ink,
+                  tooltipBorderRadius: AppRadius.card,
+                  child: IconButton(
+                    icon: const Icon(Icons.help_outline_rounded),
+                    tooltip: 'How this works',
+                    onPressed: _startTour,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.hair),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
+                  padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Hello, ${user?.firstName ?? "Student"} 👋',
+                        style: const TextStyle(
+                          color: AppColors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'What would you like to do today?',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+                // No FlexibleSpaceBar.title — it renders bottom-aligned in the
+                // same space as the greeting and doesn't reliably fade out,
+                // which collided with "Hello, {name}" (caught by screenshot,
+                // invisible in a code read).
+              ),
+            ),
+
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  // Mandate §2.2 — the 2×2 grid of equal squares is gone.
+                  // Browsing is the primary action and gets a full-width
+                  // panel; the other three are secondary and share a row.
+                  Showcase(
+                    key: _kBrowse,
+                    title: 'Find equipment',
+                    description:
+                        'Browse what other students have listed — calculators, kits, lab gear.',
+                    targetBorderRadius: AppRadius.card,
+                    tooltipBackgroundColor: p.surface,
+                    textColor: p.ink,
+                    tooltipBorderRadius: AppRadius.card,
+                    child: _PrimaryAction(
+                      onTap: () => Navigator.pushNamed(context, '/items'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Showcase(
+                          key: _kList,
+                          title: 'Earn from your gear',
+                          description:
+                              'List something you own so other students can rent it.',
+                          targetBorderRadius: AppRadius.card,
+                          tooltipBackgroundColor: p.surface,
+                          textColor: p.ink,
+                          tooltipBorderRadius: AppRadius.card,
+                          child: _SecondaryAction(
+                            icon: Icons.add_box_outlined,
+                            label: 'List an item',
+                            color: AppColors.secondary,
+                            onTap: () =>
+                                Navigator.pushNamed(context, '/items/create'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Expanded(
+                        child: Showcase(
+                          key: _kKiosk,
+                          title: 'At the locker',
+                          description:
+                              'Scan the kiosk QR to drop off or collect an item.',
+                          targetBorderRadius: AppRadius.card,
+                          tooltipBackgroundColor: p.surface,
+                          textColor: p.ink,
+                          tooltipBorderRadius: AppRadius.card,
+                          child: _SecondaryAction(
+                            icon: Icons.qr_code_scanner_rounded,
+                            label: 'Scan kiosk',
+                            color: AppColors.accent,
+                            onTap: () =>
+                                Navigator.pushNamed(context, '/kiosk/scan'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Expanded(
+                        child: Showcase(
+                          key: _kRentals,
+                          title: 'Track your rentals',
+                          description:
+                              'See what you\'ve borrowed and what\'s due back.',
+                          targetBorderRadius: AppRadius.card,
+                          tooltipBackgroundColor: p.surface,
+                          textColor: p.ink,
+                          tooltipBorderRadius: AppRadius.card,
+                          child: _SecondaryAction(
+                            icon: Icons.receipt_long_rounded,
+                            label: 'My rentals',
+                            color: AppColors.info,
+                            onTap: widget.onGoToRentals,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  SectionLabel(
+                    'Browse by category',
+                    trailing: GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, '/items'),
+                      child: Text(
+                        'See all',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: p.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+
+            // Category rail is full-bleed, so it can scroll past the screen
+            // edge the way a real shopping app's does.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                child: CategoryRail(
+                  selected: null,
+                  onSelect: (key) => Navigator.pushNamed(
+                    context,
+                    '/items',
+                    arguments: {'category': key},
+                  ),
+                ),
+              ),
+            ),
+
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              sliver: SliverToBoxAdapter(
+                child: SectionLabel('Recently listed'),
+              ),
+            ),
+
+            // Featured grid — Home now shows real inventory instead of only
+            // navigation. A marketplace home page with no products on it is
+            // the main thing that made this screen feel empty.
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, 0, AppSpacing.md, AppSpacing.xl),
+              sliver: _loadingFeatured
+                  ? SliverGrid(
+                      gridDelegate: _homeGrid(context),
+                      delegate: SliverChildBuilderDelegate(
+                        (_, __) => const ItemCardSkeleton(),
+                        childCount: 4,
+                      ),
+                    )
+                  : _featured.isEmpty
+                      ? SliverToBoxAdapter(
+                          child: AppCard(
+                            child: Row(
+                              children: [
+                                Icon(Icons.inventory_2_outlined,
+                                    color: p.muted, size: 20),
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    'Nothing listed yet — be the first.',
+                                    style: TextStyle(
+                                        fontSize: 13, color: p.muted),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pushNamed(
+                                      context, '/items/create'),
+                                  child: const Text('List'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : SliverGrid(
+                          gridDelegate: _homeGrid(context),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) => Stagger(
+                              index: i,
+                              child: ItemCard(
+                                item: _featured[i],
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ItemDetailScreen(item: _featured[i]),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            childCount: _featured.length,
+                          ),
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  SliverGridDelegate _homeGrid(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: w > 900 ? 4 : (w > 600 ? 3 : 2),
+      crossAxisSpacing: AppSpacing.sm,
+      mainAxisSpacing: AppSpacing.sm,
+      childAspectRatio: 0.63,
+    );
+  }
+}
+
+/// The one action most people open the app to do. Full width, illustrated,
+/// and visually dominant — the opposite of the previous four-equal-squares
+/// arrangement that gave "browse" the same weight as "scan kiosk".
+class _PrimaryAction extends StatelessWidget {
+  const _PrimaryAction({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.card,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryGradient,
+            borderRadius: AppRadius.card,
+          ),
+          child: Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: AppRadius.button,
+                ),
+                child: const Icon(Icons.search_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Text(
-                      'Hello, ${user?.firstName ?? "Student"} 👋',
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontSize: 22,
+                      'Find equipment to rent',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'What would you like to do today?',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    SizedBox(height: 2),
+                    Text(
+                      'Browse what students near you have listed',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
                 ),
               ),
-              // No FlexibleSpaceBar.title here — it renders bottom-aligned in
-              // the same space as `background`'s own bottom-aligned greeting
-              // Column and doesn't reliably fade out at full expansion,
-              // which visually collided with "Hello, {name}" (caught via
-              // screenshot verification, not visible in a code read). The
-              // greeting text already carries the personalization; a
-              // separate "EngiRent Hub" collapsed-state title isn't needed.
-            ),
+              const Icon(Icons.arrow_forward_rounded,
+                  color: Colors.white, size: 18),
+            ],
           ),
-
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // Quick actions
-                Text('Quick Actions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: p.ink)),
-                const SizedBox(height: 12),
-                GridView.count(
-                  crossAxisCount: MediaQuery.of(context).size.width > 700 ? 4 : 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.1,
-                  children: [
-                    _QuickActionCard(
-                      icon: Icons.add_box_rounded,
-                      title: 'List Item',
-                      subtitle: 'Earn from your tools',
-                      color: AppColors.primary,
-                      onTap: () => Navigator.pushNamed(context, '/items/create'),
-                    ),
-                    _QuickActionCard(
-                      icon: Icons.search_rounded,
-                      title: 'Browse',
-                      subtitle: 'Find equipment',
-                      color: AppColors.success,
-                      onTap: () => Navigator.pushNamed(context, '/items'),
-                    ),
-                    _QuickActionCard(
-                      icon: Icons.qr_code_scanner_rounded,
-                      title: 'Kiosk Scan',
-                      subtitle: 'Use at the hub',
-                      color: AppColors.accent,
-                      onTap: () => Navigator.pushNamed(context, '/kiosk/scan'),
-                    ),
-                    _QuickActionCard(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'My Rentals',
-                      subtitle: 'Track your items',
-                      color: AppColors.info,
-                      onTap: onGoToRentals,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Categories
-                Text('Browse by Category', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: p.ink)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: AppConstants.categories.entries.map((e) {
-                    return GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/items', arguments: {'category': e.key}),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: p.surface,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: p.border),
-                        ),
-                        child: Text(
-                          e.value,
-                          style: TextStyle(
-                            color: p.ink,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 24),
-              ]),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _QuickActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickActionCard({
+/// Secondary actions — compact, equal to each other but clearly subordinate
+/// to the primary panel above.
+class _SecondaryAction extends StatelessWidget {
+  const _SecondaryAction({
     required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.label,
     required this.color,
     required this.onTap,
   });
 
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
-    return GestureDetector(
+    return AppCard(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: p.border),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primaryDark.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+      padding: const EdgeInsets.symmetric(
+          vertical: AppSpacing.sm, horizontal: AppSpacing.xs),
+      child: Column(
+        children: [
+          Container(
+            height: 34,
+            width: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.13),
+              borderRadius: AppRadius.button,
             ),
-          ],
-        ),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+              color: p.ink,
             ),
-            const Spacer(),
-            Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: p.ink)),
-            const SizedBox(height: 2),
-            Text(subtitle, style: TextStyle(fontSize: 11, color: p.muted)),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

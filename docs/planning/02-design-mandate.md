@@ -169,6 +169,34 @@ The prior pass re-themed this surface by swapping palette constants; the structu
 
 **Every screen must be verified in both light and dark** per §1.6 before it counts as done.
 
+### 2.2 Browse and Home are a *shopping* problem — build them from a shopping template
+
+The marketplace screens were treated as generic lists. They aren't: renting a calculator from another student is a **commerce** interaction, and commerce UI has decades of settled patterns that these screens should inherit rather than reinvent.
+
+**Explicit template references, with real links:**
+- **[E-commerce Complete Flutter UI (FlutterShop)](https://github.com/abuanwar072/E-commerce-Complete-Flutter-UI)** — the primary structural reference. Real Flutter code, not a Figma file, covering the exact screen set needed here: home with category rail and product grid, product detail, search, cart, profile. Take its **layout and component structure**, re-themed to §1.3 — do not take its palette or its rounded, shadow-heavy card styling, which conflicts with §1.1/§1.4.
+- **[flutter_ecommerce_template](https://github.com/robertodevs/flutter_ecommerce_template)** — minimalist alternative; useful specifically for its restrained product-card treatment, which is closer to "Machined Vault" than FlutterShop's.
+- **[E-commerce-App-UI-Flutter](https://github.com/abuanwar072/E-commerce-App-UI-Flutter)** — reference for the category-chip rail and the hero-animated transition from grid tile into detail.
+
+**What the item grid must actually do** (the previous version did almost none of this):
+- **A real product card**: image with a fixed aspect ratio, title, price *with its unit* (`₱50/day`, not a bare number), an availability state, the owner's rating, and a deposit hint. Price is mono (§1.2).
+- **Two-column grid** on phones, not a full-width list — a list wastes half the screen on items whose photo is the main signal.
+- **Skeleton placeholders while loading** (`shimmer`), not a centred spinner. A spinner tells the user nothing about what's coming; a skeleton keeps layout stable and communicates "grid of cards".
+- **A category rail** that is horizontally scrollable and shows the active selection, not a wrapped blob of chips.
+- **Empty and error states that are real components**, per the same rule §3 applies to charts.
+
+**Quick Actions on Home must stop being a 2×2 grid of equal squares.** Four identical tiles give equal weight to four unequal actions. The primary action (browse/rent) should dominate; the rest are secondary. Use a deliberate asymmetric arrangement, and label each with what it *does*, not a noun.
+
+### 2.3 First-run onboarding and an on-demand tutorial
+
+Two separate things, both required, and they must not be conflated:
+
+**1. First-open walkthrough** — shown once, on first launch only, before/around sign-in. Built with **[`introduction_screen`](https://pub.dev/packages/introduction_screen)** (+ `smooth_page_indicator`). Three or four screens covering what the product actually is: rent gear from other students, the locker holds it, payment is escrowed until handover is verified. It must be skippable, and the "seen" flag persists to `shared_preferences` so it never appears twice.
+
+**2. An always-available "?" tutorial** — a help button in the Home app bar that replays an in-context tour, highlighting real controls one at a time and explaining each. Built with **[`showcaseview`](https://pub.dev/packages/showcaseview)** (v5 API: `ShowcaseView.register(...)` in `initState`, `Showcase(key:, title:, description:, child:)` around each target, `ShowcaseView.get().startShowCase([keys])` to run). This is the piece that makes the app self-explanatory for a first-time renter who skipped onboarding — it points at the actual buttons on screen rather than describing them in the abstract.
+
+The tour runs automatically the first time Home is reached, and on demand from "?" thereafter.
+
 ---
 
 ## 3. Admin Console
