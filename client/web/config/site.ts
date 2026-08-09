@@ -9,6 +9,7 @@ export const siteConfig = {
     { label: 'Docs', href: '/docs' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Blog', href: '/blog' },
+    { label: 'Download', href: '/download' },
   ],
   navMenuItems: [
     { label: 'Owner Flow', href: '/docs#owner-flow' },
@@ -16,11 +17,12 @@ export const siteConfig = {
     { label: 'Verification', href: '/docs#verification' },
     { label: 'Security', href: '/docs#security' },
     { label: 'Contact', href: '/about#contact' },
+    { label: 'Download the app', href: '/download' },
   ],
   links: {
     github: 'https://github.com/',
     docs: '/docs',
     admin: 'http://localhost:3001',
-    mobile: '#',
+    mobile: '/download',
   },
 };
