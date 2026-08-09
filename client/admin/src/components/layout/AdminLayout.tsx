@@ -25,6 +25,7 @@ import {
   IdCard,
   LayoutDashboard,
   LogOut,
+  MessageSquareWarning,
   MonitorSpeaker,
   Package,
   Receipt,
@@ -51,6 +52,10 @@ const menuItems = [
   // that no ID queue existed (mandate §2.11).
   { name: "Condition checks", icon: CheckCircle2, href: "/verifications" },
   { name: "ID verification", icon: IdCard, href: "/id-verifications" },
+  // Checklist Stage 3.3 — before this the feedback endpoint was a
+  // write-only hole: students could file reports, but nothing on the admin
+  // side could read them.
+  { name: "Feedback", icon: MessageSquareWarning, href: "/feedback" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Kiosk", icon: MonitorSpeaker, href: "/kiosk" },
   { name: "Health Check", icon: HeartPulse, href: "/health" },

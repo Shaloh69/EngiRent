@@ -15,6 +15,8 @@ import 'features/items/screens/create_item_screen.dart';
 import 'features/items/screens/item_detail_screen.dart';
 import 'features/items/screens/items_screen.dart';
 import 'features/items/screens/my_listings_screen.dart';
+import 'features/feedback/screens/feedback_screen.dart';
+import 'features/feedback/screens/send_feedback_screen.dart';
 import 'features/kiosk/screens/kiosk_scan_screen.dart';
 import 'features/rentals/screens/create_rental_screen.dart';
 import 'features/rentals/screens/rental_detail_screen.dart';
@@ -121,6 +123,25 @@ class MyApp extends StatelessWidget {
         // called; an owner could publish a listing and then never see it
         // again. This is the screen that finally shows it back to them.
         return MaterialPageRoute(builder: (_) => const _AuthGuard(child: MyListingsScreen()));
+      case '/feedback':
+        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: FeedbackScreen()));
+      case '/feedback/new':
+        // Contextual entry (checklist 3.2) — a failed kiosk scan, a payment
+        // error, or a disputed rental pushes straight to compose with
+        // category/rentalId/kioskId already filled in, skipping the list.
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        return MaterialPageRoute(
+          builder: (_) => _AuthGuard(
+            child: SendFeedbackScreen(
+              initialCategory: args['category'] as String?,
+              initialBody: args['body'] as String?,
+              contextNote: args['contextNote'] as String?,
+              screen: args['screen'] as String?,
+              rentalId: args['rentalId'] as String?,
+              kioskId: args['kioskId'] as String?,
+            ),
+          ),
+        );
       case '/kiosk/scan':
         final kioskArgs = settings.arguments as Map<String, dynamic>? ?? {};
         final kioskRentalId = kioskArgs['rentalId'] as String? ?? '';

@@ -8,6 +8,7 @@ import notificationRoutes from "./notificationRoutes";
 import uploadRoutes from "./uploadRoutes";
 import adminRoutes from "./adminRoutes";
 import reviewRoutes from "./reviewRoutes";
+import feedbackRoutes from "./feedbackRoutes";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/notifications", notificationRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/admin", adminRoutes);
 router.use("/reviews", reviewRoutes);
+router.use("/feedback", feedbackRoutes);
 
 export default router;

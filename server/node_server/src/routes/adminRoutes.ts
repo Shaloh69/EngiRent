@@ -23,6 +23,8 @@ import {
   getSystemHealth,
   listIdVerifications,
   decideIdVerification,
+  listFeedback,
+  updateFeedbackStatus,
 } from "../controllers/adminController";
 
 const router = Router();
@@ -107,6 +109,21 @@ router.patch(
     body("status").isIn(["APPROVED", "REJECTED"]),
   ]),
   reviewVerification,
+);
+
+// ── Feedback triage (checklist Stage 3.3) ──────────────────────────────────
+// Without this the submission endpoint was a write-only hole: reports could
+// be filed but nothing on the admin side could read them.
+router.get("/feedback", listFeedback);
+
+router.patch(
+  "/feedback/:id",
+  validate([
+    param("id").isUUID(),
+    body("status").isIn(["ACKNOWLEDGED", "RESOLVED"]),
+    body("note").optional().isString().isLength({ max: 2000 }),
+  ]),
+  updateFeedbackStatus,
 );
 
 // ── Reports ────────────────────────────────────────────────────────────────

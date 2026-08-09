@@ -45,6 +45,10 @@ class _KioskScanScreenState extends State<KioskScanScreen>
 
   _Phase _phase = _Phase.scanning;
   String _errorMessage = '';
+  // Captured from face:failed/kiosk:scan_error so a "Report a problem" tap
+  // can name which physical kiosk this happened at — the phone never talks
+  // to a kiosk directly, so this is otherwise unknowable app-side.
+  String? _kioskId;
   final List<StreamSubscription<Map<String, dynamic>>> _subs = [];
   Timer? _timeout;
   late final AnimationController _sweep;
@@ -90,6 +94,16 @@ class _KioskScanScreenState extends State<KioskScanScreen>
 
     _scannerCtrl.stop();
 
+    // Best-effort fallback so even a total timeout (no server event at all
+    // comes back) still has something to attach to a feedback report — the
+    // token's own format is "{kiosk_id}:{token_id}:{ts}:{sig}" (see the
+    // server's matching comment in index.ts). Overwritten below by an
+    // authoritative server-echoed kioskId whenever one arrives.
+    final tokenKioskId = raw.split(':').firstOrNull;
+    if (tokenKioskId != null && tokenKioskId.isNotEmpty) {
+      _kioskId = tokenKioskId;
+    }
+
     final userId = SocketService.instance.currentUserId ?? '';
 
     SocketService.instance.emit('app:kiosk_scan', {
@@ -130,6 +144,10 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         _errorMessage =
             'The kiosk couldn\'t match your face. Stand square to the camera in '
             'good light, remove hats or sunglasses, and try again.';
+        // Only overwrite the QR-derived fallback with an authoritative
+        // value — this event always carries one, but guard anyway so a
+        // stray null can't erase a fallback that was actually correct.
+        _kioskId = (data['kioskId'] as String?) ?? _kioskId;
       });
     }
   }
@@ -145,6 +163,7 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         _errorMessage = (data['message'] as String?)?.isNotEmpty == true
             ? data['message'] as String
             : 'The kiosk reported an error. Please try again.';
+        _kioskId = (data['kioskId'] as String?) ?? _kioskId;
       });
     }
   }
@@ -264,6 +283,24 @@ class _KioskScanScreenState extends State<KioskScanScreen>
             onPrimary: _retry,
             secondaryLabel: 'Cancel',
             onSecondary: () => Navigator.pop(context, false),
+            // Checklist 3.2 — a report filed from here already knows which
+            // kiosk and which rental; the student shouldn't have to look
+            // either up.
+            tertiaryLabel: 'Report this problem',
+            onTertiary: () => Navigator.pushNamed(
+              context,
+              '/feedback/new',
+              arguments: {
+                'category': 'KIOSK_PROBLEM',
+                'body': _errorMessage,
+                'contextNote':
+                    'Filed from a kiosk hand-off that didn\'t complete — the '
+                    'kiosk and rental are attached automatically.',
+                'screen': 'KioskScanScreen',
+                'rentalId': widget.rentalId,
+                'kioskId': _kioskId,
+              },
+            ),
           ),
       },
     );
@@ -398,6 +435,8 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     required VoidCallback onPrimary,
     String? secondaryLabel,
     VoidCallback? onSecondary,
+    String? tertiaryLabel,
+    VoidCallback? onTertiary,
   }) {
     return SafeArea(
       child: Padding(
@@ -459,6 +498,15 @@ class _KioskScanScreenState extends State<KioskScanScreen>
                 onPressed: onSecondary,
                 child: Text(secondaryLabel,
                     style: const TextStyle(color: Color(0xFF7FA39C))),
+              ),
+            ],
+            if (tertiaryLabel != null) ...[
+              const SizedBox(height: AppSpacing.hair),
+              TextButton.icon(
+                onPressed: onTertiary,
+                icon: const Icon(Icons.flag_outlined, size: 15, color: Color(0xFF7FA39C)),
+                label: Text(tertiaryLabel,
+                    style: const TextStyle(color: Color(0xFF7FA39C), fontSize: 12.5)),
               ),
             ],
           ],

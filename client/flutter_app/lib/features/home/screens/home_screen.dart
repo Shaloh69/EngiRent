@@ -1237,6 +1237,14 @@ class _ProfileTab extends StatelessWidget {
                 ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
+                  icon: Icons.forum_outlined,
+                  iconColor: AppColors.info,
+                  title: 'Send Feedback',
+                  subtitle: 'Report a bug, a kiosk problem, or a suggestion',
+                  onTap: () => Navigator.pushNamed(context, '/feedback'),
+                ),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
                   icon: Icons.delete_forever_rounded,
                   iconColor: AppColors.error,
                   title: 'Delete My Biometric Data & Account',

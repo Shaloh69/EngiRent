@@ -16,6 +16,7 @@ import { rateLimiter } from "./middleware/rateLimiter";
 import { mediaUrlRewriter } from "./middleware/mediaUrlRewriter";
 import prisma from "./config/database";
 import kioskEventBus from "./utils/kioskEventBus";
+import { installKioskEventLog } from "./utils/kioskEventLog";
 import { verifyAccessToken } from "./utils/jwt";
 import { decryptFaceEncoding } from "./utils/crypto";
 import { signedMediaUrl } from "./services/storageService";
@@ -941,9 +942,14 @@ io.on("connection", (socket: Socket) => {
         if (!rental) return;
 
         if (!verified) {
+          // kioskId is threaded through so a "my face wasn't recognised"
+          // feedback report (checklist Stage 3) can name which physical
+          // kiosk it happened at — the phone app has no other way to know,
+          // since it only ever talks to Node, never directly to a kiosk.
           io.to(`user:${rental.renterId}`).emit("face:failed", {
             rentalId: rental_id,
             confidence,
+            kioskId: data.kiosk_id,
           });
           return;
         }
@@ -983,6 +989,7 @@ io.on("connection", (socket: Socket) => {
           io.to(`user:${rental.renterId}`).emit("face:verified", {
             rentalId: rental_id,
             action: "claim",
+            kioskId: data.kiosk_id,
           });
           io.to(`user:${rental.ownerId}`).emit("rental:active", {
             rentalId: rental_id,
@@ -1003,6 +1010,7 @@ io.on("connection", (socket: Socket) => {
           io.to(`user:${rental.renterId}`).emit("face:verified", {
             rentalId: rental_id,
             action: "return",
+            kioskId: data.kiosk_id,
           });
         }
       } catch (err) {
@@ -1288,7 +1296,14 @@ io.on("connection", (socket: Socket) => {
       if (!isKiosk(socket)) return;
       const { userId, rentalId, message } = data ?? {};
       if (userId) {
-        io.to(`user:${userId}`).emit("kiosk:scan_error", { rentalId, message });
+        io.to(`user:${userId}`).emit("kiosk:scan_error", {
+          rentalId,
+          message,
+          // The relaying socket IS the kiosk that rejected the token, so
+          // this is the one scan_error case where a real kiosk ID exists —
+          // the other two happen before a kiosk is ever identified.
+          kioskId: socket.data.kioskId as string | undefined,
+        });
         logger.warn(`[KIOSK-SCAN]  Token validation failed for user ${userId}: ${message}`);
       }
     },
@@ -1419,6 +1434,12 @@ const PORT = parseInt(env.PORT);
 const startServer = async (): Promise<void> => {
   try {
     await connectDatabase();
+
+    // Starts recording kiosk events into the rolling in-memory buffer a
+    // KIOSK_PROBLEM feedback report can later snapshot (see utils/
+    // kioskEventLog.ts). Must run before any kiosk socket connects, so it's
+    // installed at startup rather than lazily on first use.
+    installKioskEventLog();
 
     httpServer.listen(PORT, "0.0.0.0", () => {
       logger.info(`

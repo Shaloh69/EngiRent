@@ -101,10 +101,15 @@ class ApiService {
     return http.delete(url, headers: headers, body: encodedBody);
   }
 
-  // Upload a single file to the given endpoint as multipart form-data
+  // Upload a single file to the given endpoint as multipart form-data.
+  // `file` is nullable so a form that has an optional attachment (feedback's
+  // screenshot) can reuse this instead of a second near-identical method —
+  // the server side already treats the file field as optional (multer's
+  // `.single()` leaves `req.file` undefined when the field is absent), so
+  // this only had to catch up to match.
   Future<http.Response> uploadFile(
     String endpoint,
-    File file,
+    File? file,
     String fieldName, {
     Map<String, String>? extraFields,
   }) async {
@@ -113,13 +118,15 @@ class ApiService {
 
     final request = http.MultipartRequest('POST', url);
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
-    final mimeType = lookupMimeType(file.path) ?? 'image/jpeg';
-    final parts = mimeType.split('/');
-    request.files.add(await http.MultipartFile.fromPath(
-      fieldName,
-      file.path,
-      contentType: MediaType(parts[0], parts[1]),
-    ));
+    if (file != null) {
+      final mimeType = lookupMimeType(file.path) ?? 'image/jpeg';
+      final parts = mimeType.split('/');
+      request.files.add(await http.MultipartFile.fromPath(
+        fieldName,
+        file.path,
+        contentType: MediaType(parts[0], parts[1]),
+      ));
+    }
     if (extraFields != null) request.fields.addAll(extraFields);
 
     final streamed = await request.send();

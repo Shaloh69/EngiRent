@@ -90,6 +90,7 @@ model User {
   notifications   Notification[]
   reviews         Review[]       @relation("ReviewAuthor")
   reviewsReceived Review[]       @relation("ReviewRecipient")
+  feedback        Feedback[]
 
   @@index([email])
   @@index([studentId])
@@ -375,6 +376,70 @@ model Notification {
   @@map("notifications")
 }
 
+// Feedback model — checklist Stage 3. Before this there was no feedback,
+// support or bug-report path on the server at all: a student who hit a
+// problem had no route to the people running the system, and admins running
+// a deployment had no signal except rentals silently failing (mandate §2.9.3).
+model Feedback {
+  id     String @id @default(uuid())
+  userId String
+
+  category FeedbackCategory
+  body     String           @db.Text
+
+  // Private, same tier as a face/ID photo — never served by a direct route,
+  // only through signedMediaUrl() (see storageService.feedbackScreenshotPath).
+  // A screenshot can incidentally contain anything on the student's screen.
+  screenshotPath String?
+
+  // Automatically attached context — a report with none of this is close to
+  // useless: "the locker didn't open" means nothing without knowing which
+  // locker, when, and what build the student was running.
+  appVersion String
+  device     String?
+  screen     String?
+  rentalId   String?
+  kioskId    String?
+  // Snapshot of the kiosk's recent event log at submission time, only for
+  // kiosk-problem reports with a kioskId — see utils/kioskEventLog.ts. The
+  // events themselves are never persisted anywhere else (pure pub/sub), so
+  // without this a "the locker didn't open" report would have nothing to
+  // check against once the moment had passed.
+  kioskEventSnapshot Json?
+
+  status FeedbackStatus @default(NEW)
+
+  // Triage — no FK on resolvedById so deleting an admin never erases the
+  // record, same reasoning as User.verifiedById.
+  adminNote    String?   @db.Text
+  resolvedById String?
+  resolvedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([category])
+  @@map("feedback")
+}
+
+enum FeedbackCategory {
+  BUG
+  SUGGESTION
+  KIOSK_PROBLEM
+  PAYMENT_PROBLEM
+  OTHER
+}
+
+enum FeedbackStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+}
+
 // Review model - User reviews
 model Review {
   id          String  @id @default(uuid())
@@ -519,6 +584,11 @@ enum NotificationType {
   PAYMENT_FAILED
   REVIEW_REQUEST
   SYSTEM_ANNOUNCEMENT
+  // Sent when an admin resolves a feedback report — closing the loop is the
+  // whole point of Stage 3; a triage queue nobody outside admin can see the
+  // outcome of is still a one-way write as far as the reporting student
+  // knows, notification or not.
+  FEEDBACK_UPDATE
 }
 
 enum ReviewType {

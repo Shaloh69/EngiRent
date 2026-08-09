@@ -86,6 +86,27 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — Stage 3 (feedback loop) built, deployed and verified live end-to-end
+
+Third stage closed in this continuation, same session as Stages 1.1/2 above.
+
+**Server, genuinely new** (mandate §2.9.3 called this a real gap, not a wiring job — there was no feedback/support/bug-report endpoint anywhere): `Feedback` model (category/body/screenshot/context/status/triage fields), `POST /feedback`, `GET /feedback/mine`, admin `GET /admin/feedback` + `PATCH /admin/feedback/:id`. Screenshot storage reuses the same private, signed-URL-only tier as face/ID photos — a screenshot can incidentally contain anything on a student's screen.
+
+**A real, per-user rate limiter, deliberately not the existing global one.** The existing `rateLimiter.ts` is IP-keyed; a shared campus wifi NAT means many students share one IP, so an IP-keyed cap on report submission would either punish everyone behind it or have to be too loose to stop a single spamming account. New `middleware/perUserRateLimiter.ts`, keyed by `req.user.userId`.
+
+**Closed a real, pre-existing gap the checklist's own "done when" exposed.** The app had no way to know which physical kiosk it was talking to — it only ever spoke to Node, never to a kiosk directly, and none of the three socket events `KioskScanScreen` listens to (`face:verified`, `face:failed`, `kiosk:scan_error`) carried a `kiosk_id` back to the phone. Threaded `kioskId` through all three server-side emits (the data was already sitting on `socket.data.kioskId`/the incoming payload, just never forwarded), plus a QR-token-derived fallback client-side (`kiosk_id:token_id:ts:sig`) for the case where no server event ever arrives at all.
+
+**Built kiosk event history from scratch, because there wasn't any.** `kioskEventBus` is a pure pub/sub `EventEmitter` — SSE listeners subscribe live, but nothing ever kept a record, so once a moment passed a "the locker didn't open" report had nothing to check against. New `utils/kioskEventLog.ts`: a 40-event rolling buffer per kiosk, installed once at server startup, snapshotted into a KIOSK_PROBLEM report at the moment of submission. Unit-tested in isolation (7/7 passing) rather than over HTTP — proving it needs emitting real events onto the bus, which an HTTP-only script can't do without a live kiosk socket connection or a new `socket.io-client` dependency added just for one test. Documented as the same category of scope boundary as "no PayMongo sandbox key" — not skipped, genuinely out of reach without hardware/a real socket connection.
+
+**App**: Profile → Send Feedback opens a list of the student's own past reports (so the loop isn't one-way from their side either), with a compose form reachable from there and from three contextual entry points, all three actually wired: a failed kiosk hand-off, a cancelled/failed checkout, and a disputed rental — each pre-filling category and the relevant rental/kiosk ID rather than making the student look either up.
+
+**Admin**: new `/feedback` triage page — category/status filters, automatically-attached context shown as badges, the kiosk event snapshot rendered inline (or an honest "no recorded events" message when the kiosk was never reached), acknowledge/resolve actions. Resolving notifies the reporter with the admin's note; **acknowledging deliberately does not notify**, to avoid noise. **A backward transition (RESOLVED → NEW) is explicitly rejected** — the status is a one-way ratchet through NEW → ACKNOWLEDGED → RESOLVED, not a free-form field.
+
+**Verification, all against the live `desktop-gklhcri` stack, not a dev database:**
+- `server/node_server/scripts/e2e-feedback.mjs`, committed, 43/43 passing: submission validation, both screenshot and no-screenshot paths, rentalId ownership checking, the student's own status view, admin filtering, the full NEW→ACKNOWLEDGED→RESOLVED transition with the resolve notification actually landing and carrying the real note (not a generic one), invalid-transition rejection, authorisation (a student can't read the triage queue), and the rate limiter actually engaging under rapid submission.
+- `src/utils/__tests__/kioskEventLog.test.ts`, 7/7, covering the ring buffer in isolation: idempotent install, ordering, per-kiosk isolation, events with no kiosk_id being dropped rather than bucketed under a fake key, the 40-event cap dropping oldest-first, and a limit query returning the most recent N.
+- Admin `/feedback` page screenshotted in both colour schemes against the deployed instance through its real tunnel URL, using seeded demo data (one report per category, including a real screenshot) — all four categories render distinctly, the screenshot decodes with real pixels (confirming the Stage 3.5 CORP/content-type-sniffing fix generalises to this new media path too), and the resolve modal works. Demo data deleted from the live DB immediately after capture.
+
 ### 2026-08-09/10 — Stage 1.1 (crash reporting) and Stage 2 (My Listings) built and verified live
 
 Continuation of the same session that closed Stage 3.5. Worked straight through the checklist per the user's "continue, make sure everything works as intended by the documents".

@@ -110,6 +110,14 @@ export function userIdPath(userId: string): string {
 export function verificationImagePath(rentalId: string, filename: string): string {
   return `verifications/${rentalId}/${filename}`;
 }
+/** A feedback report's optional screenshot. Private, same tier as face/ID
+ * photos — never served directly (see mediaRoutes), only through
+ * signedMediaUrl() — because a screenshot can incidentally contain anything
+ * that was on the student's screen: their own rental details, a payment
+ * error with an amount, another student's listing they had open. */
+export function feedbackScreenshotPath(feedbackId: string, filename: string): string {
+  return `feedback/${feedbackId}/${filename}`;
+}
 
 // ── URL builders ─────────────────────────────────────────────────────────
 

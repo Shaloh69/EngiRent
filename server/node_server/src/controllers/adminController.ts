@@ -15,6 +15,7 @@ import axios from "axios";
 import fs from "fs";
 import env from "../config/env";
 import { finalizeRentalCompletion } from "../services/rentalSettlementService";
+import { FEEDBACK_CATEGORIES } from "./feedbackController";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
 
@@ -1457,6 +1458,149 @@ export const decideIdVerification = async (
     );
 
     res.json({ success: true, data: { user: updated } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Feedback triage — checklist Stage 3.3. Without this the submission
+ * endpoint is a write-only hole: students could file reports, but nothing
+ * on the admin side could read them.
+ */
+
+/**
+ * GET /admin/feedback
+ * Filter by status/category; oldest-first for the same reason the ID
+ * verification queue is oldest-first — newest-first quietly starves whoever
+ * has been waiting longest.
+ */
+export const listFeedback = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const status = req.query.status ? String(req.query.status) : "NEW";
+    const category = req.query.category ? String(req.query.category) : undefined;
+    const { page = "1", limit = "20" } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const take = parseInt(limit as string);
+
+    const where: Prisma.FeedbackWhereInput = {
+      ...(status !== "ALL" ? { status: status as never } : {}),
+      ...(category ? { category: category as never } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.feedback.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          category: true,
+          body: true,
+          screenshotPath: true,
+          appVersion: true,
+          device: true,
+          screen: true,
+          rentalId: true,
+          kioskId: true,
+          kioskEventSnapshot: true,
+          status: true,
+          adminNote: true,
+          resolvedById: true,
+          resolvedAt: true,
+          createdAt: true,
+          user: {
+            select: { id: true, firstName: true, lastName: true, email: true, studentId: true },
+          },
+        },
+      }),
+      prisma.feedback.count({ where }),
+    ]);
+
+    const rows = items.map((f) => ({
+      ...f,
+      screenshotPath: undefined,
+      screenshotUrl: f.screenshotPath ? signedMediaUrl(f.screenshotPath) : null,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        feedback: rows,
+        categories: FEEDBACK_CATEGORIES,
+        pagination: {
+          total,
+          page: parseInt(page as string),
+          limit: take,
+          totalPages: Math.ceil(total / take),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /admin/feedback/:id
+ * Moves a report through NEW → ACKNOWLEDGED → RESOLVED (or directly to
+ * either). Resolving notifies the reporter — otherwise the loop this stage
+ * exists to close only closes on the admin's side.
+ */
+export const updateFeedbackStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const id = String(req.params.id);
+    const { status, note } = req.body as { status: string; note?: string };
+
+    if (!["ACKNOWLEDGED", "RESOLVED"].includes(status)) {
+      throw new ValidationError("status must be ACKNOWLEDGED or RESOLVED");
+    }
+
+    const existing = await prisma.feedback.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError("Feedback report not found");
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const f = await tx.feedback.update({
+        where: { id },
+        data: {
+          status: status as never,
+          adminNote: note?.trim() || existing.adminNote,
+          ...(status === "RESOLVED"
+            ? { resolvedById: req.user?.userId ?? null, resolvedAt: new Date() }
+            : {}),
+        },
+      });
+
+      if (status === "RESOLVED") {
+        await tx.notification.create({
+          data: {
+            userId: existing.userId,
+            title: "Your feedback was resolved",
+            message: note?.trim()
+              ? note.trim()
+              : "An admin marked your report as resolved. Thanks for flagging it.",
+            type: "FEEDBACK_UPDATE",
+            relatedEntityId: id,
+            relatedEntityType: "feedback",
+          },
+        });
+      }
+
+      return f;
+    });
+
+    logger.info(`Admin ${req.user?.userId} moved feedback ${id} to ${status}`);
+
+    res.json({ success: true, data: { feedback: updated } });
   } catch (error) {
     next(error);
   }

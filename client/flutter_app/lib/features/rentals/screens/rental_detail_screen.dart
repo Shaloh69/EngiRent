@@ -28,6 +28,10 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   bool _loading = true;
   String? _error;
   bool _cancelling = false;
+  // Set when a checkout attempt was cancelled/failed, so a "Report a
+  // problem" link can appear right where it happened (checklist 3.2)
+  // instead of only being reachable from Profile after the fact.
+  bool _paymentIssue = false;
 
   @override
   void initState() {
@@ -83,9 +87,11 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         );
         if (!mounted) return;
         if (result == PaymentResult.success) {
+          setState(() => _paymentIssue = false);
           AppToast.success(context, 'Payment Successful!', 'Your rental is now confirmed.');
           _load();
         } else if (result == PaymentResult.cancelled) {
+          setState(() => _paymentIssue = true);
           AppToast.warning(context, 'Payment Cancelled', 'You can pay again anytime.');
         }
       } else {
@@ -447,6 +453,51 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                               _statusMessage(_rental!.status),
                               textAlign: TextAlign.center,
                               style: TextStyle(color: p.muted, fontSize: 13),
+                            ),
+                          ),
+                        // Checklist 3.2's third contextual entry point — a
+                        // disputed rental is exactly the moment a student
+                        // wants to reach an actual admin, not just read
+                        // "under review" and wait.
+                        if (_rental!.status == 'DISPUTED')
+                          Center(
+                            child: TextButton.icon(
+                              onPressed: () => Navigator.pushNamed(
+                                context,
+                                '/feedback/new',
+                                arguments: {
+                                  'category': 'OTHER',
+                                  'body': 'About my disputed rental: ',
+                                  'contextNote':
+                                      'Filed from a disputed rental — it\'s attached automatically.',
+                                  'screen': 'RentalDetailScreen(disputed)',
+                                  'rentalId': _rental!.id,
+                                },
+                              ),
+                              icon: const Icon(Icons.flag_outlined, size: 15),
+                              label: const Text('Report a problem with this dispute'),
+                            ),
+                          ),
+                        // Second contextual entry point — appears right where
+                        // the payment actually failed, not only from Profile
+                        // after the fact.
+                        if (_paymentIssue)
+                          Center(
+                            child: TextButton.icon(
+                              onPressed: () => Navigator.pushNamed(
+                                context,
+                                '/feedback/new',
+                                arguments: {
+                                  'category': 'PAYMENT_PROBLEM',
+                                  'body': 'My payment for this rental didn\'t go through: ',
+                                  'contextNote':
+                                      'Filed after a cancelled checkout — the rental is attached automatically.',
+                                  'screen': 'RentalDetailScreen(payment)',
+                                  'rentalId': _rental!.id,
+                                },
+                              ),
+                              icon: const Icon(Icons.flag_outlined, size: 15),
+                              label: const Text('Report a problem with this payment'),
                             ),
                           ),
                         if (_canCancel) ...[

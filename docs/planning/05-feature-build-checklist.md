@@ -74,23 +74,33 @@ This is **not** a single-sitting job. Fifteen work items span the Flutter app, t
 
 ## Stage 3 — Feedback loop (§2.9.3, genuinely new, server included)
 
+**STATUS: DONE — deployed and verified live 2026-08-10.** 43/43 assertions pass in `server/node_server/scripts/e2e-feedback.mjs` against the live API and its real database, 7/7 in `src/utils/__tests__/kioskEventLog.test.ts`; the admin triage page is screenshot-verified in both colour schemes with all four report categories rendering correctly, an evidence screenshot decoding, and the resolve modal working (`docs/design-screenshots/feedback/`).
+
 ### 3.1 Server: `POST /feedback`
-- [ ] Prisma model: category, body, screenshot path, appVersion, device, screen, rentalId?, kioskId?, status
-- [ ] Category enum: bug / suggestion / kiosk problem / payment problem / other
-- [ ] Rate-limit per user
-- **Done when:** a submission persists with its context attached.
+- [x] Prisma model: category, body, screenshotPath, appVersion, device, screen, rentalId?, kioskId?, status, plus `adminNote`/`resolvedById`/`resolvedAt` for triage and `kioskEventSnapshot` (see 3.2)
+- [x] Category enum: BUG / SUGGESTION / KIOSK_PROBLEM / PAYMENT_PROBLEM / OTHER
+- [x] Rate-limited per user (`middleware/perUserRateLimiter.ts`) — **deliberately not the existing global IP-keyed limiter**: a shared campus wifi NAT means many students share one IP, so an IP-keyed limit either punishes everyone behind it or has to be too loose to stop anything. New limiter, same on-disk-snapshot-free shape, keyed by `req.user.userId`.
+- [x] Screenshot stored at the same privacy tier as a face/ID photo — never served directly, only through `signedMediaUrl()` — because a screenshot can incidentally contain anything on the student's screen: their own rental details, someone else's listing, a payment amount.
+- [x] `rentalId` is verified against the reporter (must be their own rental as renter or owner) before being trusted as context, not accepted blindly.
+- **Done when:** a submission persists with its context attached. — **met, asserted live**
 
 ### 3.2 App: Send Feedback
-- [ ] Profile → Send feedback
-- [ ] Contextual entry from failed kiosk scan, payment error, disputed rental — pre-filling category and IDs
-- [ ] Optional screenshot attach
-- **Template:** [Flutter feedback-form UI collection](https://github.com/mrutyunjayagiri/flutter-custom-feedback-form-UI-collections); consider [`feedback`](https://pub.dev/packages/feedback) for annotate-the-screenshot
-- **Done when:** a report filed from a failed kiosk scan arrives with kiosk ID and recent events attached.
+- [x] Profile → Send Feedback → a list of the student's own past reports (so the loop isn't one-way from their side either) with a "New report" action opening the compose form
+- [x] **All three contextual entries wired, not just kiosk:**
+  - Failed kiosk hand-off (`KioskScanScreen`) → `category: KIOSK_PROBLEM`, rentalId, and kioskId attached
+  - Cancelled/failed checkout (`RentalDetailScreen`) → `category: PAYMENT_PROBLEM`, rentalId attached
+  - Disputed rental (`RentalDetailScreen`) → `category: OTHER`, rentalId attached
+- [x] Optional screenshot attach, with an explicit caption warning against including other people's information
+- **Template:** [Flutter feedback-form UI collection](https://github.com/mrutyunjayagiri/flutter-custom-feedback-form-UI-collections) for the compose layout
+- **Done when:** a report filed from a failed kiosk scan arrives with kiosk ID and recent events attached. — **met, with one real pre-existing gap closed to make it true:** the phone app had **no way to know which physical kiosk it was talking to** — it only ever spoke to Node, never to a kiosk directly, and none of the three socket events it listens to (`face:verified`, `face:failed`, `kiosk:scan_error`) carried a `kiosk_id`. Threaded `kioskId` through all three server-side emits (the data was already sitting on `socket.data.kioskId`/the event payload, just never forwarded), plus a QR-token-derived fallback client-side for the case where no server event ever arrives at all (a full 95s timeout with nothing back).
+- **"Recent events attached" — new capability, not previously possible:** `kioskEventBus` (Socket.IO ↔ SSE pub/sub) kept **no history at all**; once a moment passed, there was nothing to check against for a "the locker didn't open" report. Added `utils/kioskEventLog.ts`, a 40-event rolling buffer per kiosk, installed at server startup, snapshotted into the report at submission time. Unit-tested in isolation (7 tests) rather than over HTTP, since exercising it live needs a real kiosk socket connection, which is out of scope here — same category of gap as the PayMongo sandbox key.
 
 ### 3.3 Admin: triage queue
-- [ ] List + filter by category/status; new → acknowledged → resolved
-- [ ] **Without this the endpoint is a write-only hole** — not optional
-- **Done when:** a report filed in the app appears in the console and can be resolved.
+- [x] List + filter by category/status; NEW → ACKNOWLEDGED → RESOLVED, with the backward transition (RESOLVED → NEW) explicitly rejected
+- [x] Category glossary badges, automatically-attached context (version/device/screen/rental/kiosk) shown per report
+- [x] Kiosk-problem reports show the event-log snapshot inline, or an honest "no recorded events" message when the kiosk was never actually reached
+- [x] Resolving notifies the reporter with the admin's note — **without this, the loop only closes on the admin's side**, which is the same failure mode this whole stage exists to fix
+- **Done when:** a report filed in the app appears in the console and can be resolved. — **met, asserted live**
 
 ---
 
