@@ -152,7 +152,7 @@ Every one carries two guarantees: `prefers-reduced-motion` freezes it to a stati
 
 **Rebuilt against the shopping-template spec (§2.2), verified against the real deployed API in both themes:** Login, Register, Home, Browse, Item Detail — plus a new Onboarding flow. Home dropped the 2x2 grid of equal squares for an asymmetric layout (browse is primary and full-width; the rest share a compact row) and now shows real inventory rather than only navigation. Browse and Item Detail are genuine commerce screens: product cards with photo, price *with unit*, deposit and availability; skeleton loading; a category rail; a full cost table and a sticky price/CTA bar on detail.
 
-**Onboarding and the in-app tutorial (§2.3)** are both built and working: a one-time  walkthrough resolved before first paint, and a  ? tour in the Home app bar that highlights the real controls one at a time — auto-running on first arrival, on demand thereafter.
+**Onboarding and the in-app tutorial (§2.3)** are both built and working: a one-time `introduction_screen` walkthrough resolved before first paint, and a `showcaseview` "?" tour in the Home app bar that highlights the real controls one at a time — auto-running on first arrival, on demand thereafter.
 
 **Still outstanding — not rebuilt against §2.2 yet:** Profile Setup, Create Rental, Rental Detail, Kiosk Scan, Create Item, Reviews, Payout Details, and the Rentals/Alerts/Profile tabs inside Home. These are theme-correct and functional, and several use the shared primitives, but their layout and component vocabulary have not been reworked the way the five above were. Calling the Phone App finished would be the same overclaim §0 exists to prevent.
 
