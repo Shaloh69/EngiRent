@@ -72,23 +72,44 @@ export function MainScreen({
 
   return (
     <div className="screen screen-main">
+      {/* Title block, matching client/web's header. The previous bar was a
+          wordmark with a status pill and a clock floated to the right — a web
+          page's chrome on a machine. A ruled title block reads as equipment,
+          and it makes the facts a person standing here might want (is it
+          online, how many doors are free, what time is it) ambient rather
+          than incidental. */}
       <header className="top-bar">
-        <div className="top-brand">
+        <div className="tb-k-brand">
           <div className="top-logo">ER</div>
           <div className="top-text">
             <span className="top-name">EngiRent Hub</span>
             <span className="top-sub">UCLM · Smart Locker Kiosk</span>
           </div>
         </div>
-        <div className="top-right">
-          <span className={`conn-badge ${offline ? "badge-offline" : "badge-online"}`}>
-            <span className="conn-dot" />
-            {offline ? "Offline" : "Online"}
-          </span>
-          <span className="top-clock">
-            {now.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </div>
+        <dl className="tb-k-fields">
+          <div className="tb-k-field">
+            <dt>Lockers</dt>
+            <dd>
+              {String(free).padStart(2, "0")}/0{["1", "2", "3", "4"].length}
+            </dd>
+          </div>
+          <div className="tb-k-field">
+            <dt>Link</dt>
+            <dd className={offline ? "state-bad" : "state-ok"}>
+              <span className="tb-k-dot" />
+              {offline ? "Down" : "Live"}
+            </dd>
+          </div>
+          <div className="tb-k-field">
+            <dt>Time</dt>
+            <dd>
+              {now.toLocaleTimeString("en-PH", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </dd>
+          </div>
+        </dl>
       </header>
 
       <main className="main-body">

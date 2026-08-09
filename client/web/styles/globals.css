@@ -111,45 +111,202 @@ body {
 }
 
 /* ── Site header/navbar ──────────────────────────────────────────────── */
+/* Drawing title block. Replaces the centred link row, which was the most
+   template-looking element on the site (§1.1 ban table). */
 .site-header {
   position: sticky;
   top: 0;
   z-index: 100;
   border-bottom: 1px solid var(--brand-border);
-  background: color-mix(in srgb, var(--brand-surface) 90%, transparent);
+  background: color-mix(in srgb, var(--brand-surface) 92%, transparent);
   backdrop-filter: blur(10px);
 }
-.site-header-inner {
+
+.title-block {
   max-width: 1280px;
   margin: 0 auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 24px;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 24px;
 }
-.brand-link {
+
+.tb-brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 12px 20px 12px 0;
   text-decoration: none;
   color: inherit;
 }
-.nav-link {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--brand-muted);
-  text-decoration: none;
-  transition: color 0.15s ease;
+.tb-mark {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--brand-primary);
+  color: #fff;
 }
-.nav-link:hover {
+.tb-brand-text { display: block; }
+.tb-brand-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.tb-brand-sub {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-muted);
+}
+
+/* Ruled cells, the way a real title block divides its fields. */
+.tb-fields {
+  display: none;
+  align-items: stretch;
+  margin: 0;
+}
+@media (min-width: 900px) {
+  .tb-fields { display: flex; }
+}
+.tb-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 10px 18px;
+  border-left: 1px solid var(--brand-border);
+}
+.tb-field dt {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-muted);
+}
+.tb-field dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--brand-ink);
 }
-.nav-link--active {
+.tb-field--status dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #16a34a;
+}
+.tb-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.tb-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 18px;
+  border-left: 1px solid var(--brand-border);
+}
+.tb-cta {
+  display: none;
+  border-radius: 4px;
+  background: var(--brand-primary);
+  padding: 8px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+.tb-cta:hover { opacity: 0.9; }
+@media (min-width: 640px) {
+  .tb-cta { display: inline-block; }
+}
+.tb-menu {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--brand-border);
+  border-radius: 4px;
+  color: inherit;
+}
+@media (min-width: 900px) {
+  .tb-menu { display: none; }
+}
+
+/* Sheet index — the sections, typeset as numbered drawing tabs and aligned
+   left. Deliberately NOT a centred row of marketing links. */
+.sheet-index {
+  display: none;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  border-top: 1px solid var(--brand-border);
+}
+@media (min-width: 900px) {
+  .sheet-index { display: flex; }
+}
+.sheet-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-right: 1px solid var(--brand-border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand-muted);
+  text-decoration: none;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.sheet-tab:first-child { border-left: 1px solid var(--brand-border); }
+.sheet-tab:hover {
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+}
+.sheet-tab-n {
+  font-size: 9.5px;
   color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
 }
-.nav-link--mobile {
-  display: block;
-  padding: 10px 0;
-  font-size: 16px;
+.sheet-tab--active {
+  color: var(--brand-ink);
+  background: var(--brand-soft);
+  box-shadow: inset 0 -2px 0 var(--brand-primary);
 }
+
+.sheet-index-mobile {
+  overflow: hidden;
+  border-top: 1px solid var(--brand-border);
+  background: var(--brand-surface);
+}
+@media (min-width: 900px) {
+  .sheet-index-mobile { display: none; }
+}
+.sheet-tab--mobile {
+  border-right: 0;
+  border-left: 0 !important;
+  border-bottom: 1px solid var(--brand-border);
+  padding: 13px 24px;
+  font-size: 12.5px;
+}
+

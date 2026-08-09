@@ -134,6 +134,20 @@ Neutrals are blue-tinted, not grey and not teal-tinted, so surfaces sit *under* 
 
 ---
 
+### 1.4b Headers — title blocks, not nav bars
+
+**A centred row of links between a wordmark and a CTA is banned** on every surface. It is the default arrangement in every SaaS starter and was the single most template-looking element on `client/web`.
+
+The replacement is the header an engineering drawing actually uses — a **title block**: identity on the left, hard facts in ruled mono cells beside it, actions on the right. Sections are listed underneath as a **numbered sheet index**, left-aligned and typeset as drawing tabs, not centred as marketing links. This suits a product whose palette is literally called Blueprint, and it makes real information (version, live status, free lockers) ambient instead of buried.
+
+Rules:
+- **The cells must carry real values.** `SHEET 01/06`, `REV 1.5.2`, `STATUS Live`, `LOCKERS 02/04` — all read from actual state. Decorative fake readouts are worse than no readouts.
+- **Left-aligned, ruled dividers, mono type.** Vertical 1px rules between cells are what make it read as a title block rather than a toolbar.
+- **Navigation stays one tap away.** The index is a real list; it is only typeset differently. On narrow screens it collapses to a disclosure rather than wrapping into cramped rows.
+- Applies to `client/web` and the Kiosk today. The Admin console keeps its sidebar (a console is a different problem) but its top bar follows the same cell language.
+
+---
+
 ### 1.5 Animated backgrounds — mandatory, one named component per surface
 
 Static flat backgrounds are a fail condition on the screens listed below. Use **[react-bits](https://reactbits.dev)** for the three web surfaces — its registry serves raw source (`https://reactbits.dev/r/<Name>-JS-CSS.json`), so components are vendored into the repo as real files, not added as an opaque dependency.

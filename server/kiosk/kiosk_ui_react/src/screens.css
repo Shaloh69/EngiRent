@@ -387,20 +387,19 @@ h3 {
   padding: 0;
 }
 
+/* Kiosk title block — same language as client/web's header. */
 .top-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  align-items: stretch;
   border-bottom: 1px solid var(--border);
   background: var(--surf);
 }
 
-.top-brand {
+.tb-k-brand {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
 }
 
 .top-logo {
@@ -409,12 +408,12 @@ h3 {
   display: grid;
   place-items: center;
   border-radius: var(--r-lg);
-  border: 1px solid var(--teal);
+  border: 1px solid var(--brand);
   background: rgba(77, 163, 232, 0.12);
   font-family: var(--font-display);
   font-weight: 700;
   font-size: var(--t-sm);
-  color: var(--teal);
+  color: var(--brand);
 }
 
 .top-text {
@@ -436,41 +435,52 @@ h3 {
   color: var(--ink3);
 }
 
-.top-right {
+.tb-k-fields {
+  margin: 0 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: var(--sp-3);
+  align-items: stretch;
 }
 
-.top-clock {
-  font-family: var(--font-mono);
-  font-size: var(--t-md);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink2);
+.tb-k-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 1px solid var(--border);
 }
 
-.conn-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-lg);
-  border: 1px solid var(--border);
+.tb-k-field dt {
   font-family: var(--font-mono);
   font-size: var(--t-xs);
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: var(--ink3);
 }
 
-.conn-dot {
-  width: 7px;
-  height: 7px;
+.tb-k-field dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.tb-k-field dd.state-ok { color: var(--emerald); }
+.tb-k-field dd.state-bad { color: var(--danger); }
+
+.tb-k-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   background: currentColor;
 }
 
-.badge-online { color: var(--emerald); border-color: rgba(34, 197, 94, 0.4); }
-.badge-offline { color: var(--danger); border-color: rgba(239, 68, 68, 0.4); }
 
 .main-body {
   flex: 1;

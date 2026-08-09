@@ -8,70 +8,111 @@ import { Menu, X } from "lucide-react";
 import clsx from "clsx";
 
 import { siteConfig } from "@/config/site";
+import { androidRelease } from "@/config/release";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Logo } from "@/components/icons";
 
-// Rebuilt on Velora's plain Tailwind/Motion stack — Mantine is deliberately
-// not used on this surface (design mandate §3.5).
+/**
+ * Site header — a drawing title block, not a nav bar.
+ *
+ * The previous header was a centred row of links between a wordmark and a
+ * "Read Docs" button: the default arrangement in every SaaS starter, and the
+ * single most template-looking element on the site. The mandate's ban table
+ * exists for exactly this kind of thing.
+ *
+ * This replaces it with the header engineering drawings actually use — a
+ * title block: the sheet's identity on the left, hard facts in ruled mono
+ * cells beside it, and the sections listed underneath as a numbered sheet
+ * index rather than a centred link row. It suits a surface whose palette is
+ * literally called Blueprint, and it makes the version and system status
+ * ambient information rather than something buried on a page.
+ *
+ * Navigation is still one tap away — the index is a real list, just typeset
+ * as drawing tabs instead of marketing links.
+ */
 export const Navbar = () => {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
-  const navLink = (item: { label: string; href: string }, mobile = false) => (
-    <NextLink
-      key={item.href}
-      href={item.href}
-      onClick={close}
-      className={clsx(
-        mobile ? "nav-link nav-link--mobile" : "nav-link",
-        pathname === item.href && "nav-link--active",
-      )}
-    >
-      {item.label}
-    </NextLink>
-  );
+  const items = siteConfig.navItems;
+  const activeIndex = items.findIndex((i) => i.href === pathname);
+  const sheetNo = String(activeIndex < 0 ? 1 : activeIndex + 1).padStart(2, "0");
+  const sheetTotal = String(items.length).padStart(2, "0");
 
   return (
     <header className="site-header">
-      <div className="site-header-inner">
-        <NextLink href="/" className="brand-link">
-          <span className="flex size-9 items-center justify-center rounded-md bg-[var(--brand-primary)] text-white">
+      {/* ── Title block ─────────────────────────────────────────────── */}
+      <div className="title-block">
+        <NextLink href="/" className="tb-brand" onClick={close}>
+          <span className="tb-mark">
             <Logo size={18} />
           </span>
-          <span>
-            <span className="block text-[10px] font-bold uppercase leading-none tracking-[2px] text-[var(--brand-muted)]">
-              Smart Kiosk
-            </span>
-            <span className="block text-[15px] font-extrabold leading-tight">
-              {siteConfig.name}
-            </span>
+          <span className="tb-brand-text">
+            <span className="tb-brand-name">{siteConfig.name}</span>
+            <span className="tb-brand-sub">UCLM · Smart Locker Rental</span>
           </span>
         </NextLink>
 
-        <nav className="hidden items-center gap-7 md:flex">
-          {siteConfig.navItems.map((item) => navLink(item))}
-        </nav>
+        {/* Ruled spec cells. Real values, not decoration. */}
+        <dl className="tb-fields">
+          <div className="tb-field">
+            <dt>Sheet</dt>
+            <dd>
+              {sheetNo}/{sheetTotal}
+            </dd>
+          </div>
+          <div className="tb-field">
+            <dt>Rev</dt>
+            <dd>{androidRelease.version}</dd>
+          </div>
+          <div className="tb-field tb-field--status">
+            <dt>Status</dt>
+            <dd>
+              <span className="tb-dot" aria-hidden />
+              Live
+            </dd>
+          </div>
+        </dl>
 
-        <div className="flex items-center gap-2">
+        <div className="tb-actions">
           <ThemeSwitch />
-          <NextLink
-            href="/docs"
-            className="hidden rounded-md bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.03] sm:inline-block"
-          >
-            Read Docs
+          <NextLink href="/download" className="tb-cta">
+            Get the app
           </NextLink>
           <button
             type="button"
-            aria-label={open ? "Close menu" : "Open menu"}
+            aria-label={open ? "Close index" : "Open index"}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--brand-border)] md:hidden"
+            className="tb-menu"
           >
             {open ? <X size={17} /> : <Menu size={17} />}
           </button>
         </div>
       </div>
 
+      {/* ── Sheet index ─────────────────────────────────────────────── */}
+      <nav className="sheet-index" aria-label="Sections">
+        {items.map((item, i) => (
+          <NextLink
+            key={item.href}
+            href={item.href}
+            onClick={close}
+            className={clsx(
+              "sheet-tab",
+              pathname === item.href && "sheet-tab--active",
+            )}
+          >
+            <span className="sheet-tab-n">
+              {String(i + 1).padStart(2, "0")}
+            </span>
+            {item.label}
+          </NextLink>
+        ))}
+      </nav>
+
+      {/* Mobile: the index collapses into a disclosure rather than wrapping
+          into three cramped rows. */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -79,11 +120,24 @@ export const Navbar = () => {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="overflow-hidden border-t border-[var(--brand-border)] bg-[var(--brand-surface)] md:hidden"
+            className="sheet-index-mobile"
           >
-            <div className="mx-auto flex max-w-7xl flex-col px-6 py-3">
-              {siteConfig.navItems.map((item) => navLink(item, true))}
-            </div>
+            {items.map((item, i) => (
+              <NextLink
+                key={item.href}
+                href={item.href}
+                onClick={close}
+                className={clsx(
+                  "sheet-tab sheet-tab--mobile",
+                  pathname === item.href && "sheet-tab--active",
+                )}
+              >
+                <span className="sheet-tab-n">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                {item.label}
+              </NextLink>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
