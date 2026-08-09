@@ -25,6 +25,10 @@ import {
   decideIdVerification,
   listFeedback,
   updateFeedbackStatus,
+  getItemDetail,
+  getItemReviewsAdmin,
+  moderateItem,
+  deleteReview,
 } from "../controllers/adminController";
 
 const router = Router();
@@ -109,6 +113,34 @@ router.patch(
     body("status").isIn(["APPROVED", "REJECTED"]),
   ]),
   reviewVerification,
+);
+
+// ── Item detail, ratings, moderation (checklist Stage 3.6) ─────────────────
+router.get("/items/:id", validate([param("id").isUUID()]), getItemDetail);
+
+router.get(
+  "/items/:id/reviews",
+  validate([param("id").isUUID()]),
+  getItemReviewsAdmin,
+);
+
+router.patch(
+  "/items/:id",
+  validate([
+    param("id").isUUID(),
+    body("action").isIn(["UNLIST", "RELIST", "FLAG", "UNFLAG", "RESTORE"]),
+    body("reason").optional().isString().isLength({ max: 1000 }),
+  ]),
+  moderateItem,
+);
+
+router.delete(
+  "/reviews/:id",
+  validate([
+    param("id").isUUID(),
+    body("reason").notEmpty().isString().isLength({ max: 1000 }),
+  ]),
+  deleteReview,
 );
 
 // ── Feedback triage (checklist Stage 3.3) ──────────────────────────────────

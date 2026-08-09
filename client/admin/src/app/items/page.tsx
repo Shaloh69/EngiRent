@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
   Alert,
+  Anchor,
   Card,
   Group,
   SimpleGrid,
@@ -178,9 +180,11 @@ export default function ItemsPage() {
           {filtered.map((i) => (
             <Table.Tr key={i.id}>
               <Table.Td>
-                <Text fw={600} size="sm">
+                {/* Stage 3.6 — the list had nothing to click through to; an
+                    admin investigating a complaint had no detail view at all. */}
+                <Anchor component={Link} href={`/items/${i.id}`} fw={600} size="sm">
                   {i.title}
-                </Text>
+                </Anchor>
                 <Text size="xs" c="dimmed" lineClamp={1} maw={320}>
                   {i.description}
                 </Text>

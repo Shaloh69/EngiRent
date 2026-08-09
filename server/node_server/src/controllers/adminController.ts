@@ -1605,3 +1605,273 @@ export const updateFeedbackStatus = async (
     next(error);
   }
 };
+
+/**
+ * Admin item detail, ratings and moderation — checklist Stage 3.6.
+ *
+ * The Admin Console had an items *list* and nothing else, reading the public
+ * /items endpoint — no admin item or review endpoints existed at all. An
+ * admin investigating a complaint about a listing could not see its
+ * reviews, its rental history, or its owner's record in one place.
+ */
+
+const MODERATION_ACTIONS = ["UNLIST", "RELIST", "FLAG", "UNFLAG", "RESTORE"] as const;
+type ModerationAction = (typeof MODERATION_ACTIONS)[number];
+
+/**
+ * GET /admin/items/:id
+ * Full record: owner, every photo, rental history with outcomes, and the
+ * review aggregate (average + star distribution) the detail page's ratings
+ * panel needs.
+ */
+export const getItemDetail = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const id = String(req.params.id);
+
+    const item = await prisma.item.findUnique({
+      where: { id },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            studentId: true,
+            profileImage: true,
+            isVerified: true,
+          },
+        },
+        rentals: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            startDate: true,
+            endDate: true,
+            actualReturnDate: true,
+            totalPrice: true,
+            securityDeposit: true,
+            createdAt: true,
+            renter: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!item) throw new NotFoundError("Item not found");
+
+    // Star distribution — the same shape the phone app's _RatingSummary
+    // renders (average + tappable per-star bars), so both surfaces read the
+    // same data the same way.
+    const [ratingRows, lifetimeEarnings] = await Promise.all([
+      prisma.review.groupBy({
+        by: ["rating"],
+        where: { itemId: id, reviewType: "ITEM", isDeleted: false },
+        _count: { rating: true },
+      }),
+      prisma.rental.aggregate({
+        where: { itemId: id, status: "COMPLETED" },
+        _sum: { totalPrice: true },
+      }),
+    ]);
+
+    const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let reviewCount = 0;
+    for (const row of ratingRows) {
+      distribution[row.rating] = row._count.rating;
+      reviewCount += row._count.rating;
+    }
+
+    const { rentals, ...itemFields } = item;
+
+    res.json({
+      success: true,
+      data: {
+        item: itemFields,
+        rentals,
+        ratings: {
+          average: item.averageRating,
+          count: reviewCount,
+          distribution,
+        },
+        lifetimeEarnings: lifetimeEarnings._sum.totalPrice ?? 0,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /admin/items/:id/reviews
+ * Every review, unlike the public endpoint — includes soft-deleted rows
+ * (flagged as such) so an admin can see what was removed and why, not just
+ * what survived.
+ */
+export const getItemReviewsAdmin = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const id = String(req.params.id);
+    const { page = "1", limit = "20" } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const take = parseInt(limit as string);
+
+    const [reviews, total] = await Promise.all([
+      prisma.review.findMany({
+        where: { itemId: id, reviewType: "ITEM" },
+        skip,
+        take,
+        orderBy: { createdAt: "desc" },
+        include: {
+          author: {
+            select: { id: true, firstName: true, lastName: true, profileImage: true },
+          },
+        },
+      }),
+      prisma.review.count({ where: { itemId: id, reviewType: "ITEM" } }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        reviews,
+        pagination: {
+          total,
+          page: parseInt(page as string),
+          limit: take,
+          totalPages: Math.ceil(total / take),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /admin/items/:id
+ * Moderation actions: unlist / relist / flag / unflag / restore. Distinct
+ * from the owner-facing PUT /items/:id (itemController.updateItem) — this is
+ * an admin acting on someone else's listing, with its own reason-tracking
+ * and its own audit trail (moderatedById/moderatedAt on the item record
+ * itself — there is no separate structured audit-log table yet; see mandate
+ * §9's admin-gaps list).
+ */
+export const moderateItem = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const id = String(req.params.id);
+    const { action, reason } = req.body as { action: ModerationAction; reason?: string };
+
+    if (!MODERATION_ACTIONS.includes(action)) {
+      throw new ValidationError(`action must be one of: ${MODERATION_ACTIONS.join(", ")}`);
+    }
+    // A new restriction needs a stated reason — an owner reading "your item
+    // was flagged" with nothing else attached has no way to respond to it.
+    // Reversals (RELIST/UNFLAG/RESTORE) don't carry the same bar.
+    if ((action === "UNLIST" || action === "FLAG") && !reason?.trim()) {
+      throw new ValidationError(`A reason is required to ${action.toLowerCase()} an item`);
+    }
+
+    const item = await prisma.item.findUnique({ where: { id } });
+    if (!item) throw new NotFoundError("Item not found");
+
+    const data: Prisma.ItemUpdateInput = {
+      moderatedById: req.user?.userId ?? null,
+      moderatedAt: new Date(),
+    };
+    switch (action) {
+      case "UNLIST":
+        data.isListed = false;
+        break;
+      case "RELIST":
+        data.isListed = true;
+        break;
+      case "FLAG":
+        data.isFlagged = true;
+        data.flagReason = reason?.trim();
+        break;
+      case "UNFLAG":
+        data.isFlagged = false;
+        data.flagReason = null;
+        break;
+      case "RESTORE":
+        data.isActive = true;
+        break;
+    }
+
+    const updated = await prisma.item.update({ where: { id }, data });
+
+    logger.info(
+      `Admin ${req.user?.userId} ${action} item ${id}${reason ? ` (${reason})` : ""}`,
+    );
+
+    res.json({ success: true, data: { item: updated } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /admin/reviews/:id
+ * Soft-delete an abusive review. Recomputes the item's cached averageRating
+ * the same way createReview does — otherwise a removed 1-star review would
+ * still be dragging the average down for anyone browsing.
+ */
+export const deleteReview = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const id = String(req.params.id);
+    const { reason } = req.body as { reason?: string };
+    if (!reason?.trim()) {
+      throw new ValidationError("A reason is required to remove a review");
+    }
+
+    const review = await prisma.review.findUnique({ where: { id } });
+    if (!review) throw new NotFoundError("Review not found");
+    if (review.isDeleted) throw new ValidationError("This review was already removed");
+
+    await prisma.review.update({
+      where: { id },
+      data: {
+        isDeleted: true,
+        deleteReason: reason.trim(),
+        deletedById: req.user?.userId ?? null,
+        deletedAt: new Date(),
+      },
+    });
+
+    if (review.reviewType === "ITEM") {
+      const agg = await prisma.review.aggregate({
+        where: { itemId: review.itemId, reviewType: "ITEM", isDeleted: false },
+        _avg: { rating: true },
+      });
+      await prisma.item.update({
+        where: { id: review.itemId },
+        data: { averageRating: agg._avg.rating ?? 0 },
+      });
+    }
+
+    logger.info(`Admin ${req.user?.userId} removed review ${id} (${reason.trim()})`);
+
+    res.json({ success: true, message: "Review removed" });
+  } catch (error) {
+    next(error);
+  }
+};

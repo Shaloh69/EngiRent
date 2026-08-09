@@ -86,6 +86,26 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — Stage 3.6 (admin item detail, ratings, moderation) built, deployed and verified live — checklist now fully closed for this session's scope
+
+Fourth and final stage in this continuation.
+
+**Server, genuinely new**: the Admin Console had an items *list* reading the public `/items` endpoint and nothing else — no admin item endpoint, no review endpoint, existed at all. `GET /admin/items/:id` (owner, every photo, rental history with outcomes, review aggregate with the full 1–5 star distribution, and a lifetime-earnings figure summed from COMPLETED rentals — no such field existed before), `GET /admin/items/:id/reviews` (includes soft-deleted rows, visibly marked, since an admin needs to see what was removed and why), `PATCH /admin/items/:id` (moderate), `DELETE /admin/reviews/:id` (soft-delete).
+
+**New moderation state, kept deliberately independent, same pattern as Stage 2's `isListed`/`isAvailable` split**: `Item.isFlagged`/`flagReason` is separate from `isListed` — a flagged item stays browsable while under investigation unless an admin *also* unlists it. Unlist and Flag both require a typed reason (an owner reading "your item was flagged" with nothing attached has no way to respond); Relist/Unflag/Restore, being reversals, don't carry the same bar.
+
+**Reviews are soft-deleted, not hard-deleted** — the row and its reason persist for dispute history and for reversing a moderation mistake; `isDeleted` rows are simply excluded from the public endpoints and from the average-rating recalculation, which now runs the same way on removal as it does on a new review being posted.
+
+**Honest scoping on "written to the audit log."** No structured, queryable audit-log table exists anywhere in this codebase — "audit" today means `logger.info()` calls to a file, which is exactly what mandate §9's own admin-gaps list already flags as missing ("No admin audit-log viewer"). Building that table is its own item, not smuggled into this stage. What Stage 3.6 actually delivers: every moderation action and review removal is attributable — who, when, why — recorded directly on the affected row (`moderatedById`/`moderatedAt`/`flagReason`, `deletedById`/`deletedAt`/`deleteReason`). Real accountability, just not yet a separate cross-cutting log screen.
+
+**Admin UI**: the items list finally links through — the title column had no navigation to anything before. New `/items/[id]` page: header with linked owner and status badges, full photo gallery, pricing including the new lifetime-earnings figure, a rental-history tab, and a ratings-and-reviews tab (the explicitly-requested *separate* reviews view, not a filter bolted onto another table) with distribution bars mirroring the phone app's `_RatingSummary` and a per-review Remove action.
+
+**Verification, live against `desktop-gklhcri`, not a dev database**: `server/node_server/scripts/e2e-item-moderation.mjs`, 43/43 passing — item creation, a real review through the real `/reviews` endpoint, the admin detail/reviews endpoints, unlist/relist and flag/unflag (including confirming a flagged-but-listed item stays in public browse, proving the two states are genuinely independent), reason-required validation on the new-restriction actions, review soft-delete with the average recalculating to 0 once the only review is removed, the removed review disappearing from the public listing while remaining visible (marked) to admins, and authorisation (a student can't reach any of the new admin endpoints). Uses the same direct-DB-rental-fixture technique as Stage 2's and `prisma/seed.ts`'s COMPLETED-rental simulation, since a genuine one needs a paid PayMongo checkout.
+
+**One thing that looked like a bug and wasn't, worth recording so it isn't re-litigated later**: the first detail-page screenshot showed "Total Rentals: 0" beside a rental-history table clearly listing 3 completed rentals and a correct ₱390 lifetime-earnings figure. Traced it before writing it up as a fix: `Item.totalRentals` is only incremented inside `index.ts`'s real `completeRental()` transaction (the genuine AI-verified-return path) — the demo/test fixtures in this session, like `prisma/seed.ts`'s own approach, insert `Rental` rows directly with `status: "COMPLETED"` to simulate a finished rental without a real PayMongo checkout, which necessarily skips that transaction and its side effects. The page was displaying the test data accurately; the fixture technique just isn't representative of the one counter that transaction touches. No code changed for this — correctly identifying a false positive is itself the useful output here.
+
+**Checklist status**: Stages 1.1, 2, 3, 3.5, and 3.6 are all now DONE and verified live. Remaining, unstarted: Stage 1.2 (analytics funnel) and Stages 4–9 (offline resilience, in-app messaging, date-based availability, listing video, trust & safety, enterprise hygiene).
+
 ### 2026-08-10 — Stage 3 (feedback loop) built, deployed and verified live end-to-end
 
 Third stage closed in this continuation, same session as Stages 1.1/2 above.

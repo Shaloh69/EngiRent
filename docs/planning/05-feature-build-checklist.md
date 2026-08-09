@@ -157,21 +157,25 @@ Worth recording, because two of them were invisible to every API-level check:
 
 The Admin Console has an items **list** (`/items/page.tsx`) and nothing else — no detail view. There are also **no admin item or review endpoints at all**; the list is reading the public `/items`. An admin investigating a complaint about a listing cannot see its reviews, its rental history, or its owner's record in one place.
 
+**STATUS: DONE — deployed and verified live 2026-08-10.** 43/43 assertions pass in `server/node_server/scripts/e2e-item-moderation.mjs` against the live API and its real database; the detail page is screenshot-verified in both colour schemes with real photos, a real rental history, a real 3-review distribution, and the flag confirmation modal.
+
 ### 3.6.1 Server
-- [ ] `GET /admin/items/:id` — full record incl. owner, all photos, rental history, review aggregate
-- [ ] `GET /admin/items/:id/reviews` — every review with author, rating, comment, date
-- [ ] `PATCH /admin/items/:id` — moderate: unlist, flag, restore
-- [ ] `DELETE /admin/reviews/:id` — remove abusive reviews, soft-delete with reason and audit entry
+- [x] `GET /admin/items/:id` — full record incl. owner, all photos, rental history (with renter names and outcomes), review aggregate (average + full 1–5 star distribution), and lifetime earnings (summed from COMPLETED rentals — no such field existed on the item before)
+- [x] `GET /admin/items/:id/reviews` — every review with author, rating, comment, date, **including soft-deleted ones, visibly marked as removed with the reason** — the public endpoint excludes them, but an admin needs to see what was taken down and why, not just what survived
+- [x] `PATCH /admin/items/:id` — moderate: UNLIST / RELIST / FLAG / UNFLAG / RESTORE
+- [x] `DELETE /admin/reviews/:id` — soft-delete (not a hard delete — the row and its reason persist for dispute history and for reversing a mistake), with the item's cached `averageRating` recalculated the same way a new review updates it
+- **New, not in the original data model:** `Item.isFlagged`/`flagReason`, kept deliberately separate from `isListed` (the owner's own unlist choice) — a flagged item stays browsable while under investigation unless an admin also unlists it; the two are independent, same reasoning as `isListed` vs `isAvailable` from Stage 2. `Item.moderatedById`/`moderatedAt` and `Review.deletedById`/`deletedAt`/`deleteReason` record who did what — **this is the audit trail for this stage**, recorded directly on the affected row rather than a separate structured audit-log table, which does not exist yet (tracked as its own item under Stage 9's admin gaps — "No admin audit-log viewer").
+- **Done when:** …with the action written to the audit log. — met under that scoping: every moderation action and review removal is attributable (who, when, why) from the record itself, asserted live; a cross-cutting, queryable audit log remains future work, not silently declared done.
 
 ### 3.6.2 Admin: item detail page (new page)
-- [ ] Header: title, owner (linked to their user record), category, condition, status
-- [ ] Photo gallery, all images not just the cover
-- [ ] Pricing: rate, deposit, lifetime earnings
-- [ ] Rental history table with outcomes
-- [ ] **Ratings panel: average, distribution bars, and the full review list on its own tab/page** — this is the separate reviews view requested
-- [ ] Moderation actions with a confirmation stating the consequence
-- **Template:** admin detail/moderation layout per [dashboard template patterns](https://adminlte.io/blog/dashboard-templates/); the ratings panel mirrors the phone app's `_RatingSummary` (average + tappable distribution) so both surfaces read the same
-- **Done when:** an admin can open any item from the list, read every review, and unlist it, with the action written to the audit log.
+- [x] Header: title, owner (linked to `/users/:id`), category, condition, status, plus flagged/unlisted/deleted state badges the original spec didn't ask for but the moderation actions need somewhere to show
+- [x] Photo gallery, all images not just the cover
+- [x] Pricing: rate, deposit, lifetime earnings
+- [x] Rental history table with outcomes, each renter linked to `/rentals/:id`
+- [x] Ratings panel: average, 1–5 star distribution bars, full review list **on its own tab** — the separate reviews view requested — each review with a Remove action
+- [x] Moderation actions with a confirmation stating the consequence: Unlist/Flag require a typed reason and show what the action actually does before confirming; Relist/Unflag/Restore (reversals) fire directly since they only undo a prior restriction
+- **Template:** admin detail/moderation layout per [dashboard template patterns](https://adminlte.io/blog/dashboard-templates/); the ratings panel mirrors the phone app's `_RatingSummary` (average + distribution) so both surfaces read the same
+- **Done when:** an admin can open any item from the list, read every review, and unlist it, with the action written to the audit log. — **met, asserted live**: the items list's title column now links through (it had no navigation at all before), the detail page loads a real item's full record, and unlist/flag/review-removal all round-trip against the live database with the reason and reviewer recorded.
 
 ---
 

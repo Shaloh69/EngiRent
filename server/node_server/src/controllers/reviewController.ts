@@ -89,7 +89,7 @@ export const createReview = async (
     // Update item average rating
     if (reviewType === "ITEM") {
       const agg = await prisma.review.aggregate({
-        where: { itemId: rental.itemId, reviewType: "ITEM" },
+        where: { itemId: rental.itemId, reviewType: "ITEM", isDeleted: false },
         _avg: { rating: true },
         _count: { rating: true },
       });
@@ -121,7 +121,9 @@ export const getItemReviews = async (
 
     const [reviews, total] = await Promise.all([
       prisma.review.findMany({
-        where: { itemId: itemId as string, reviewType: "ITEM" },
+        // isDeleted: false — a review an admin removed for abuse must not
+        // reappear on the public listing it was removed from.
+        where: { itemId: itemId as string, reviewType: "ITEM", isDeleted: false },
         include: {
           author: {
             select: {
@@ -137,7 +139,7 @@ export const getItemReviews = async (
         take: limit,
       }),
       prisma.review.count({
-        where: { itemId: itemId as string, reviewType: "ITEM" },
+        where: { itemId: itemId as string, reviewType: "ITEM", isDeleted: false },
       }),
     ]);
 
@@ -173,7 +175,7 @@ export const getUserReviews = async (
 
     const [reviews, total] = await Promise.all([
       prisma.review.findMany({
-        where: { recipientId: userId as string, reviewType: "USER" },
+        where: { recipientId: userId as string, reviewType: "USER", isDeleted: false },
         include: {
           author: {
             select: {
@@ -189,7 +191,7 @@ export const getUserReviews = async (
         take: limit,
       }),
       prisma.review.count({
-        where: { recipientId: userId as string, reviewType: "USER" },
+        where: { recipientId: userId as string, reviewType: "USER", isDeleted: false },
       }),
     ]);
 

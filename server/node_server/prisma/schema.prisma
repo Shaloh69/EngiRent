@@ -139,6 +139,17 @@ model Item {
   isListed    Boolean @default(true)
   isActive    Boolean @default(true)
 
+  // Admin moderation — checklist Stage 3.6, distinct from isListed (the
+  // owner's own choice). A flag marks an item for attention (e.g. a
+  // complaint under investigation) without necessarily hiding it from
+  // browse; unlisting via this same field an admin controls independently.
+  // No FK on moderatedById for the same reason as User.verifiedById —
+  // deleting an admin must not erase the record of what they did.
+  isFlagged    Boolean   @default(false)
+  flagReason   String?   @db.Text
+  moderatedById String?
+  moderatedAt   DateTime?
+
   // Location
   campusLocation String? // UCLM Lapu-Lapu or Mandaue
 
@@ -454,6 +465,15 @@ model Review {
 
   // Type
   reviewType ReviewType // ITEM or USER
+
+  // Admin moderation — checklist Stage 3.6. Soft delete, not a hard
+  // DELETE: an abusive review still needs to exist for dispute history and
+  // for reversing a moderation mistake, it just shouldn't display or count
+  // toward the average anymore.
+  isDeleted       Boolean   @default(false)
+  deleteReason    String?   @db.Text
+  deletedById     String?
+  deletedAt       DateTime?
 
   // Timestamps
   createdAt DateTime @default(now())
