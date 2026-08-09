@@ -258,6 +258,56 @@ The tour runs automatically the first time Home is reached, and on demand from "
 
 ---
 
+## 2.9 Phone App — feature gaps found by audit (2026-08-09)
+
+Audited by diffing the API surface (`server/node_server/src/routes`) against the endpoints the Flutter app actually calls. **Most of what is missing is already built server-side and simply unreachable from the app** — these are wiring jobs, not new systems.
+
+### 2.9.1 Owners cannot manage their own listings — the biggest gap
+
+`GET /items/my-items`, `PUT /items/:id` and `DELETE /items/:id` all exist and are authenticated. **The app calls none of them, and has no "My Listings" screen at all.** An owner can publish a listing and then never see it again, let alone fix a typo, correct a price, swap a bad photo, or take it down when the item breaks or they graduate.
+
+Required:
+- **My Listings** screen — the owner's own items with live status (available / rented / unlisted), reachable from Profile and from the home quick actions.
+- **Edit listing** — reuse `CreateItemScreen`'s form in an edit mode rather than building a second form. Title, description, category, condition, price, deposit, serial.
+- **Photo management** — add, remove, and reorder photos on an existing listing, including changing which one is the cover. Reuse the `_PhotoStrip` component; it already supports promote-to-cover.
+- **Unlist / relist** — a soft toggle, distinct from delete. Someone whose calculator is lent to a friend for a month needs to hide it, not destroy the listing and its review history.
+- **Delete** — with a confirmation that states plainly what happens to reviews and to any rental currently in flight. Deleting an item with an active rental must be refused by the app, not just by the API.
+
+### 2.9.2 Video on listings
+
+`video/mp4` is **already accepted** by the upload middleware (`ALLOWED_FILE_TYPES`); the app only ever sends stills. A short clip is far more convincing than photos for the things students actually rent — that a multimeter powers on, that a lab gown has no tears, that all the Arduino pieces are in the box.
+
+Required:
+- One optional clip per listing, hard-capped (suggest 15s / 20MB — check `MAX_FILE_SIZE` before settling the number).
+- Must degrade: a listing with no clip looks deliberate, not broken.
+- Never autoplay with sound. Muted, tap to play, with a poster frame.
+- **Condition-evidence clips at handover are a separate, later question** — they touch the dispute pipeline and the AI condition check, and must not be bolted on with the cosmetic listing video.
+
+### 2.9.3 Feedback to admin — no channel exists anywhere
+
+There is **no feedback, support or bug-report endpoint on the server at all**, and nothing in the app. Today a student who hits a problem has no route to the people running the system, and the admins running a thesis deployment have no signal except rentals silently failing.
+
+This one is genuinely new work, server included:
+- `POST /feedback` — category (bug / suggestion / kiosk problem / payment problem / other), free text, optional screenshot, and automatically attached context: app version, device model, current screen, and the rental ID if the report is filed from one.
+- Reachable from **Profile → Send feedback**, and contextually from the places things go wrong: a failed kiosk scan, a payment error, a disputed rental.
+- Admin Console needs the receiving end: a triage list with status (new / acknowledged / resolved) — otherwise it is a write-only hole.
+- **Kiosk-problem reports must include the kiosk ID and recent event log**, since "the locker didn't open" is useless without knowing which door and when.
+
+### 2.9.4 Quality-of-life gaps found in the same pass
+
+- **Rental dates cannot be changed.** `PATCH /rentals/:id/status` exists but there is no extend/shorten path. Extending a rental that is going to be late is better for everyone than the late-fee path, which is currently the only option.
+- **No saved/favourite items.** Browse has no way to keep an item for later; a student comparing three calculators has to remember them.
+- **No search history or recent views.**
+- **Profile editing is partial.** `PUT /auth/profile` exists; the app only writes payout details and the completion flow. Phone number and guardian contact cannot be corrected after setup.
+- **Notifications have no preferences.** Everything is on, always.
+- **No receipt or transaction history view.** `GET /payments` is called but there is no screen that shows a student what they have paid across all rentals — which is the first thing anyone asks when money is involved.
+
+### 2.9.5 Rule going forward
+
+**Before adding a screen, check whether the endpoint already exists.** Three of the five gaps above were fully built on the server and unreachable from the app — the work was wiring, not construction. The audit that found them is a five-minute diff of `src/routes` against the app's `_api` call sites, and it should be repeated whenever the app is called "feature-complete".
+
+---
+
 ## 3. Admin Console
 
 **Explicit template references:**
