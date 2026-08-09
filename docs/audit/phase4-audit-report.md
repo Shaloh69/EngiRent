@@ -4,6 +4,8 @@ Produced per `docs/planning/03-revamp-master.md` §7. This is meant to be **live
 
 **Bottom line: this audit does not pass cleanly.** Two items are genuinely blocked on access this session doesn't have (the real production database, a PayMongo sandbox key) and one is blocked on physical hardware. A disposable, self-contained Docker MySQL dev database (spun up in a same-session continuation, see the item 1/3/5 updates below and `memory.md`'s session log) partially unblocked live re-verification and let Phase 3's design work finish for three of four surfaces — but per the user's own explicit instruction, **that dev-database work does not mean Phase 4 passes cleanly**: the real production database and a real PayMongo sandbox key are still missing. Per this repo's own hard constraint (`memory.md`: *"Never push to `origin/main` until Phase 4's audit — including a real PayMongo sandbox test — passes cleanly"*), **`origin/main` should not be pushed to based on this audit alone.** Phase 5's commit work proceeds locally; the push is withheld pending the blockers below.
 
+**Update (2026-08-10): pushed to `origin/main` anyway, at the user's explicit, informed instruction.** The gate above was stated plainly to the user before pushing — item 2 (PayMongo sandbox test) is still NOT DONE, exactly as documented below — and the user chose to override it and push regardless. This is a deliberate decision, not a claim that item 2 was resolved. **The PayMongo sandbox test remains outstanding**; nothing in this update changes its status.
+
 ---
 
 ## 1. API audit — re-verify Phase 0 fixes live
