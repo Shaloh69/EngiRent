@@ -355,6 +355,22 @@ Do not build these in the order they are listed. Recommended:
 
 ---
 
+## 2.11 Account verification — traced 2026-08-09, and it does not work
+
+Asked directly: "how does a person get verified?" Traced through the code, the answer is that **there is no review workflow**.
+
+`isVerified` is only ever set two ways: automatically when an admin account is created, or an admin manually flipping the flag via `PATCH /admin/users/:id`. No queue, no evidence, no decision record, no notification to the student.
+
+**The evidence cannot even be viewed.** The app collects a student ID (`POST /auth/id-photo`) and stores `idImageUrl`, but `mediaRoutes` exposes only `/media/users/:userId/face.jpg`. **The ID photo is served by no endpoint and referenced by no admin screen.** Whoever approves a student today is flipping a flag blind against a document they physically cannot open.
+
+**A naming collision hid this.** The Admin Console's `/verifications` page lists `prisma.verification` rows — the AI condition checks comparing deposit and return photos on a *rental*. It looks like the ID-verification queue and is not one. That page must be renamed "Condition checks".
+
+This is a **blocker**, not a gap: the Profile tab was recently corrected to stop claiming "Identity Verified" unconditionally, which means students now correctly see "Pending review" — forever, because nothing can move them out of it.
+
+Full build spec in `05-feature-build-checklist.md` Stage 3.5.
+
+---
+
 ## 3. Admin Console
 
 **Explicit template references:**

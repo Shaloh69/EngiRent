@@ -84,6 +84,62 @@ This is **not** a single-sitting job. Fifteen work items span the Flutter app, t
 
 ---
 
+## Stage 3.5 — Account verification actually works (NEW — blocker)
+
+**Traced 2026-08-09 in answer to "how does a person get verified?" The answer is: not properly. There is no review workflow at all.**
+
+The only ways `isVerified` is ever set are (a) automatically when an admin account is created, and (b) an admin manually flipping the flag through `PATCH /admin/users/:id`. There is no queue, no evidence, no decision record, and no notification.
+
+**Worse: the evidence cannot be viewed.** The app collects a student ID (`POST /auth/id-photo`) and stores `idImageUrl`, but `mediaRoutes` only exposes `/media/users/:userId/face.jpg` — **the ID photo is not served by any endpoint**, and no admin screen references it. An admin approving a student today is flag-flipping blind against a document they physically cannot see.
+
+**The Admin Console's existing `/verifications` page is a different thing entirely** — it lists `prisma.verification` records, which are the AI condition checks comparing deposit and return photos on a rental. The naming collision has been hiding this gap.
+
+### 3.5.1 Server
+- [ ] Serve the ID photo to admins only: `GET /media/users/:userId/id.jpg`, admin-role gated, audit-logged on every access
+- [ ] `GET /admin/id-verifications` — pending queue with the student's submitted data
+- [ ] `POST /admin/id-verifications/:userId` — decision (approve / reject), reason, reviewer ID, timestamp
+- [ ] Reject reasons as an enum (unreadable / not a student ID / name mismatch / expired / suspected forgery)
+- [ ] Notify the student on decision, with the reason if rejected
+- **Done when:** approving a student flips `isVerified`, writes a decision record naming the reviewer, and the student is notified.
+
+### 3.5.2 Admin: ID verification queue (new page)
+- [ ] Side-by-side: submitted ID photo next to the registered face photo and the typed name/student number
+- [ ] Approve / reject with reason, keyboard-driven for volume
+- [ ] Filter by pending / approved / rejected; show reviewer and timestamp on decided rows
+- [ ] **Rename the existing `/verifications` page to "Condition checks"** so the two stop colliding
+- **Template:** [identity-verification review UI walkthrough](https://ubongabasieka.medium.com/identity-verification-web-application-design-eee5d03a5945) for the side-by-side evidence + decision pattern; queue mechanics per [approve/reject account-request patterns](https://support.higherlogic.com/hc/en-us/articles/10177279816596-Approve-Reject-User-Account-Requests)
+- **Done when:** a real pending student can be approved from this page and the app reflects it.
+
+### 3.5.3 App: verification status is visible
+- [ ] Profile shows submitted / under review / approved / rejected with the rejection reason
+- [ ] Re-submit path after rejection
+- [ ] **Currently the student sees "Pending review" forever with no ETA and no route to ask** — pair this with Stage 3's feedback channel
+- **Done when:** a rejected student sees why and can re-submit.
+
+---
+
+## Stage 3.6 — Admin: item detail, ratings and reviews (NEW)
+
+The Admin Console has an items **list** (`/items/page.tsx`) and nothing else — no detail view. There are also **no admin item or review endpoints at all**; the list is reading the public `/items`. An admin investigating a complaint about a listing cannot see its reviews, its rental history, or its owner's record in one place.
+
+### 3.6.1 Server
+- [ ] `GET /admin/items/:id` — full record incl. owner, all photos, rental history, review aggregate
+- [ ] `GET /admin/items/:id/reviews` — every review with author, rating, comment, date
+- [ ] `PATCH /admin/items/:id` — moderate: unlist, flag, restore
+- [ ] `DELETE /admin/reviews/:id` — remove abusive reviews, soft-delete with reason and audit entry
+
+### 3.6.2 Admin: item detail page (new page)
+- [ ] Header: title, owner (linked to their user record), category, condition, status
+- [ ] Photo gallery, all images not just the cover
+- [ ] Pricing: rate, deposit, lifetime earnings
+- [ ] Rental history table with outcomes
+- [ ] **Ratings panel: average, distribution bars, and the full review list on its own tab/page** — this is the separate reviews view requested
+- [ ] Moderation actions with a confirmation stating the consequence
+- **Template:** admin detail/moderation layout per [dashboard template patterns](https://adminlte.io/blog/dashboard-templates/); the ratings panel mirrors the phone app's `_RatingSummary` (average + tappable distribution) so both surfaces read the same
+- **Done when:** an admin can open any item from the list, read every review, and unlist it, with the action written to the audit log.
+
+---
+
 ## Stage 4 — Offline resilience (§2.10.1)
 
 ### 4.1 Connectivity awareness
@@ -162,6 +218,15 @@ This is **not** a single-sitting job. Fifteen work items span the Flutter app, t
 - [ ] Notification preferences
 - [ ] Profile editing beyond payout (`PUT /auth/profile` exists)
 - [ ] Extend/shorten a rental — better than the late-fee path, currently the only option
+
+### Admin-side gaps found in the same pass
+- [ ] **No admin audit-log viewer.** Actions are logged server-side; no screen reads them back, so "who unlisted this item" is unanswerable from the UI
+- [ ] **No admin-side user detail page.** Users are a flat list — no per-user view of rentals, listings, reviews, payouts and verification history in one place
+- [ ] **No bulk actions** anywhere in the console; moderating a spam wave means one row at a time
+- [ ] **No export.** Reports cannot leave the screen — no CSV for a thesis defence or an audit
+- [ ] **No saved filters or column preferences** on any table
+- [ ] **Kiosk page is read-only** — no remote "release locker 03" for a stuck door, which is the single most likely support call
+- [ ] **No admin role granularity.** Any admin can do anything; a reviewer approving student IDs should not also be able to issue refunds
 
 ---
 
