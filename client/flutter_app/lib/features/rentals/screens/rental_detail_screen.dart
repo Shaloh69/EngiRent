@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/rental_widgets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
@@ -329,6 +330,15 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      // Order-tracking timeline (mandate §2.2), modelled on
+                      // the order_status / FlutterShop tracking pattern. The
+                      // animated badge above says where the rental IS; this
+                      // says what happens next — the actual question someone
+                      // has while their deposit is sitting in escrow.
+                      const SectionLabel('Progress'),
+                      OrderTimeline(status: _rental!.status),
+                      const SizedBox(height: 20),
 
                       // Info grid
                       _InfoCard(children: [

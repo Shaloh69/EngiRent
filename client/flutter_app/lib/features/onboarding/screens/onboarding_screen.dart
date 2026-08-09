@@ -58,9 +58,14 @@ class OnboardingScreen extends StatelessWidget {
       required String body,
     }) {
       return PageViewModel(
-        titleWidget: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        // Both slots share one centred, max-width box.
+        // IntroductionScreen lays title and body out independently with no
+        // shared width constraint, so on anything wider than a phone the
+        // copy ran past the viewport and clipped mid-word.
+        titleWidget: _Constrain(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Container(
               height: 64,
               width: 64,
@@ -82,15 +87,15 @@ class OnboardingScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              title,
-              style: theme.textTheme.headlineMedium
-                  ?.copyWith(fontSize: 30, letterSpacing: -0.6, height: 1.1),
-            ),
-          ],
+              Text(
+                title,
+                style: theme.textTheme.headlineMedium
+                    ?.copyWith(fontSize: 30, letterSpacing: -0.6, height: 1.1),
+              ),
+            ],
+          ),
         ),
-        bodyWidget: Align(
-          alignment: Alignment.centerLeft,
+        bodyWidget: _Constrain(
           child: Text(
             body,
             style: TextStyle(fontSize: 15, height: 1.5, color: p.muted),
@@ -169,6 +174,24 @@ class OnboardingScreen extends StatelessWidget {
           controlsPadding: const EdgeInsets.fromLTRB(
               AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.md),
         ),
+      ),
+    );
+  }
+}
+
+/// Centres page content and caps its width. Without this the onboarding copy
+/// stretched edge-to-edge and overflowed on tablets and desktop-sized
+/// windows, clipping the last word of each line.
+class _Constrain extends StatelessWidget {
+  const _Constrain({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Align(alignment: Alignment.centerLeft, child: child),
       ),
     );
   }

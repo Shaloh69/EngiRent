@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
@@ -17,6 +16,7 @@ import '../../items/screens/item_detail_screen.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/app_avatar.dart';
+import '../../../core/widgets/rental_widgets.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -556,6 +556,7 @@ class _RentalsTab extends StatefulWidget {
 }
 
 class _RentalsTabState extends State<_RentalsTab> {
+  String? _filter;
   final _service = RentalService();
   bool _loading = true;
   String? _error;
@@ -589,18 +590,16 @@ class _RentalsTabState extends State<_RentalsTab> {
     });
   }
 
-  Color _statusColor(String status) => switch (status) {
-    'ACTIVE' => AppColors.success,
-    'COMPLETED' => AppColors.info,
-    'CANCELLED' || 'DISPUTED' => AppColors.error,
-    'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
-    'VERIFICATION' => AppColors.warning,
-    _ => AppColors.grey,
-  };
-
   @override
   Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
+    // Order-history layout (mandate §2.2), modelled on the FlutterShop /
+    // order_status references: thumbnail, title, status, dates and money all
+    // legible in one row, with a filter rail so "what do I still have out"
+    // doesn't require reading the whole list.
+    final visible = _filter == null
+        ? _rentals
+        : _rentals.where((r) => _filterMatches(r.status)).toList();
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -613,119 +612,93 @@ class _RentalsTabState extends State<_RentalsTab> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? ListView(children: [
-                    const SizedBox(height: 100),
-                    Center(child: Text(_error!, style: TextStyle(color: p.muted))),
-                  ])
-                : _rentals.isEmpty
-                    ? ListView(children: [
-                        const SizedBox(height: 80),
-                        Center(
-                          child: Column(children: [
-                            Icon(Icons.receipt_long_outlined, size: 56, color: p.muted),
-                            SizedBox(height: 12),
-                            Text('No rentals yet', style: TextStyle(fontWeight: FontWeight.w600, color: p.muted)),
-                            SizedBox(height: 6),
-                            Text('Browse items to start your first rental', style: TextStyle(color: p.muted, fontSize: 13)),
-                          ]),
-                        ),
-                      ])
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _rentals.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final rental = _rentals[index];
-                          final statusColor = _statusColor(rental.status);
-                          return GestureDetector(
-                            onTap: () => Navigator.pushNamed(context, '/rentals/${rental.id}').then((_) => _load()),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: p.surface,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: p.border),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.primaryDark.withValues(alpha: 0.04),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  // Status indicator strip
-                                  Container(
-                                    width: 4,
-                                    height: 56,
-                                    decoration: BoxDecoration(
-                                      color: statusColor,
-                                      borderRadius: BorderRadius.circular(4),
+      body: Column(
+        children: [
+          _RentalFilterRail(
+            selected: _filter,
+            onSelect: (v) => setState(() => _filter = v),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: _loading
+                  ? ListView.separated(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      itemCount: 4,
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: AppSpacing.xs),
+                      itemBuilder: (_, __) => const RentalCardSkeleton(),
+                    )
+                  : _error != null
+                      ? AppEmptyState(
+                          icon: Icons.wifi_off_rounded,
+                          title: 'Couldn\'t load your rentals',
+                          body: _error,
+                          action: OutlinedButton(
+                            onPressed: _load,
+                            child: const Text('Try again'),
+                          ),
+                        )
+                      : visible.isEmpty
+                          ? AppEmptyState(
+                              icon: Icons.receipt_long_outlined,
+                              title: _filter == null
+                                  ? 'No rentals yet'
+                                  : 'Nothing in this filter',
+                              body: _filter == null
+                                  ? 'Browse equipment to start your first rental.'
+                                  : 'Try a different filter to see your other rentals.',
+                              action: _filter == null
+                                  ? ElevatedButton(
+                                      onPressed: () => Navigator.pushNamed(
+                                          context, '/items'),
+                                      child: const Text('Browse equipment'),
+                                    )
+                                  : OutlinedButton(
+                                      onPressed: () =>
+                                          setState(() => _filter = null),
+                                      child: const Text('Show all'),
                                     ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(
+                                  AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                              itemCount: visible.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: AppSpacing.xs),
+                              itemBuilder: (context, index) {
+                                final rental = visible[index];
+                                return Stagger(
+                                  index: index,
+                                  child: RentalCard(
+                                    rental: rental,
+                                    onTap: () => Navigator.pushNamed(
+                                            context, '/rentals/${rental.id}')
+                                        .then((_) => _load()),
                                   ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          rental.item.title,
-                                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: p.ink),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Icon(Icons.calendar_today_outlined, size: 12, color: p.muted),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Ends ${rental.daysRemaining > 0 ? 'in ${rental.daysRemaining}d' : 'today'}',
-                                              style: TextStyle(color: p.muted, fontSize: 12),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Icon(Icons.payments_outlined, size: 12, color: p.muted),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'PHP ${rental.totalPrice.toStringAsFixed(0)}',
-                                              style: TextStyle(color: p.muted, fontSize: 12),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                        decoration: BoxDecoration(
-                                          color: statusColor.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          AppConstants.rentalStatus[rental.status] ?? rental.status,
-                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: statusColor),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Icon(Icons.chevron_right_rounded, color: p.muted, size: 18),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  /// Groups the eight lifecycle statuses into the three questions a renter
+  /// actually asks: what's coming, what do I have, what's finished.
+  bool _filterMatches(String status) => switch (_filter) {
+        'active' => status == 'ACTIVE' || status == 'DEPOSITED',
+        'upcoming' =>
+          status == 'PENDING' || status == 'AWAITING_DEPOSIT',
+        'past' => status == 'COMPLETED' ||
+            status == 'CANCELLED' ||
+            status == 'DISPUTED' ||
+            status == 'VERIFICATION',
+        _ => true,
+      };
 }
 
 // ── Notifications Tab ────────────────────────────────────────────────────────
@@ -1162,6 +1135,68 @@ class _ProfileTile extends StatelessWidget {
           (onTap != null
               ? Icon(Icons.chevron_right_rounded, color: p.muted)
               : null),
+    );
+  }
+}
+
+/// Filter rail for the rentals list. Groups the eight lifecycle statuses into
+/// the three questions a renter actually asks — what's coming, what do I have
+/// right now, what's finished — rather than exposing raw status names.
+class _RentalFilterRail extends StatelessWidget {
+  const _RentalFilterRail({required this.selected, required this.onSelect});
+
+  final String? selected;
+  final ValueChanged<String?> onSelect;
+
+  static const _options = <({String? key, String label})>[
+    (key: null, label: 'All'),
+    (key: 'active', label: 'With me'),
+    (key: 'upcoming', label: 'Upcoming'),
+    (key: 'past', label: 'Past'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        itemCount: _options.length,
+        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.xs),
+        itemBuilder: (context, i) {
+          final o = _options[i];
+          final active = o.key == selected;
+          return GestureDetector(
+            onTap: () => onSelect(o.key),
+            child: AnimatedContainer(
+              duration: AppMotion.fast,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.xs,
+              ),
+              decoration: BoxDecoration(
+                color: active ? p.primary : p.surface,
+                borderRadius: AppRadius.input,
+                border: Border.all(color: active ? p.primary : p.border),
+              ),
+              child: Text(
+                o.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: active
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF04211D)
+                          : Colors.white)
+                      : p.muted,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
