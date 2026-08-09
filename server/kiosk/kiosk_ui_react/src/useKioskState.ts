@@ -287,6 +287,14 @@ export function useKioskState() {
     cancel: () => goTo("main"),
     retry: () => goTo("main"),
     errHome: () => goTo("main"),
+    // Informational screens off the main menu (§4 — the kiosk is also a
+    // promotional surface). These carry no rental state, so leaving one is
+    // always a plain return to the menu.
+    openHow: () => goTo("how"),
+    openCatalogue: () => goTo("catalogue"),
+    openLockers: () => goTo("lockers"),
+    backToMain: () => goTo("main"),
+    goIdle: () => goTo("idle"),
   };
 
   const confirmAction = rentalInfo?.status

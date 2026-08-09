@@ -23,33 +23,34 @@
    attribute, so both switch together or neither does. */
 :root,
 [data-mantine-color-scheme="light"] {
-  --color-bg: #fdfbf7;
+  --color-bg: #f7f9fc;
   --color-surface: #ffffff;
-  --color-surface-soft: #f3f8f7;
-  --color-border: #d9ece8;
-  --color-ink: #0f2622;
-  --color-muted: #55706b;
-  --color-primary: #0d9488;
-  --color-secondary: #f5a623;
-  --color-accent: #fb7185;
+  --color-surface-soft: #eef4fb;
+  --color-border: #d5e3f2;
+  --color-ink: #0c1f33;
+  --color-muted: #51677f;
+  --color-primary: #0b5fa5;
+  --color-secondary: #e9a13b;
+  --color-accent: #ef6e7b;
   --color-danger: #ef4444;
-  --glow-a: rgba(13, 148, 136, 0.16);
-  --glow-b: rgba(245, 166, 35, 0.12);
+  --glow-a: rgba(11, 95, 165, 0.16);
+  --glow-b: rgba(233, 161, 59, 0.12);
 }
 
 [data-mantine-color-scheme="dark"] {
-  --color-bg: #071310;
-  --color-surface: #0e1f1b;
-  --color-surface-soft: #12271f;
-  --color-border: #1e3b35;
-  --color-ink: #eaf5f2;
-  --color-muted: #7fa39c;
-  --color-primary: #3ec3b3;
-  --color-secondary: #f6ba4d;
-  --color-accent: #fc8797;
+  --color-bg: #050f1a;
+  --color-surface: #0b1a2a;
+  --color-surface-soft: #122740;
+  --color-border: #1e3a54;
+  --color-ink: #eef6ff;
+  --color-muted: #93aec9;
+  --color-primary: #4da3e8;
+  --color-secondary: #f5b85c;
+  --color-accent: #ff8a95;
   --color-danger: #f37373;
-  --glow-a: rgba(13, 148, 136, 0.22);
-  --glow-b: rgba(245, 166, 35, 0.14);
+  /* Glows lift with the brand — tuned against #050F1A, not the light ground. */
+  --glow-a: rgba(77, 163, 232, 0.22);
+  --glow-b: rgba(245, 184, 92, 0.14);
 }
 
 body {

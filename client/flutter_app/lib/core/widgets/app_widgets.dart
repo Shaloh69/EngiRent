@@ -22,7 +22,7 @@ class AppPalette {
   Color get surface =>
       isDark ? AppColors.surfaceDarkMode : AppColors.surface;
   Color get surfaceAlt =>
-      isDark ? AppColors.surfaceAltDarkMode : const Color(0xFFF3F8F7);
+      isDark ? AppColors.surfaceAltDarkMode : const Color(0xFFEEF4FB);
   Color get border => isDark ? AppColors.borderDarkMode : AppColors.border;
   Color get ink => isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
   Color get muted =>

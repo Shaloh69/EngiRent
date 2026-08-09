@@ -17,7 +17,7 @@ A previous project's design work looked correct on paper but the shipped UI was 
 2. Take an actual screenshot **of the real, currently-deployed instance** — the same URL/build a person would actually reach (the live Cloudflare tunnel, or whatever `Start.bat` actually serves), not a local dev server or a branch that might diverge from what's really running. A screenshot of the wrong build proves nothing.
 3. Compare that screenshot against this document's spec for that surface, checking each of these explicitly rather than an impression of "looks styled":
    - **Contrast**: every piece of text must be legible at a glance — no gray-on-dark or gray-on-light combinations that require squinting. If in doubt, check it, don't eyeball it.
-   - **Palette**: teal primary, gold secondary, coral tertiary must all actually be visible somewhere on the screen — not just teal used once for a nav highlight while everything else defaults to generic gray/white/blue.
+   - **Palette**: cerulean primary, brass secondary, coral tertiary must all actually be visible somewhere on the screen — not just the primary used once for a nav highlight while everything else defaults to generic gray/white.
    - **Every component named in this document's spec for that screen is actually present and rendering** — not just present in the code, rendering, with real or realistic placeholder data if live data is empty. An empty-state table row is fine; a missing chart entirely is not.
 4. If it doesn't match on any of the above — fix it and re-screenshot against the real deployed instance again. Repeat until it matches.
 5. Only then move to the next screen.
@@ -55,7 +55,7 @@ Each of these is a **fail condition** in §0's verification checklist, not a pre
 | Banned | Use instead |
 |---|---|
 | **Inter, Geist, or system-default sans** as the primary typeface | The type stack in §1.2 — Inter in particular is the single most common tell |
-| Blue or indigo as primary accent | Teal `#0D9488` (§1.3) |
+| **Default** blue/indigo as primary — Tailwind `blue-600` `#2563EB`, `blue-500` `#3B82F6`, `indigo-500` `#6366F1` and their neighbours (hue 220-245) | Cerulean `#0B5FA5`, hue ~205 (§1.3b). **Blue itself is not banned.** The tell is the *default* swatch reached for without thought, not the hue family. A blue chosen deliberately and kept away from those defaults is a legitimate brand decision. |
 | Border-radius above **6px** on cards/buttons/inputs; pill-shaped buttons | 2px (inputs, chips), 4px (buttons), 6px (cards/panels) — machined edges, not lozenges |
 | Multi-layer / soft "elevation" drop shadows | A single 1px border in a palette tint, plus at most one hard low-opacity shadow |
 | Full-width hero with centred headline + subheadline + one CTA | Asymmetric split layouts, off-centre composition, real content in the second column |
@@ -86,7 +86,7 @@ Three families, each with a distinct job. All three are on Google Fonts and avai
   - **react-bits** — animated backgrounds; see §1.5 for the exact per-surface assignment.
   - **Rive** (Flutter-specific, phone app only) — for the lock icon to have a real state machine (locked → unlocking → unlocked), not just a fire-and-forget clip.
 
-- **Color palette — pivoted, and here's why.** The prior palette (violet primary) is being replaced, not just re-enforced — when it actually shipped, it rendered as a generic blue button and a mostly colorless UI, which is exactly the failure mode of relying on the single most common SaaS brand color (over 70% of SaaS products default to blue/violet). **New palette: "EngiRent Vault"** — deep teal/emerald as primary, distinctive rather than generic, still reads as trustworthy/secure (validated as a genuine alternative to blue for exactly that purpose), and pairs naturally with gold for the literal lock-and-key motif:
+- **Color palette — pivoted, and here's why.** The prior palette (violet primary) is being replaced, not just re-enforced — when it actually shipped, it rendered as a generic blue button and a mostly colorless UI, which is exactly the failure mode of relying on the single most common SaaS brand color (over 70% of SaaS products default to blue/violet). **Superseded — see §1.3b for the current "EngiRent Blueprint" palette. Retained for the reasoning.** Former palette: "EngiRent Vault" — deep teal/emerald as primary, distinctive rather than generic, still reads as trustworthy/secure (validated as a genuine alternative to blue for exactly that purpose), and pairs naturally with gold for the literal lock-and-key motif:
 
 | Role | Color | Hex |
 |---|---|---|
@@ -106,6 +106,33 @@ Three families, each with a distinct job. All three are on Google Fonts and avai
 - **8px base grid, no exceptions.** Every margin, padding, and gap is a multiple of 8 (4px permitted only for icon-to-label gaps and inline chip padding). Arbitrary values like 13px/22px/37px are the fastest tell of generated layout — if a value isn't on the scale, it's wrong.
 - **Radius scale, hard cap 6px**: 2px inputs/chips/badges · 4px buttons · 6px cards/panels/modals. Nothing is fully rounded except avatars and status dots.
 - **Borders do the work shadows used to.** 1px, palette-tinted. At most one shadow token exists (`0 1px 2px rgba(7,19,16,.06)`); there is no elevation ladder.
+
+### 1.3b Palette — "EngiRent Blueprint" (supersedes "Vault")
+
+The teal/gold/coral "Vault" palette is retired. The identity is now blue-led, on the user's direction.
+
+| Role | Light | Dark | Notes |
+|---|---|---|---|
+| Primary | `#0B5FA5` | `#4DA3E8` | Cerulean / process blue, **hue ~205** |
+| Secondary | `#E9A13B` | `#F5B85C` | Brass — the classic complement to blueprint blue |
+| Tertiary | `#EF6E7B` | `#FF8A95` | Coral, retained as the alert accent |
+| Background | `#F7F9FC` | `#050F1A` | |
+| Surface | `#FFFFFF` | `#0B1A2A` | |
+| Soft surface | `#EEF4FB` | `#122740` | |
+| Border | `#D5E3F2` | `#1E3A54` | |
+| Ink | `#0C1F33` | `#EEF6FF` | |
+| Muted | `#51677F` | `#93AEC9` | |
+
+**Hue ~205 is the whole point.** Tailwind `blue-600` sits at hue ~221 and `indigo-500` at ~239; those are the swatches §1.1 bans, and they are what "AI-generated blue" actually looks like. 205 reads as cerulean/process blue — an engineering-drawing blue, not a SaaS-template blue. **Do not drift the primary toward 220+.**
+
+**Two hard rules that follow from this palette:**
+
+1. **The light primary may never be used on a dark ground.** `#0B5FA5` on `#050F1A` is roughly **2.4:1** — it reads as a dark smudge, not as a brand colour. Dark mode takes the lifted hues in the table above. This applies to *everything* tinted by the brand, including animated-background colour stops, glow tokens, and focus rings — not just text and buttons.
+2. **The Kiosk is permanently dark and therefore always uses the dark column.** It has no light mode (§1.6), so its `theme.css` is built entirely from the lifted values.
+
+Neutrals are blue-tinted, not grey and not teal-tinted, so surfaces sit *under* the primary rather than fighting it.
+
+---
 
 ### 1.5 Animated backgrounds — mandatory, one named component per surface
 
@@ -258,26 +285,63 @@ New, dedicated section — this surface previously had no template reference of 
 
 ## 4. Kiosk
 
+**Status: fully scrapped and rebuilt (2026-08-09).** Not re-themed, not adjusted — every screen file, the stylesheet, and the type system were replaced. What follows is the standing spec, with the reasons the previous build failed it recorded inline so the same mistakes aren't reintroduced.
 
-**Explicit template references:**
-- **["Self Service Kiosk"](https://www.figma.com/community/file/1475972798185896799/self-service-kiosk)** (Figma Community) — general self-service touchscreen interaction patterns, accessibility-considered.
-- **["Home Screen Design for Dodo Pizza's Self-Service Kiosk"](https://www.figma.com/community/file/1446517148275617940/home-screen-design-for-dodo-pizzas-self-service-kiosk)** (Figma Community) — specifically useful for its structural pattern: a fixed vertical sidebar categorizing offerings with bold icons and an active-category highlight, staying consistent through the whole flow. This maps directly onto EngiRent's item categories and is a proven, real pattern, not an invented one.
-- **["Interactive and Accessible Product Card Design for a Self-Service Kiosk"](https://www.figma.com/community/file/1446514995844693138/interactive-and-accessible-product-card-design-for-a-self-service-kiosk)** (Figma Community, same Dodo Pizza series as above) — reference for the item-card pattern specifically: how a single item is presented, selected, and confirmed on a touchscreen, with accessibility considered.
+### 4.1 Portrait is the format, not a constraint to work around
 
-**What the kiosk must do — the idle screen and the active flow are two different design problems, treat them as such:**
+The panel is **1080x1920, vertical**. The previous build was laid out as though it were landscape — the main screen put the QR code and its instructions side by side, so the code was small, the copy was squeezed into a narrow column, and roughly two thirds of the screen's height was unused.
 
-**Idle/"attract loop" (this is the industry-standard term — use it in code/docs):**
-- Triggers automatically after a timeout of no interaction.
-- 30-60 second looping sequence of scenes, not one static animation — cycle through a few.
-- Deliberately more vibrant and animated than the rest of the kiosk flow — this is the one place where more visual energy is correct, industry guidance is explicit about this.
-- Must include: the 3D lock animation (unlocking to reveal rotating item-category icons — ties "lock and key" and "rental" together visually), and a periodic, unmissable **"Tap to Start"** prompt with a tap/hand icon animation — a static touchscreen does not read as touch-enabled to someone walking past without an explicit cue.
-- Reinforces what EngiRent *is* during this loop (brief, rotating messaging), not just decoration.
+- Size from **`vmin`** (the short edge), never `vw`/`vh` directly, so the layout scales as one piece across panel sizes instead of stretching along the long axis.
+- Composition reads **top to bottom**: identity, the one primary thing, then secondary options. Two-up grids are fine; two-up *columns of prose* are not.
+- Verify at the real 9:16 aspect. A 16:9 browser window will hide exactly the failure this rule exists to catch.
 
-**Active-use flow (once someone taps in) — must go calm and task-focused, this is the opposite design mode from the idle screen:**
-- QR scan → facial recognition confirmation → locker assignment → item verification (camera capture + AI check, with a clear progress/waiting state) → confirmation screen with the Lottie "unlocked" animation.
-- Minimum touch target ~20mm physical size — calculate the actual px equivalent once the real touchscreen spec is confirmed in the hardware audit.
-- Timeout-triggered return to idle if abandoned mid-flow, not just from the home screen.
-- **Offline fallback state** — a kiosk that freezes or shows a raw API error on a lost connection is a much worse failure than the same failure in a phone app; this needs an explicit, designed "temporarily unavailable, please use the app" state, not a blank screen.
+### 4.2 Type and touch
+
+- Type stack is §1.2 — **Space Grotesk / IBM Plex Mono / Manrope**, **self-hosted via `@fontsource`**. The previous build shipped no font files at all and fell through to Inter, which §1.1 bans. Self-hosting is not optional here: this is a Raspberry Pi that may boot with no network, and a kiosk rendering in a fallback face because a CDN was unreachable is a visible failure.
+- **Nothing tappable below `--touch-min`** (~9-12mm of physical finger target; ~64-96px on this panel). Kiosk-industry floor, and it is stricter than any of the other three surfaces.
+- Radius cap and the no-shadow rule from §1.4 apply. The previous build ran 8/16/24/32px radii — the "large radius" tell.
+
+### 4.3 The Tetris assembly — the kiosk's signature motion
+
+**Every screen change passes through a tetromino assembly.** Blocks fall from above and stack until they have tiled the screen; the completed wall then clears downward to reveal the page beneath. Boot runs a longer version that holds the wordmark on a plate before clearing.
+
+- Implemented in `TetrisTransition.tsx`. Pieces are **packed onto a grid and animated into place**, not gravity-simulated — that is what makes the timing repeatable, which matters on a display that runs this hundreds of times a day.
+- **Deterministic.** A seeded PRNG (mulberry32) keyed off the screen name, never `Math.random`, so a given screen assembles identically every time while different screens differ.
+- The packer **must always complete the wall**; leftover pockets are plugged with single cells. A partially-tiled wall lets the page show through mid-transition.
+- **Colour rotation must be coprime with the palette length** (currently 5 colours, step 2). A naive `id % length` correlates with placement order and bands the wall into vertical stripes — this was caught in verification and is easy to reintroduce.
+- The wall is **mostly blues** with brass and coral punctuation, so it reads as EngiRent rather than as generic Tetris.
+- `pointer-events: none` on the layer, so a touch during a transition reaches the page underneath instead of being swallowed.
+- References: the [Tetris loader](https://codesandbox.io/s/tetris-loader-2fhyf3) (React + framer-motion) and [Tetris blocks with CSS Grid + GSAP](https://codepen.io/jh3y/pen/MQJBEN).
+- `?notetris=1` skips it for screenshot verification and for the Pi's own smoke test. It must never be the default.
+
+### 4.4 The kiosk is a promotional surface, not only a terminal
+
+It stands in a corridor and is the only EngiRent touchpoint most passers-by will ever see. **It must carry the same story as `client/web`, in the same words** — if the site's copy changes, the kiosk's is out of date.
+
+Required, all present as of the rebuild:
+- **Idle attract loop** cycling: the hero line from the homepage, the six-stage lifecycle, the three "what this replaces" comparisons, and **step-by-step directions for using the machine itself** (this last one was missing entirely and is what the loop most needed).
+- **"How it works"** — the full lifecycle, reachable from the menu.
+- **"Browse gear"** — real listings, proxied and cached through the kiosk server's `/api/catalogue` (read-only; the kiosk has no login and must never handle credentials on a shared public terminal).
+- **"Locker status"** — bay state and what "in use" means. Bay state only; which rental holds which door is not public.
+
+### 4.5 Idle vs active — still two different design problems
+
+**Idle/attract loop** (industry term — use it in code and docs):
+- Triggers after inactivity; 30-60s of looping scenes, not one static animation.
+- Deliberately the most visually energetic screen on the kiosk. Industry guidance is explicit that this is the one place more energy is correct.
+- Must carry the 3D lock animation and an **unmissable animated touch cue** — a static touchscreen does not read as touch-enabled to someone walking past.
+
+**Active flow** — calm and task-focused, the opposite mode:
+- QR scan → face verification → locker assignment → item verification → confirmation.
+- Back / home / cancel reachable at every step; timeout returns to idle from mid-flow, not just from the menu.
+- **Designed offline state.** A kiosk showing a raw API error is a far worse failure than the same error in the phone app.
+
+### 4.6 Template references
+
+- [Kiosk UX/UI design checklist](https://kioskindustry.org/kiosk-ux-ui-how-to-design-checklist/) — the source for the touch-target floor, "one primary task per screen", always-visible back/home/cancel, and session-timeout behaviour.
+- ["Self Service Kiosk"](https://www.figma.com/community/file/1475972798185896799/self-service-kiosk) (Figma Community) — general self-service touchscreen patterns.
+- ["Home Screen Design for Dodo Pizza's Self-Service Kiosk"](https://www.figma.com/community/file/1446517148275617940/home-screen-design-for-dodo-pizzas-self-service-kiosk) (Figma Community) — structural pattern for categorised offerings with an active-category highlight.
+- ["Interactive and Accessible Product Card Design for a Self-Service Kiosk"](https://www.figma.com/community/file/1446514995844693138/interactive-and-accessible-product-card-design-for-a-self-service-kiosk) — the item-card pattern behind the catalogue screen.
 
 ---
 

@@ -42,7 +42,7 @@ export function AnimatedLock({
       {/* Shackle */}
       <motion.path
         d="M40 52 V38 a20 20 0 0 1 40 0 V52"
-        stroke={glow ? "#F5A623" : "#0D9488"}
+        stroke={glow ? "#F5B85C" : "#4DA3E8"}
         strokeWidth={8}
         strokeLinecap="round"
         fill="none"
@@ -58,7 +58,7 @@ export function AnimatedLock({
         width={68}
         height={54}
         rx={12}
-        fill={glow ? "#F5A623" : "#0D9488"}
+        fill={glow ? "#F5B85C" : "#4DA3E8"}
         filter="url(#lock-glow)"
       />
 

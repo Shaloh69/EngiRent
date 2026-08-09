@@ -2,19 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Alert,
-  Box,
-  Button,
-  Divider,
-  Group,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-} from "@mantine/core";
+import { Alert, Box, Button, Divider, Group, PasswordInput, Stack, Text, TextInput, ThemeIcon, Title, useComputedColorScheme } from "@mantine/core";
 import { motion } from "framer-motion";
 import { AlertCircle, Lock, ShieldCheck, Activity, ScanLine } from "lucide-react";
 import api, { isDemoMode } from "@/lib/api";
@@ -27,6 +15,7 @@ import { ColorSchemeToggle } from "@/components/ui/ColorSchemeToggle";
 // asymmetric split with the brand panel bled into the aurora on the left and
 // the form as a hard-edged panel on the right.
 export default function LoginPage() {
+  const scheme = useComputedColorScheme("light");
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -67,8 +56,16 @@ export default function LoginPage() {
 
   return (
     <Box style={{ position: "relative", minHeight: "100vh", overflow: "hidden" }}>
+      {/* Scheme-aware stops. The light-mode brand (#0B5FA5) sits at roughly
+          2.4:1 on the dark ground — as an aurora it reads as a dark smudge
+          rather than colour, so dark mode takes the lifted hues that the rest
+          of the dark theme already uses. */}
       <AuroraBackground
-        colorStops={["#0D9488", "#F5A623", "#FB7185"]}
+        colorStops={
+          scheme === "dark"
+            ? ["#4DA3E8", "#F5B85C", "#FF8A95"]
+            : ["#0B5FA5", "#E9A13B", "#EF6E7B"]
+        }
         amplitude={1.1}
         blend={0.55}
         speed={0.5}

@@ -1,46 +1,96 @@
-/* "Vault" — the kiosk-specific dark mode mandated in
-   docs/planning/02-design-mandate.md §1. Near-black background so the
-   accent colors and the animated lock actually pop on a public always-on
-   display. Same "EngiRent Vault" hex values as client/admin/src/app/theme.ts
-   (teal primary, gold secondary, coral tertiary) — one palette, reused,
-   not reinvented per surface.
+/* EngiRent Kiosk — "Blueprint" theme, portrait-first.
+   docs/planning/02-design-mandate.md §1 and §4.
 
-   The neutrals are tinted teal rather than the previous violet tint, so the
-   dark surfaces sit under the new primary instead of quietly keeping the old
-   one. `--violet`/`--violet-glow` are retained purely as aliases of the teal
-   primary: they're referenced in ~20 places across screens.css and the
-   screen components, and renaming every call site adds risk without changing
-   a single rendered pixel. New code should use --teal. */
+   Two things this file is responsible for that the previous version got
+   wrong:
+
+   1. TYPE. The kiosk had no font files at all and fell through to Inter,
+      which §1.1 explicitly bans. The mandate's stack (Space Grotesk /
+      IBM Plex Mono / Manrope) is now self-hosted via @fontsource rather
+      than pulled from Google — this display is a Raspberry Pi that may
+      boot with no network, and a kiosk that renders in Times New Roman
+      because a CDN was unreachable is a failure the user would see.
+
+   2. PORTRAIT. This is a vertical screen (1080x1920). Sizing is driven by
+      viewport units against the SHORT edge (vmin) so the layout scales as
+      one piece across panel sizes instead of stretching along the long
+      axis. Nothing here assumes landscape.
+
+   The Kiosk is deliberately excluded from §1.6's light/dark requirement:
+   it is a fixed public display in one known lighting environment, has no
+   per-user preference to persist, and the permanently-dark ground is what
+   makes the accents read from across a corridor. */
+
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/manrope/400.css";
+@import "@fontsource/manrope/500.css";
+@import "@fontsource/manrope/600.css";
+
 :root {
-  --bg: #04100e;
-  --surf: #0a1a18;
-  --surf2: #102725;
-  --border: #1d3d39;
+  --bg: #050f1a;
+  --surf: #0b1a2a;
+  --surf2: #122740;
+  --border: #1e3a54;
 
-  --teal: #0d9488;
-  --teal-glow: rgba(13, 148, 136, 0.35);
-  --violet: var(--teal);
-  --violet-glow: var(--teal-glow);
-  --gold: #f5a623;
-  --gold-glow: rgba(245, 166, 35, 0.35);
+  --brand: #4da3e8;
+  --brand-glow: rgba(77, 163, 232, 0.35);
+  /* Retained as aliases: ~20 call sites still reference them and renaming
+     every one adds risk without changing a rendered pixel. Use --teal. */
+  --teal: var(--brand);
+  --violet: var(--brand);
+  --teal-glow: var(--brand-glow);
+  --violet-glow: var(--brand-glow);
+  --gold: #f5b85c;
+  --gold-glow: rgba(245, 184, 92, 0.35);
   --amber: var(--gold);
   --amber-glow: var(--gold-glow);
-  --coral: #fb7185;
-  --coral-glow: rgba(251, 113, 133, 0.35);
+  --coral: #ff8a95;
+  --coral-glow: rgba(255, 138, 149, 0.35);
   --emerald: #22c55e;
   --emerald-glow: rgba(34, 197, 94, 0.35);
   --warn: #f59e0b;
   --danger: #ef4444;
   --danger-glow: rgba(239, 68, 68, 0.35);
 
-  --ink: #f2fbfa;
-  --ink2: #8fb5b0;
-  --ink3: #4f7a75;
+  --ink: #eef6ff;
+  --ink2: #93aec9;
+  --ink3: #5b7a96;
 
-  --r-sm: 8px;
-  --r-md: 16px;
-  --r-lg: 24px;
-  --r-xl: 32px;
+  /* §1.4 — radius is capped at 6px on every surface. The kiosk previously
+     ran 8/16/24/32px, which is the "large radius" tell §1.1 bans. */
+  --r-sm: 2px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-xl: 6px;
+
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-body: "Manrope", system-ui, sans-serif;
+
+  /* Portrait scale. 1vmin on a 1080x1920 panel is 10.8px, so these land
+     close to their px names at the target resolution but scale on others. */
+  --t-xs: clamp(11px, 1.25vmin, 15px);
+  --t-sm: clamp(13px, 1.6vmin, 19px);
+  --t-md: clamp(15px, 2vmin, 24px);
+  --t-lg: clamp(19px, 2.7vmin, 33px);
+  --t-xl: clamp(25px, 3.8vmin, 46px);
+  --t-2xl: clamp(33px, 5.4vmin, 66px);
+  --t-3xl: clamp(42px, 7.2vmin, 88px);
+
+  --sp-1: clamp(4px, 0.6vmin, 8px);
+  --sp-2: clamp(8px, 1.1vmin, 14px);
+  --sp-3: clamp(12px, 1.7vmin, 22px);
+  --sp-4: clamp(18px, 2.4vmin, 32px);
+  --sp-5: clamp(26px, 3.4vmin, 46px);
+  --sp-6: clamp(36px, 4.8vmin, 64px);
+
+  /* Kiosk-industry minimum is 9-12mm of physical finger target. On a 1080px
+     -wide ~15in portrait panel that is ~70px; nothing tappable goes below
+     this. (kioskindustry.org UX checklist) */
+  --touch-min: clamp(64px, 7vmin, 96px);
 }
 
 * {
@@ -60,12 +110,7 @@ html,
 body {
   overflow: hidden;
   background: var(--bg);
-  font-family:
-    "Inter",
-    -apple-system,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
+  font-family: var(--font-body);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation;
@@ -78,4 +123,103 @@ body {
   inset: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Tetris assembly layer ───────────────────────────────────────────────
+   Sits above every screen. Pointer events are off so a stray touch during
+   a transition still lands on the page underneath rather than being eaten. */
+.tetris-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  pointer-events: none;
+}
+
+.tetris-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 2px;
+  padding: 2px;
+}
+
+.tetris-cell {
+  display: block;
+  border-radius: var(--r-sm);
+  /* Inset highlight reads as a bevelled game block without a drop shadow,
+     which §1.4 rules out. */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 -0.4vmin 0 rgba(0, 0, 0, 0.22);
+}
+
+.tetris-boot-brand {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  text-align: center;
+}
+
+/* Plate behind the boot mark. Laid straight over the blocks, the wordmark and
+   sub-line were sliced by block edges and became unreadable. */
+.tetris-boot-brand::before {
+  content: "";
+  position: absolute;
+  width: min(84%, 620px);
+  padding: var(--sp-6) 0;
+  aspect-ratio: 1.5;
+  max-height: 46%;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  border: 1px solid var(--brand);
+}
+
+.tetris-boot-mark,
+.tetris-boot-name,
+.tetris-boot-sub {
+  position: relative;
+}
+
+.tetris-boot-mark {
+  width: clamp(72px, 9vmin, 120px);
+  height: clamp(72px, 9vmin, 120px);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  border: 2px solid var(--teal);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--t-xl);
+  color: var(--teal);
+}
+
+.tetris-boot-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--t-2xl);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.tetris-boot-sub {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink2);
+}
+
+/* Mandate §1.5 — motion freezes rather than vanishing under reduced motion.
+   The wall still assembles so the transition reads, it just doesn't animate. */
+@media (prefers-reduced-motion: reduce) {
+  .tetris-layer * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

@@ -24,7 +24,7 @@ import uuid
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 
-from config import UI_PORT, MOCK_CAMERA
+from config import UI_PORT, MOCK_CAMERA, SERVER_URL
 
 log = logging.getLogger("kiosk.ui")
 
@@ -294,6 +294,63 @@ def validate_qr_token_internal(token: str) -> bool:
         _active_qr_token = None  # invalidate — single use
         return True
     return False
+
+
+# Cached catalogue, so the kiosk's "Browse gear" screen doesn't hit the API
+# on every open and doesn't stall the UI when the network is down.
+_catalogue_cache: dict | None = None
+_catalogue_expiry: float = 0.0
+_CATALOGUE_TTL = 120.0
+
+
+@app.route("/api/catalogue", methods=["GET"])
+def get_catalogue():
+    """
+    Proxy a trimmed, public view of available listings for the kiosk's
+    promotional catalogue screen (design mandate S4 - the kiosk is also a
+    promotional surface, not only a transaction terminal).
+
+    Proxied rather than called from the browser for two reasons: the kiosk UI
+    is served from a different origin than the Node API, and this is the only
+    layer that knows SERVER_URL. Nothing user-specific is returned, so no auth
+    token is involved.
+    """
+    global _catalogue_cache, _catalogue_expiry
+    now = time.monotonic()
+    if _catalogue_cache is not None and now < _catalogue_expiry:
+        return jsonify(_catalogue_cache)
+
+    try:
+        import urllib.request
+        import json as _json
+
+        url = f"{SERVER_URL}/api/v1/items?limit=12&isAvailable=true"
+        with urllib.request.urlopen(url, timeout=4) as resp:
+            payload = _json.loads(resp.read().decode("utf-8"))
+
+        rows = (payload.get("data") or {}).get("items") or []
+        items = [
+            {
+                "id": r.get("id"),
+                "title": r.get("title"),
+                "category": r.get("category"),
+                "pricePerDay": r.get("pricePerDay"),
+                "securityDeposit": r.get("securityDeposit"),
+                "images": r.get("images") or [],
+                "isAvailable": r.get("isAvailable", True),
+            }
+            for r in rows
+        ]
+        _catalogue_cache = {"items": items}
+        _catalogue_expiry = now + _CATALOGUE_TTL
+        return jsonify(_catalogue_cache)
+    except Exception as exc:  # noqa: BLE001 - kiosk must never 500 on this
+        log.warning("Catalogue fetch failed: %s", exc)
+        # Serve stale rather than nothing: an outdated shelf still tells a
+        # passer-by what this machine is for.
+        if _catalogue_cache is not None:
+            return jsonify(_catalogue_cache)
+        return jsonify({"items": [], "error": "unavailable"}), 200
 
 
 @app.route("/api/qr-validate", methods=["POST"])

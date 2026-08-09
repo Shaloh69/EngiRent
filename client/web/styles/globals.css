@@ -32,35 +32,35 @@
    deliberately use all three brand colors so the hero carries the full
    palette rather than a single tint. */
 :root {
-  --brand-bg: #fdfbf7;
+  --brand-bg: #f7f9fc;
   --brand-surface: #ffffff;
-  --brand-soft: #f1faf8;
-  --brand-border: #d9ece8;
-  --brand-ink: #0f2622;
-  --brand-muted: #55706b;
-  --brand-primary: #0d9488;
-  --brand-secondary: #f5a623;
-  --brand-accent: #fb7185;
+  --brand-soft: #eef4fb;
+  --brand-border: #d5e3f2;
+  --brand-ink: #0c1f33;
+  --brand-muted: #51677f;
+  --brand-primary: #0b5fa5;
+  --brand-secondary: #e9a13b;
+  --brand-accent: #ef6e7b;
 
-  --brand-from: #0d9488;
-  --brand-via: #f5a623;
-  --brand-to: #fb7185;
+  --brand-from: #0b5fa5;
+  --brand-via: #e9a13b;
+  --brand-to: #ef6e7b;
 }
 
 .dark {
-  --brand-bg: #04100e;
-  --brand-surface: #0a1a18;
-  --brand-soft: #102725;
-  --brand-border: #1d3d39;
-  --brand-ink: #f2fbfa;
-  --brand-muted: #8fb5b0;
-  --brand-primary: #3ec3b3;
-  --brand-secondary: #f5a623;
-  --brand-accent: #fb7185;
+  --brand-bg: #050f1a;
+  --brand-surface: #0b1a2a;
+  --brand-soft: #122740;
+  --brand-border: #1e3a54;
+  --brand-ink: #eef6ff;
+  --brand-muted: #93aec9;
+  --brand-primary: #4da3e8;
+  --brand-secondary: #f5b85c;
+  --brand-accent: #ff8a95;
 
-  --brand-from: #0d9488;
-  --brand-via: #f5a623;
-  --brand-to: #fb7185;
+  --brand-from: #4da3e8;
+  --brand-via: #f5b85c;
+  --brand-to: #ff8a95;
 }
 
 /* Velora's aurora drift — keyframes ship with the registry component. */

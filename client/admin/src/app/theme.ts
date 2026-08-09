@@ -11,15 +11,15 @@ import { createTheme, MantineColorsTuple } from "@mantine/core";
 // role, the surrounding tints/shades are this implementation's own scale.
 const teal: MantineColorsTuple = [
   "#e6f7f5", "#c0ebe6", "#93ddd4", "#63cfc1", "#3ec3b3",
-  "#0D9488", "#0c857a", "#0a7169", "#085d57", "#064a45",
+  "#0B5FA5", "#0a5593", "#08497f", "#073d6b", "#063157",
 ];
 const gold: MantineColorsTuple = [
   "#fef6e7", "#fce8c2", "#fad89a", "#f8c86f", "#f6ba4d",
-  "#F5A623", "#e0951a", "#c78314", "#ad710f", "#935f0a",
+  "#E9A13B", "#d4902f", "#c07f22", "#a56b1a", "#8a5813",
 ];
 const coral: MantineColorsTuple = [
   "#ffeef0", "#ffd7dc", "#ffb0ba", "#fd8797", "#fc6478",
-  "#FB7185", "#e35f72", "#c94d60", "#af3c4f", "#952b3d",
+  "#EF6E7B", "#e05e6c", "#d14f5d", "#b8404e", "#9e323f",
 ];
 // Distinct from the teal brand primary (mandate §1) so "success" never reads
 // as just another brand-colored element.
@@ -43,16 +43,16 @@ const danger: MantineColorsTuple = [
 // Mantine surface at once, rather than patching component-by-component.
 // Index order is Mantine's: 0 = lightest text, 9 = deepest background.
 const dark: MantineColorsTuple = [
-  "#EAF5F2", // body text on dark
-  "#C7DED8",
-  "#9FBFB8",
-  "#7FA39C", // muted text
-  "#4E706A",
-  "#2C4E47",
-  "#1E3B35", // borders
-  "#12271F", // raised surface
-  "#0E1F1B", // card surface
-  "#071310", // app background
+  "#EEF6FF", // body text on dark
+  "#CFE2F5",
+  "#AFC8E0",
+  "#93AEC9", // muted text
+  "#5B7A96",
+  "#2C4C6B",
+  "#1E3A54", // borders
+  "#122740", // raised surface
+  "#0B1A2A", // card surface
+  "#050F1A", // app background
 ];
 
 export const theme = createTheme({
@@ -85,7 +85,7 @@ export const theme = createTheme({
   },
 
   // "Campus Day" — warm off-white, not stark #FFFFFF (mandate §1).
-  white: "#FDFBF7",
+  white: "#F7F9FC",
   black: "#0f2622",
 
   components: {
@@ -107,12 +107,12 @@ export const theme = createTheme({
 // rather than reaching for `gray.N`.
 export const surfaceTokens = {
   light: {
-    appBg: "#FDFBF7",
+    appBg: "#F7F9FC",
     surface: "#FFFFFF",
     surfaceAlt: "#F3F8F7",
-    border: "#D9ECE8",
-    muted: "#55706B",
-    ink: "#0F2622",
+    border: "#D5E3F2",
+    muted: "#51677F",
+    ink: "#0C1F33",
   },
   dark: {
     appBg: "#071310",

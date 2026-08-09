@@ -104,7 +104,7 @@ export interface AuroraBackgroundProps {
 }
 
 export function AuroraBackground({
-  colorStops = ["#0D9488", "#F5A623", "#FB7185"],
+  colorStops = ["#4DA3E8", "#F5B85C", "#FF8A95"],
   amplitude = 1.0,
   blend = 0.5,
   speed = 0.6,

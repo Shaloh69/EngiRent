@@ -29,15 +29,15 @@ class AnimatedAuthBackground extends StatelessWidget {
     // background that costs legibility is a fail).
     final colors = isDark
         ? [
-            const Color(0xFF071310),
+            const Color(0xFF050F1A),
             AppColors.primary,
-            const Color(0xFF0A2A26),
+            const Color(0xFF0E2E4A),
             AppColors.secondary.withValues(alpha: 0.55),
           ]
         : [
-            const Color(0xFFFDFBF7),
+            const Color(0xFFF7F9FC),
             AppColors.primaryLight.withValues(alpha: 0.55),
-            const Color(0xFFFFF3DD),
+            const Color(0xFFE6F0FB),
             AppColors.accentLight.withValues(alpha: 0.45),
           ];
 
@@ -87,12 +87,12 @@ class AnimatedAuthBackground extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: isDark
                   ? [
-                      const Color(0xFF071310).withValues(alpha: 0.62),
-                      const Color(0xFF071310).withValues(alpha: 0.86),
+                      const Color(0xFF050F1A).withValues(alpha: 0.62),
+                      const Color(0xFF050F1A).withValues(alpha: 0.86),
                     ]
                   : [
-                      const Color(0xFFFDFBF7).withValues(alpha: 0.72),
-                      const Color(0xFFFDFBF7).withValues(alpha: 0.92),
+                      const Color(0xFFF7F9FC).withValues(alpha: 0.72),
+                      const Color(0xFFF7F9FC).withValues(alpha: 0.92),
                     ],
             ),
           ),
