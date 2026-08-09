@@ -28,17 +28,18 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.1.0",
-  buildNumber: 9,
-  fileName: "Engirent_Prerelease9.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.2.0",
+  buildNumber: 10,
+  fileName: "Engirent_Prerelease10.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-08-09",
   sizeMb: 72,
   minAndroid: "8.0 (Oreo)",
   highlights: [
+    "Dark mode now works correctly on every screen, not just sign-in",
+    "New Appearance setting in your profile — light, dark, or follow your phone",
+    "Rebuilt sign-up form with clearer validation and a progress indicator",
     "Rebuilt sign-in screen with an animated background",
-    "Full dark mode, following your phone's setting by default",
     "New type system shared with the web and kiosk surfaces",
-    "Sharper, denser layout throughout",
   ],
 };
 
