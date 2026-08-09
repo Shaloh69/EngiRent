@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/notification_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/error_utils.dart';
 
 class NotificationService {
   final ApiService _api = ApiService();
@@ -70,7 +71,7 @@ class NotificationService {
       if (AppConstants.demoMode) {
         return {'success': true, 'notifications': _demoNotifications(), 'isDemo': true};
       }
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 }

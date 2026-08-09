@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toastification/toastification.dart';
 import 'core/observability/crash_reporting.dart';
+import 'core/services/connectivity_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/widgets/offline_banner.dart';
 import 'core/models/item_model.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -53,6 +55,13 @@ class MyApp extends StatelessWidget {
         // already the correct OS-following default rather than a flash of
         // the wrong theme.
         ChangeNotifierProvider(create: (_) => ThemeController()..load()),
+        // Singleton (see connectivity_controller.dart's doc comment for why)
+        // — .value registers the existing instance rather than creating a
+        // second one, so ApiService's reportRequestOutcome() calls and this
+        // widget tree stay in sync.
+        ChangeNotifierProvider.value(
+          value: ConnectivityController.instance..start(),
+        ),
       ],
       child: Consumer<ThemeController>(
         builder: (context, themeController, _) => MaterialApp(
@@ -83,7 +92,17 @@ class MyApp extends StatelessWidget {
                   maxScaleFactor: 1.3,
                 ),
               ),
-              child: child ?? const SizedBox.shrink(),
+              // Checklist Stage 4.1 — one banner, wrapping every screen via
+              // this single builder, rather than something each screen has
+              // to remember to add. Column+Expanded rather than a Stack
+              // overlay so the banner actually pushes content down instead
+              // of covering the first ~24px of every screen.
+              child: Column(
+                children: [
+                  const OfflineBanner(),
+                  Expanded(child: child ?? const SizedBox.shrink()),
+                ],
+              ),
             );
           },
         ),

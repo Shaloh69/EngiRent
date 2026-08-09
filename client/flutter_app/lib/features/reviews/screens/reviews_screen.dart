@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/api_exceptions.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/offline_write_queue.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
@@ -64,7 +67,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     } catch (e) {
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = friendlyErrorMessage(e);
       });
     }
   }
@@ -501,15 +504,14 @@ class _PostReviewSheetState extends State<PostReviewSheet> {
 
   Future<void> _submit() async {
     setState(() => _submitting = true);
+    final body = {
+      'rentalId': widget.rentalId,
+      'rating': _rating.toInt(),
+      'comment': _commentCtrl.text.trim().isEmpty ? null : _commentCtrl.text.trim(),
+      'reviewType': widget.reviewType,
+    };
     try {
-      final resp = await _api.post('/reviews', {
-        'rentalId': widget.rentalId,
-        'rating': _rating.toInt(),
-        'comment': _commentCtrl.text.trim().isEmpty
-            ? null
-            : _commentCtrl.text.trim(),
-        'reviewType': widget.reviewType,
-      });
+      final resp = await _api.post('/reviews', body);
       if (!mounted) return;
       if (resp.statusCode == 201) {
         Navigator.pop(context, true);
@@ -518,8 +520,22 @@ class _PostReviewSheetState extends State<PostReviewSheet> {
         AppToast.error(context, 'Couldn\'t submit review',
             data['error']?.toString() ?? 'Please try again.');
       }
+    } on ApiUnreachableException {
+      // Checklist Stage 4.3's own worked example: a review written offline
+      // queues and posts on reconnect, rather than being lost or blocking
+      // the student from finishing what they were doing.
+      await OfflineWriteQueue.instance.enqueue(
+        method: 'POST',
+        endpoint: '/reviews',
+        body: body,
+        label: 'Review for rental ${widget.rentalId}',
+      );
+      if (!mounted) return;
+      AppToast.info(context, 'Saved — will post when you\'re back online',
+          'Your review is queued and will be submitted automatically.');
+      Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) AppToast.error(context, 'Network error', e.toString());
+      if (mounted) AppToast.error(context, 'Network error', friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

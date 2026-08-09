@@ -2,6 +2,11 @@ import 'dart:convert';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/local_cache.dart';
+import '../../../core/utils/error_utils.dart';
+
+const browseItemsCacheKey = 'browse_items';
+const myItemsCacheKey = 'my_items';
 
 class ItemService {
   final ApiService _api = ApiService();
@@ -58,24 +63,46 @@ class ItemService {
     return data.map((json) => ItemModel.fromJson(json)).toList();
   }
 
+  /// Checklist Stage 4.2. Only the unfiltered browse (no search query) is
+  /// cached — caching every distinct search string would grow storage
+  /// unbounded for a use case (searching while offline) the mandate doesn't
+  /// actually ask for; the base browse list is what "still renders offline"
+  /// means here.
   Future<Map<String, dynamic>> getItems({String? query}) async {
+    final isBaseBrowse = query == null || query.isEmpty;
     try {
-      final endpoint = query != null && query.isNotEmpty ? '/items?search=$query' : '/items';
+      final endpoint = isBaseBrowse ? '/items' : '/items?search=$query';
       final response = await _api.get(endpoint, authenticated: false);
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 && data['success']) {
-        final items = (data['data']['items'] as List<dynamic>)
+        final itemsJson = data['data']['items'] as List<dynamic>;
+        if (isBaseBrowse) await LocalCache.save(browseItemsCacheKey, itemsJson);
+        final items = itemsJson
             .map((json) => ItemModel.fromJson(json as Map<String, dynamic>))
             .toList();
-        return {'success': true, 'items': items};
+        return {'success': true, 'items': items, 'stale': false};
       }
       return {'success': false, 'error': data['error'] ?? 'Failed to fetch items'};
     } catch (e) {
-      if (AppConstants.demoMode) {
-        return {'success': true, 'items': _demoItems(), 'isDemo': true};
+      if (isBaseBrowse) {
+        final cached = await LocalCache.load(browseItemsCacheKey);
+        if (cached != null) {
+          final items = (cached.data as List<dynamic>)
+              .map((json) => ItemModel.fromJson(json as Map<String, dynamic>))
+              .toList();
+          return {
+            'success': true,
+            'items': items,
+            'stale': true,
+            'cachedAt': cached.cachedAt,
+          };
+        }
       }
-      return {'success': false, 'error': e.toString()};
+      if (AppConstants.demoMode) {
+        return {'success': true, 'items': _demoItems(), 'isDemo': true, 'stale': false};
+      }
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -109,7 +136,7 @@ class ItemService {
       if (AppConstants.demoMode) {
         return {'success': true, 'isDemo': true};
       }
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -131,17 +158,31 @@ class ItemService {
       final response = await _api.get('/items/my-items?limit=50');
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success']) {
-        final items = (data['data']['items'] as List<dynamic>)
+        final itemsJson = data['data']['items'] as List<dynamic>;
+        await LocalCache.save(myItemsCacheKey, itemsJson);
+        final items = itemsJson
             .map((json) => MyListingModel.fromJson(json as Map<String, dynamic>))
             .toList();
-        return {'success': true, 'items': items};
+        return {'success': true, 'items': items, 'stale': false};
       }
       return {'success': false, 'error': data['error'] ?? 'Failed to load your listings'};
     } catch (e) {
-      if (AppConstants.demoMode) {
-        return {'success': true, 'items': _demoMyListings(), 'isDemo': true};
+      final cached = await LocalCache.load(myItemsCacheKey);
+      if (cached != null) {
+        final items = (cached.data as List<dynamic>)
+            .map((json) => MyListingModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+        return {
+          'success': true,
+          'items': items,
+          'stale': true,
+          'cachedAt': cached.cachedAt,
+        };
       }
-      return {'success': false, 'error': e.toString()};
+      if (AppConstants.demoMode) {
+        return {'success': true, 'items': _demoMyListings(), 'isDemo': true, 'stale': false};
+      }
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -184,7 +225,7 @@ class ItemService {
         'error': (data['error'] ?? data['message']) ?? 'Failed to update listing',
       };
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -204,7 +245,7 @@ class ItemService {
         'error': (data['error'] ?? data['message']) ?? 'Failed to delete listing',
       };
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 }

@@ -21,6 +21,8 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/rental_widgets.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/stale_data_banner.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/models/notification_service.dart';
@@ -107,6 +109,7 @@ class _HomeTabState extends State<_HomeTab> {
   final _api = ApiService();
   List<ItemModel> _featured = [];
   bool _loadingFeatured = true;
+  String? _featuredError;
 
   @override
   void initState() {
@@ -145,6 +148,7 @@ class _HomeTabState extends State<_HomeTab> {
   }
 
   Future<void> _loadFeatured() async {
+    setState(() => _featuredError = null);
     try {
       final resp = await _api.get('/items?page=1&limit=6', authenticated: false);
       final data = jsonDecode(resp.body);
@@ -157,10 +161,22 @@ class _HomeTabState extends State<_HomeTab> {
           _loadingFeatured = false;
         });
       } else {
-        setState(() => _loadingFeatured = false);
+        setState(() {
+          _loadingFeatured = false;
+          _featuredError = data['error'] as String? ?? 'Failed to load equipment';
+        });
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingFeatured = false);
+    } catch (e) {
+      // Distinct from "nothing listed yet" — an empty _featured list from a
+      // failed request used to render the exact same "be the first to list"
+      // message as a genuinely empty catalog, which is actively misleading
+      // during a real outage (mandate §2.10.1: no dead ends).
+      if (mounted) {
+        setState(() {
+          _loadingFeatured = false;
+          _featuredError = friendlyErrorMessage(e);
+        });
+      }
     }
   }
 
@@ -388,7 +404,30 @@ class _HomeTabState extends State<_HomeTab> {
                         childCount: 4,
                       ),
                     )
-                  : _featured.isEmpty
+                  : _featuredError != null
+                      ? SliverToBoxAdapter(
+                          child: AppCard(
+                            child: Row(
+                              children: [
+                                Icon(Icons.wifi_off_rounded,
+                                    color: p.muted, size: 20),
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    _featuredError!,
+                                    style: TextStyle(
+                                        fontSize: 13, color: p.muted),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _loadFeatured,
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : _featured.isEmpty
                       ? SliverToBoxAdapter(
                           child: AppCard(
                             child: Row(
@@ -572,6 +611,9 @@ class _RentalsTabState extends State<_RentalsTab> {
   String? _error;
   List<RentalModel> _rentals = [];
   StreamSubscription<Map<String, dynamic>>? _socketSub;
+  // Checklist Stage 4.2
+  bool _stale = false;
+  DateTime? _cachedAt;
 
   @override
   void initState() {
@@ -594,6 +636,8 @@ class _RentalsTabState extends State<_RentalsTab> {
       _loading = false;
       if (result['success'] == true) {
         _rentals = result['rentals'] as List<RentalModel>;
+        _stale = result['stale'] == true;
+        _cachedAt = result['cachedAt'] as DateTime?;
       } else {
         _error = result['error'] as String?;
       }
@@ -628,6 +672,7 @@ class _RentalsTabState extends State<_RentalsTab> {
             selected: _filter,
             onSelect: (v) => setState(() => _filter = v),
           ),
+          if (_stale && _cachedAt != null) StaleDataBanner(cachedAt: _cachedAt!),
           const SizedBox(height: AppSpacing.xs),
           Expanded(
             child: RefreshIndicator(
@@ -1333,7 +1378,7 @@ class _ProfileTab extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        AppToast.error(context, 'Could not delete account', e.toString());
+        AppToast.error(context, 'Could not delete account', friendlyErrorMessage(e));
       }
     }
   }

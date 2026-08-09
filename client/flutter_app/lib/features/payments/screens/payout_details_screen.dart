@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
@@ -111,7 +112,7 @@ class _PayoutDetailsScreenState extends State<PayoutDetailsScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      AppToast.error(context, 'Could not save payout details', e.toString());
+      AppToast.error(context, 'Could not save payout details', friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

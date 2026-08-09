@@ -3,6 +3,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/models/user_model.dart';
+import '../../../core/utils/error_utils.dart';
 
 class AuthService {
   final ApiService _api = ApiService();
@@ -72,7 +73,7 @@ class AuthService {
           studentId: studentId,
         );
       }
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -107,7 +108,7 @@ class AuthService {
           studentId: 'DEMO-2026-001',
         );
       }
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -137,7 +138,7 @@ class AuthService {
           'isDemo': true,
         };
       }
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 

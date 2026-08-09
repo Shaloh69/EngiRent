@@ -2,6 +2,10 @@ import 'dart:convert';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/local_cache.dart';
+import '../../../core/utils/error_utils.dart';
+
+const _cacheKey = 'rentals';
 
 class RentalService {
   final ApiService _api = ApiService();
@@ -41,22 +45,39 @@ class RentalService {
     return data.map((json) => RentalModel.fromJson(json)).toList();
   }
 
+  /// Checklist Stage 4.2 — falls back to the last successful response when
+  /// the request fails, rather than an empty state, marked with when that
+  /// snapshot was actually taken so it never gets mistaken for live data.
   Future<Map<String, dynamic>> getRentals() async {
     try {
       final response = await _api.get('/rentals');
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data['success']) {
-        final rentals = (data['data']['rentals'] as List<dynamic>)
+        final rentalsJson = data['data']['rentals'] as List<dynamic>;
+        await LocalCache.save(_cacheKey, rentalsJson);
+        final rentals = rentalsJson
             .map((json) => RentalModel.fromJson(json as Map<String, dynamic>))
             .toList();
-        return {'success': true, 'rentals': rentals};
+        return {'success': true, 'rentals': rentals, 'stale': false};
       }
       return {'success': false, 'error': data['error'] ?? 'Failed to load rentals'};
     } catch (e) {
-      if (AppConstants.demoMode) {
-        return {'success': true, 'rentals': _demoRentals(), 'isDemo': true};
+      final cached = await LocalCache.load(_cacheKey);
+      if (cached != null) {
+        final rentals = (cached.data as List<dynamic>)
+            .map((json) => RentalModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+        return {
+          'success': true,
+          'rentals': rentals,
+          'stale': true,
+          'cachedAt': cached.cachedAt,
+        };
       }
-      return {'success': false, 'error': e.toString()};
+      if (AppConstants.demoMode) {
+        return {'success': true, 'rentals': _demoRentals(), 'isDemo': true, 'stale': false};
+      }
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 }

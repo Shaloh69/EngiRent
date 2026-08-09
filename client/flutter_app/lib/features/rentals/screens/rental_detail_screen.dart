@@ -8,6 +8,7 @@ import '../../../core/widgets/rental_widgets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../kiosk/screens/kiosk_scan_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
@@ -53,7 +54,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         setState(() { _loading = false; _error = 'Failed to load rental'; });
       }
     } catch (e) {
-      setState(() { _loading = false; _error = e.toString(); });
+      setState(() { _loading = false; _error = friendlyErrorMessage(e); });
     }
   }
 
@@ -101,7 +102,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         AppToast.error(context, 'Checkout Failed', msg);
       }
     } catch (e) {
-      if (mounted) AppToast.error(context, 'Network Error', e.toString());
+      if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
     }
   }
 
@@ -174,7 +175,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         AppToast.error(context, 'Cancel Failed', data['message'] ?? 'Could not cancel rental.');
       }
     } catch (e) {
-      if (mounted) AppToast.error(context, 'Network Error', e.toString());
+      if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _cancelling = false);
     }
@@ -238,7 +239,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         AppToast.error(context, 'Dispute Failed', msg);
       }
     } catch (e) {
-      if (mounted) AppToast.error(context, 'Network Error', e.toString());
+      if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
     }
   }
 

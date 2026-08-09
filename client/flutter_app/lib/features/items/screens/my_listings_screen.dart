@@ -7,6 +7,7 @@ import '../../../core/models/item_model.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/stale_data_banner.dart';
 import '../models/item_service.dart';
 import 'create_item_screen.dart';
 
@@ -32,6 +33,9 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   bool _loading = true;
   String? _error;
   List<MyListingModel> _listings = [];
+  // Checklist Stage 4.2 — see items_screen.dart's identical fields.
+  bool _stale = false;
+  DateTime? _cachedAt;
 
   @override
   void initState() {
@@ -50,6 +54,8 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
       _loading = false;
       if (result['success'] == true) {
         _listings = result['items'] as List<MyListingModel>;
+        _stale = result['stale'] == true;
+        _cachedAt = result['cachedAt'] as DateTime?;
       } else {
         _error = result['error'] as String?;
       }
@@ -160,9 +166,16 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _buildBody(context),
+      body: Column(
+        children: [
+          if (_stale && _cachedAt != null) StaleDataBanner(cachedAt: _cachedAt!),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: _buildBody(context),
+            ),
+          ),
+        ],
       ),
     );
   }

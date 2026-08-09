@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/models/feedback_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/error_utils.dart';
 
 class FeedbackService {
   final ApiService _api = ApiService();
@@ -54,7 +55,7 @@ class FeedbackService {
         'error': (data['error'] ?? data['message']) ?? 'Could not send your report',
       };
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 
@@ -72,7 +73,7 @@ class FeedbackService {
       }
       return {'success': false, 'error': data['error'] ?? 'Could not load your reports'};
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'error': friendlyErrorMessage(e)};
     }
   }
 }

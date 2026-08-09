@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/local_cache.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/item_card.dart';
+import '../../../core/widgets/stale_data_banner.dart';
 import '../models/item_service.dart';
 import 'item_detail_screen.dart';
 
@@ -36,6 +39,11 @@ class _ItemsScreenState extends State<ItemsScreen> {
   bool _loadingMore = false;
   String? _error;
   List<ItemModel> _items = [];
+  // Checklist Stage 4.2 — set when the list on screen is a cached snapshot
+  // rather than a live response, so browse still renders something useful
+  // offline instead of an empty state, clearly marked as not current.
+  bool _stale = false;
+  DateTime? _cachedAt;
   String _activeCategory = '';
   String _activeQuery = '';
   int _page = 1;
@@ -90,12 +98,23 @@ class _ItemsScreenState extends State<ItemsScreen> {
       final data = jsonDecode(resp.body);
       if (!mounted) return;
       if (resp.statusCode == 200 && data['success'] == true) {
-        final items = (data['data']['items'] as List<dynamic>)
+        final itemsJson = data['data']['items'] as List<dynamic>;
+        // Stage 4.2's cache is only ever useful if the success path actually
+        // populates it. This screen calls the API directly rather than
+        // through ItemService (see below), so without this line the cache
+        // would stay empty forever and the offline fallback could never
+        // have anything to fall back to.
+        if (reset && _activeQuery.isEmpty && _activeCategory.isEmpty) {
+          await LocalCache.save(browseItemsCacheKey, itemsJson);
+        }
+        final items = itemsJson
             .map((j) => ItemModel.fromJson(j as Map<String, dynamic>))
             .toList();
         final pagination = data['data']['pagination'] as Map<String, dynamic>?;
         setState(() {
           _loading = false;
+          _stale = false;
+          _cachedAt = null;
           _totalPages = (pagination?['totalPages'] as int?) ?? 1;
           if (reset) {
             _items = items;
@@ -110,6 +129,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
           _loading = false;
           if (result['success'] == true) {
             _items = result['items'] as List<ItemModel>;
+            _stale = result['stale'] == true;
+            _cachedAt = result['cachedAt'] as DateTime?;
           } else {
             _error = result['error'] as String?;
           }
@@ -122,8 +143,10 @@ class _ItemsScreenState extends State<ItemsScreen> {
         _loading = false;
         if (result['success'] == true) {
           _items = result['items'] as List<ItemModel>;
+          _stale = result['stale'] == true;
+          _cachedAt = result['cachedAt'] as DateTime?;
         } else {
-          _error = e.toString();
+          _error = friendlyErrorMessage(e);
         }
       });
     }
@@ -191,6 +214,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
               selected: _activeCategory.isEmpty ? null : _activeCategory,
               onSelect: _selectCategory,
             ),
+            if (_stale && _cachedAt != null) StaleDataBanner(cachedAt: _cachedAt!),
             const SizedBox(height: AppSpacing.sm),
 
             Expanded(child: _buildBody(p)),

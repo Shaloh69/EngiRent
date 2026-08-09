@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
@@ -145,7 +146,7 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
         AppToast.error(context, 'Request failed', msg);
       }
     } catch (e) {
-      if (mounted) AppToast.error(context, 'Network error', e.toString());
+      if (mounted) AppToast.error(context, 'Network error', friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

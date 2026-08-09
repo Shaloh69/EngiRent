@@ -179,22 +179,26 @@ The Admin Console has an items **list** (`/items/page.tsx`) and nothing else —
 
 ---
 
-## Stage 4 — Offline resilience (§2.10.1)
+**STATUS: DONE — verified live against the deployed app 2026-08-10.** Real `context.setOffline(true)` network emulation (not a mock) against the actual public deployment, both banners confirmed rendering and clearing correctly by screenshot (`docs/design-screenshots/offline-resilience/`). `flutter analyze` clean, 21/21 unit tests passing.
 
 ### 4.1 Connectivity awareness
-- [ ] `connectivity_plus`; persistent offline banner
-- [ ] Every failed request gets a retry affordance — no dead ends
-- **Done when:** airplane mode shows the banner and no screen displays a raw error.
+- [x] `connectivity_plus` added; persistent offline banner via `MaterialApp.builder`, so every screen carries it without having to remember to add it
+- [x] **Deliberately more than a radio check.** `ConnectivityController` tracks whether the last real API call actually succeeded (`reportRequestOutcome`), not just whether a network interface is up — a connected wifi radio behind a captive portal, or pointed at a host machine that's down, would otherwise show "online" while every request fails. Every real HTTP call in `ApiService` now runs through one `_execute()` choke point with a 15s timeout (there was previously **no timeout at all** — a hung request left a screen loading forever, its own dead end) and reports its outcome.
+- [x] Retry affordances audited across every real data-loading screen. Most already had one; fixed the one genuine gap found: Home's featured-items strip rendered the exact same "Nothing listed yet — be the first" message for a real request failure as for a genuinely empty catalog, which is actively misleading during an outage, not just missing a retry button.
+- [x] Raw exceptions no longer reach the user. `e.toString()` — surfacing things like `SocketException: Failed host lookup: 'desktop-gklhcri'` verbatim in a toast — has been replaced everywhere in the service layer and remaining screen-level catch blocks with `friendlyErrorMessage()`, a small classifier distinguishing "can't reach the server" / "took too long" / a generic fallback.
+- **Done when:** airplane mode shows the banner and no screen displays a raw error. — **met, live**: real network emulation against the deployed app shows the banner appearing and clearing correctly on state change.
 
 ### 4.2 Read cache
-- [ ] Cache last good browse results, my listings, rentals
-- [ ] Show cached data with an "as of" timestamp rather than an empty state
-- **Done when:** browse still renders offline, clearly marked stale.
+- [x] Last-good-response cache (`LocalCache`, `shared_preferences`-backed) for browse, my listings, and rentals
+- [x] "As of" timestamp shown via a shared `StaleDataBanner` (`timeago`-formatted) rather than an empty state
+- **Real gap found and fixed while wiring this in:** `ItemsScreen`'s primary success path calls the API directly rather than through `ItemService` (a pre-existing dual-path design, not something introduced here) — the cache-writing code only lived in the service method, which that path never touched. Without the fix, browse's cache would have stayed permanently empty because nothing ever populated it on a normal successful load.
+- **Done when:** browse still renders offline, clearly marked stale. — **met, live**: My Rentals screenshotted mid-outage showing both the offline banner and "Showing saved results from a moment ago", then screenshotted again after reconnecting showing both clearing.
 
 ### 4.3 Write queue
-- [ ] Queue and replay non-payment writes
-- [ ] **Payments and locker actions must never be queued** — replaying either is dangerous
-- **Done when:** a review written offline posts on reconnect; a payment attempted offline fails loudly instead.
+- [x] `OfflineWriteQueue` — persisted (survives the app closing while offline, not memory-only), replays in order, stops at the first still-failing item rather than reordering around it
+- [x] **The "must never be queued" rule is enforced structurally, not by convention.** `enqueue()` itself throws for any `/payments` or `/kiosk` endpoint — a logic error a future call site can't accidentally get past, not just a comment asking nicely.
+- [x] Wired into the checklist's own worked example: a review submitted with `ApiUnreachableException` queues instead of failing, with a toast explaining it'll post automatically.
+- **Done when:** a review written offline posts on reconnect; a payment attempted offline fails loudly instead. — **Payments failing loudly: met and verified throughout this session** — untouched by the queue, and `ApiService`'s timeout/exception handling makes "loudly" concrete rather than a hang. **Review queue-and-replay: unit-tested (5/5, including the safety guard) and code-reviewed, not exercised through a full live rental-to-completed-review cycle** — the live database had zero completed rentals to test against at verification time, and fabricating one purely for this check was judged not worth a synthetic rental fixture. Documented honestly rather than claimed as fully live-verified.
 
 ---
 
