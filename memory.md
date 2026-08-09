@@ -104,6 +104,10 @@ Mandate gained §1.0–§1.6: one named aesthetic direction ("Machined Vault" �
 
 **Verification caveat that matters for the next session**: everything in this pass was screenshotted against *local production builds* (`next start`, `vite preview`, `flutter run`), not the deployed instance. §0 requires the real deployed URL. The deploy-and-reverify step has **not** been run, so the previous pass's deployed screenshots are still the last real-deployment evidence. Also unchanged: the Kiosk Pi has been offline in Tailscale throughout, so the Aurora's behaviour on real Pi hardware (including whether it falls back) is untested.
 
+**Deployed 2026-08-09.** Source files copied to `desktop-gklhcri` directly rather than through git — the remote working tree carries uncommitted changes from the previous deploy, so pulling would have risked discarding them. All three web surfaces rebuilt there; `docs/design-screenshots/animated-pass/deployed/` holds real tunnel-URL screenshots of the Admin login (both schemes) and the `client/web` home, which satisfies §0 for those. Hit one snag worth remembering: the kiosk build failed on the remote with `Cannot find native binding` because the `package-lock.json` I copied had optional deps resolved for a different platform — fixed by deleting `node_modules` + lockfile and reinstalling on the remote.
+
+**The deployed DB is down and blocks anything behind login.** MySQL hasn't come back since the machine rebooted: Docker Desktop's Linux engine only starts under an interactive desktop session, so SSH can start `com.docker.service` but not the engine. `POST /auth/login` returns 500 (`Can't reach database server at 127.0.0.1:3307`) until someone opens Docker Desktop on the machine. Same class of limitation already recorded for `wsl --install` and the first `docker pull`. Consequence: the Admin **dashboard** is still only verified against a local production build, not the deployed instance.
+
 
 ### 2026-08-07 — Design redo: all four surfaces on the "EngiRent Vault" palette, Admin Console delete-and-rebuilt, client/web rebuilt on Velora UI
 
