@@ -39,11 +39,49 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
   bool _dateError = false;
   List<Map<String, dynamic>> _lockers = [];
 
+  // Checklist Stage 6 — "checkout calendar disables taken dates". Flutter's
+  // stock showDateRangePicker has no per-day predicate (only the single-date
+  // showDatePicker does), so true greyed-out days aren't achievable without
+  // hand-building a calendar widget. Instead: booked ranges are shown up
+  // front so a student can see them before opening the picker, and any
+  // selection that overlaps one is caught and rejected immediately rather
+  // than only failing at submit — same real protection, different affordance.
+  bool _bookedDatesLoading = true;
+  List<DateTimeRange> _bookedRanges = [];
+
   @override
   void initState() {
     super.initState();
     _fetchLockers();
+    _fetchBookedDates();
   }
+
+  Future<void> _fetchBookedDates() async {
+    try {
+      final resp = await _api.get('/items/${widget.item.id}/booked-dates', authenticated: false);
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        if (data['success'] == true) {
+          final ranges = (data['data']['bookedRanges'] as List<dynamic>)
+              .map((r) => DateTimeRange(
+                    start: DateTime.parse(r['startDate']),
+                    end: DateTime.parse(r['endDate']),
+                  ))
+              .toList();
+          if (mounted) setState(() => _bookedRanges = ranges);
+        }
+      }
+    } catch (_) {
+      // Non-critical, same tolerance as _fetchLockers — the server still
+      // enforces the real check at submit time regardless of whether this
+      // informational fetch succeeded.
+    } finally {
+      if (mounted) setState(() => _bookedDatesLoading = false);
+    }
+  }
+
+  bool _overlapsBooked(DateTime start, DateTime end) =>
+      _bookedRanges.any((r) => start.isBefore(r.end) && r.start.isBefore(end));
 
   Future<void> _fetchLockers() async {
     setState(() => _lockersLoading = true);
@@ -81,6 +119,10 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
       builder: (context, child) => child!,
     );
     if (range != null) {
+      if (_overlapsBooked(range.start, range.end)) {
+        _showOverlapError();
+        return;
+      }
       setState(() {
         _startDate = range.start;
         _endDate = range.end;
@@ -89,13 +131,28 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
     }
   }
 
+  void _showOverlapError() {
+    AppToast.error(
+      context,
+      'Those dates aren\'t free',
+      'This item is already booked for part of that period — see the taken '
+          'dates below and pick a range that doesn\'t overlap them.',
+    );
+  }
+
   /// One-tap common durations. Most rentals here are "a few days" or "a week";
   /// making that a preset removes a two-step calendar interaction.
   void _applyPreset(int days) {
     final start = DateTime.now();
+    final startDate = DateTime(start.year, start.month, start.day);
+    final endDate = startDate.add(Duration(days: days));
+    if (_overlapsBooked(startDate, endDate)) {
+      _showOverlapError();
+      return;
+    }
     setState(() {
-      _startDate = DateTime(start.year, start.month, start.day);
-      _endDate = _startDate!.add(Duration(days: days));
+      _startDate = startDate;
+      _endDate = endDate;
       _dateError = false;
     });
   }
@@ -190,6 +247,11 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                 error: _dateError ? 'Pick a rental period to continue' : null,
                 onTap: _pickDates,
               ),
+              if (!_bookedDatesLoading && _bookedRanges.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.xs),
+                  child: _BookedRangesNotice(ranges: _bookedRanges, formatter: _shortFmt),
+                ),
             ],
           ),
 
@@ -422,6 +484,52 @@ class _PresetRow extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Checklist Stage 6 — informational stand-in for greying out taken days.
+/// `showDateRangePicker` has no `selectableDayPredicate` (unlike the
+/// single-date picker), so the taken ranges are surfaced here instead and
+/// enforced by `_overlapsBooked` when a selection is made.
+class _BookedRangesNotice extends StatelessWidget {
+  const _BookedRangesNotice({required this.ranges, required this.formatter});
+
+  final List<DateTimeRange> ranges;
+  final DateFormat formatter;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final sorted = [...ranges]..sort((a, b) => a.start.compareTo(b.start));
+    final label = sorted
+        .map((r) => '${formatter.format(r.start)}–${formatter.format(r.end)}')
+        .join(', ');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: AppRadius.input,
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_busy_rounded, size: 15, color: AppColors.warning),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              'Already booked: $label',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: p.ink,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import {
   updateItem,
   deleteItem,
   getMyItems,
+  getBookedDates,
 } from "../controllers/itemController";
 import { authenticate, optionalAuth } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -53,6 +54,15 @@ router.get("/", optionalAuth, getItems);
 
 // Get my items (protected)
 router.get("/my-items", authenticate, getMyItems);
+
+// Checklist Stage 6 — booked date ranges, for the checkout calendar to grey
+// out. Public, matching browse's own visibility.
+router.get(
+  "/:id/booked-dates",
+  optionalAuth,
+  validate([param("id").isUUID().withMessage("Valid item ID is required")]),
+  getBookedDates,
+);
 
 // Get item by ID (public with optional auth)
 router.get(

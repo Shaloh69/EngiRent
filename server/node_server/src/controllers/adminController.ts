@@ -15,6 +15,7 @@ import axios from "axios";
 import fs from "fs";
 import env from "../config/env";
 import { finalizeRentalCompletion } from "../services/rentalSettlementService";
+import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 import { FEEDBACK_CATEGORIES } from "./feedbackController";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
@@ -343,6 +344,13 @@ export const forceCompleteRental = async (
       }),
     ]);
 
+    // Checklist Stage 6 — the transaction above sets isAvailable: true
+    // unconditionally; this corrects it if a different, non-overlapping
+    // rental on the same item already covers today (only possible now that
+    // an item can have more than one booking over time). Deliberately
+    // outside the transaction — see itemAvailabilityService's doc comment.
+    await recomputeItemAvailability(rental.itemId);
+
     logger.info(`Admin force-completed rental ${id} by ${req.user?.email}`);
     res.json({ success: true, message: "Rental marked as completed" });
   } catch (error) {
@@ -486,6 +494,8 @@ export const reviewVerification = async (
           },
         }),
       ]);
+      // Checklist Stage 6 — see forceCompleteRental's identical comment.
+      await recomputeItemAvailability(returnRental.itemId);
     }
 
     // Manual rejection on return → open dispute
@@ -707,6 +717,9 @@ export const settleDispute = async (
         });
       }
     });
+
+    // Checklist Stage 6 — see forceCompleteRental's identical comment.
+    await recomputeItemAvailability(rental.itemId);
 
     // Same real money movement as the normal AI-verified completion path
     // (deposit refund net of damage/late fees + owner payout) — runs after

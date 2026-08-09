@@ -224,11 +224,13 @@ The Admin Console has an items **list** (`/items/page.tsx`) and nothing else —
 ## Stage 6 — Date-based availability (§2.10.1, schema change)
 
 ### 6.1 Replace the `isAvailable` boolean
-- [ ] Availability derived from booked date ranges, not a flag
-- [ ] Server rejects overlapping bookings
-- [ ] Checkout calendar disables taken dates
-- [ ] **Migration must preserve currently-rented items**
-- **Done when:** two rentals can be booked for non-overlapping future weeks, and an overlap is refused.
+- [x] Availability derived from booked date ranges, not a flag
+- [x] Server rejects overlapping bookings
+- [x] Checkout calendar disables taken dates
+- [x] **Migration must preserve currently-rented items**
+- **Done when:** two rentals can be booked for non-overlapping future weeks, and an overlap is refused. — **met**, `scripts/e2e-availability.mjs` (19/19) against the live API: overlap rejected at the start/middle/end edge, a genuinely free future range on the same item accepted, `GET /items/:id/booked-dates` reports both accepted bookings, `isAvailable` reflects only whatever rental spans *now* (not any future booking), flips false when a rental starts today, and recomputes back to true (and the slot becomes rebookable) once that rental is cancelled.
+- **Note on "disables taken dates":** `showDateRangePicker` (Flutter's stock widget) has no `selectableDayPredicate` — unlike the single-date picker — so true per-day greying isn't available without a custom calendar widget. Implemented instead: an informational `_BookedRangesNotice` banner ("Already booked: Aug 13–Aug 16") shown above the date field whenever the item has upcoming bookings, plus hard validation on both the date-range picker and the quick-pick presets that rejects an overlapping selection with an explanatory toast before the request ever reaches the server. Screenshot-verified live in both themes.
+- **No schema migration needed** — `isAvailable`/`isListed`/`isActive` already existed as separate columns from Stage 2/3.6; this stage only changed how `isAvailable` is *computed* (`recomputeItemAvailability()` in the new `itemAvailabilityService.ts`, called after booking/cancel/complete instead of unconditionally set), so there was nothing to migrate or lose.
 
 ---
 

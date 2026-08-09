@@ -10,6 +10,7 @@ import {
 import logger from "../utils/logger";
 import axios from "axios";
 import env from "../config/env";
+import { findOverlappingRentals } from "../services/itemAvailabilityService";
 
 /**
  * Pre-extract and cache ML verification features for an item's listing
@@ -546,6 +547,39 @@ export const getMyItems = async (
           limit: parseInt(limit as string),
           totalPages: Math.ceil(total / take),
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /items/:id/booked-dates — checklist Stage 6, "checkout calendar
+ * disables taken dates". Public (same visibility as browse — knowing an
+ * item is booked next week isn't sensitive), returns every blocking
+ * rental's date range so the app can grey those days out rather than let a
+ * student pick a range only to have it refused at submit time.
+ */
+export const getBookedDates = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    // A one-year horizon is enough for any realistic booking and keeps this
+    // from scanning every rental an item has ever had.
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 365 * 86400000);
+    const rentals = await findOverlappingRentals(id, now, horizon);
+    res.json({
+      success: true,
+      data: {
+        bookedRanges: rentals.map((r) => ({
+          startDate: r.startDate,
+          endDate: r.endDate,
+        })),
       },
     });
   } catch (error) {

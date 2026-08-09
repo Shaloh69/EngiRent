@@ -17,6 +17,7 @@ import { mediaUrlRewriter } from "./middleware/mediaUrlRewriter";
 import prisma from "./config/database";
 import kioskEventBus from "./utils/kioskEventBus";
 import { installKioskEventLog } from "./utils/kioskEventLog";
+import { recomputeItemAvailability } from "./services/itemAvailabilityService";
 import { verifyAccessToken } from "./utils/jwt";
 import { decryptFaceEncoding } from "./utils/crypto";
 import { signedMediaUrl } from "./services/storageService";
@@ -256,6 +257,13 @@ async function completeRental(rentalId: string): Promise<void> {
       },
     }),
   ]);
+
+  // Checklist Stage 6 — see itemAvailabilityService's doc comment: the
+  // transaction above sets isAvailable: true unconditionally; this corrects
+  // it if a different, non-overlapping rental on the same item already
+  // covers today (only possible now that an item can have more than one
+  // booking over time).
+  await recomputeItemAvailability(rental.itemId);
 
   // Email both parties
   await Promise.all([

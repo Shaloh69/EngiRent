@@ -7,6 +7,10 @@ import {
   ValidationError,
 } from "../utils/errors";
 import logger from "../utils/logger";
+import {
+  findOverlappingRentals,
+  recomputeItemAvailability,
+} from "../services/itemAvailabilityService";
 
 export const createRental = async (
   req: AuthRequest,
@@ -25,12 +29,12 @@ export const createRental = async (
       where: { id: itemId },
     });
 
-    if (!item) {
+    if (!item || !item.isActive) {
       throw new NotFoundError("Item not found");
     }
 
-    if (!item.isAvailable) {
-      throw new ValidationError("Item is not available for rent");
+    if (!item.isListed) {
+      throw new ValidationError("This item is not currently listed");
     }
 
     if (item.ownerId === req.user.userId) {
@@ -46,6 +50,17 @@ export const createRental = async (
 
     if (days <= 0) {
       throw new ValidationError("Invalid rental period");
+    }
+
+    // Checklist Stage 6 — availability is derived from booked date ranges,
+    // not a single flag. An item can now be booked by multiple people over
+    // time as long as their date ranges don't overlap; only an actual
+    // conflict is refused, not "someone else has ever rented this."
+    const overlapping = await findOverlappingRentals(itemId, start, end);
+    if (overlapping.length > 0) {
+      throw new ValidationError(
+        "This item is already booked for part of the dates you selected. Pick a different range.",
+      );
     }
 
     const totalPrice = days * item.pricePerDay;
@@ -92,11 +107,11 @@ export const createRental = async (
       },
     });
 
-    // Update item availability
-    await prisma.item.update({
-      where: { id: itemId },
-      data: { isAvailable: false },
-    });
+    // Checklist Stage 6 — recomputed from real booked ranges rather than
+    // unconditionally set false: a rental booked for a future week must not
+    // make the item show unavailable *today*, when it's still free to pick
+    // up right now for an earlier or immediate booking.
+    await recomputeItemAvailability(itemId);
 
     // Create notification for owner
     await prisma.notification.create({
@@ -341,10 +356,10 @@ export const updateRentalStatus = async (
     // The only permitted transition here is → CANCELLED. Free the item and
     // notify the other party, mirroring cancelRental.
     if (status === "CANCELLED") {
-      await prisma.item.update({
-        where: { id: rental.itemId },
-        data: { isAvailable: true },
-      });
+      // Recomputed, not forced true: a back-to-back booking for today on
+      // this same item (now possible under Stage 6) must not be shown
+      // available just because a different, non-overlapping rental cancelled.
+      await recomputeItemAvailability(rental.itemId);
       const notifyUserId =
         rental.renterId === req.user.userId ? rental.ownerId : rental.renterId;
       await prisma.notification.create({
@@ -408,11 +423,8 @@ export const cancelRental = async (
       data: { status: "CANCELLED" },
     });
 
-    // Make item available again
-    await prisma.item.update({
-      where: { id: rental.itemId },
-      data: { isAvailable: true },
-    });
+    // Recomputed, not forced true — see the identical comment above.
+    await recomputeItemAvailability(rental.itemId);
 
     // Notify other party
     const notifyUserId =
