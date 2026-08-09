@@ -1127,12 +1127,10 @@ class _ProfileTab extends StatelessWidget {
                           // read "Identity Verified" unconditionally, which
                           // told unverified users the opposite of the truth.
                           StatusPill(
-                            label: (user?.isVerified ?? false)
-                                ? 'Verified'
-                                : 'Pending review',
-                            color: (user?.isVerified ?? false)
-                                ? AppColors.success
-                                : AppColors.warning,
+                            label: _verifyLabel(user?.verificationStatus,
+                                user?.isVerified ?? false),
+                            color: _verifyColor(user?.verificationStatus,
+                                user?.isVerified ?? false),
                             dense: true,
                           ),
                         ],
@@ -1154,17 +1152,21 @@ class _ProfileTab extends StatelessWidget {
             ),
             child: Column(
               children: [
+                // A rejected student previously saw the same "awaiting
+                // review" line as everyone else, with no reason and no way
+                // forward. Rejection now says why and routes to re-submit.
                 _ProfileTile(
-                  icon: (user?.isVerified ?? false)
-                      ? Icons.verified_user_rounded
-                      : Icons.pending_outlined,
-                  iconColor: (user?.isVerified ?? false)
-                      ? AppColors.success
-                      : AppColors.warning,
+                  icon: _verifyIcon(
+                      user?.verificationStatus, user?.isVerified ?? false),
+                  iconColor: _verifyColor(
+                      user?.verificationStatus, user?.isVerified ?? false),
                   title: 'Identity',
-                  subtitle: (user?.isVerified ?? false)
-                      ? 'Verified — face unlock is active at the kiosk'
-                      : 'Awaiting admin review of your student ID',
+                  subtitle: _verifySubtitle(user?.verificationStatus,
+                      user?.verificationReason, user?.verificationNote,
+                      user?.isVerified ?? false),
+                  onTap: user?.verificationStatus == 'REJECTED'
+                      ? () => Navigator.pushNamed(context, '/profile/setup')
+                      : null,
                 ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
@@ -1410,4 +1412,60 @@ class _RentalFilterRail extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Verification state helpers ───────────────────────────────────────────
+// The API returns both a gate (isVerified) and a workflow state. Reading only
+// the gate is what made "never submitted", "waiting" and "rejected" all render
+// identically as pending (mandate §2.11).
+
+String _verifyLabel(String? status, bool verified) {
+  if (verified) return 'Verified';
+  return switch (status) {
+    'REJECTED' => 'Action needed',
+    'PENDING' => 'Under review',
+    _ => 'Not submitted',
+  };
+}
+
+Color _verifyColor(String? status, bool verified) {
+  if (verified) return AppColors.success;
+  return switch (status) {
+    'REJECTED' => AppColors.error,
+    'PENDING' => AppColors.warning,
+    _ => AppColors.grey,
+  };
+}
+
+IconData _verifyIcon(String? status, bool verified) {
+  if (verified) return Icons.verified_user_rounded;
+  return switch (status) {
+    'REJECTED' => Icons.error_outline_rounded,
+    'PENDING' => Icons.hourglass_top_rounded,
+    _ => Icons.badge_outlined,
+  };
+}
+
+/// Human-readable rejection reasons, mirroring the server's ID_REJECT_REASONS.
+const Map<String, String> _rejectReasons = {
+  'UNREADABLE': 'The photo was too blurry or dark to read.',
+  'NOT_A_STUDENT_ID': "That didn't look like a UCLM student ID.",
+  'NAME_MISMATCH': "The name on the ID didn't match your account.",
+  'EXPIRED': 'The ID has expired.',
+  'SUSPECTED_FORGERY':
+      "The ID couldn't be accepted. Please visit the registrar.",
+};
+
+String _verifySubtitle(
+    String? status, String? reason, String? note, bool verified) {
+  if (verified) return 'Verified — face unlock is active at the kiosk';
+  return switch (status) {
+    'REJECTED' =>
+      '${_rejectReasons[reason] ?? 'Your ID could not be verified.'}'
+          '${(note != null && note.isNotEmpty) ? ' $note' : ''}'
+          ' Tap to submit a new photo.',
+    'PENDING' =>
+      'Your student ID is with an administrator. You can browse and rent while you wait.',
+    _ => 'Submit your student ID to unlock renting and listing.',
+  };
 }

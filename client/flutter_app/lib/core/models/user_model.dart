@@ -9,6 +9,13 @@ class UserModel {
   final String? idImageUrl;
   final bool profileComplete;
   final bool isVerified;
+
+  /// Workflow state behind [isVerified] — UNSUBMITTED / PENDING / APPROVED /
+  /// REJECTED. The gate alone couldn't tell "never submitted" from "waiting"
+  /// from "rejected", so the app showed all three as pending forever.
+  final String verificationStatus;
+  final String? verificationReason;
+  final String? verificationNote;
   final String role;
   final bool payoutConfigured;
 
@@ -23,6 +30,9 @@ class UserModel {
     this.idImageUrl,
     this.profileComplete = false,
     required this.isVerified,
+    this.verificationStatus = 'UNSUBMITTED',
+    this.verificationReason,
+    this.verificationNote,
     this.role = 'STUDENT',
     this.payoutConfigured = false,
   });

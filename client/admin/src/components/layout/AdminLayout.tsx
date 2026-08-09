@@ -17,20 +17,21 @@ import { useDisclosure } from "@mantine/hooks";
 import { spotlight, Spotlight } from "@mantine/spotlight";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard,
-  Users,
-  Package,
-  Receipt,
-  CheckCircle2,
   BarChart3,
+  Bell,
+  CheckCircle2,
   CreditCard,
+  HeartPulse,
+  IdCard,
+  LayoutDashboard,
   LogOut,
   MonitorSpeaker,
-  HeartPulse,
+  Package,
+  Receipt,
   Search,
-  Bell,
-  ShieldAlert,
   Settings,
+  ShieldAlert,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { ColorSchemeToggle } from "@/components/ui/ColorSchemeToggle";
@@ -45,7 +46,11 @@ const menuItems = [
   // responsibility that shouldn't be buried in the general rentals table.
   { name: "Disputes", icon: ShieldAlert, href: "/disputes" },
   { name: "Payments", icon: CreditCard, href: "/payments" },
-  { name: "Verifications", icon: CheckCircle2, href: "/verifications" },
+  // Renamed: this page lists AI condition checks on rentals, not student ID
+  // reviews. The old label made it look like the ID queue and hid the fact
+  // that no ID queue existed (mandate §2.11).
+  { name: "Condition checks", icon: CheckCircle2, href: "/verifications" },
+  { name: "ID verification", icon: IdCard, href: "/id-verifications" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Kiosk", icon: MonitorSpeaker, href: "/kiosk" },
   { name: "Health Check", icon: HeartPulse, href: "/health" },

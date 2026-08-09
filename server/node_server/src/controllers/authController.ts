@@ -46,6 +46,10 @@ const PROFILE_SELECT = {
   parentName: true,
   parentContact: true,
   isVerified: true,
+  verificationStatus: true,
+  verificationReason: true,
+  verificationNote: true,
+  verifiedAt: true,
   isActive: true,
   role: true,
   lastLogin: true,
@@ -515,6 +519,10 @@ export const completeProfile = async (
           : {}),
         profileComplete: true,
         biometricConsentAt: new Date(),
+        // Enters the admin review queue. Previously nothing set this, so a
+        // completed profile sat in no state at all and no admin surface could
+        // find it (mandate 2.11).
+        verificationStatus: "PENDING",
       },
       select: PROFILE_SELECT,
     });

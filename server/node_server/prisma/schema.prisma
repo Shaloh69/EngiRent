@@ -13,21 +13,21 @@ datasource db {
 
 // User model - Students who use the system
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  password          String
-  studentId         String    @unique
-  firstName         String
-  lastName          String
-  phoneNumber       String
+  id          String @id @default(uuid())
+  email       String @unique
+  password    String
+  studentId   String @unique
+  firstName   String
+  lastName    String
+  phoneNumber String
 
   // Profile & identity (photos must be taken in-app, not uploaded)
-  profileImage      String?   // Face photo path (local storage) — used by AI for identity verification
-  faceEncoding      Json?     // 128-float face_recognition encoding, AES-256-GCM encrypted (see utils/crypto.ts)
-  idImageUrl        String?   // School ID card photo path (local storage)
+  profileImage String? // Face photo path (local storage) — used by AI for identity verification
+  faceEncoding Json? // 128-float face_recognition encoding, AES-256-GCM encrypted (see utils/crypto.ts)
+  idImageUrl   String? // School ID card photo path (local storage)
 
   // Profile completion — true once face + ID photos have been submitted
-  profileComplete   Boolean   @default(false)
+  profileComplete Boolean @default(false)
 
   // Biometric consent — an explicit, separate affirmative capture at profile
   // setup (distinct from general terms-of-service acceptance), required
@@ -38,44 +38,58 @@ model User {
   biometricConsentAt DateTime?
 
   // Parent/Guardian information
-  parentName        String?
-  parentContact     String?
+  parentName    String?
+  parentContact String?
 
   // Payout destination — where this user's rental earnings and security-
   // deposit refunds go via PayMongo's Disbursements (Transfers V2) API.
   // Optional at signup; only required by the time a rental this user owns
   // actually completes (see index.ts's completeRental). Collected once,
   // typically during profile setup or when first listing an item.
-  payoutProvider       String? // "instapay" | "pesonet" — the rail destination_account routes over
-  payoutBic            String? // provider_code from PayMongo's receiving-institutions list — identifies the bank/e-wallet
+  payoutProvider        String? // "instapay" | "pesonet" — the rail destination_account routes over
+  payoutBic             String? // provider_code from PayMongo's receiving-institutions list — identifies the bank/e-wallet
   payoutInstitutionName String? // display name of the chosen bank/e-wallet, cached so the UI doesn't need to re-resolve it from payoutBic
-  payoutAccountName    String? // recipient account holder name
-  payoutAccountNumber  Json?   // recipient account number — AES-256-GCM encrypted (utils/crypto.ts), same pattern as faceEncoding; genuine financial PII, not just a display value
+  payoutAccountName     String? // recipient account holder name
+  payoutAccountNumber   Json? // recipient account number — AES-256-GCM encrypted (utils/crypto.ts), same pattern as faceEncoding; genuine financial PII, not just a display value
 
   // Account status
-  isVerified        Boolean   @default(false)
-  isActive          Boolean   @default(true)
-  emailVerifiedAt   DateTime?
+  // isVerified stays the single gate the rest of the system reads ("is this
+  // student cleared"). The fields below record HOW that gate was set, which
+  // previously nothing did: an admin flipped the boolean and no trace of who,
+  // when, or on what evidence survived. See mandate 2.11.
+  isVerified Boolean @default(false)
+
+  // Workflow state, distinct from the gate. A student who has submitted and
+  // is waiting is not the same as one who never submitted, and neither is the
+  // same as one who was rejected — the app showed all three as "Pending".
+  verificationStatus String    @default("UNSUBMITTED") // UNSUBMITTED | PENDING | APPROVED | REJECTED
+  verificationReason String? // enum-ish code when rejected, see ID_REJECT_REASONS
+  verificationNote   String? // free-text the reviewer adds for the student
+  verifiedById       String? // the admin who decided; no FK so deleting an admin never erases the record
+  verifiedAt         DateTime?
+
+  isActive        Boolean   @default(true)
+  emailVerifiedAt DateTime?
 
   // Role
-  role              UserRole  @default(STUDENT)
+  role UserRole @default(STUDENT)
 
   // Security
-  refreshToken      String?   @db.Text
-  lastLogin         DateTime?
+  refreshToken String?   @db.Text
+  lastLogin    DateTime?
 
   // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  itemsOwned        Item[]           @relation("ItemOwner")
-  rentalsAsRenter   Rental[]         @relation("RentalRenter")
-  rentalsAsOwner    Rental[]         @relation("RentalOwner")
-  transactions      Transaction[]
-  notifications     Notification[]
-  reviews           Review[]         @relation("ReviewAuthor")
-  reviewsReceived   Review[]         @relation("ReviewRecipient")
+  itemsOwned      Item[]         @relation("ItemOwner")
+  rentalsAsRenter Rental[]       @relation("RentalRenter")
+  rentalsAsOwner  Rental[]       @relation("RentalOwner")
+  transactions    Transaction[]
+  notifications   Notification[]
+  reviews         Review[]       @relation("ReviewAuthor")
+  reviewsReceived Review[]       @relation("ReviewRecipient")
 
   @@index([email])
   @@index([studentId])
@@ -84,47 +98,47 @@ model User {
 
 // Item model - Items available for rent
 model Item {
-  id                String    @id @default(uuid())
-  ownerId           String
+  id      String @id @default(uuid())
+  ownerId String
 
   // Item details
-  title             String
-  description       String    @db.Text
-  category          ItemCategory
-  condition         ItemCondition
+  title       String
+  description String        @db.Text
+  category    ItemCategory
+  condition   ItemCondition
 
   // Pricing
-  pricePerDay       Float
-  pricePerWeek      Float?
-  pricePerMonth     Float?
-  securityDeposit   Float
+  pricePerDay     Float
+  pricePerWeek    Float?
+  pricePerMonth   Float?
+  securityDeposit Float
 
   // Images (JSON array of URLs)
-  images            Json      // ["url1", "url2", "url3"]
+  images Json // ["url1", "url2", "url3"]
 
   // ML Features (stored for faster verification)
-  mlFeatures        Json?     // Extracted features from ML service
-  serialNumber      String?   // For items with serial numbers
+  mlFeatures   Json? // Extracted features from ML service
+  serialNumber String? // For items with serial numbers
 
   // Availability
-  isAvailable       Boolean   @default(true)
-  isActive          Boolean   @default(true)
+  isAvailable Boolean @default(true)
+  isActive    Boolean @default(true)
 
   // Location
-  campusLocation    String?   // UCLM Lapu-Lapu or Mandaue
+  campusLocation String? // UCLM Lapu-Lapu or Mandaue
 
   // Statistics
-  totalRentals      Int       @default(0)
-  averageRating     Float     @default(0)
+  totalRentals  Int   @default(0)
+  averageRating Float @default(0)
 
   // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  owner             User      @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  rentals           Rental[]
-  reviews           Review[]
+  owner   User     @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  rentals Rental[]
+  reviews Review[]
 
   @@index([ownerId])
   @@index([category])
@@ -134,57 +148,57 @@ model Item {
 
 // Rental model - Rental transactions
 model Rental {
-  id                String        @id @default(uuid())
-  itemId            String
-  renterId          String
-  ownerId           String
+  id       String @id @default(uuid())
+  itemId   String
+  renterId String
+  ownerId  String
 
   // Rental period
-  startDate         DateTime
-  endDate           DateTime
-  actualReturnDate  DateTime?
+  startDate        DateTime
+  endDate          DateTime
+  actualReturnDate DateTime?
 
   // Status tracking
-  status            RentalStatus  @default(PENDING)
+  status RentalStatus @default(PENDING)
 
   // Pricing
-  totalPrice        Float
-  securityDeposit   Float
+  totalPrice      Float
+  securityDeposit Float
 
   // Kiosk integration
-  depositLockerId   String?
-  claimLockerId     String?
-  returnLockerId    String?
+  depositLockerId String?
+  claimLockerId   String?
+  returnLockerId  String?
 
   // Verification
-  depositVerificationId String?       @unique
-  verificationId    String?       @unique
-  verificationScore Float?
-  verificationStatus VerificationStatus?
+  depositVerificationId String?             @unique
+  verificationId        String?             @unique
+  verificationScore     Float?
+  verificationStatus    VerificationStatus?
 
   // Retry attempt counters (incremented on each RETRY/REJECTED decision)
-  depositAttemptCount Int           @default(0)
-  returnAttemptCount  Int           @default(0)
+  depositAttemptCount Int @default(0)
+  returnAttemptCount  Int @default(0)
 
   // Timestamps
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  depositedAt       DateTime?
-  claimedAt         DateTime?
-  returnedAt        DateTime?
-  completedAt       DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  depositedAt DateTime?
+  claimedAt   DateTime?
+  returnedAt  DateTime?
+  completedAt DateTime?
 
   // Relations
-  item              Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  renter            User          @relation("RentalRenter", fields: [renterId], references: [id])
-  owner             User          @relation("RentalOwner", fields: [ownerId], references: [id])
-  transactions      Transaction[]
-  reviews           Review[]
+  item                Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  renter              User          @relation("RentalRenter", fields: [renterId], references: [id])
+  owner               User          @relation("RentalOwner", fields: [ownerId], references: [id])
+  transactions        Transaction[]
+  reviews             Review[]
   depositVerification Verification? @relation("DepositVerification", fields: [depositVerificationId], references: [id])
-  verification      Verification? @relation("ReturnVerification", fields: [verificationId], references: [id])
-  depositLocker     Locker?       @relation("DepositLocker", fields: [depositLockerId], references: [id])
-  claimLocker       Locker?       @relation("ClaimLocker", fields: [claimLockerId], references: [id])
-  returnLocker      Locker?       @relation("ReturnLocker", fields: [returnLockerId], references: [id])
+  verification        Verification? @relation("ReturnVerification", fields: [verificationId], references: [id])
+  depositLocker       Locker?       @relation("DepositLocker", fields: [depositLockerId], references: [id])
+  claimLocker         Locker?       @relation("ClaimLocker", fields: [claimLockerId], references: [id])
+  returnLocker        Locker?       @relation("ReturnLocker", fields: [returnLockerId], references: [id])
 
   @@index([itemId])
   @@index([renterId])
@@ -199,33 +213,33 @@ model Rental {
 
 // Transaction model - Payment records
 model Transaction {
-  id                      String            @id @default(uuid())
-  rentalId                String
-  userId                  String
+  id       String @id @default(uuid())
+  rentalId String
+  userId   String
 
   // Payment details
-  type                    TransactionType
-  amount                  Float
-  status                  TransactionStatus @default(PENDING)
+  type   TransactionType
+  amount Float
+  status TransactionStatus @default(PENDING)
 
   // PayMongo integration
-  paymentReferenceNo      String?           @unique
-  paymentTransactionId    String?           @unique
-  paymongoPaymentId       String?           // PayMongo payment ID for refunds
-  paymongoCheckoutId      String?           @unique // Checkout session ID
+  paymentReferenceNo   String? @unique
+  paymentTransactionId String? @unique
+  paymongoPaymentId    String? // PayMongo payment ID for refunds
+  paymongoCheckoutId   String? @unique // Checkout session ID
 
   // Payment gateway response
-  paymentMethod           String            @default("PayMongo")
-  paymentDetails          Json?             // Additional payment info
+  paymentMethod  String @default("PayMongo")
+  paymentDetails Json? // Additional payment info
 
   // Timestamps
-  createdAt               DateTime          @default(now())
-  updatedAt               DateTime          @updatedAt
-  paidAt                  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
 
   // Relations
-  rental                  Rental            @relation(fields: [rentalId], references: [id], onDelete: Cascade)
-  user                    User              @relation(fields: [userId], references: [id])
+  rental Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
 
   @@index([rentalId])
   @@index([userId])
@@ -235,16 +249,16 @@ model Transaction {
 
 // Verification model - AI verification logs
 model Verification {
-  id                String    @id @default(uuid())
+  id String @id @default(uuid())
 
   // Images
-  originalImages    Json      // Array of original item image URLs
-  kioskImages       Json      // Array of kiosk capture image URLs
+  originalImages Json // Array of original item image URLs
+  kioskImages    Json // Array of kiosk capture image URLs
 
   // Verification results
-  decision          VerificationDecision
-  confidenceScore   Float
-  attemptNumber     Int       @default(1)
+  decision        VerificationDecision
+  confidenceScore Float
+  attemptNumber   Int                  @default(1)
 
   // Method scores (from ML service)
   traditionalScore  Float?
@@ -254,17 +268,17 @@ model Verification {
   ocrDetails        Json?
 
   // Status
-  status            VerificationStatus @default(PENDING)
-  reviewedBy        String?   // Admin ID if manually reviewed
-  reviewNotes       String?   @db.Text
+  status      VerificationStatus @default(PENDING)
+  reviewedBy  String? // Admin ID if manually reviewed
+  reviewNotes String?            @db.Text
 
   // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  rental            Rental?   @relation("ReturnVerification")
-  depositRental     Rental?   @relation("DepositVerification")
+  rental        Rental? @relation("ReturnVerification")
+  depositRental Rental? @relation("DepositVerification")
 
   @@index([decision])
   @@index([status])
@@ -273,31 +287,31 @@ model Verification {
 
 // Locker model - Physical locker units
 model Locker {
-  id                String        @id @default(uuid())
+  id String @id @default(uuid())
 
   // Locker identification
-  lockerNumber      String        @unique
-  kioskId           String
+  lockerNumber String @unique
+  kioskId      String
 
   // Physical properties
-  size              LockerSize    @default(MEDIUM)
+  size LockerSize @default(MEDIUM)
 
   // Status
-  status            LockerStatus  @default(AVAILABLE)
-  isOperational     Boolean       @default(true)
+  status        LockerStatus @default(AVAILABLE)
+  isOperational Boolean      @default(true)
 
   // Current rental
-  currentRentalId   String?
+  currentRentalId String?
 
   // Timestamps
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  lastUsedAt        DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
 
   // Relations
-  depositRentals    Rental[]      @relation("DepositLocker")
-  claimRentals      Rental[]      @relation("ClaimLocker")
-  returnRentals     Rental[]      @relation("ReturnLocker")
+  depositRentals Rental[] @relation("DepositLocker")
+  claimRentals   Rental[] @relation("ClaimLocker")
+  returnRentals  Rental[] @relation("ReturnLocker")
 
   @@index([kioskId])
   @@index([status])
@@ -306,39 +320,39 @@ model Locker {
 
 // KioskConfig model - Per-kiosk timing and hardware configuration
 model KioskConfig {
-  id          String   @id @default(uuid())
-  kioskId     String   @unique
-  config      Json     // Shape mirrors kiosk_config.json
-  updatedBy   String?  // Admin userId
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  kioskId   String   @unique
+  config    Json // Shape mirrors kiosk_config.json
+  updatedBy String? // Admin userId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("kiosk_configs")
 }
 
 // Notification model - User notifications
 model Notification {
-  id                String            @id @default(uuid())
-  userId            String
+  id     String @id @default(uuid())
+  userId String
 
   // Notification content
-  title             String
-  message           String            @db.Text
-  type              NotificationType
+  title   String
+  message String           @db.Text
+  type    NotificationType
 
   // Related entity
-  relatedEntityId   String?           // Rental ID, Item ID, etc.
-  relatedEntityType String?           // "rental", "item", "transaction"
+  relatedEntityId   String? // Rental ID, Item ID, etc.
+  relatedEntityType String? // "rental", "item", "transaction"
 
   // Status
-  isRead            Boolean           @default(false)
-  readAt            DateTime?
+  isRead Boolean   @default(false)
+  readAt DateTime?
 
   // Timestamps
-  createdAt         DateTime          @default(now())
+  createdAt DateTime @default(now())
 
   // Relations
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([isRead])
@@ -347,30 +361,30 @@ model Notification {
 
 // Review model - User reviews
 model Review {
-  id                String    @id @default(uuid())
-  itemId            String
-  rentalId          String?   // Link review to the rental that enabled it
-  authorId          String
-  recipientId       String
+  id          String  @id @default(uuid())
+  itemId      String
+  rentalId    String? // Link review to the rental that enabled it
+  authorId    String
+  recipientId String
 
   // Review content
-  rating            Int       // 1-5 stars
-  comment           String?   @db.Text
+  rating  Int // 1-5 stars
+  comment String? @db.Text
 
   // Type
-  reviewType        ReviewType // ITEM or USER
+  reviewType ReviewType // ITEM or USER
 
   // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  item              Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  rental            Rental?   @relation(fields: [rentalId], references: [id])
-  author            User      @relation("ReviewAuthor", fields: [authorId], references: [id])
-  recipient         User      @relation("ReviewRecipient", fields: [recipientId], references: [id])
+  item      Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  rental    Rental? @relation(fields: [rentalId], references: [id])
+  author    User    @relation("ReviewAuthor", fields: [authorId], references: [id])
+  recipient User    @relation("ReviewRecipient", fields: [recipientId], references: [id])
 
-  @@unique([rentalId, authorId, reviewType])  // one review per role per rental
+  @@unique([rentalId, authorId, reviewType]) // one review per role per rental
   @@index([itemId])
   @@index([authorId])
   @@index([recipientId])

@@ -6,6 +6,11 @@ import { NotFoundError, ValidationError } from "../utils/errors";
 import logger from "../utils/logger";
 import { hashPassword } from "../utils/bcrypt";
 import kioskEventBus from "../utils/kioskEventBus";
+import {
+  signedMediaUrl,
+  userIdPath,
+  userFacePath,
+} from "../services/storageService";
 import axios from "axios";
 import fs from "fs";
 import env from "../config/env";
@@ -1275,6 +1280,183 @@ export const getReports = async (
     }
 
     res.json({ success: true, data: report });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Student ID verification ──────────────────────────────────────────────
+//
+// The account-verification review path. Before this existed, `isVerified` was
+// only ever set by an admin manually flipping the flag through
+// PATCH /admin/users/:id — no queue, no evidence, no record of who decided or
+// why, and no notification to the student (mandate §2.11).
+//
+// Note the distinction from `listVerifications` above, which returns
+// `prisma.verification` rows: those are the AI condition checks comparing a
+// rental's deposit and return photos. Two different things that the old
+// naming ran together.
+
+/** Rejection reasons. A closed set so the student gets a consistent, useful
+ *  message and so decisions can be counted; the reviewer's free-text note is
+ *  carried separately in `verificationNote`. */
+export const ID_REJECT_REASONS: Record<string, string> = {
+  UNREADABLE: "The photo was too blurry or dark to read.",
+  NOT_A_STUDENT_ID: "That doesn't appear to be a UCLM student ID.",
+  NAME_MISMATCH: "The name on the ID doesn't match the account.",
+  EXPIRED: "The ID has expired.",
+  SUSPECTED_FORGERY: "The ID could not be accepted. Please visit the registrar.",
+};
+
+/**
+ * GET /admin/id-verifications
+ * Queue of students awaiting (or having received) an ID decision.
+ */
+export const listIdVerifications = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const status = String(req.query.status ?? "PENDING");
+    const { page = "1", limit = "20" } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const take = parseInt(limit as string);
+
+    const where: Prisma.UserWhereInput = {
+      role: "STUDENT",
+      ...(status !== "ALL" ? { verificationStatus: status } : {}),
+    };
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          studentId: true,
+          phoneNumber: true,
+          profileImage: true,
+          idImageUrl: true,
+          isVerified: true,
+          verificationStatus: true,
+          verificationReason: true,
+          verificationNote: true,
+          verifiedById: true,
+          verifiedAt: true,
+          createdAt: true,
+        },
+        // Oldest first: a queue that shows newest first quietly starves the
+        // people who have been waiting longest.
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    // Signed, short-lived URLs rather than raw paths. The ID photo has no
+    // route that serves it directly, by design — see storageService's comment
+    // on userIdPath(). This is the only way an admin can see the evidence.
+    const rows = users.map((u) => ({
+      ...u,
+      idImageUrl: undefined,
+      idPhotoUrl: u.idImageUrl ? signedMediaUrl(userIdPath(u.id)) : null,
+      facePhotoUrl: u.profileImage ? signedMediaUrl(userFacePath(u.id)) : null,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        verifications: rows,
+        rejectReasons: ID_REJECT_REASONS,
+        pagination: {
+          total,
+          page: parseInt(page as string),
+          limit: take,
+          totalPages: Math.ceil(total / take),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /admin/id-verifications/:id
+ * Record a decision on a student's ID, notify them, and set the gate.
+ */
+export const decideIdVerification = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const id = String(req.params.id);
+    const { decision, reason, note } = req.body as {
+      decision: "APPROVE" | "REJECT";
+      reason?: string;
+      note?: string;
+    };
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundError("User not found");
+
+    if (decision === "REJECT" && (!reason || !ID_REJECT_REASONS[reason])) {
+      throw new ValidationError(
+        "A valid rejection reason is required so the student is told what to fix",
+      );
+    }
+
+    const approved = decision === "APPROVE";
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id },
+        data: {
+          isVerified: approved,
+          verificationStatus: approved ? "APPROVED" : "REJECTED",
+          verificationReason: approved ? null : reason,
+          verificationNote: note?.trim() || null,
+          verifiedById: req.user?.userId ?? null,
+          verifiedAt: new Date(),
+        },
+        select: {
+          id: true,
+          isVerified: true,
+          verificationStatus: true,
+          verificationReason: true,
+          verificationNote: true,
+          verifiedAt: true,
+        },
+      });
+
+      // Telling the student is the point. A decision they never learn about
+      // leaves them exactly where the old flag-flip did.
+      await tx.notification.create({
+        data: {
+          userId: id,
+          title: approved ? "Account verified" : "ID could not be verified",
+          message: approved
+            ? "Your student ID was approved. You can now rent and list equipment."
+            : `${ID_REJECT_REASONS[reason as string]}${note?.trim() ? ` ${note.trim()}` : ""} You can submit a new photo from your profile.`,
+          type: approved ? "VERIFICATION_SUCCESS" : "VERIFICATION_FAILED",
+          relatedEntityId: id,
+          relatedEntityType: "user",
+        },
+      });
+
+      return u;
+    });
+
+    logger.info(
+      `Admin ${req.user?.userId} ${approved ? "approved" : "rejected"} ID for user ${id}${reason ? ` (${reason})` : ""}`,
+    );
+
+    res.json({ success: true, data: { user: updated } });
   } catch (error) {
     next(error);
   }

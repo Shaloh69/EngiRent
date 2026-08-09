@@ -21,6 +21,8 @@ import {
   kioskEventStream,
   getReports,
   getSystemHealth,
+  listIdVerifications,
+  decideIdVerification,
 } from "../controllers/adminController";
 
 const router = Router();
@@ -77,7 +79,26 @@ router.post(
 );
 
 // ── Verifications ──────────────────────────────────────────────────────────
+// AI condition checks on rentals (deposit vs return photos). Named
+// "verifications" historically; the student-ID queue below is a different
+// thing and the collision hid its absence entirely (mandate §2.11).
 router.get("/verifications", listVerifications);
+
+// ── Student ID verification ────────────────────────────────────────────
+router.get("/id-verifications", listIdVerifications);
+
+router.post(
+  "/id-verifications/:id",
+  validate([
+    param("id").isUUID().withMessage("Valid user ID is required"),
+    body("decision")
+      .isIn(["APPROVE", "REJECT"])
+      .withMessage("decision must be APPROVE or REJECT"),
+    body("reason").optional().isString(),
+    body("note").optional().isString().isLength({ max: 500 }),
+  ]),
+  decideIdVerification,
+);
 
 router.patch(
   "/verifications/:id",
