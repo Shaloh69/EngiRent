@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/app_widgets.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/toast_utils.dart';
@@ -130,18 +131,19 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final item = widget.item;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Book Item'),
         backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
+        foregroundColor: p.ink,
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.border),
+          child: Container(height: 1, color: p.border),
         ),
       ),
       body: ListView(
@@ -170,17 +172,17 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                     children: [
                       Text(
                         item.title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 16,
-                          color: AppColors.textPrimary,
+                          color: p.ink,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'PHP ${item.pricePerDay.toStringAsFixed(0)}/day  ·  Deposit PHP ${item.securityDeposit.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: p.muted,
                           fontSize: 13,
                         ),
                       ),
@@ -297,9 +299,9 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Total Due Now',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textPrimary),
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: p.ink),
                       ),
                       Text(
                         'PHP ${_grandTotal.toStringAsFixed(2)}',
@@ -324,9 +326,9 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
               children: [
                 const _SectionHeader(icon: Icons.lock_outline_rounded, label: 'Kiosk Locker Status'),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'A locker will be auto-assigned when you place the item.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style: TextStyle(fontSize: 12, color: p.muted),
                 ),
                 const SizedBox(height: 14),
                 _lockersLoading
@@ -364,7 +366,7 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
       bottomNavigationBar: Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: p.surface,
           boxShadow: [
             BoxShadow(
               color: AppColors.primaryDark.withValues(alpha: 0.1),
@@ -420,11 +422,13 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
     );
   }
 
-  Widget _imgFallback() => Container(
+  Widget _imgFallback() => Builder(
+    builder: (context) { final p = AppPalette.of(context); return Container(
     width: 72,
     height: 72,
-    color: AppColors.greyLight,
+    color: p.surfaceAlt,
     child: const Icon(Icons.inventory_2_rounded, color: AppColors.grey),
+  ); },
   );
 }
 
@@ -436,13 +440,14 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: p.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: p.border),
         boxShadow: [
           BoxShadow(
             color: AppColors.primaryDark.withValues(alpha: 0.04),
@@ -463,16 +468,17 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Row(
       children: [
         Icon(icon, size: 18, color: AppColors.primary),
         const SizedBox(width: 8),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 15,
-            color: AppColors.textPrimary,
+            color: p.ink,
           ),
         ),
       ],
@@ -488,6 +494,7 @@ class _DateCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -500,10 +507,10 @@ class _DateCell extends StatelessWidget {
           Row(children: [
             Icon(icon, size: 13, color: AppColors.primaryLight),
             const SizedBox(width: 4),
-            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
           ]),
           const SizedBox(height: 4),
-          Text(date, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimary)),
+          Text(date, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: p.ink)),
         ],
       ),
     );
@@ -517,10 +524,11 @@ class _PriceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+        Text(label, style: TextStyle(color: p.muted, fontSize: 14)),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
       ],
     );

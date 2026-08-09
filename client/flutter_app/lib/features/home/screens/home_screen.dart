@@ -9,6 +9,9 @@ import '../../../core/models/notification_model.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/socket_service.dart';
+import '../../../core/theme/theme_controller.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../core/widgets/app_widgets.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/models/notification_service.dart';
@@ -29,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final pages = [
       _HomeTab(onGoToRentals: _goToRentals),
       const _RentalsTab(),
@@ -40,8 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: pages[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: const Border(top: BorderSide(color: AppColors.border)),
+          color: p.surface,
+          border: Border(top: BorderSide(color: p.border)),
           boxShadow: [
             BoxShadow(
               color: AppColors.primaryDark.withValues(alpha: 0.06),
@@ -57,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.grey,
+          unselectedItemColor: p.muted,
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Rentals'),
@@ -78,9 +82,10 @@ class _HomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final user = context.watch<AuthProvider>().user;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
           // Navy gradient header
@@ -128,7 +133,7 @@ class _HomeTab extends StatelessWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // Quick actions
-                const Text('Quick Actions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                Text('Quick Actions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: p.ink)),
                 const SizedBox(height: 12),
                 GridView.count(
                   crossAxisCount: MediaQuery.of(context).size.width > 700 ? 4 : 2,
@@ -171,7 +176,7 @@ class _HomeTab extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // Categories
-                const Text('Browse by Category', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                Text('Browse by Category', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: p.ink)),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
@@ -182,14 +187,14 @@ class _HomeTab extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: AppColors.surface,
+                          color: p.surface,
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: p.border),
                         ),
                         child: Text(
                           e.value,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
+                          style: TextStyle(
+                            color: p.ink,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -225,13 +230,14 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: p.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: p.border),
           boxShadow: [
             BoxShadow(
               color: AppColors.primaryDark.withValues(alpha: 0.04),
@@ -253,9 +259,9 @@ class _QuickActionCard extends StatelessWidget {
               child: Icon(icon, color: color, size: 24),
             ),
             const Spacer(),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textPrimary)),
+            Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: p.ink)),
             const SizedBox(height: 2),
-            Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Text(subtitle, style: TextStyle(fontSize: 11, color: p.muted)),
           ],
         ),
       ),
@@ -312,13 +318,14 @@ class _RentalsTabState extends State<_RentalsTab> {
     'CANCELLED' || 'DISPUTED' => AppColors.error,
     'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
     'VERIFICATION' => AppColors.warning,
-    _ => AppColors.textSecondary,
+    _ => AppColors.grey,
   };
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('My Rentals'),
         actions: [
@@ -336,18 +343,18 @@ class _RentalsTabState extends State<_RentalsTab> {
             : _error != null
                 ? ListView(children: [
                     const SizedBox(height: 100),
-                    Center(child: Text(_error!, style: const TextStyle(color: AppColors.textSecondary))),
+                    Center(child: Text(_error!, style: TextStyle(color: p.muted))),
                   ])
                 : _rentals.isEmpty
                     ? ListView(children: [
                         const SizedBox(height: 80),
-                        const Center(
+                        Center(
                           child: Column(children: [
-                            Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.grey),
+                            Icon(Icons.receipt_long_outlined, size: 56, color: p.muted),
                             SizedBox(height: 12),
-                            Text('No rentals yet', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                            Text('No rentals yet', style: TextStyle(fontWeight: FontWeight.w600, color: p.muted)),
                             SizedBox(height: 6),
-                            Text('Browse items to start your first rental', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                            Text('Browse items to start your first rental', style: TextStyle(color: p.muted, fontSize: 13)),
                           ]),
                         ),
                       ])
@@ -362,9 +369,9 @@ class _RentalsTabState extends State<_RentalsTab> {
                             onTap: () => Navigator.pushNamed(context, '/rentals/${rental.id}').then((_) => _load()),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: AppColors.surface,
+                                color: p.surface,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: AppColors.border),
+                                border: Border.all(color: p.border),
                                 boxShadow: [
                                   BoxShadow(
                                     color: AppColors.primaryDark.withValues(alpha: 0.04),
@@ -392,23 +399,23 @@ class _RentalsTabState extends State<_RentalsTab> {
                                       children: [
                                         Text(
                                           rental.item.title,
-                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary),
+                                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: p.ink),
                                         ),
                                         const SizedBox(height: 4),
                                         Row(
                                           children: [
-                                            Icon(Icons.calendar_today_outlined, size: 12, color: AppColors.textSecondary),
+                                            Icon(Icons.calendar_today_outlined, size: 12, color: p.muted),
                                             const SizedBox(width: 4),
                                             Text(
                                               'Ends ${rental.daysRemaining > 0 ? 'in ${rental.daysRemaining}d' : 'today'}',
-                                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                              style: TextStyle(color: p.muted, fontSize: 12),
                                             ),
                                             const SizedBox(width: 10),
-                                            Icon(Icons.payments_outlined, size: 12, color: AppColors.textSecondary),
+                                            Icon(Icons.payments_outlined, size: 12, color: p.muted),
                                             const SizedBox(width: 4),
                                             Text(
                                               'PHP ${rental.totalPrice.toStringAsFixed(0)}',
-                                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                              style: TextStyle(color: p.muted, fontSize: 12),
                                             ),
                                           ],
                                         ),
@@ -430,7 +437,7 @@ class _RentalsTabState extends State<_RentalsTab> {
                                         ),
                                       ),
                                       const SizedBox(height: 6),
-                                      const Icon(Icons.chevron_right_rounded, color: AppColors.grey, size: 18),
+                                      Icon(Icons.chevron_right_rounded, color: p.muted, size: 18),
                                     ],
                                   ),
                                 ],
@@ -505,9 +512,10 @@ class _NotificationsTabState extends State<_NotificationsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final hasUnread = _notifications.any((n) => !n.isRead);
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
@@ -530,13 +538,13 @@ class _NotificationsTabState extends State<_NotificationsTab> {
                 : _notifications.isEmpty
                     ? ListView(children: [
                         const SizedBox(height: 80),
-                        const Center(
+                        Center(
                           child: Column(children: [
-                            Icon(Icons.notifications_off_outlined, size: 56, color: AppColors.grey),
+                            Icon(Icons.notifications_off_outlined, size: 56, color: p.muted),
                             SizedBox(height: 12),
-                            Text('All clear!', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                            Text('All clear!', style: TextStyle(fontWeight: FontWeight.w600, color: p.muted)),
                             SizedBox(height: 6),
-                            Text('No notifications yet', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                            Text('No notifications yet', style: TextStyle(color: p.muted, fontSize: 13)),
                           ]),
                         ),
                       ])
@@ -559,7 +567,7 @@ class _NotificationsTabState extends State<_NotificationsTab> {
                                 color: n.isRead ? AppColors.surface : AppColors.primary.withValues(alpha: 0.04),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: n.isRead ? AppColors.border : AppColors.primary.withValues(alpha: 0.2),
+                                  color: n.isRead ? p.border : AppColors.primary.withValues(alpha: 0.2),
                                 ),
                               ),
                               padding: const EdgeInsets.all(14),
@@ -584,11 +592,11 @@ class _NotificationsTabState extends State<_NotificationsTab> {
                                           style: TextStyle(
                                             fontWeight: n.isRead ? FontWeight.w600 : FontWeight.w800,
                                             fontSize: 14,
-                                            color: AppColors.textPrimary,
+                                            color: p.ink,
                                           ),
                                         ),
                                         const SizedBox(height: 3),
-                                        Text(n.message, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                                        Text(n.message, style: TextStyle(fontSize: 13, color: p.muted)),
                                       ],
                                     ),
                                   ),
@@ -598,7 +606,7 @@ class _NotificationsTabState extends State<_NotificationsTab> {
                                     children: [
                                       Text(
                                         timeago.format(n.createdAt, allowFromNow: true),
-                                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                        style: TextStyle(fontSize: 11, color: p.muted),
                                       ),
                                       if (!n.isRead) ...[
                                         const SizedBox(height: 6),
@@ -631,10 +639,11 @@ class _ProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.user;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -693,15 +702,42 @@ class _ProfileTab extends StatelessWidget {
           // Info items
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: p.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: p.border),
             ),
             child: Column(
               children: [
                 _ProfileTile(icon: Icons.verified_user_rounded, iconColor: AppColors.success, title: 'Identity Verified', subtitle: 'Face ID + QR workflow enabled'),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
+                const Divider(height: 1, indent: 56),
+                // Mandate §2.1 — the light/dark choice is surfaced here as a
+                // real control, not just inherited from the OS. Reads through
+                // isDark(context) so the switch reflects what's actually
+                // rendered even while the mode is still `system`.
+                Consumer<ThemeController>(
+                  builder: (context, themeController, _) {
+                    final isDark = themeController.isDark(context);
+                    return _ProfileTile(
+                      icon: isDark
+                          ? Icons.dark_mode_rounded
+                          : Icons.light_mode_rounded,
+                      iconColor: AppColors.secondary,
+                      title: 'Appearance',
+                      subtitle: switch (themeController.mode) {
+                        ThemeMode.system => 'Following your device setting',
+                        ThemeMode.dark => 'Dark',
+                        ThemeMode.light => 'Light',
+                      },
+                      trailing: Switch(
+                        value: isDark,
+                        onChanged: (_) => themeController.toggle(context),
+                      ),
+                      onTap: () => themeController.toggle(context),
+                    );
+                  },
+                ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.account_balance_wallet_rounded,
@@ -816,29 +852,43 @@ class _ProfileTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback? onTap;
 
+  /// Overrides the default chevron — used by the Appearance row, which needs
+  /// a Switch rather than a navigation affordance.
+  final Widget? trailing;
+
   const _ProfileTile({
     required this.icon,
     required this.iconColor,
     required this.title,
     required this.subtitle,
     this.onTap,
+    this.trailing,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Subtitle/chevron colours were hardcoded to the light palette, so in
+    // dark mode they rendered as near-invisible grey on a dark surface.
+    final p = AppPalette.of(context);
     return ListTile(
       onTap: onTap,
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: iconColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
+          color: iconColor.withValues(alpha: 0.12),
+          borderRadius: AppRadius.button,
         ),
         child: Icon(icon, color: iconColor, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      trailing: onTap != null ? const Icon(Icons.chevron_right_rounded, color: AppColors.grey) : null,
+      title: Text(title,
+          style: TextStyle(
+              fontWeight: FontWeight.w600, fontSize: 14, color: p.ink)),
+      subtitle:
+          Text(subtitle, style: TextStyle(fontSize: 12, color: p.muted)),
+      trailing: trailing ??
+          (onTap != null
+              ? Icon(Icons.chevron_right_rounded, color: p.muted)
+              : null),
     );
   }
 }

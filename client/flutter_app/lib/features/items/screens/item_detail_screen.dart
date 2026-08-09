@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/app_widgets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
 
@@ -33,11 +34,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     final item = widget.item;
     final hasImages = item.images.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
           CustomScrollView(
@@ -112,10 +114,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             Expanded(
                               child: Text(
                                 item.title,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,
-                                  color: AppColors.textPrimary,
+                                  color: p.ink,
                                   height: 1.2,
                                 ),
                               ),
@@ -214,9 +216,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.surface,
+                            color: p.surface,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppColors.border),
+                            border: Border.all(color: p.border),
                           ),
                           child: Row(
                             children: [
@@ -241,19 +243,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
+                                    Text(
                                       'Offered by',
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: AppColors.textSecondary,
+                                        color: p.muted,
                                       ),
                                     ),
                                     Text(
                                       item.owner.fullName,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 15,
-                                        color: AppColors.textPrimary,
+                                        color: p.ink,
                                       ),
                                     ),
                                   ],
@@ -298,7 +300,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                               const SizedBox(width: 4),
                               Text(
                                 '(${item.totalRentals} reviews)',
-                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                                style: TextStyle(color: p.muted, fontSize: 13),
                               ),
                               const Spacer(),
                               GestureDetector(
@@ -322,19 +324,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         ],
 
                         // Description
-                        const Text(
+                        Text(
                           'Description',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
+                            color: p.ink,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           item.description,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: p.muted,
                             fontSize: 14,
                             height: 1.6,
                           ),
@@ -355,7 +357,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             child: Container(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: p.surface,
                 boxShadow: [
                   BoxShadow(
                     color: AppColors.primaryDark.withValues(alpha: 0.1),
@@ -371,16 +373,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           'Starting from',
-                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                          style: TextStyle(fontSize: 11, color: p.muted),
                         ),
                         Text(
                           'PHP ${item.pricePerDay.toStringAsFixed(0)}/day',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
+                            color: p.ink,
                           ),
                         ),
                       ],
@@ -395,13 +397,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             height: 52,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: AppColors.greyLight,
+                              color: p.surfaceAlt,
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Currently Unavailable',
                               style: TextStyle(
-                                color: AppColors.textSecondary,
+                                color: p.muted,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),

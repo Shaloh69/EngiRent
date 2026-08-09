@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/app_widgets.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/rental_model.dart';
 import '../../../core/services/api_service.dart';
@@ -137,7 +138,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         content: Text(
           'Cancel your rental for "${_rental!.item.title}"? '
           'This action cannot be undone.',
-          style: const TextStyle(color: AppColors.textSecondary),
+          style: TextStyle(color: AppPalette.of(context).muted),
         ),
         actions: [
           TextButton(
@@ -183,9 +184,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Describe the issue with the return verification.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              style: TextStyle(color: AppPalette.of(context).muted, fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -240,7 +241,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     'CANCELLED' || 'DISPUTED' => AppColors.error,
     'VERIFICATION' => AppColors.warning,
     'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
-    _ => AppColors.textSecondary,
+    _ => AppColors.grey,
   };
 
   bool get _canCancel =>
@@ -249,8 +250,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Rental Details'),
         actions: [
@@ -285,7 +287,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                               fit: BoxFit.cover,
                               errorWidget: (_, __, ___) => Container(
                                 height: 200,
-                                color: AppColors.greyLight,
+                                color: p.surfaceAlt,
                                 child: const Icon(Icons.image_not_supported, size: 48, color: AppColors.grey),
                               ),
                             ),
@@ -299,7 +301,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                           Expanded(
                             child: Text(
                               _rental!.item.title,
-                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: p.ink),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -434,7 +436,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             child: Text(
                               _statusMessage(_rental!.status),
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                              style: TextStyle(color: p.muted, fontSize: 13),
                             ),
                           ),
                         if (_canCancel) ...[
@@ -539,13 +541,14 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: p.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: p.border),
         boxShadow: [
           BoxShadow(
             color: AppColors.primaryDark.withValues(alpha: 0.04),
@@ -568,9 +571,10 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Text(
       text,
-      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textSecondary),
+      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: p.muted),
     );
   }
 }
@@ -607,6 +611,7 @@ class _InfoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -617,12 +622,12 @@ class _InfoItem extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Icon(icon, size: 13, color: AppColors.textSecondary),
+            Icon(icon, size: 13, color: p.muted),
             const SizedBox(width: 5),
-            Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Text(label, style: TextStyle(fontSize: 11, color: p.muted)),
           ]),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: p.ink)),
         ],
       ),
     );
@@ -682,7 +687,7 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
+            Text(message, textAlign: TextAlign.center, style: TextStyle(color: AppPalette.of(context).muted)),
             const SizedBox(height: 16),
             ElevatedButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
           ],
