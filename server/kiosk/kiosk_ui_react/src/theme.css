@@ -137,26 +137,59 @@ body {
 }
 
 /* Opaque ground under the panels. The previous version let the page show
-   through the grid's gaps mid-transition; covering is now structural. */
+   through the grid's gaps mid-transition; covering is now structural.
+   Given a gradient rather than a flat fill so the translucent panels above
+   have something to pick up — flat ground makes glass look like paint. */
 .asm-backdrop {
   position: absolute;
   inset: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(120% 80% at 50% 25%, var(--surf2), var(--bg) 72%);
 }
 
 .asm-grid {
   position: absolute;
   inset: 0;
   display: grid;
+  /* Depth for the per-panel rotateX/rotateY. */
+  perspective: 1400px;
+  transform-style: preserve-3d;
 }
 
+/* Glass slabs. The colour comes from the element's inline background; these
+   rules add the bevel and the specular sheen that make it read as a physical
+   pane rather than a flat rectangle.
+
+   No `backdrop-filter`: it costs a full-screen blur pass per panel, and this
+   runs on a Raspberry Pi driving a 1080x1920 display. The bevel and sheen
+   below are effectively free and read the same at this size. */
 .asm-panel {
   display: block;
+  position: relative;
+  border-radius: var(--r-sm);
   /* Panel edges are drawn INSIDE the panel, not as grid gaps — a gap is a
      hole, and a hole shows the page. */
   box-shadow:
-    inset 0 0 0 1px rgba(5, 15, 26, 0.55),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.06);
+    inset 2px 2px 0 rgba(255, 255, 255, 0.26),
+    inset -2px -2px 0 rgba(5, 15, 26, 0.34),
+    inset 0 0 0 1px rgba(5, 15, 26, 0.5);
+}
+
+/* Specular highlight, raked across the top-left corner as if lit from there.
+   Consistent direction on every panel is what sells the 3D. */
+.asm-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    142deg,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(255, 255, 255, 0.1) 34%,
+    rgba(255, 255, 255, 0) 58%,
+    rgba(5, 15, 26, 0.14) 100%
+  );
+  pointer-events: none;
 }
 
 /* Quote card shown during boot. */

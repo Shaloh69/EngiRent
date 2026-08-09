@@ -45,6 +45,14 @@ const COLORS = [
   "#2B7FD4",
 ];
 
+/** Total stagger window, shared by the build and the mirrored teardown. */
+const STAGGER_TOTAL = 1.05;
+
+/** Entrance easing, and its exact mirror for the exit.
+ *  Reversing cubic-bezier(x1,y1,x2,y2) gives (1-x2, 1-y2, 1-x1, 1-y1). */
+const EASE_IN: [number, number, number, number] = [0.22, 1, 0.28, 1];
+const EASE_OUT: [number, number, number, number] = [0.72, 0, 0.78, 0];
+
 interface Panel {
   id: number;
   r: number;
@@ -107,7 +115,7 @@ function buildPanels(seed: number): Panel[] {
   }));
   scored.sort((a, b) => b.d - a.d);
 
-  const step = 1.05 / Math.max(scored.length, 1);
+  const step = STAGGER_TOTAL / Math.max(scored.length, 1);
   return scored.map((p, i) => ({
     id: i,
     r: p.r,
@@ -237,6 +245,7 @@ export function BlockAssembly({ runKey, boot = false, onFinished }: Props) {
   );
 
   const panels = useMemo(() => buildPanels(seed), [seed]);
+  const stagger = STAGGER_TOTAL / Math.max(panels.length, 1);
 
   // Random per run, and never the same line twice in a row — a repeat reads as
   // a bug rather than as chance.
@@ -244,10 +253,14 @@ export function BlockAssembly({ runKey, boot = false, onFinished }: Props) {
   const quote = useMemo(() => QUOTES[pickQuoteIndex()], [runKey]);
 
   const slideMs = 420;
-  // A second longer than the first version, per review — the card was gone
-  // before the quote could be read.
-  const assembleMs = 1150 + slideMs + (boot ? 1700 : 700);
-  const clearMs = 700;
+  // Total time for the wall to finish building: last panel's delay + its slide.
+  const buildMs = STAGGER_TOTAL * 1000 + slideMs;
+  // Hold once complete. Longer at boot so the quote can actually be read.
+  const holdMs = boot ? 1700 : 700;
+  const assembleMs = buildMs + holdMs;
+  // The exit mirrors the entrance exactly — same stagger, same slide, run
+  // backwards — so it takes exactly as long as the build did.
+  const clearMs = buildMs;
 
   useEffect(() => {
     finished.current = false;
@@ -281,6 +294,17 @@ export function BlockAssembly({ runKey, boot = false, onFinished }: Props) {
       right: { x: "120vw", y: 0 },
     })[p.from];
 
+  // Panels tilt away from the viewer on the axis they travel along, so they
+  // read as physical slabs swinging into place rather than flat rectangles
+  // sliding. Reused verbatim by the exit, which is what makes the two mirror.
+  const rotation = (p: Panel) =>
+    ({
+      top: { rotateX: 34, rotateY: 0 },
+      bottom: { rotateX: -34, rotateY: 0 },
+      left: { rotateX: 0, rotateY: -34 },
+      right: { rotateX: 0, rotateY: 34 },
+    })[p.from];
+
   return (
     <div className="asm-layer" aria-hidden>
       {/* Opaque ground. The tetromino version relied on the panels themselves
@@ -310,26 +334,34 @@ export function BlockAssembly({ runKey, boot = false, onFinished }: Props) {
               gridRow: `${p.r + 1} / span ${p.h}`,
               gridColumn: `${p.c + 1} / span ${p.w}`,
               background: p.color,
+              transformPerspective: 1400,
             }}
-            initial={{ ...offset(p), opacity: 1 }}
+            initial={{ ...offset(p), ...rotation(p), opacity: 1 }}
             animate={
               clearing
                 ? {
+                    // Exactly the entrance, played backwards: each panel
+                    // retreats the way it arrived, the stagger runs in
+                    // reverse order (last in, first out), and the easing is
+                    // the mirror of EASE_IN — so the wall unbuilds itself
+                    // rather than being swept away by a different animation.
                     ...offset(p),
-                    opacity: 0,
+                    ...rotation(p),
                     transition: {
-                      duration: 0.55,
-                      delay: (panels.length - p.id) * 0.006,
-                      ease: [0.4, 0, 0.9, 0.4],
+                      duration: slideMs / 1000,
+                      delay: (panels.length - 1 - p.id) * stagger,
+                      ease: EASE_OUT,
                     },
                   }
                 : {
                     x: 0,
                     y: 0,
+                    rotateX: 0,
+                    rotateY: 0,
                     transition: {
                       duration: slideMs / 1000,
                       delay: p.delay,
-                      ease: [0.22, 1, 0.28, 1],
+                      ease: EASE_IN,
                     },
                   }
             }
