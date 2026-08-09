@@ -308,6 +308,53 @@ This one is genuinely new work, server included:
 
 ---
 
+## 2.10 Phone App — enterprise-readiness audit (2026-08-09, second pass)
+
+The first pass (§2.9) only diffed API routes against app call sites, so it could only find things that were already built and unwired. This pass measures the app against what production marketplace and enterprise mobile software is actually expected to have, drawing on [enterprise mobile requirements guidance](https://www.netguru.com/blog/enterprise-mobile-app-development-guide) and [P2P rental marketplace trust-and-safety standards](https://www.sharetribe.com/how-to-build/peer-to-peer-marketplace/). Verified against the code, not assumed.
+
+### 2.10.1 Blockers — the app is not production software without these
+
+| Gap | State | Why it blocks |
+|---|---|---|
+| **Crash reporting** | Absent. No Sentry/Crashlytics, no `FlutterError.onError` handler | A crash on a student's phone is currently invisible. There is no way to know the app is broken in the field, let alone for whom or how often. This is the single biggest hole. |
+| **No offline handling** | Absent. No `connectivity_plus`, no local cache, no request queue — earlier greps for "offline" matched only the *word* in status labels | Campus wifi is intermittent and the kiosk is in a corridor. Today any request failure is a dead end with a toast. A rental in flight must survive a dropped connection. |
+| **No in-app messaging** | Absent | Every marketplace trust-and-safety guide treats on-platform messaging as core: it keeps communication recorded and reviewable when a dispute is filed. Right now a renter with a question about an item has no way to reach the owner at all, and a dispute has no conversation history to adjudicate. |
+| **Date-based availability does not exist** | `isAvailable` is a single boolean; the server flips it false on booking and true on completion | An item can be rented by exactly one person at a time, ever. Nobody can book next week while this week's rental is running, which for term-length equipment lending is a severe limitation, not an edge case. |
+
+### 2.10.2 Trust and safety — the domain-specific gaps
+
+- **No cancellation policy.** `POST /rentals/:id/cancel` exists but no policy is defined or shown: cancel an hour before pickup and a day before are treated identically, and the money consequence is never stated up front.
+- **No damage-protection framing.** The deposit is the entire mechanism. Real platforms state a protection position plainly, even if that position is "the deposit is the cover, here is the cap."
+- **Two-way reviews exist but do not gate anything.** `reviewType` handles ITEM and USER, but reputation has no effect — no minimum rating to rent, no display of an owner's completion rate or a renter's on-time return rate. Reputation you cannot act on is decoration.
+- **ID verification is collected but the review loop is invisible.** Students upload a student ID and then get no status, no ETA, and no route to ask about it.
+- **No report-a-listing path.** No way to flag a listing that is misdescribed, unsafe, or not the reporter's property.
+
+### 2.10.3 Enterprise hygiene
+
+- **No accessibility work whatsoever.** Zero `Semantics` widgets and no `semanticLabel` anywhere. Icon-only controls — the photo remove button, the theme toggle, the star rating — are unlabelled for screen readers. For a university deployment this is a compliance exposure, not a nicety.
+- **No localisation.** No `flutter_localizations`, no ARB files. All copy is hardcoded English. Bisaya/Tagalog is a realistic requirement for UCLM.
+- **No analytics.** No funnel instrumentation, so there is no evidence for which screens people abandon — every design decision after this point is opinion.
+- **No audit trail surfaced to the user.** The server keeps one; a student cannot see their own account activity, which is the first thing anyone asks after a disputed charge.
+- **No session-expiry UX.** Token refresh exists in code, but there is no designed path for what a user sees when refresh finally fails mid-rental.
+- **No app-version gate.** No mechanism to force an update when a build has a known payment or locker bug — for an app that moves money and opens physical doors, that is a real operational risk.
+
+### 2.10.4 Sequencing
+
+Do not build these in the order they are listed. Recommended:
+
+1. **Crash reporting** — it is a day of work and everything after it is guesswork without it.
+2. **My Listings + edit/delete** (§2.9.1) — largest user-visible gap, and it is wiring.
+3. **Offline handling** — cache the last good reads, queue writes, and give every failure a retry rather than a dead end.
+4. **In-app messaging** — unblocks the dispute story as well as ordinary questions.
+5. **Date-based availability** — schema change, so plan it rather than patching `isAvailable`.
+6. **Accessibility pass** — cheap per screen, expensive to retrofit across all of them at once.
+
+### 2.10.5 Rule
+
+**An audit that only compares routes to call sites finds unwired features, not missing ones.** §2.9 was that audit and it missed every item above, including the absence of crash reporting. Any future "is the app finished" check must measure against external expectations for the product category, and must verify each claim in the code — two checks in this pass ("offline handling", "availability") first appeared PRESENT and were false positives from matching a word in unrelated strings.
+
+---
+
 ## 3. Admin Console
 
 **Explicit template references:**
