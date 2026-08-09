@@ -28,13 +28,14 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.5.1",
-  buildNumber: 14,
-  fileName: "Engirent_Prerelease14.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.5.2",
+  buildNumber: 15,
+  fileName: "Engirent_Prerelease15.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-08-09",
   sizeMb: 73,
   minAndroid: "8.0 (Oreo)",
   highlights: [
+    'New "Blueprint" colour scheme — blue-led, across light and dark',
     'Fixes text overflowing and getting cut off on phones with larger system font sizes',
     'Checkout rebuilt — itemised cost breakdown showing what the deposit is and when you get it back',
     'Listing an item rebuilt with photo cover selection and an earnings preview',
