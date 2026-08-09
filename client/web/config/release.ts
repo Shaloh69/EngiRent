@@ -28,17 +28,17 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.3.0",
-  buildNumber: 11,
-  fileName: "Engirent_Prerelease11.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.4.0",
+  buildNumber: 12,
+  fileName: "Engirent_Prerelease12.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-08-09",
   sizeMb: 72,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    'Browse rebuilt as a proper shop — product cards with photos, prices and deposits',
-    'New home screen showing the latest listings, not just buttons',
-    'Item pages now show the full cost breakdown before you commit',
-    'A first-time walkthrough, plus a "?" button that explains each control',
+    'Profile photos now load — they were failing silently before',
+    'My Rentals rebuilt with filters, and a progress timeline on each rental',
+    'Browse rebuilt as a proper shop with product cards, prices and deposits',
+    'A first-time walkthrough, plus a help button that explains each control',
     'Dark mode across every screen',
   ],
 };

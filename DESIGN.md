@@ -154,7 +154,9 @@ Every one carries two guarantees: `prefers-reduced-motion` freezes it to a stati
 
 **Onboarding and the in-app tutorial (§2.3)** are both built and working: a one-time `introduction_screen` walkthrough resolved before first paint, and a `showcaseview` "?" tour in the Home app bar that highlights the real controls one at a time — auto-running on first arrival, on demand thereafter.
 
-**Still outstanding — not rebuilt against §2.2 yet:** Profile Setup, Create Rental, Rental Detail, Kiosk Scan, Create Item, Reviews, Payout Details, and the Rentals/Alerts/Profile tabs inside Home. These are theme-correct and functional, and several use the shared primitives, but their layout and component vocabulary have not been reworked the way the five above were. Calling the Phone App finished would be the same overclaim §0 exists to prevent.
+**Still outstanding — not rebuilt against §2.2 yet:** Profile Setup, Create Rental, Kiosk Scan, Create Item, Reviews, Payout Details, and the Alerts tab. These are theme-correct and functional and use the shared primitives in places, but their layout has not been reworked. Calling the Phone App finished would be the same overclaim §0 exists to prevent.
+
+**A real functional bug fixed alongside the design work:** user photos are served from an authenticated route (`GET /media/users/:id/face.jpg`, behind the `authenticate` middleware), but every avatar used a bare `NetworkImage`, which sends no credentials. Verified directly against the deployed API — 401 with no header, 404 with a valid Bearer token — so profile pictures could never have loaded for anyone. A new `AppAvatar` attaches the token, caches, and falls back to initials on both a missing URL and a failed fetch. Listing photos were unaffected (external URLs).
 
 ## Known gaps, stated honestly
 
