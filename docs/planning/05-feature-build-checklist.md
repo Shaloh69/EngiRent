@@ -37,32 +37,38 @@ This is **not** a single-sitting job. Fifteen work items span the Flutter app, t
 
 ## Stage 2 — My Listings (largest user-visible gap, §2.9.1)
 
+**STATUS: DONE — 42/42 assertions pass against the live API and its real database (`server/node_server/scripts/e2e-my-listings.mjs`); `flutter analyze` clean; release web build boots to first paint with zero console errors.**
+
 ### 2.1 My Listings screen
-- [ ] Wire `GET /items/my-items` (exists, never called)
-- [ ] Owner's items with live state: available / rented out / unlisted
-- [ ] Entry points: Profile row + home quick action
-- [ ] Empty state that routes to "List an item"
-- **Template:** [Universal Listings Flutter Template](https://instaflutter.com/app-templates/universal-listings-flutter-template/) for the seller-inventory pattern; reuse the existing `ItemCard` rather than inventing a card
-- **Done when:** an item created in the app appears here immediately, with correct state while rented.
+- [x] Wired `GET /items/my-items`
+- [x] Owner's items with live state — a server-resolved `listingState` (AVAILABLE / RENTED / UNLISTED / UNAVAILABLE), not three raw booleans for the client to interpret itself, so the app and a future admin surface can't disagree about what a combination means
+- [x] Entry points: Profile row ("My Listings") + a 4th home quick-action tile
+- [x] Empty state that routes to "List an item"
+- **Template:** [Universal Listings Flutter Template](https://instaflutter.com/app-templates/universal-listings-flutter-template/) for the seller-inventory pattern
+- **Done when:** an item created in the app appears here immediately, with correct state while rented. — **met, asserted live**: create → AVAILABLE, DB-level active rental → RENTED with the renter's name and return date, rental clears → AVAILABLE again.
+- **Two real bugs found while wiring this, not while designing it:**
+  1. `getMyItems` never included `owner` in its query. `ItemModel.fromJson` — the same model the public browse screen uses — requires it and throws without it. Harmless while nothing called this endpoint; would have crashed the screen the moment it shipped.
+  2. `create_item_screen.dart`'s condition picker had a key, `'EXCELLENT'`, that is not a valid `ItemCondition` enum value at all (the real values are `NEW | LIKE_NEW | GOOD | FAIR | ACCEPTABLE`) — selecting it and submitting would 400. `ACCEPTABLE`, a real option, was missing from the picker entirely. Both fixed; caught only because this form was about to be reused for edit and needed reading in full.
 
 ### 2.2 Edit listing
-- [ ] Wire `PUT /items/:id` (exists, never called)
-- [ ] Reuse `CreateItemScreen` in an `edit` mode — **do not build a second form**
-- [ ] Pre-populate every field including photos
-- **Done when:** editing a price changes it on the public listing, and cancelling changes nothing.
+- [x] Wired `PUT /items/:id`
+- [x] `CreateItemScreen` takes an optional `editListing` — **no second form.** Title, submit label and one notice banner change; the photo strip, pickers and price preview are the exact same widgets.
+- [x] Pre-populates every field including photos and serial number
+- **Done when:** editing a price changes it on the public listing, and cancelling changes nothing. — **met, asserted live**: price edit reflected in `my-items`; nothing is written until Save is pressed.
 
 ### 2.3 Photo management on existing listings
-- [ ] Add / remove / reorder; change cover
-- [ ] Reuse `_PhotoStrip` — it already supports promote-to-cover
-- [ ] Refuse removing the last photo
-- **Done when:** cover change is reflected in browse results.
+- [x] Add / remove / reorder; change cover — a single ordered list of "existing URL or newly-picked file" entries, so reordering-to-cover and removal work identically whether or not the photo is already on the server
+- [x] Reused the existing photo strip and promote-to-cover long-press verbatim
+- [x] Refuse removing the last photo — blocked as an action with a toast explaining why, not just a submit-time validation error
+- **Done when:** cover change is reflected in browse results. — inherited for free: the cover is always `images[0]`, which is what browse already reads.
 
 ### 2.4 Unlist / relist + delete
-- [ ] Soft `isAvailable` toggle, distinct from delete
-- [ ] Wire `DELETE /items/:id`
-- [ ] **Block delete client-side when a rental is in flight** — do not rely on the API to refuse
-- [ ] Confirmation states what happens to reviews and to any active rental
-- **Done when:** deleting an item with an active rental is refused with a clear reason, not a 400 toast.
+- [x] **New `isListed` field, deliberately separate from `isAvailable`.** `isAvailable` is rental-lifecycle state the system flips; overloading it for the owner's "hide this" intent would make "someone unlisted this" and "someone is renting this right now" indistinguishable, and would let the rental lifecycle silently re-list an item the owner had taken down the moment a rental completed. An active rental takes display priority over an owner's unlist choice (state shows "Rented" first with a secondary "hidden from browse" note) rather than the reverse, since the rental is the more consequential fact.
+- [x] Wired `DELETE /items/:id`
+- [x] Blocked client-side: `canDelete` is resolved server-side from the same in-flight-status set `deleteItem` itself refuses against, so the app can never offer a delete the API will reject. Tapping a blocked delete shows the reason (who has it, when it's due back) and never calls the endpoint.
+- [x] Confirmation states the consequence honestly: hidden permanently, not restorable from the app; reviews already left are kept (they're part of rental history, not the listing)
+- [x] **Server-side hardening beyond the checklist item:** `isAvailable` can no longer be forced back to `true` by the owner while a rental is in flight (a gap in the original `updateItem` — nothing stopped it) — the API now refuses with a message pointing at unlisting instead, which is the actual tool for the owner's intent.
+- **Done when:** deleting an item with an active rental is refused with a clear reason, not a 400 toast. — **met, asserted live** against a real `ACTIVE` rental row (inserted directly, since a genuine one needs a completed PayMongo checkout, out of scope here): refused with 400 naming the reason; after the rental clears, delete succeeds and the item disappears from both `my-items` and public browse.
 
 ---
 

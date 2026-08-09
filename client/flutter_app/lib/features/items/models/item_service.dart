@@ -112,4 +112,99 @@ class ItemService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  List<MyListingModel> _demoMyListings() {
+    return _demoItems()
+        .map((item) => MyListingModel(
+              item: item,
+              listingState: item.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+              canDelete: true,
+            ))
+        .toList();
+  }
+
+  /// GET /items/my-items — existed on the server, called by nothing. An
+  /// owner could publish a listing and then never see it again (mandate
+  /// §2.9.1).
+  Future<Map<String, dynamic>> getMyItems() async {
+    try {
+      final response = await _api.get('/items/my-items?limit=50');
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success']) {
+        final items = (data['data']['items'] as List<dynamic>)
+            .map((json) => MyListingModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+        return {'success': true, 'items': items};
+      }
+      return {'success': false, 'error': data['error'] ?? 'Failed to load your listings'};
+    } catch (e) {
+      if (AppConstants.demoMode) {
+        return {'success': true, 'items': _demoMyListings(), 'isDemo': true};
+      }
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// PUT /items/:id — existed, called by nothing. Fields are sent only when
+  /// present, matching the server's partial-update semantics: omit a key to
+  /// leave it unchanged rather than sending nulls that would clear it.
+  Future<Map<String, dynamic>> updateItem(
+    String id, {
+    String? title,
+    String? description,
+    String? category,
+    String? condition,
+    String? pricePerDay,
+    String? securityDeposit,
+    List<String>? images,
+    String? serialNumber,
+    bool? isListed,
+    bool? isAvailable,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        if (title != null) 'title': title,
+        if (description != null) 'description': description,
+        if (category != null) 'category': category,
+        if (condition != null) 'condition': condition,
+        if (pricePerDay != null) 'pricePerDay': pricePerDay,
+        if (securityDeposit != null) 'securityDeposit': securityDeposit,
+        if (images != null) 'images': images,
+        if (serialNumber != null) 'serialNumber': serialNumber,
+        if (isListed != null) 'isListed': isListed,
+        if (isAvailable != null) 'isAvailable': isAvailable,
+      };
+      final response = await _api.put('/items/$id', body);
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success']) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'error': (data['error'] ?? data['message']) ?? 'Failed to update listing',
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// DELETE /items/:id — existed, called by nothing. The server refuses this
+  /// while a rental is in flight; the app is expected to check
+  /// `MyListingModel.canDelete` first so that refusal reads as a disabled
+  /// button with a reason, not a 400 toast (checklist 2.4's stated bar).
+  Future<Map<String, dynamic>> deleteItem(String id) async {
+    try {
+      final response = await _api.delete('/items/$id');
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success']) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'error': (data['error'] ?? data['message']) ?? 'Failed to delete listing',
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

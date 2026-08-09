@@ -143,6 +143,10 @@ export const getItems = async (
 
     const where: any = {
       isActive: true,
+      // Owner-unlisted items disappear from browse. Without this the unlist
+      // control would be decorative — the item would stay bookable by anyone
+      // who found it.
+      isListed: true,
     };
 
     if (category) where.category = category;
@@ -287,7 +291,34 @@ export const updateItem = async (
       serialNumber,
       campusLocation,
       isAvailable,
+      isListed,
     } = req.body;
+
+    // isAvailable belongs to the rental lifecycle, not the owner. Letting an
+    // owner set it true while a rental is in flight would put the item back
+    // into browse mid-rental and allow a double booking. Unlisting is what an
+    // owner actually wants here, and that is isListed.
+    if (isAvailable !== undefined) {
+      const inFlight = await prisma.rental.count({
+        where: {
+          itemId: id,
+          status: {
+            in: [
+              "PENDING",
+              "AWAITING_DEPOSIT",
+              "DEPOSITED",
+              "ACTIVE",
+              "VERIFICATION",
+            ],
+          },
+        },
+      });
+      if (inFlight > 0) {
+        throw new ValidationError(
+          "This item has a rental in progress. Unlist it instead — it will stop appearing in browse without affecting the current rental.",
+        );
+      }
+    }
 
     // If listing photos change, the cached ML feature vectors (extracted
     // from the *old* photos) must not survive — a stale cache silently
@@ -318,6 +349,7 @@ export const updateItem = async (
         ...(serialNumber !== undefined && { serialNumber }),
         ...(campusLocation && { campusLocation }),
         ...(isAvailable !== undefined && { isAvailable }),
+        ...(isListed !== undefined && { isListed }),
       },
       include: {
         owner: {
@@ -415,6 +447,18 @@ export const getMyItems = async (
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const take = parseInt(limit as string);
 
+    // Statuses that mean "someone currently has, or is committed to, this
+    // item" — the same set deleteItem refuses to delete against, kept
+    // identical on purpose so the screen never offers a delete the API will
+    // reject.
+    const IN_FLIGHT = [
+      "PENDING",
+      "AWAITING_DEPOSIT",
+      "DEPOSITED",
+      "ACTIVE",
+      "VERIFICATION",
+    ] as const;
+
     const [items, total] = await Promise.all([
       prisma.item.findMany({
         where: {
@@ -424,6 +468,36 @@ export const getMyItems = async (
         skip,
         take,
         orderBy: { createdAt: "desc" },
+        include: {
+          // ItemModel.fromJson (the Flutter model shared with the public
+          // browse screen) requires `owner` and throws without it. The
+          // original query never included it — harmless while nothing called
+          // this endpoint, a crash the moment it was wired up.
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true,
+            },
+          },
+          // The owner screen has to distinguish "available", "rented out" and
+          // "unlisted", and a bare item row cannot: isAvailable alone doesn't
+          // say who has it or until when.
+          rentals: {
+            where: { status: { in: [...IN_FLIGHT] } },
+            orderBy: { startDate: "asc" },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              startDate: true,
+              endDate: true,
+              renter: { select: { firstName: true, lastName: true } },
+            },
+          },
+          _count: { select: { reviews: true, rentals: true } },
+        },
       }),
       prisma.item.count({
         where: {
@@ -433,10 +507,39 @@ export const getMyItems = async (
       }),
     ]);
 
+    const withState = items.map((item) => {
+      const { rentals, _count, ...rest } = item;
+      const active = rentals[0] ?? null;
+      return {
+        ...rest,
+        reviewCount: _count.reviews,
+        rentalCount: _count.rentals,
+        activeRental: active,
+        // Resolved server-side so the app and the console can't disagree
+        // about what a combination of three booleans means. An active rental
+        // takes priority over the owner's isListed choice: unlisting an item
+        // that's currently out doesn't make the fact that someone has it any
+        // less true, and hiding that behind "Unlisted" would be the more
+        // consequential thing to lose sight of. `item.isListed` is still in
+        // the response (spread via `...rest`) so the app can show "also
+        // hidden from browse" alongside "Rented" when both are true.
+        listingState: active
+          ? "RENTED"
+          : !item.isListed
+            ? "UNLISTED"
+            : item.isAvailable
+              ? "AVAILABLE"
+              : "UNAVAILABLE",
+        // Deleting is refused while a rental is in flight; saying so up front
+        // beats letting the app offer the action and surface a 400 toast.
+        canDelete: !active,
+      };
+    });
+
     res.json({
       success: true,
       data: {
-        items,
+        items: withState,
         pagination: {
           total,
           page: parseInt(page as string),

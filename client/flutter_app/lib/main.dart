@@ -14,6 +14,7 @@ import 'features/home/screens/home_screen.dart';
 import 'features/items/screens/create_item_screen.dart';
 import 'features/items/screens/item_detail_screen.dart';
 import 'features/items/screens/items_screen.dart';
+import 'features/items/screens/my_listings_screen.dart';
 import 'features/kiosk/screens/kiosk_scan_screen.dart';
 import 'features/rentals/screens/create_rental_screen.dart';
 import 'features/rentals/screens/rental_detail_screen.dart';
@@ -115,6 +116,11 @@ class MyApp extends StatelessWidget {
         );
       case '/items/create':
         return MaterialPageRoute(builder: (_) => const _AuthGuard(child: CreateItemScreen()));
+      case '/items/mine':
+        // Checklist Stage 2.1 — GET /items/my-items existed and was never
+        // called; an owner could publish a listing and then never see it
+        // again. This is the screen that finally shows it back to them.
+        return MaterialPageRoute(builder: (_) => const _AuthGuard(child: MyListingsScreen()));
       case '/kiosk/scan':
         final kioskArgs = settings.arguments as Map<String, dynamic>? ?? {};
         final kioskRentalId = kioskArgs['rentalId'] as String? ?? '';

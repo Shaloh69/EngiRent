@@ -86,6 +86,30 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-09/10 — Stage 1.1 (crash reporting) and Stage 2 (My Listings) built and verified live
+
+Continuation of the same session that closed Stage 3.5. Worked straight through the checklist per the user's "continue, make sure everything works as intended by the documents".
+
+**Stage 1.1 — crash reporting.** `sentry_flutter` wraps the whole of `main()`, not just `runApp` — a crash while resolving the first-run flag is exactly the kind that was invisible before. With no DSN supplied (`--dart-define=SENTRY_DSN=…`) the app still installs `FlutterError.onError`/`PlatformDispatcher.instance.onError` and logs locally, so a missing secret degrades to "reports go nowhere," never "the app won't start."
+
+The real work is `lib/core/observability/pii_scrubber.dart` — free of any Sentry import so it's unit-testable without a DSN. Redacts by key name (token/password/faceEncoding/…) and by shape (a JWT embedded mid-sentence, a 128-float encoding, a signed media URL — which grants access to a photo on its own). 16 assertions in `test/pii_scrubber_test.dart`, all passing, built from payloads this app actually produces. `AppConstants.appVersion` — hardcoded `'1.0.0'` while pubspec was on `1.5.2+15`, referenced by nothing — is deleted rather than fixed; Profile now shows the real version via `package_info_plus`, with a debug-only long-press that fires a real test exception through the pipeline.
+
+**Not done, and can't be from here:** proving an event lands in an actual Sentry dashboard needs a real DSN and project, which wasn't created on the user's behalf. Everything up to that network hop is wired and tested.
+
+**Stage 2 — My Listings.** `GET /items/my-items`, `PUT /items/:id`, `DELETE /items/:id` all existed server-side and were called by nothing — an owner could publish a listing and never see it again. Built the missing screen (`my_listings_screen.dart`), extended `CreateItemScreen` to double as the edit form via an optional `editListing` param (per the checklist's explicit "do not build a second form"), and added photo add/remove/reorder-to-cover across a unified list of existing-URL-or-newly-picked-file entries.
+
+**Schema addition: `Item.isListed`, deliberately separate from `isAvailable`.** `isAvailable` is rental-lifecycle state the system flips on booking/completion — not the owner's to set. Overloading it for "hide this listing" would make "the owner hid this" and "someone is renting it right now" indistinguishable, and would let the rental lifecycle silently re-list something the owner had deliberately taken down the moment a rental completed. `updateItem` now refuses to let an owner force `isAvailable: true` while a rental is in flight (a real pre-existing gap — nothing stopped that before), pointing them at `isListed` instead. Display precedence: an active rental shows as "Rented" even if the owner has also unlisted it, since that's the more consequential fact; a small secondary note ("hidden from browse") surfaces the rest.
+
+**Two real, pre-existing bugs found while doing this, neither one designed-in:**
+1. `getMyItems`'s Prisma query never included `owner`, and `ItemModel.fromJson` — the same model `browse` uses — throws without it. Harmless while nothing called the endpoint; would have crashed the screen the instant it shipped.
+2. `create_item_screen.dart`'s condition picker offered a key, `'EXCELLENT'`, that isn't a valid `ItemCondition` value at all (real values: `NEW | LIKE_NEW | GOOD | FAIR | ACCEPTABLE`) — picking it and submitting a listing would 400 against the server's own enum validator. `ACCEPTABLE`, a real option, was missing from the picker entirely. Found only because this exact form was being read in full to reuse for edit mode.
+
+**Verification, deployed to `desktop-gklhcri` and run for real:** `server/node_server/scripts/e2e-my-listings.mjs`, 42/42 passing against the live API and its real MySQL. Notably includes a deliberate DB-level fixture — a raw `prisma.rental.create` with `status: "ACTIVE"` — to reach the "someone currently has this item" state without a real PayMongo checkout (out of scope here), the same technique `prisma/seed.ts` already uses for its lifecycle fixtures. That let the test genuinely prove: listing state flips to RENTED with the renter's real name, `isAvailable` cannot be forced true, delete is refused with a named reason, and everything reverses cleanly once the rental is removed. One test-script bug caught along the way (asserted a flattened `renterName` that only exists in the Dart model, not the raw API's nested `{renter:{firstName,lastName}}` shape) and fixed in the script, not the server.
+
+**Deployment mechanics, consistent with the Stage 3.5 entry:** stopped the running API before `prisma generate` (it holds the query-engine DLL open — `EPERM` otherwise), pushed the schema, rebuilt, relaunched via `Invoke-CimMethod Win32_Process Create`. Both Prisma pushes this session were purely additive (new nullable/defaulted columns) — no migration risk, no data loss.
+
+Both stages' `flutter analyze` runs are clean, and a full release web build boots to first paint with zero console errors after each stage's changes — checked because a startup-wrapper or routing bug is exactly the kind `flutter analyze` cannot see.
+
 ### 2026-08-09 — Stage 3.5 (account verification) deployed and verified live; three real bugs found, two of them invisible to API tests
 
 Picked up from a commit that honestly flagged itself as "not deployed or exercised end-to-end". Did both.

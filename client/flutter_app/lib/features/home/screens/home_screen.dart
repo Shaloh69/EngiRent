@@ -315,6 +315,20 @@ class _HomeTabState extends State<_HomeTab> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: AppSpacing.xs),
+                      // Stage 2.1 — an owner could publish a listing and then
+                      // never see it again: no edit, no unlist, no delete, no
+                      // "did anyone rent this" visibility at all. Not part of
+                      // the onboarding tour's fixed five steps, so plain
+                      // rather than Showcase-wrapped.
+                      Expanded(
+                        child: _SecondaryAction(
+                          icon: Icons.inventory_2_rounded,
+                          label: 'My listings',
+                          color: AppColors.secondary,
+                          onTap: () => Navigator.pushNamed(context, '/items/mine'),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.lg),
@@ -1199,6 +1213,14 @@ class _ProfileTab extends StatelessWidget {
                       onTap: () => themeController.toggle(context),
                     );
                   },
+                ),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
+                  icon: Icons.inventory_2_rounded,
+                  iconColor: AppColors.secondary,
+                  title: 'My Listings',
+                  subtitle: 'Edit, unlist, or delete items you\'ve listed',
+                  onTap: () => Navigator.pushNamed(context, '/items/mine'),
                 ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(

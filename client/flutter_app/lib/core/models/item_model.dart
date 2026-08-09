@@ -10,10 +10,16 @@ class ItemModel {
   final double securityDeposit;
   final List<String> images;
   final bool isAvailable;
+  // Owner intent ("show this in browse"), distinct from isAvailable (rental
+  // state) — see the schema comment in itemController for why. Defaults true
+  // so older responses that predate this field, and the hand-built demo
+  // fixtures below, don't read every item as hidden.
+  final bool isListed;
   final double averageRating;
   final int totalRentals;
   final ItemOwner owner;
   final DateTime createdAt;
+  final String? serialNumber;
 
   ItemModel({
     required this.id,
@@ -27,10 +33,12 @@ class ItemModel {
     required this.securityDeposit,
     required this.images,
     required this.isAvailable,
+    this.isListed = true,
     this.averageRating = 0.0,
     this.totalRentals = 0,
     required this.owner,
     required this.createdAt,
+    this.serialNumber,
   });
 
   factory ItemModel.fromJson(Map<String, dynamic> json) {
@@ -46,14 +54,85 @@ class ItemModel {
       securityDeposit: (json['securityDeposit'] as num).toDouble(),
       images: List<String>.from(json['images']),
       isAvailable: json['isAvailable'] ?? true,
+      isListed: json['isListed'] ?? true,
       averageRating: (json['averageRating'] as num?)?.toDouble() ?? 0.0,
       totalRentals: json['totalRentals'] ?? 0,
       owner: ItemOwner.fromJson(json['owner']),
       createdAt: DateTime.parse(json['createdAt']),
+      serialNumber: json['serialNumber'] as String?,
     );
   }
 
   String get firstImage => images.isNotEmpty ? images.first : '';
+}
+
+/// One row of `GET /items/my-items` — an `ItemModel` plus the extra state
+/// only the owner's own view needs: whether a rental is currently attached,
+/// and a server-resolved status rather than three raw booleans the client
+/// would otherwise have to interpret itself (mandate §2.9.1).
+class MyListingModel {
+  final ItemModel item;
+
+  /// AVAILABLE | RENTED | UNLISTED | UNAVAILABLE — resolved server-side from
+  /// isListed/isAvailable/activeRental so the app and the admin console can't
+  /// disagree about what the combination means.
+  final String listingState;
+  final bool canDelete;
+  final ActiveRentalSummary? activeRental;
+  final int reviewCount;
+  final int rentalCount;
+
+  MyListingModel({
+    required this.item,
+    required this.listingState,
+    required this.canDelete,
+    this.activeRental,
+    this.reviewCount = 0,
+    this.rentalCount = 0,
+  });
+
+  factory MyListingModel.fromJson(Map<String, dynamic> json) {
+    return MyListingModel(
+      item: ItemModel.fromJson(json),
+      listingState: json['listingState'] as String? ?? 'AVAILABLE',
+      canDelete: json['canDelete'] as bool? ?? true,
+      activeRental: json['activeRental'] != null
+          ? ActiveRentalSummary.fromJson(
+              json['activeRental'] as Map<String, dynamic>)
+          : null,
+      reviewCount: json['reviewCount'] as int? ?? 0,
+      rentalCount: json['rentalCount'] as int? ?? 0,
+    );
+  }
+}
+
+class ActiveRentalSummary {
+  final String id;
+  final String status;
+  final DateTime startDate;
+  final DateTime endDate;
+  final String renterName;
+
+  ActiveRentalSummary({
+    required this.id,
+    required this.status,
+    required this.startDate,
+    required this.endDate,
+    required this.renterName,
+  });
+
+  factory ActiveRentalSummary.fromJson(Map<String, dynamic> json) {
+    final renter = json['renter'] as Map<String, dynamic>?;
+    return ActiveRentalSummary(
+      id: json['id'],
+      status: json['status'],
+      startDate: DateTime.parse(json['startDate']),
+      endDate: DateTime.parse(json['endDate']),
+      renterName: renter != null
+          ? '${renter['firstName']} ${renter['lastName']}'
+          : 'a renter',
+    );
+  }
 }
 
 class ItemOwner {

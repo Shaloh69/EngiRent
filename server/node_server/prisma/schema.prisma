@@ -121,7 +121,21 @@ model Item {
   serialNumber String? // For items with serial numbers
 
   // Availability
+  //
+  // Three separate ideas, deliberately not collapsed into one flag:
+  //   isAvailable — rental state, flipped by the system when a rental starts
+  //                 and completes. Not the owner's to set.
+  //   isListed    — the owner's intent: "show this in browse". Someone whose
+  //                 calculator is lent to a friend for a month needs to hide
+  //                 the listing without destroying it and its review history.
+  //   isActive    — soft delete.
+  //
+  // Overloading isAvailable for both of the first two would make "an owner
+  // hid this" and "someone is renting it right now" indistinguishable, and
+  // the rental lifecycle would silently re-list an item the owner had taken
+  // down the moment a rental completed.
   isAvailable Boolean @default(true)
+  isListed    Boolean @default(true)
   isActive    Boolean @default(true)
 
   // Location
@@ -143,6 +157,8 @@ model Item {
   @@index([ownerId])
   @@index([category])
   @@index([isAvailable])
+  // Browse filters on these three together on every request.
+  @@index([isActive, isListed])
   @@map("items")
 }
 
