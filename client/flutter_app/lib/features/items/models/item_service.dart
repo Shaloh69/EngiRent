@@ -114,6 +114,7 @@ class ItemService {
     required String pricePerDay,
     required String securityDeposit,
     required List<String> images,
+    String? video,
     String? serialNumber,
   }) async {
     try {
@@ -125,6 +126,7 @@ class ItemService {
         'pricePerDay': pricePerDay,
         'securityDeposit': securityDeposit,
         'images': images,
+        if (video != null && video.isNotEmpty) 'video': video,
         if (serialNumber != null && serialNumber.isNotEmpty) 'serialNumber': serialNumber,
       });
       final data = jsonDecode(response.body);
@@ -198,6 +200,7 @@ class ItemService {
     String? pricePerDay,
     String? securityDeposit,
     List<String>? images,
+    String? video,
     String? serialNumber,
     bool? isListed,
     bool? isAvailable,
@@ -211,6 +214,9 @@ class ItemService {
         if (pricePerDay != null) 'pricePerDay': pricePerDay,
         if (securityDeposit != null) 'securityDeposit': securityDeposit,
         if (images != null) 'images': images,
+        // '' clears the clip server-side, same convention as serialNumber
+        // below — the controller only skips the key when it's absent.
+        if (video != null) 'video': video,
         if (serialNumber != null) 'serialNumber': serialNumber,
         if (isListed != null) 'isListed': isListed,
         if (isAvailable != null) 'isAvailable': isAvailable,

@@ -172,4 +172,36 @@ class ApiService {
       return http.Response.fromStream(streamed);
     }, timeout: _uploadTimeout);
   }
+
+  /// Same upload endpoints as [uploadFile], but from in-memory bytes rather
+  /// than a `dart:io` `File` path. `MultipartFile.fromPath` (used by
+  /// [uploadFile]) has no filesystem to read from on Flutter Web — needed
+  /// for the Stage 7 video picker, whose `XFile` on web is a blob URL, not a
+  /// real path.
+  Future<http.Response> uploadBytes(
+    String endpoint,
+    List<int> bytes,
+    String fieldName, {
+    required String filename,
+    String? contentType,
+  }) async {
+    final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
+    final token = await _storage.getAccessToken();
+
+    return _execute(() async {
+      final request = http.MultipartRequest('POST', url);
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      final mimeType = contentType ?? lookupMimeType(filename) ?? 'application/octet-stream';
+      final parts = mimeType.split('/');
+      request.files.add(http.MultipartFile.fromBytes(
+        fieldName,
+        bytes,
+        filename: filename,
+        contentType: MediaType(parts[0], parts[1]),
+      ));
+
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    }, timeout: _uploadTimeout);
+  }
 }

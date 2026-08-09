@@ -9,6 +9,9 @@ class ItemModel {
   final double? pricePerMonth;
   final double securityDeposit;
   final List<String> images;
+  // Checklist Stage 7 — one optional clip. Null (not empty-string) means "no
+  // video", which is also what a listing created before this stage returns.
+  final String? videoUrl;
   final bool isAvailable;
   // Owner intent ("show this in browse"), distinct from isAvailable (rental
   // state) — see the schema comment in itemController for why. Defaults true
@@ -32,6 +35,7 @@ class ItemModel {
     this.pricePerMonth,
     required this.securityDeposit,
     required this.images,
+    this.videoUrl,
     required this.isAvailable,
     this.isListed = true,
     this.averageRating = 0.0,
@@ -53,6 +57,7 @@ class ItemModel {
       pricePerMonth: json['pricePerMonth'] != null ? (json['pricePerMonth'] as num).toDouble() : null,
       securityDeposit: (json['securityDeposit'] as num).toDouble(),
       images: List<String>.from(json['images']),
+      videoUrl: json['videoUrl'] as String?,
       isAvailable: json['isAvailable'] ?? true,
       isListed: json['isListed'] ?? true,
       averageRating: (json['averageRating'] as num?)?.toDouble() ?? 0.0,

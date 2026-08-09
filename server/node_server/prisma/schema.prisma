@@ -118,6 +118,11 @@ model Item {
   // Images (JSON array of URLs)
   images Json // ["url1", "url2", "url3"]
 
+  // Optional single listing clip — checklist Stage 7. A full public URL
+  // (same pattern as an images entry), not a relative storage path, so it
+  // needs no entry in mediaUrlRewriter.ts.
+  videoUrl String? @db.VarChar(500)
+
   // ML Features (stored for faster verification)
   mlFeatures   Json? // Extracted features from ML service
   serialNumber String? // For items with serial numbers

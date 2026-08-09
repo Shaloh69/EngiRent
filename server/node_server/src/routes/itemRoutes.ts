@@ -45,6 +45,10 @@ router.post(
     body("images")
       .isArray({ min: 1 })
       .withMessage("At least one image is required"),
+    body("video")
+      .optional({ values: "falsy" })
+      .isURL()
+      .withMessage("Video must be a valid URL"),
   ]),
   createItem,
 );

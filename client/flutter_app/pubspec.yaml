@@ -55,6 +55,10 @@ dependencies:
   # Image Handling
   image_picker: ^1.0.7
 
+  # Listing video (checklist Stage 7) — playback only; the picker's own
+  # camera source already caps recording duration.
+  video_player: ^2.9.2
+
   # Camera (in-app photo capture for face + ID registration)
   camera: ^0.11.0+2
 

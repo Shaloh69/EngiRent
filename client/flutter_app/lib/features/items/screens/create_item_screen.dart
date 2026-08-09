@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
@@ -12,6 +14,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
+import '../../../core/widgets/video_preview_player.dart';
 import '../models/item_service.dart';
 
 /// A slot in the photo strip: either a photo already on the listing (a URL)
@@ -72,6 +75,23 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   bool _photoError = false;
   final List<_PhotoEntry> _photos = [];
 
+  // Checklist Stage 7 — one optional clip. `_existingVideoUrl` is what's
+  // already on the listing (edit mode); `_pickedVideo` is a freshly
+  // picked-but-not-yet-uploaded file. Both null means "no video" and, on
+  // submit, sends '' to explicitly clear a previously-set clip — same
+  // convention as `_serialCtrl`.
+  static const _maxVideoBytes = 10 * 1024 * 1024; // matches server MAX_FILE_SIZE default
+  static const _maxVideoDuration = Duration(seconds: 15);
+  String? _existingVideoUrl;
+  XFile? _pickedVideo;
+  bool _videoTouched = false;
+  bool _videoValidating = false;
+  // Built once per picked/existing clip, not per rebuild — this screen calls
+  // setState() on every keystroke in the price field (for the earnings
+  // preview), and handing VideoPreviewPlayer a fresh controller each time
+  // would restart playback and leak the previous instance.
+  VideoPlayerController? _videoController;
+
   @override
   void initState() {
     super.initState();
@@ -86,6 +106,10 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
       _selectedCondition = item.condition;
       _serialCtrl.text = item.serialNumber ?? '';
       _photos.addAll(item.images.map(_PhotoEntry.existing));
+      _existingVideoUrl = item.videoUrl;
+      if (_existingVideoUrl != null) {
+        _videoController = VideoPlayerController.networkUrl(Uri.parse(_existingVideoUrl!));
+      }
     }
   }
 
@@ -112,6 +136,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     _priceCtrl.dispose();
     _depositCtrl.dispose();
     _serialCtrl.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
@@ -188,6 +213,136 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     );
   }
 
+  Future<void> _showVideoSource() async {
+    final p = AppPalette.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: AppSpacing.xs),
+            ListTile(
+              leading: Icon(Icons.videocam_outlined, color: p.primary),
+              title: const Text('Record a clip'),
+              subtitle: const Text('Capped at 15 seconds'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _pickVideo(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.video_library_outlined, color: p.primary),
+              title: const Text('Choose from gallery'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _pickVideo(ImageSource.gallery);
+              },
+            ),
+            const SizedBox(height: AppSpacing.xs),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The camera source caps recording at [_maxVideoDuration] itself, but a
+  /// gallery pick has no such limit — so both duration and size are
+  /// re-checked here regardless of source, against the same bound the
+  /// server actually enforces (`MAX_FILE_SIZE`), not an invented one.
+  Future<void> _pickVideo(ImageSource source) async {
+    XFile? xFile;
+    try {
+      xFile = await _picker.pickVideo(
+        source: source,
+        maxDuration: _maxVideoDuration,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.error(context, 'Couldn\'t open the picker', 'Please try again.');
+      return;
+    }
+    if (xFile == null) return;
+
+    setState(() => _videoValidating = true);
+
+    final bytes = await xFile.length();
+    if (bytes > _maxVideoBytes) {
+      if (!mounted) return;
+      setState(() => _videoValidating = false);
+      AppToast.error(context, 'Clip is too large',
+          'Keep it under 10MB — try a shorter clip or lower camera quality.');
+      return;
+    }
+
+    Duration? duration;
+    try {
+      final probe = kIsWeb
+          ? VideoPlayerController.networkUrl(Uri.parse(xFile.path))
+          : VideoPlayerController.file(File(xFile.path));
+      await probe.initialize();
+      duration = probe.value.duration;
+      await probe.dispose();
+    } catch (_) {
+      // Unreadable — let the real preview player surface this instead of
+      // blocking here on a failed duration probe alone.
+    }
+
+    if (!mounted) return;
+    setState(() => _videoValidating = false);
+
+    if (duration != null && duration > _maxVideoDuration) {
+      AppToast.error(context, 'Clip is too long',
+          'Keep it to 15 seconds or under, then try again.');
+      return;
+    }
+
+    final oldController = _videoController;
+    final newController = kIsWeb
+        ? VideoPlayerController.networkUrl(Uri.parse(xFile.path))
+        : VideoPlayerController.file(File(xFile.path));
+    setState(() {
+      _pickedVideo = xFile;
+      _existingVideoUrl = null;
+      _videoTouched = true;
+      _videoController = newController;
+    });
+    await oldController?.dispose();
+  }
+
+  void _removeVideo() {
+    final oldController = _videoController;
+    setState(() {
+      _pickedVideo = null;
+      _existingVideoUrl = null;
+      _videoTouched = true;
+      _videoController = null;
+    });
+    oldController?.dispose();
+  }
+
+  /// Uploads the picked clip if there is one; returns the value to send for
+  /// the `video` field, or null to omit it entirely (edit mode, untouched).
+  /// '' means "clear the existing clip" — see the field's own doc comment.
+  Future<String?> _resolveVideo() async {
+    if (!_videoTouched) return null;
+    if (_pickedVideo == null) return '';
+    final bytes = await _pickedVideo!.readAsBytes();
+    final resp = await _api.uploadBytes(
+      '/upload/image',
+      bytes,
+      'file',
+      filename: 'clip.mp4',
+      contentType: 'video/mp4',
+    );
+    if (resp.statusCode != 200) return null;
+    return jsonDecode(resp.body)['url'] as String?;
+  }
+
   /// Resolves every entry to a URL, in the same order the strip shows them
   /// (position 0 stays the cover). Existing entries keep their URL untouched
   /// — they are not re-uploaded — only newly picked files are sent.
@@ -233,6 +388,17 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
       return;
     }
 
+    // A clip is optional, so a failed upload here doesn't block the listing
+    // — just warn and publish/save without it, same as `_pickedVideo` never
+    // having been touched.
+    final videoWasPicked = _pickedVideo != null;
+    final video = await _resolveVideo();
+    if (!mounted) return;
+    if (videoWasPicked && video == null) {
+      AppToast.error(context, 'Video upload failed',
+          'Publishing without it — you can add it later from Edit.');
+    }
+
     final serial =
         _serialCtrl.text.trim().isEmpty ? null : _serialCtrl.text.trim();
 
@@ -251,6 +417,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
             // string is a real, present value there) — sending null would
             // instead be dropped by jsonEncode and leave the old value.
             serialNumber: serial ?? '',
+            video: (videoWasPicked && video == null) ? null : video,
           )
         : await _service.createItem(
             title: _titleCtrl.text.trim(),
@@ -260,6 +427,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
             pricePerDay: _priceCtrl.text.trim(),
             securityDeposit: _depositCtrl.text.trim(),
             images: images,
+            video: (videoWasPicked && video == null) ? null : video,
             serialNumber: serial,
           );
 
@@ -317,6 +485,20 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                     'At least one photo is required',
                     style: TextStyle(fontSize: 11.5, color: AppColors.error),
                   ),
+              ],
+            ),
+
+            FormSection(
+              title: 'Video (optional)',
+              icon: Icons.videocam_outlined,
+              caption: 'One short clip, up to 15 seconds. Muted, tap to play.',
+              children: [
+                _VideoSlot(
+                  controller: _videoController,
+                  validating: _videoValidating,
+                  onAdd: _showVideoSource,
+                  onRemove: _removeVideo,
+                ),
               ],
             ),
 
@@ -634,6 +816,69 @@ class _PhotoStrip extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// One optional clip slot (checklist Stage 7) — either the add prompt or the
+/// picked/existing clip with a remove button, never both at once (a listing
+/// has at most one video).
+class _VideoSlot extends StatelessWidget {
+  const _VideoSlot({
+    required this.controller,
+    required this.validating,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final VideoPlayerController? controller;
+  final bool validating;
+  final VoidCallback onAdd;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+
+    if (controller != null) {
+      return VideoPreviewPlayer(controller: controller!, onRemove: onRemove);
+    }
+
+    return GestureDetector(
+      onTap: validating ? null : onAdd,
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          decoration: BoxDecoration(
+            color: p.surfaceAlt,
+            borderRadius: AppRadius.input,
+            border: Border.all(color: p.border),
+          ),
+          child: Center(
+            child: validating
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: p.muted),
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.videocam_outlined, size: 22, color: p.primary),
+                      const SizedBox(height: AppSpacing.hair),
+                      Text(
+                        'Add a video',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: p.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }

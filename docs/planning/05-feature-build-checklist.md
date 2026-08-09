@@ -236,11 +236,12 @@ The Admin Console has an items **list** (`/items/page.tsx`) and nothing else —
 
 ## Stage 7 — Listing video (§2.9.2)
 
-- [ ] One optional clip per listing; `video/mp4` is **already allowed** server-side
-- [ ] Cap 15s / check `MAX_FILE_SIZE` before fixing the number
-- [ ] Muted, tap-to-play, poster frame — never autoplay with sound
-- [ ] Listings without a clip must look deliberate
+- [x] One optional clip per listing; `video/mp4` is **already allowed** server-side
+- [x] Cap 15s / check `MAX_FILE_SIZE` before fixing the number
+- [x] Muted, tap-to-play, poster frame — never autoplay with sound
+- [x] Listings without a clip must look deliberate
 - **Note:** handover condition-evidence video is **out of scope** — it touches the dispute pipeline and the AI check and must not ride along with a cosmetic feature.
+- **Done when:** an item can carry one clip end to end, and the 15s/size limits are real, not just labels. — **met**, `scripts/e2e-listing-video.mjs` (19/19) against the live API: upload through the existing `/upload/image` endpoint (proving `video/mp4` in `ALLOWED_FILE_TYPES` actually works, not just that the env var lists it), create/read/edit round-trips (add, replace, remove via `video: ''`, omit-leaves-untouched), the create-route's `isURL()` validator rejecting garbage, and the stored clip serving back with the sniffed `video/mp4` Content-Type (the same magic-byte sniffing the Stage 3.5 fix already built, now proven to cover video too). Client caps at 15s via the camera source's own `maxDuration` *and* a post-pick duration probe for gallery picks (which ignore `maxDuration` on every platform) — both checked against the server's real `MAX_FILE_SIZE` (10MB), not an invented number. Screenshotted live, both themes: a real H.264 clip playing (poster frame → tap → plays muted → tap again → pauses) on the item detail page, and an item with no clip showing no gap between "Condition & description" and "Listed by" — confirming the omission is genuinely clean, not just untested.
 
 ---
 

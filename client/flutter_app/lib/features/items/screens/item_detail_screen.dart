@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:video_player/video_player.dart';
 import 'dart:convert';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -13,6 +14,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/widgets/video_preview_player.dart';
 import '../../messages/screens/conversation_screen.dart';
 import '../../reviews/screens/reviews_screen.dart';
 
@@ -255,6 +257,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ),
 
+                  // Checklist Stage 7 — omitted entirely, not a "no video"
+                  // placeholder, when the item has no clip. A gap here would
+                  // look like a broken feature rather than the deliberate
+                  // absence of an optional one.
+                  if (item.videoUrl != null) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    const SectionLabel('See it in action'),
+                    _ItemVideo(url: item.videoUrl!),
+                  ],
+
                   const SizedBox(height: AppSpacing.lg),
                   const SectionLabel('Listed by'),
                   AppCard(
@@ -469,6 +481,33 @@ class _Gallery extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+/// Checklist Stage 7 — owns its own controller (built once for the item's
+/// `videoUrl`, disposed with the widget) rather than taking one as a prop,
+/// since nothing above it needs to react to playback state.
+class _ItemVideo extends StatefulWidget {
+  const _ItemVideo({required this.url});
+  final String url;
+
+  @override
+  State<_ItemVideo> createState() => _ItemVideoState();
+}
+
+class _ItemVideoState extends State<_ItemVideo> {
+  late final VideoPlayerController _controller =
+      VideoPlayerController.networkUrl(Uri.parse(widget.url));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return VideoPreviewPlayer(controller: _controller);
   }
 }
 
