@@ -6,6 +6,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/models/item_model.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../reviews/screens/reviews_screen.dart';
 
@@ -208,17 +209,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   AppCard(
                     child: Row(
                       children: [
-                        CircleAvatar(
+                        // Was initials-only — it never attempted the
+                        // owner's photo at all, even when one existed.
+                        AppAvatar(
+                          name: '${item.owner.firstName} ${item.owner.lastName}',
+                          imageUrl: item.owner.profileImage,
                           radius: 20,
-                          backgroundColor: p.surfaceAlt,
-                          child: Text(
-                            (item.owner.firstName.isNotEmpty
-                                    ? item.owner.firstName[0]
-                                    : '?')
-                                .toUpperCase(),
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, color: p.primary),
-                          ),
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(

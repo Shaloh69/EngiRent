@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/app_avatar.dart';
 import '../../../core/services/api_service.dart';
 
 class ReviewsScreen extends StatefulWidget {
@@ -90,18 +91,13 @@ class _ReviewCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              CircleAvatar(
+              // Bare NetworkImage against an endpoint that requires a
+              // Bearer token — it 401'd and left an empty circle.
+              AppAvatar(
+                name:
+                    '${author?['firstName'] ?? ''} ${author?['lastName'] ?? ''}',
+                imageUrl: author?['profileImage'] as String?,
                 radius: 18,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                backgroundImage: author?['profileImage'] != null
-                    ? NetworkImage(author!['profileImage'] as String)
-                    : null,
-                child: author?['profileImage'] == null
-                    ? Text(
-                        (author?['firstName'] as String? ?? 'U').substring(0, 1),
-                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primaryDark),
-                      )
-                    : null,
               ),
               const SizedBox(width: 10),
               Expanded(child: Text(

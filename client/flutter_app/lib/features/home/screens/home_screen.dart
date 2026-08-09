@@ -16,6 +16,7 @@ import '../../../core/widgets/item_card.dart';
 import '../../items/screens/item_detail_screen.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -933,18 +934,14 @@ class _ProfileTab extends StatelessWidget {
             ),
             child: Column(
               children: [
-                CircleAvatar(
+                // AppAvatar rather than a bare NetworkImage: the avatar
+                // endpoint requires a Bearer token, so the previous version
+                // 401'd and rendered an empty circle whenever a photo existed.
+                AppAvatar(
+                  name: '${user?.firstName ?? ''} ${user?.lastName ?? ''}',
+                  imageUrl: user?.profileImage,
                   radius: 40,
                   backgroundColor: Colors.white24,
-                  backgroundImage: user?.profileImage != null
-                      ? NetworkImage(user!.profileImage!)
-                      : null,
-                  child: user?.profileImage == null
-                      ? Text(
-                          (user?.firstName.isNotEmpty ?? false) ? user!.firstName[0].toUpperCase() : 'U',
-                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.white),
-                        )
-                      : null,
                 ),
                 const SizedBox(height: 12),
                 Text(
