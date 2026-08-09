@@ -670,6 +670,25 @@ export const settleDispute = async (
     if (rental.status !== "DISPUTED")
       throw new ValidationError("Rental is not in DISPUTED status");
 
+    // Checklist Stage 8 — "the deposit is the cover, capped at X" has to be
+    // a real, enforced rule for that to be an honest thing to tell a
+    // student at checkout, not just narration. finalizeRentalCompletion
+    // already floors the refund at 0 (so nothing beyond the deposit is ever
+    // actually collected), but without this check an admin could enter a
+    // damageFee larger than the deposit and the recorded DAMAGE_FEE
+    // transaction would silently overstate what was actually charged.
+    if (
+      outcome === "owner_wins" &&
+      damageFee !== undefined &&
+      damageFee !== null &&
+      damageFee > rental.securityDeposit
+    ) {
+      throw new ValidationError(
+        `Damage fee (₱${damageFee}) cannot exceed the held security deposit ` +
+          `(₱${rental.securityDeposit}) — the deposit is the renter's full liability cap.`,
+      );
+    }
+
     const itemTitle = rental.item.title;
     const disputeNote = notes ? ` Note: ${notes}` : "";
 
@@ -1521,6 +1540,7 @@ export const listFeedback = async (
           screen: true,
           rentalId: true,
           kioskId: true,
+          itemId: true,
           kioskEventSnapshot: true,
           status: true,
           adminNote: true,

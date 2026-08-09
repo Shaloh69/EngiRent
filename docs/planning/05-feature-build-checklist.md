@@ -247,12 +247,19 @@ The Admin Console has an items **list** (`/items/page.tsx`) and nothing else —
 
 ## Stage 8 — Trust & safety (§2.10.2)
 
-- [ ] Cancellation policy: defined, shown before payment, enforced by tier
-- [ ] Damage-protection position stated plainly (even if "the deposit is the cover, capped at X")
-- [ ] Surface reputation that acts: owner completion rate, renter on-time return rate
-- [ ] Verification status visible to the student, with an ETA
-- [ ] Report-a-listing path
+- [x] Cancellation policy: defined, shown before payment, enforced by tier
+- [x] Damage-protection position stated plainly (even if "the deposit is the cover, capped at X")
+- [x] Surface reputation that acts: owner completion rate, renter on-time return rate
+- [x] Verification status visible to the student, with an ETA
+- [x] Report-a-listing path
 - **Reference:** [Sharetribe P2P marketplace trust & safety](https://www.sharetribe.com/how-to-build/peer-to-peer-marketplace/)
+- **Done when:** all five are real and live, not narration. — **met**, `scripts/e2e-trust-safety.mjs` (24/24) against the live API:
+  - **Cancellation policy**: the real, already-enforced tier (free while PENDING/AWAITING_DEPOSIT; locked once the deposit is paid — `rentalController.ts`'s existing `ALLOWED_MANUAL_TRANSITIONS`) is now stated plainly on the checkout screen before payment, rather than only discoverable by trying.
+  - **Damage protection**: checkout states the deposit as the hard liability cap with the real per-item amount. Made airtight, not just narrated — `settleDispute` now rejects a `damageFee` above the rental's `securityDeposit` (400), closing a gap where an admin could previously enter a larger figure than the deposit math would ever actually collect.
+  - **Reputation**: `GET /reviews/user/:id` now also returns a live-computed `reputation` object — owner completion rate (COMPLETED vs COMPLETED+DISPUTED rentals) and renter on-time rate (completed rentals with no `LATE_FEE` transaction) — `null` rather than `0%` with no track record yet. Surfaced on the item detail "Listed by" card (owner, informs the rent decision) and the rental detail screen (renter, shown only to the owner, only once there's real history).
+  - **Verification ETA**: the PENDING-status subtitle on Profile now states a plain estimate ("typically within 24 hours") instead of an open-ended "you're waiting".
+  - **Report-a-listing**: new `ITEM_REPORT` feedback category with an optional `itemId` (item existence validated, no ownership requirement — unlike `rentalId`), a flag icon on item detail's app bar opening a pre-filled report, and full admin triage visibility (category label, icon, itemId badge) — verified live end to end: submitted through the real app UI, screenshotted appearing in admin triage with its listing ID attached, in both colour schemes.
+- **Honest scope note**: the item-detail reputation line and the rental-detail on-time-rate card could not be screenshotted directly — a persistent drag/scroll-automation issue on that specific `CustomScrollView`+`SliverAppBar` screen (checkout's plain `ListView` scrolled fine with the same technique). The underlying data is proven correct by the E2E suite and the display code is simple, `flutter analyze`-clean, and structurally identical to already-proven-working displays elsewhere; the report-a-listing flow (a newer, higher-risk surface) got the deeper live verification instead given the time available.
 
 ---
 

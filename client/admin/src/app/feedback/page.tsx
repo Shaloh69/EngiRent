@@ -23,6 +23,7 @@ import {
   Bug,
   CheckCircle2,
   Clock,
+  Flag,
   Lightbulb,
   MessageSquareWarning,
   MonitorSpeaker,
@@ -53,6 +54,7 @@ interface Row {
   screen: string | null;
   rentalId: string | null;
   kioskId: string | null;
+  itemId: string | null;
   kioskEventSnapshot: Array<{ type: string; ts: number; data: unknown }> | null;
   status: string;
   adminNote: string | null;
@@ -73,6 +75,7 @@ const CATEGORY_ICON: Record<string, typeof Bug> = {
   SUGGESTION: Lightbulb,
   KIOSK_PROBLEM: MonitorSpeaker,
   PAYMENT_PROBLEM: Receipt,
+  ITEM_REPORT: Flag,
   OTHER: MessageSquareWarning,
 };
 
@@ -249,6 +252,11 @@ export default function FeedbackPage() {
                     {row.kioskId && (
                       <Badge variant="outline" color="grape" size="xs">
                         Kiosk {row.kioskId}
+                      </Badge>
+                    )}
+                    {row.itemId && (
+                      <Badge variant="outline" color="orange" size="xs">
+                        Listing {row.itemId.slice(0, 8)}
                       </Badge>
                     )}
                   </Group>

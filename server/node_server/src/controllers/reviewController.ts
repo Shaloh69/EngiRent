@@ -160,6 +160,61 @@ export const getItemReviews = async (
   }
 };
 
+/**
+ * Checklist Stage 8 — "surface reputation that acts", not a vanity number.
+ *
+ * completionRate: of this user's rentals *as owner* that either finished
+ * cleanly (COMPLETED) or are currently stuck in an unresolved dispute
+ * (DISPUTED), what fraction finished cleanly. Note `settleDispute` always
+ * moves a resolved dispute to COMPLETED regardless of who won — there's no
+ * stored "the owner lost this dispute" flag anywhere in the schema — so
+ * this specifically measures "how many of this owner's committed rentals
+ * are currently stuck in dispute", not "how many disputes did they lose".
+ * Still a real, honest signal: an owner with several long-unresolved
+ * disputes looks worse than one with none, which is the actionable part.
+ * PENDING/AWAITING_DEPOSIT/ACTIVE haven't concluded yet, and a pre-deposit
+ * CANCELLED never really committed either side to anything, so neither
+ * counts. null with 0 rentals — a brand-new owner reads as "no track
+ * record yet", not "0%".
+ *
+ * onTimeRate: of this user's *completed* rentals as renter, what fraction
+ * came back with no LATE_FEE transaction. There's no stored "was this
+ * late" flag anywhere (see itemAvailabilityService's sibling comment on
+ * why isAvailable is derived, not stored) — the daily late-fee cron
+ * (index.ts) is the only place lateness is ever computed, and it always
+ * leaves a LATE_FEE transaction behind when it bills a day late, so
+ * "zero LATE_FEE transactions on a completed rental" is an accurate proxy
+ * for "came back on time" without needing a new column.
+ */
+async function computeReputation(userId: string) {
+  const [ownerCompleted, ownerDisputed, renterCompletedRentals] =
+    await Promise.all([
+      prisma.rental.count({ where: { ownerId: userId, status: "COMPLETED" } }),
+      prisma.rental.count({ where: { ownerId: userId, status: "DISPUTED" } }),
+      prisma.rental.findMany({
+        where: { renterId: userId, status: "COMPLETED" },
+        select: {
+          transactions: { where: { type: "LATE_FEE" }, select: { id: true } },
+        },
+      }),
+    ]);
+
+  const totalRentalsAsOwner = ownerCompleted + ownerDisputed;
+  const totalRentalsAsRenter = renterCompletedRentals.length;
+  const onTimeCount = renterCompletedRentals.filter(
+    (r) => r.transactions.length === 0,
+  ).length;
+
+  return {
+    completionRate:
+      totalRentalsAsOwner > 0 ? ownerCompleted / totalRentalsAsOwner : null,
+    totalRentalsAsOwner,
+    onTimeRate:
+      totalRentalsAsRenter > 0 ? onTimeCount / totalRentalsAsRenter : null,
+    totalRentalsAsRenter,
+  };
+}
+
 export const getUserReviews = async (
   req: AuthRequest,
   res: Response,
@@ -173,7 +228,7 @@ export const getUserReviews = async (
       Math.max(1, parseInt((req.query.limit as string) ?? "10", 10)),
     );
 
-    const [reviews, total] = await Promise.all([
+    const [reviews, total, reputation] = await Promise.all([
       prisma.review.findMany({
         where: { recipientId: userId as string, reviewType: "USER", isDeleted: false },
         include: {
@@ -193,12 +248,14 @@ export const getUserReviews = async (
       prisma.review.count({
         where: { recipientId: userId as string, reviewType: "USER", isDeleted: false },
       }),
+      computeReputation(userId as string),
     ]);
 
     res.json({
       success: true,
       data: {
         reviews,
+        reputation,
         pagination: {
           page,
           limit,

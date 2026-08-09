@@ -27,6 +27,7 @@ class SendFeedbackScreen extends StatefulWidget {
     this.screen,
     this.rentalId,
     this.kioskId,
+    this.itemId,
   });
 
   final String? initialCategory;
@@ -40,6 +41,7 @@ class SendFeedbackScreen extends StatefulWidget {
   final String? screen;
   final String? rentalId;
   final String? kioskId;
+  final String? itemId;
 
   @override
   State<SendFeedbackScreen> createState() => _SendFeedbackScreenState();
@@ -116,6 +118,7 @@ class _SendFeedbackScreenState extends State<SendFeedbackScreen> {
       screen: widget.screen,
       rentalId: widget.rentalId,
       kioskId: widget.kioskId,
+      itemId: widget.itemId,
       screenshot: _screenshot,
     );
 
@@ -218,12 +221,13 @@ class _SendFeedbackScreenState extends State<SendFeedbackScreen> {
                   ),
               ],
             ),
-            if (widget.rentalId != null || widget.kioskId != null)
+            if (widget.rentalId != null || widget.kioskId != null || widget.itemId != null)
               NoticeBanner(
                 kind: NoticeKind.success,
                 message: [
                   if (widget.rentalId != null) 'Rental attached automatically.',
                   if (widget.kioskId != null) 'Kiosk ID attached automatically.',
+                  if (widget.itemId != null) 'Listing attached automatically.',
                 ].join(' '),
                 icon: Icons.attach_file_rounded,
               ),

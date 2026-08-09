@@ -456,6 +456,9 @@ model Feedback {
   screen     String?
   rentalId   String?
   kioskId    String?
+  // Checklist Stage 8 — "report this listing", not tied to a rental (a
+  // suspicious/fraudulent item should be reportable before anyone rents it).
+  itemId     String?
   // Snapshot of the kiosk's recent event log at submission time, only for
   // kiosk-problem reports with a kioskId — see utils/kioskEventLog.ts. The
   // events themselves are never persisted anywhere else (pure pub/sub), so
@@ -487,6 +490,7 @@ enum FeedbackCategory {
   SUGGESTION
   KIOSK_PROBLEM
   PAYMENT_PROBLEM
+  ITEM_REPORT
   OTHER
 }
 

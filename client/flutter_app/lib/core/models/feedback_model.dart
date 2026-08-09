@@ -39,5 +39,6 @@ const Map<String, String> kFeedbackCategories = {
   'SUGGESTION': 'Suggestion',
   'KIOSK_PROBLEM': 'Kiosk / locker problem',
   'PAYMENT_PROBLEM': 'Payment problem',
+  'ITEM_REPORT': 'Report a listing',
   'OTHER': 'Other',
 };

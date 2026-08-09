@@ -330,6 +330,32 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                 'Late returns accrue the daily rate against your deposit. Return '
                 'through any kiosk locker before the due date to avoid this.',
           ),
+          const SizedBox(height: AppSpacing.xs),
+          // Checklist Stage 8 — the deposit is stated plainly as the hard
+          // cap on damage liability, not left implicit. Matches what the
+          // server actually enforces (settleDispute rejects a damage fee
+          // above the held deposit) rather than a promise the code doesn't
+          // back up.
+          NoticeBanner(
+            title: 'Damage protection is capped at your deposit',
+            message:
+                'If the return check finds damage, the assessed cost is deducted '
+                'from your ₱${widget.item.securityDeposit.toStringAsFixed(0)} deposit — '
+                'that\'s the most you can ever be charged for it.',
+            icon: Icons.verified_user_outlined,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          // Checklist Stage 8 — the real, already-enforced policy (see
+          // rentalController's ALLOWED_MANUAL_TRANSITIONS), stated here so
+          // it's known before payment rather than discovered by trying.
+          const NoticeBanner(
+            title: 'Cancellation policy',
+            message:
+                'Free to cancel while your request is pending or awaiting deposit. '
+                'Once the deposit is paid, the rental is locked in — message the '
+                'owner or contact support if something comes up.',
+            icon: Icons.event_busy_outlined,
+          ),
         ],
       ),
       bottomNavigationBar: StickyActionBar(

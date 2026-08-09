@@ -21,6 +21,7 @@ class FeedbackService {
     String? screen,
     String? rentalId,
     String? kioskId,
+    String? itemId,
     File? screenshot,
   }) async {
     try {
@@ -44,6 +45,7 @@ class FeedbackService {
           if (screen != null) 'screen': screen,
           if (rentalId != null) 'rentalId': rentalId,
           if (kioskId != null) 'kioskId': kioskId,
+          if (itemId != null) 'itemId': itemId,
         },
       );
       final data = jsonDecode(response.body);

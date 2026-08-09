@@ -36,10 +36,40 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   // instead of only being reachable from Profile after the fact.
   bool _paymentIssue = false;
 
+  // Checklist Stage 8 — the renter's on-time rate, shown only to the owner
+  // (the party who actually benefits from knowing it) and only once there's
+  // real history to show — a first-time renter isn't "unreliable", they're
+  // just new.
+  double? _renterOnTimeRate;
+  int _renterRentalCount = 0;
+
   RentalParty? get _otherParty {
     final myId = SocketService.instance.currentUserId;
     if (_rental == null || myId == null) return null;
     return _rental!.otherParty(myId);
+  }
+
+  bool get _iAmOwner =>
+      _rental?.renter != null &&
+      _rental!.renter!.id != SocketService.instance.currentUserId;
+
+  Future<void> _loadRenterReputation() async {
+    final renter = _rental?.renter;
+    if (renter == null || !_iAmOwner) return;
+    try {
+      final resp = await _api.get('/reviews/user/${renter.id}?limit=1');
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final rep = data['data']?['reputation'] as Map<String, dynamic>?;
+        setState(() {
+          _renterOnTimeRate = (rep?['onTimeRate'] as num?)?.toDouble();
+          _renterRentalCount = (rep?['totalRentalsAsRenter'] as num?)?.toInt() ?? 0;
+        });
+      }
+    } catch (_) {
+      // Informational only — never blocks viewing the rental.
+    }
   }
 
   void _openConversation() {
@@ -73,6 +103,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
           _rental = RentalModel.fromJson(data['data']['rental'] as Map<String, dynamic>);
           _loading = false;
         });
+        _loadRenterReputation();
       } else {
         setState(() { _loading = false; _error = 'Failed to load rental'; });
       }
@@ -409,6 +440,35 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                         ],
                       ]),
                       const SizedBox(height: 14),
+
+                      // Checklist Stage 8 — surfaced only to the owner, and
+                      // only once there's real history; omitted cleanly
+                      // otherwise rather than showing a misleading "0%".
+                      if (_iAmOwner && _renterRentalCount > 0 && _otherParty != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: p.surfaceAlt,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: p.border),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.schedule_rounded, size: 16, color: AppColors.info),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${_otherParty!.fullName} returns on time '
+                                  '${(((_renterOnTimeRate ?? 0) * 100).round())}% of the time '
+                                  '($_renterRentalCount rental${_renterRentalCount == 1 ? '' : 's'})',
+                                  style: TextStyle(fontSize: 12.5, color: p.ink, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
 
                       // Action buttons
                       _InfoCard(children: [

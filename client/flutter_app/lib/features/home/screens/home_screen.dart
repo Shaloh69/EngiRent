@@ -1617,8 +1617,11 @@ String _verifySubtitle(
       '${_rejectReasons[reason] ?? 'Your ID could not be verified.'}'
           '${(note != null && note.isNotEmpty) ? ' $note' : ''}'
           ' Tap to submit a new photo.',
+    // Checklist Stage 8 — an ETA, not just "you're waiting". No real SLA is
+    // tracked yet, so this is a plain estimate ("typically"), not a promise.
     'PENDING' =>
-      'Your student ID is with an administrator. You can browse and rent while you wait.',
+      'Your student ID is with an administrator — reviews are typically completed '
+          'within 24 hours. You can browse and rent while you wait.',
     _ => 'Submit your student ID to unlock renting and listing.',
   };
 }

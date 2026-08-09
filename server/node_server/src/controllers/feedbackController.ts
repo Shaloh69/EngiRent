@@ -20,6 +20,7 @@ export const FEEDBACK_CATEGORIES: Record<string, string> = {
   SUGGESTION: "Suggestion",
   KIOSK_PROBLEM: "Kiosk / locker problem",
   PAYMENT_PROBLEM: "Payment problem",
+  ITEM_REPORT: "Report a listing",
   OTHER: "Other",
 };
 
@@ -45,6 +46,7 @@ export const submitFeedback = async (
       screen,
       rentalId,
       kioskId,
+      itemId,
     } = req.body as Record<string, string | undefined>;
 
     if (!category || !FEEDBACK_CATEGORIES[category]) {
@@ -69,6 +71,19 @@ export const submitFeedback = async (
       });
       if (!rental || (rental.renterId !== req.user.userId && rental.ownerId !== req.user.userId)) {
         throw new ValidationError("rentalId does not belong to you");
+      }
+    }
+
+    // Unlike rentalId, itemId has no ownership requirement — reporting a
+    // suspicious listing must work whether or not you've ever rented it.
+    // Just confirm it's a real item, so triage isn't chasing a typo'd ID.
+    if (itemId) {
+      const item = await prisma.item.findUnique({
+        where: { id: itemId },
+        select: { id: true },
+      });
+      if (!item) {
+        throw new ValidationError("itemId does not refer to a real listing");
       }
     }
 
@@ -102,6 +117,7 @@ export const submitFeedback = async (
         screen: screen?.trim() || null,
         rentalId: rentalId || null,
         kioskId: kioskId || null,
+        itemId: itemId || null,
         kioskEventSnapshot: kioskEventSnapshot
           ? (kioskEventSnapshot as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,

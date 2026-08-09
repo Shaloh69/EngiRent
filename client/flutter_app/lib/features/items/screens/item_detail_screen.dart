@@ -15,6 +15,7 @@ import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/video_preview_player.dart';
+import '../../feedback/screens/send_feedback_screen.dart';
 import '../../messages/screens/conversation_screen.dart';
 import '../../reviews/screens/reviews_screen.dart';
 
@@ -36,6 +37,62 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   final _pageController = PageController();
   final _api = ApiService();
   bool _findingConversation = false;
+
+  // Checklist Stage 8 — owner completion rate, fetched once and shown
+  // inline on the "Listed by" card rather than only behind the "Ratings"
+  // tap-through, so it actually informs the rent decision.
+  double? _ownerCompletionRate;
+  int _ownerRentalCount = 0;
+  bool _reputationLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOwnerReputation();
+  }
+
+  Future<void> _loadOwnerReputation() async {
+    try {
+      final resp = await _api.get('/reviews/user/${widget.item.owner.id}?limit=1');
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final rep = data['data']?['reputation'] as Map<String, dynamic>?;
+        setState(() {
+          _ownerCompletionRate = (rep?['completionRate'] as num?)?.toDouble();
+          _ownerRentalCount = (rep?['totalRentalsAsOwner'] as num?)?.toInt() ?? 0;
+          _reputationLoaded = true;
+        });
+      }
+    } catch (_) {
+      // Reputation is a nice-to-have on this card — a failed fetch just
+      // leaves it blank, never blocks viewing or renting the item.
+    }
+  }
+
+  /// Real data only — never fabricated. A brand-new owner (0 concluded
+  /// rentals) reads as "Fellow UCLM student", not a misleading "0%".
+  String _ownerReputationSubtitle() {
+    if (!_reputationLoaded || _ownerRentalCount == 0) return 'Fellow UCLM student';
+    final pct = ((_ownerCompletionRate ?? 0) * 100).round();
+    final noun = _ownerRentalCount == 1 ? 'rental' : 'rentals';
+    return '$pct% completion · $_ownerRentalCount $noun';
+  }
+
+  Future<void> _reportListing() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SendFeedbackScreen(
+          initialCategory: 'ITEM_REPORT',
+          itemId: widget.item.id,
+          contextNote:
+              'Reporting "${widget.item.title}" — tell us what\'s wrong (fraudulent, '
+              'misleading photos, prohibited item, etc).',
+        ),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -114,6 +171,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               icon: Icons.arrow_back,
               onTap: () => Navigator.pop(context),
             ),
+            actions: [
+              _CircleBtn(
+                icon: Icons.flag_outlined,
+                onTap: _reportListing,
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: _Gallery(item: item, controller: _pageController),
             ),
@@ -293,7 +356,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 ),
                               ),
                               Text(
-                                'Fellow UCLM student',
+                                _ownerReputationSubtitle(),
                                 style:
                                     TextStyle(fontSize: 12, color: p.muted),
                               ),
