@@ -73,7 +73,19 @@ export const rateLimiter = (
   res: Response,
   next: NextFunction,
 ): void => {
-  const key = req.ip || "unknown";
+  // This deployment is only ever reached via a Cloudflare tunnel
+  // (cloudflared connects to localhost, no `trust proxy` is configured, and
+  // shouldn't be — the tunnel is the only inbound path). Without this,
+  // req.ip resolves to 127.0.0.1 for *every* request that arrives through
+  // the tunnel, real end users included — one shared bucket for the whole
+  // internet, discovered when heavy same-machine E2E testing (which hits
+  // localhost directly, bypassing the tunnel, and lands in that same
+  // 127.0.0.1 bucket) exhausted it and started 429ing real admin console
+  // traffic. CF-Connecting-IP is the real origin IP Cloudflare attaches to
+  // every proxied request; prefer it, and only fall back to req.ip for
+  // direct-to-localhost traffic (E2E scripts, health checks), which is
+  // exactly where a shared/generic bucket is actually fine.
+  const key = (req.headers["cf-connecting-ip"] as string | undefined) || req.ip || "unknown";
   const now = Date.now();
 
   if (!store[key] || now > store[key].resetTime) {

@@ -1,0 +1,163 @@
+{
+  "@@locale": "en",
+
+  "signIn": "Sign in",
+  "@signIn": {
+    "description": "Sign-in screen heading, and the label on the submit button."
+  },
+
+  "email": "Email",
+  "@email": {
+    "description": "Email field label on the sign-in screen."
+  },
+
+  "password": "Password",
+  "@password": {
+    "description": "Password field label on the sign-in screen."
+  },
+
+  "createAccount": "Create an account",
+  "@createAccount": {
+    "description": "Button on the sign-in screen that navigates to registration."
+  },
+
+  "newHere": "New here?",
+  "@newHere": {
+    "description": "Divider label above the create-account button on the sign-in screen."
+  },
+
+  "navHome": "Home",
+  "@navHome": {
+    "description": "Bottom navigation tab label."
+  },
+
+  "navRentals": "Rentals",
+  "@navRentals": {
+    "description": "Bottom navigation tab label."
+  },
+
+  "navAlerts": "Alerts",
+  "@navAlerts": {
+    "description": "Bottom navigation tab label."
+  },
+
+  "navProfile": "Profile",
+  "@navProfile": {
+    "description": "Bottom navigation tab label."
+  },
+
+  "listAnItem": "List an item",
+  "@listAnItem": {
+    "description": "Home tab secondary action — starts the create-listing flow."
+  },
+
+  "scanKiosk": "Scan kiosk",
+  "@scanKiosk": {
+    "description": "Home tab secondary action — opens the kiosk QR scanner."
+  },
+
+  "myRentalsAction": "My rentals",
+  "@myRentalsAction": {
+    "description": "Home tab secondary action label that switches to the Rentals tab."
+  },
+
+  "myListingsAction": "My listings",
+  "@myListingsAction": {
+    "description": "Home tab secondary action — opens the owner's own listings."
+  },
+
+  "retry": "Retry",
+  "@retry": {
+    "description": "Button shown alongside a failed-to-load message on the Home tab."
+  },
+
+  "browseByCategory": "Browse by category",
+  "@browseByCategory": {
+    "description": "Section heading on the Home tab above the category rail."
+  },
+
+  "seeAll": "See all",
+  "@seeAll": {
+    "description": "Link next to the category section heading."
+  },
+
+  "myRentalsTitle": "My Rentals",
+  "@myRentalsTitle": {
+    "description": "App bar title on the Rentals tab."
+  },
+
+  "couldNotLoadRentals": "Couldn't load your rentals",
+  "@couldNotLoadRentals": {
+    "description": "Error state title on the Rentals tab when the request fails."
+  },
+
+  "tryAgain": "Try again",
+  "@tryAgain": {
+    "description": "Retry button on the Rentals tab error state."
+  },
+
+  "noRentalsYet": "No rentals yet",
+  "@noRentalsYet": {
+    "description": "Empty state title on the Rentals tab when the student has no rentals."
+  },
+
+  "browseEquipment": "Browse equipment",
+  "@browseEquipment": {
+    "description": "Call-to-action button on the Rentals tab empty state."
+  },
+
+  "available": "Available",
+  "@available": {
+    "description": "Status pill shown on an item that can currently be rented."
+  },
+
+  "rented": "Rented",
+  "@rented": {
+    "description": "Compact status pill on an item card when the item is currently rented out."
+  },
+
+  "rentedOut": "Rented out",
+  "@rentedOut": {
+    "description": "Status pill on the item detail screen when the item is currently rented out."
+  },
+
+  "requestRental": "Request rental",
+  "@requestRental": {
+    "description": "Primary call-to-action button on the item detail screen."
+  },
+
+  "unavailable": "Unavailable",
+  "@unavailable": {
+    "description": "Disabled call-to-action label on the item detail screen when the item can't be rented."
+  },
+
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancel button in the delete-account confirmation dialog."
+  },
+
+  "language": "Language",
+  "@language": {
+    "description": "Profile tile title, and the language picker bottom sheet title."
+  },
+
+  "languageSubtitle": "Choose your preferred app language",
+  "@languageSubtitle": {
+    "description": "Subtitle shown under the Language profile tile."
+  },
+
+  "languageEnglish": "English",
+  "@languageEnglish": {
+    "description": "English option in the language picker."
+  },
+
+  "languageFilipino": "Filipino",
+  "@languageFilipino": {
+    "description": "Filipino/Tagalog option in the language picker."
+  },
+
+  "languageBisaya": "Bisaya",
+  "@languageBisaya": {
+    "description": "Cebuano/Bisaya option in the language picker."
+  }
+}

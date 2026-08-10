@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toastification/toastification.dart';
+import 'core/localization/locale_controller.dart';
 import 'core/observability/crash_reporting.dart';
+import 'core/services/api_service.dart';
 import 'core/services/connectivity_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/utils/toast_utils.dart';
+import 'core/widgets/force_update_gate.dart';
 import 'core/widgets/offline_banner.dart';
+import 'l10n/app_localizations.dart';
 import 'core/models/item_model.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -35,7 +40,34 @@ void main() async {
     // fresh install opens straight onto onboarding rather than flashing the
     // login screen and then replacing it.
     final showOnboarding = await OnboardingScreen.shouldShow();
+    // Checklist Stage 9 — see _handleSessionExpired's doc comment.
+    ApiService.onSessionExpired = _handleSessionExpired;
     runApp(ToastificationWrapper(child: MyApp(showOnboarding: showOnboarding)));
+  });
+}
+
+// Checklist Stage 9 — lets the session-expiry handler navigate and show a
+// toast from inside ApiService, which is a plain class with no
+// BuildContext of its own.
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
+// Guarded so a burst of concurrent 401s (several in-flight requests failing
+// around the same moment) only navigates/toasts once, not once per request.
+bool _sessionExpiryHandled = false;
+
+void _handleSessionExpired() {
+  if (_sessionExpiryHandled) return;
+  final ctx = _rootNavigatorKey.currentContext;
+  if (ctx == null) return;
+  _sessionExpiryHandled = true;
+  Provider.of<AuthProvider>(ctx, listen: false).logout();
+  _rootNavigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final toastCtx = _rootNavigatorKey.currentContext;
+    if (toastCtx != null) {
+      AppToast.info(toastCtx, 'Session expired', 'Please sign in again to continue.');
+    }
+    _sessionExpiryHandled = false;
   });
 }
 
@@ -55,6 +87,11 @@ class MyApp extends StatelessWidget {
         // already the correct OS-following default rather than a flash of
         // the wrong theme.
         ChangeNotifierProvider(create: (_) => ThemeController()..load()),
+        // Checklist Stage 9 — same load-without-blocking-first-paint pattern
+        // as ThemeController above; starts on the system locale so the
+        // pre-restore frame already matches whatever was persisted, or the
+        // device default when nothing was.
+        ChangeNotifierProvider(create: (_) => LocaleController()..load()),
         // Singleton (see connectivity_controller.dart's doc comment for why)
         // — .value registers the existing instance rather than creating a
         // second one, so ApiService's reportRequestOutcome() calls and this
@@ -63,13 +100,21 @@ class MyApp extends StatelessWidget {
           value: ConnectivityController.instance..start(),
         ),
       ],
-      child: Consumer<ThemeController>(
-        builder: (context, themeController, _) => MaterialApp(
+      child: Consumer2<ThemeController, LocaleController>(
+        builder: (context, themeController, localeController, _) => MaterialApp(
           title: 'EngiRent Hub',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: themeController.mode,
+          // Checklist Stage 9 — null means "no explicit choice", which
+          // MaterialApp resolves against supportedLocales the same way it
+          // would without a `locale` argument at all: device locale if
+          // supported, English otherwise.
+          locale: localeController.locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          navigatorKey: _rootNavigatorKey,
           initialRoute: showOnboarding ? '/onboarding' : '/login',
           onGenerateRoute: _onGenerateRoute,
           builder: (context, child) {
@@ -92,16 +137,22 @@ class MyApp extends StatelessWidget {
                   maxScaleFactor: 1.3,
                 ),
               ),
-              // Checklist Stage 4.1 — one banner, wrapping every screen via
-              // this single builder, rather than something each screen has
-              // to remember to add. Column+Expanded rather than a Stack
-              // overlay so the banner actually pushes content down instead
-              // of covering the first ~24px of every screen.
-              child: Column(
-                children: [
-                  const OfflineBanner(),
-                  Expanded(child: child ?? const SizedBox.shrink()),
-                ],
+              // Checklist Stage 9 — outermost, so a blocked build shows
+              // only the update screen, not the offline banner underneath
+              // it too.
+              child: ForceUpdateGate(
+                // Checklist Stage 4.1 — one banner, wrapping every screen
+                // via this single builder, rather than something each
+                // screen has to remember to add. Column+Expanded rather
+                // than a Stack overlay so the banner actually pushes
+                // content down instead of covering the first ~24px of
+                // every screen.
+                child: Column(
+                  children: [
+                    const OfflineBanner(),
+                    Expanded(child: child ?? const SizedBox.shrink()),
+                  ],
+                ),
               ),
             );
           },

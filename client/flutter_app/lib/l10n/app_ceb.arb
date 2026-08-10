@@ -1,0 +1,41 @@
+{
+  "@@locale": "ceb",
+
+  "signIn": "Pag-sign in",
+  "email": "Email",
+  "password": "Password",
+  "createAccount": "Paghimo ug account",
+  "newHere": "Bag-o dinhi?",
+
+  "navHome": "Home",
+  "navRentals": "Abang",
+  "navAlerts": "Pahibalo",
+  "navProfile": "Profile",
+
+  "listAnItem": "Paglista ug item",
+  "scanKiosk": "I-scan ang kiosk",
+  "myRentalsAction": "Akong mga giabangan",
+  "myListingsAction": "Akong mga listing",
+  "retry": "Sulayi pag-usab",
+  "browseByCategory": "Pagbrowse pinaagi sa kategoriya",
+  "seeAll": "Tan-awa tanan",
+
+  "myRentalsTitle": "Akong mga Giabangan",
+  "couldNotLoadRentals": "Wala ma-load ang imong mga giabangan",
+  "tryAgain": "Sulayi pag-usab",
+  "noRentalsYet": "Wala pa'y giabangan",
+  "browseEquipment": "Pagbrowse sa mga gamit",
+
+  "available": "Magamit",
+  "rented": "Giabangan",
+  "rentedOut": "Giabangan na",
+  "requestRental": "Pangayo og abang",
+  "unavailable": "Dili magamit",
+
+  "cancel": "Kanselahon",
+  "language": "Pinulongan",
+  "languageSubtitle": "Pilia ang gustong pinulongan sa app",
+  "languageEnglish": "English",
+  "languageFilipino": "Filipino",
+  "languageBisaya": "Binisaya"
+}

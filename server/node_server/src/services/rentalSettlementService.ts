@@ -66,7 +66,7 @@ export async function finalizeRentalCompletion(rentalId: string): Promise<void> 
   const depositTxn = rental.transactions.find((t) => t.type === "SECURITY_DEPOSIT");
   const rentalPaymentTxn = rental.transactions.find((t) => t.type === "RENTAL_PAYMENT");
   const deductions = rental.transactions
-    .filter((t) => t.type === "DAMAGE_FEE" || t.type === "LATE_FEE")
+    .filter((t) => t.type === "DAMAGE_FEE" || t.type === "LATE_FEE" || t.type === "EXTENSION_FEE")
     .reduce((sum, t) => sum + t.amount, 0);
 
   // ── 1. Renter's security deposit refund (minus damage/late fees) ─────────

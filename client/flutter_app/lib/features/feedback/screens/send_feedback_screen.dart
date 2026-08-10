@@ -208,12 +208,17 @@ class _SendFeedbackScreenState extends State<SendFeedbackScreen> {
                       Positioned(
                         top: 6,
                         right: 6,
-                        child: GestureDetector(
-                          onTap: () => setState(() => _screenshot = null),
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                            child: const Icon(Icons.close_rounded, size: 15, color: Colors.white),
+                        child: Semantics(
+                          label: 'Remove screenshot',
+                          button: true,
+                          excludeSemantics: true,
+                          child: GestureDetector(
+                            onTap: () => setState(() => _screenshot = null),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                              child: const Icon(Icons.close_rounded, size: 15, color: Colors.white),
+                            ),
                           ),
                         ),
                       ),

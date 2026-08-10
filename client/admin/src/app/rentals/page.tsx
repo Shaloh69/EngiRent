@@ -6,6 +6,7 @@ import AdminLayout from "@/components/layout/AdminLayout";
 import {
   Alert,
   Anchor,
+  Button,
   Card,
   Group,
   SimpleGrid,
@@ -14,7 +15,7 @@ import {
   Text,
   ThemeIcon,
 } from "@mantine/core";
-import { AlertCircle, AlertTriangle, CircleDot, Receipt, CheckCircle2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, CircleDot, Download, Receipt, CheckCircle2 } from "lucide-react";
 import api from "@/lib/api";
 import type { Rental } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -91,6 +92,19 @@ export default function RentalsPage() {
     [rentals],
   );
 
+  const exportCsv = async () => {
+    const resp = await api.get("/admin/rentals?format=csv", { responseType: "blob" });
+    const blob = new Blob([resp.data as BlobPart], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `engirent-rentals-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <AdminLayout>
       <Stack gap="lg">
@@ -100,6 +114,11 @@ export default function RentalsPage() {
           description="Every rental across the platform, with drill-down into the full lifecycle timeline."
           onRefresh={fetchRentals}
           refreshing={loading}
+          actions={
+            <Button variant="light" leftSection={<Download size={16} />} onClick={exportCsv}>
+              Export CSV
+            </Button>
+          }
         />
 
         {error && (

@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
+import '../../l10n/app_localizations.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 import '../models/item_model.dart';
@@ -27,6 +28,7 @@ class ItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
+    final l10n = AppLocalizations.of(context)!;
 
     return AppCard(
       padding: EdgeInsets.zero,
@@ -53,7 +55,7 @@ class ItemCard extends StatelessWidget {
                     top: AppSpacing.xs,
                     left: AppSpacing.xs,
                     child: StatusPill(
-                      label: item.isAvailable ? 'Available' : 'Rented',
+                      label: item.isAvailable ? l10n.available : l10n.rented,
                       color: item.isAvailable
                           ? AppColors.success
                           : AppColors.warning,

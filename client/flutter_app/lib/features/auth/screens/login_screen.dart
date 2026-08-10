@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/animated_auth_background.dart';
+import '../../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 
 /// Login — mandate §2.1 names the auth screens as a deliverable in their own
@@ -96,6 +97,7 @@ class _LoginScreenState extends State<LoginScreen>
     final muted =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
     final borderCol = isDark ? AppColors.borderDarkMode : AppColors.border;
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: AnimatedAuthBackground(
@@ -142,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen>
                           _stagger(
                             index: 1,
                             child: Text(
-                              'Sign in',
+                              l10n.signIn,
                               style: theme.textTheme.headlineMedium?.copyWith(
                                 fontSize: 30,
                                 letterSpacing: -0.6,
@@ -167,10 +169,10 @@ class _LoginScreenState extends State<LoginScreen>
                               keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
                               autofillHints: const [AutofillHints.email],
-                              decoration: const InputDecoration(
-                                labelText: 'Email',
+                              decoration: InputDecoration(
+                                labelText: l10n.email,
                                 hintText: 'you@uclm.edu.ph',
-                                prefixIcon: Icon(Icons.mail_outline, size: 19),
+                                prefixIcon: const Icon(Icons.mail_outline, size: 19),
                               ),
                               validator: (v) {
                                 final value = (v ?? '').trim();
@@ -194,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen>
                               autofillHints: const [AutofillHints.password],
                               onFieldSubmitted: (_) => _handleLogin(),
                               decoration: InputDecoration(
-                                labelText: 'Password',
+                                labelText: l10n.password,
                                 hintText: 'Enter your password',
                                 prefixIcon:
                                     const Icon(Icons.lock_outline, size: 19),
@@ -205,6 +207,9 @@ class _LoginScreenState extends State<LoginScreen>
                                         : Icons.visibility_off_outlined,
                                     size: 19,
                                   ),
+                                  tooltip: _obscurePassword
+                                      ? 'Show password'
+                                      : 'Hide password',
                                   onPressed: () => setState(
                                       () => _obscurePassword = !_obscurePassword),
                                 ),
@@ -234,7 +239,7 @@ class _LoginScreenState extends State<LoginScreen>
                                                     Colors.white),
                                           ),
                                         )
-                                      : const Text('Sign in'),
+                                      : Text(l10n.signIn),
                                 );
                               },
                             ),
@@ -250,7 +255,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: AppSpacing.sm),
                                   child: Text(
-                                    'New here?',
+                                    l10n.newHere,
                                     style: theme.textTheme.bodySmall
                                         ?.copyWith(color: muted),
                                   ),
@@ -266,7 +271,7 @@ class _LoginScreenState extends State<LoginScreen>
                             child: OutlinedButton(
                               onPressed: () =>
                                   Navigator.pushNamed(context, '/register'),
-                              child: const Text('Create an account'),
+                              child: Text(l10n.createAccount),
                             ),
                           ),
                         ],

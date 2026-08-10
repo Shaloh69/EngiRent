@@ -21,6 +21,7 @@ import { useDisclosure } from "@mantine/hooks";
 import {
   AlertCircle,
   CreditCard,
+  Download,
   RotateCcw,
   TrendingUp,
   Wallet,
@@ -117,6 +118,19 @@ export default function PaymentsPage() {
     return { revenue, held, refunded, count: transactions.length };
   }, [transactions]);
 
+  const exportCsv = async () => {
+    const resp = await api.get("/admin/transactions?format=csv", { responseType: "blob" });
+    const blob = new Blob([resp.data as BlobPart], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `engirent-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const openRefund = (tx: Transaction) => {
     setSelected(tx);
     setRefundReason("");
@@ -148,6 +162,11 @@ export default function PaymentsPage() {
           description="Rental payments, held deposits, fees, refunds, and owner payouts."
           onRefresh={fetchTransactions}
           refreshing={loading}
+          actions={
+            <Button variant="light" leftSection={<Download size={16} />} onClick={exportCsv}>
+              Export CSV
+            </Button>
+          }
         />
 
         {error && (

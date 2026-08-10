@@ -109,6 +109,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 title: const Text('Create account'),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back, size: 20),
+                  tooltip: 'Back',
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
@@ -284,6 +285,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                             : Icons.visibility_off_outlined,
                                         size: 19,
                                       ),
+                                      tooltip: _obscurePassword
+                                          ? 'Show password'
+                                          : 'Hide password',
                                       onPressed: () => setState(() =>
                                           _obscurePassword = !_obscurePassword),
                                     ),

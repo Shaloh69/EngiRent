@@ -124,26 +124,36 @@ class AppField extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.hair + 2),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          maxLength: maxLength,
-          validator: validator,
-          enabled: enabled,
-          inputFormatters: inputFormatters,
-          textCapitalization: textCapitalization,
-          onChanged: onChanged,
-          style: TextStyle(fontSize: 14, color: p.ink),
-          decoration: InputDecoration(
-            hintText: hint,
-            prefixText: prefix,
-            suffixIcon: suffix,
-            counterText: '',
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.sm,
+        // The visible label above is a plain Text, not InputDecoration's
+        // labelText (a floating label would disappear once filled — see the
+        // class doc). That leaves the field with no accessible name of its
+        // own for a screen reader, since only hintText feeds its semantics
+        // and a hint isn't a label. Wrapping in Semantics merges `label` into
+        // the field's existing semantics node — additive only, no visual
+        // change.
+        Semantics(
+          label: label,
+          child: TextFormField(
+            controller: controller,
+            keyboardType: keyboardType,
+            maxLines: maxLines,
+            maxLength: maxLength,
+            validator: validator,
+            enabled: enabled,
+            inputFormatters: inputFormatters,
+            textCapitalization: textCapitalization,
+            onChanged: onChanged,
+            style: TextStyle(fontSize: 14, color: p.ink),
+            decoration: InputDecoration(
+              hintText: hint,
+              prefixText: prefix,
+              suffixIcon: suffix,
+              counterText: '',
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.sm,
+              ),
             ),
           ),
         ),
@@ -200,34 +210,45 @@ class AppPickerField extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.hair + 2),
-        InkWell(
-          onTap: onTap,
-          borderRadius: AppRadius.input,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.sm + 2,
-            ),
-            decoration: BoxDecoration(
-              color: p.isDark ? p.surfaceAlt : Colors.white,
-              borderRadius: AppRadius.input,
-              border: Border.all(
-                color: error != null ? AppColors.error : p.border,
+        // Same gap as AppField: the label above and the value inside the
+        // InkWell are two separate text nodes, with nothing tying them
+        // together as one field for a screen reader, and InkWell itself
+        // doesn't announce as a button. excludeSemantics + one combined
+        // label reads as a single "Dates, Aug 12 → Aug 15, button" node
+        // instead of two disconnected fragments — additive, no visual change.
+        Semantics(
+          label: '$label. ${hasValue ? value : placeholder}',
+          button: true,
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: AppRadius.input,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: AppSpacing.sm + 2,
               ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    hasValue ? value : placeholder,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: hasValue ? p.ink : p.muted,
+              decoration: BoxDecoration(
+                color: p.isDark ? p.surfaceAlt : Colors.white,
+                borderRadius: AppRadius.input,
+                border: Border.all(
+                  color: error != null ? AppColors.error : p.border,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      hasValue ? value : placeholder,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: hasValue ? p.ink : p.muted,
+                      ),
                     ),
                   ),
-                ),
-                Icon(icon, size: 18, color: p.muted),
-              ],
+                  Icon(icon, size: 18, color: p.muted),
+                ],
+              ),
             ),
           ),
         ),

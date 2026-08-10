@@ -6,15 +6,29 @@ import AdminLayout from "@/components/layout/AdminLayout";
 import {
   Alert,
   Anchor,
+  Button,
   Card,
+  Checkbox,
   Group,
+  Modal,
   SimpleGrid,
   Stack,
   Table,
   Text,
+  Textarea,
   ThemeIcon,
 } from "@mantine/core";
-import { AlertCircle, Package, PackageCheck, PackageX, Tag } from "lucide-react";
+import {
+  AlertCircle,
+  Ban,
+  Eye,
+  EyeOff,
+  Flag,
+  Package,
+  PackageCheck,
+  PackageX,
+  Tag,
+} from "lucide-react";
 import api from "@/lib/api";
 import type { Item } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -40,6 +54,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
+// Checklist Stage 9 — the first table-state persistence anywhere in this
+// console (everything else in localStorage so far is auth token / theme).
+// Read on mount, written on change — this page "remembers where you left
+// it" without being a real feature of its own.
+const FILTERS_KEY = "engirent-admin-filters-items";
+
+type BulkAction = "UNLIST" | "RELIST" | "FLAG" | "UNFLAG";
+const REASON_REQUIRED: BulkAction[] = ["UNLIST", "FLAG"];
+
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
@@ -47,10 +70,35 @@ export default function ItemsPage() {
   const [availability, setAvailability] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+  const [bulkReason, setBulkReason] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
+  // Restore saved filters once on mount.
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.search) setSearch(saved.search);
+        if (saved.category) setCategory(saved.category);
+        if (saved.availability) setAvailability(saved.availability);
+      }
+    } catch {
+      // A corrupt/old saved-filter blob should never block the page.
+    }
     void fetchItems();
   }, []);
+
+  // Persist on every change.
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify({ search, category, availability }));
+    } catch {
+      // Ignore — this is a convenience, not a requirement.
+    }
+  }, [search, category, availability]);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -94,6 +142,49 @@ export default function ItemsPage() {
     [items],
   );
 
+  const allVisibleSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (allVisibleSelected) return new Set();
+      return new Set(filtered.map((i) => i.id));
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const openBulk = (action: BulkAction) => {
+    setBulkReason("");
+    setBulkAction(action);
+  };
+
+  const runBulk = async () => {
+    if (!bulkAction) return;
+    if (REASON_REQUIRED.includes(bulkAction) && !bulkReason.trim()) return;
+    setBulkBusy(true);
+    try {
+      await api.patch("/admin/items/bulk", {
+        itemIds: Array.from(selected),
+        action: bulkAction,
+        ...(bulkReason.trim() ? { reason: bulkReason.trim() } : {}),
+      });
+      setBulkAction(null);
+      setSelected(new Set());
+      await fetchItems();
+    } catch (apiError: any) {
+      setError(apiError?.response?.data?.error || "Bulk action failed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   return (
     <AdminLayout>
       <Stack gap="lg">
@@ -136,8 +227,35 @@ export default function ItemsPage() {
           ))}
         </SimpleGrid>
 
+        {/* Checklist Stage 9 — bulk actions. "Moderating a spam wave" was
+            previously one row at a time. */}
+        {selected.size > 0 && (
+          <Card withBorder radius="md" padding="sm" bg="var(--mantine-color-default-hover)">
+            <Group justify="space-between" wrap="wrap">
+              <Text size="sm" fw={600}>{selected.size} selected</Text>
+              <Group gap="xs">
+                <Button size="xs" variant="light" color={roleColor.critical} leftSection={<Ban size={14} />} onClick={() => openBulk("UNLIST")}>
+                  Unlist
+                </Button>
+                <Button size="xs" variant="light" color={roleColor.success} leftSection={<Eye size={14} />} onClick={() => openBulk("RELIST")}>
+                  Relist
+                </Button>
+                <Button size="xs" variant="light" color={roleColor.warning} leftSection={<Flag size={14} />} onClick={() => openBulk("FLAG")}>
+                  Flag
+                </Button>
+                <Button size="xs" variant="subtle" leftSection={<EyeOff size={14} />} onClick={() => openBulk("UNFLAG")}>
+                  Unflag
+                </Button>
+                <Button size="xs" variant="subtle" color="gray" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+              </Group>
+            </Group>
+          </Card>
+        )}
+
         <DataTableCard
-          columns={["Item", "Owner", "Category", "Price / day", "Deposit", "Status"]}
+          columns={["", "Item", "Owner", "Category", "Price / day", "Deposit", "Status"]}
           loading={loading}
           isEmpty={filtered.length === 0}
           search={{
@@ -165,6 +283,16 @@ export default function ItemsPage() {
               ],
             },
           ]}
+          toolbar={
+            filtered.length > 0 ? (
+              <Checkbox
+                label="Select all"
+                checked={allVisibleSelected}
+                onChange={toggleAll}
+                size="sm"
+              />
+            ) : undefined
+          }
           emptyState={
             <EmptyState
               icon={Package}
@@ -178,7 +306,10 @@ export default function ItemsPage() {
           }
         >
           {filtered.map((i) => (
-            <Table.Tr key={i.id}>
+            <Table.Tr key={i.id} bg={selected.has(i.id) ? "var(--mantine-color-default-hover)" : undefined}>
+              <Table.Td>
+                <Checkbox checked={selected.has(i.id)} onChange={() => toggleOne(i.id)} />
+              </Table.Td>
               <Table.Td>
                 {/* Stage 3.6 — the list had nothing to click through to; an
                     admin investigating a complaint had no detail view at all. */}
@@ -212,6 +343,36 @@ export default function ItemsPage() {
           ))}
         </DataTableCard>
       </Stack>
+
+      <Modal
+        opened={bulkAction !== null}
+        onClose={() => setBulkAction(null)}
+        title={bulkAction ? `${bulkAction.charAt(0)}${bulkAction.slice(1).toLowerCase()} ${selected.size} item(s)` : ""}
+      >
+        <Stack gap="md">
+          {bulkAction && REASON_REQUIRED.includes(bulkAction) && (
+            <Textarea
+              label="Reason"
+              placeholder="Why are these items being moderated?"
+              value={bulkReason}
+              onChange={(e) => setBulkReason(e.currentTarget.value)}
+              minRows={3}
+              required
+            />
+          )}
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={() => setBulkAction(null)}>Cancel</Button>
+            <Button
+              color={roleColor.critical}
+              loading={bulkBusy}
+              disabled={!!bulkAction && REASON_REQUIRED.includes(bulkAction) && !bulkReason.trim()}
+              onClick={runBulk}
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </AdminLayout>
   );
 }

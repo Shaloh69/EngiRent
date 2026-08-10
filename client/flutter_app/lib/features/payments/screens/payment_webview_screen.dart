@@ -140,6 +140,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         title: const Text('Payment'),
         leading: IconButton(
           icon: const Icon(Icons.close),
+          tooltip: 'Cancel payment',
           onPressed: () => _finalize(PaymentResult.cancelled),
         ),
         actions: [

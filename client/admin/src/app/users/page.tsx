@@ -8,6 +8,7 @@ import {
   Alert,
   Anchor,
   Avatar,
+  Button,
   Card,
   Group,
   SimpleGrid,
@@ -20,6 +21,7 @@ import {
 import {
   AlertCircle,
   BadgeCheck,
+  Download,
   ShieldOff,
   UserCheck,
   UserX,
@@ -33,6 +35,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { roleColor } from "../theme";
 
+// Checklist Stage 9 — remembers this page's filters across visits.
+const FILTERS_KEY = "engirent-admin-filters-users";
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
@@ -42,8 +47,41 @@ export default function UsersPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTERS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.search) setSearch(saved.search);
+        if (saved.verifiedFilter) setVerifiedFilter(saved.verifiedFilter);
+        if (saved.activeFilter) setActiveFilter(saved.activeFilter);
+      }
+    } catch {
+      // A corrupt/old saved-filter blob should never block the page.
+    }
     void fetchUsers();
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify({ search, verifiedFilter, activeFilter }));
+    } catch {
+      // Ignore — convenience, not a requirement.
+    }
+  }, [search, verifiedFilter, activeFilter]);
+
+  const exportCsv = async () => {
+    // Mirrors reports/page.tsx's existing handleExportCSV pattern.
+    const resp = await api.get("/admin/users?format=csv&limit=5000", { responseType: "blob" });
+    const blob = new Blob([resp.data as BlobPart], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `engirent-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -103,6 +141,11 @@ export default function UsersPage() {
           description="Students, owners, and renters — verification status, account standing, and per-user history."
           onRefresh={fetchUsers}
           refreshing={loading}
+          actions={
+            <Button variant="light" leftSection={<Download size={16} />} onClick={exportCsv}>
+              Export CSV
+            </Button>
+          }
         />
 
         {error && (

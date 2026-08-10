@@ -15,6 +15,7 @@ import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/video_preview_player.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../feedback/screens/send_feedback_screen.dart';
 import '../../messages/screens/conversation_screen.dart';
 import '../../reviews/screens/reviews_screen.dart';
@@ -155,6 +156,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final item = widget.item;
 
     return Scaffold(
@@ -169,11 +171,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             foregroundColor: p.ink,
             leading: _CircleBtn(
               icon: Icons.arrow_back,
+              semanticLabel: 'Back',
               onTap: () => Navigator.pop(context),
             ),
             actions: [
               _CircleBtn(
                 icon: Icons.flag_outlined,
+                semanticLabel: 'Report this listing',
                 onTap: _reportListing,
               ),
             ],
@@ -191,7 +195,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   Row(
                     children: [
                       StatusPill(
-                        label: item.isAvailable ? 'Available' : 'Rented out',
+                        label: item.isAvailable ? l10n.available : l10n.rentedOut,
                         color: item.isAvailable
                             ? AppColors.success
                             : AppColors.warning,
@@ -470,7 +474,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             Expanded(
               child: ElevatedButton(
                 onPressed: item.isAvailable ? _rentNow : null,
-                child: Text(item.isAvailable ? 'Request rental' : 'Unavailable'),
+                child: Text(item.isAvailable ? l10n.requestRental : l10n.unavailable),
               ),
             ),
           ],
@@ -603,9 +607,14 @@ class _Step extends StatelessWidget {
 }
 
 class _CircleBtn extends StatelessWidget {
-  const _CircleBtn({required this.icon, required this.onTap});
+  const _CircleBtn({
+    required this.icon,
+    required this.onTap,
+    required this.semanticLabel,
+  });
   final IconData icon;
   final VoidCallback onTap;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -618,7 +627,12 @@ class _CircleBtn extends StatelessWidget {
         child: InkWell(
           borderRadius: AppRadius.button,
           onTap: onTap,
-          child: Icon(icon, size: 19, color: p.ink),
+          child: Semantics(
+            label: semanticLabel,
+            button: true,
+            excludeSemantics: true,
+            child: Icon(icon, size: 19, color: p.ink),
+          ),
         ),
       ),
     );

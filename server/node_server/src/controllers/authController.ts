@@ -117,7 +117,7 @@ export const register = async (
       userId: user.id,
       email: user.email,
       studentId: user.studentId,
-      role: user.role as "STUDENT" | "ADMIN",
+      role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
     };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
@@ -160,7 +160,7 @@ export const login = async (
       userId: user.id,
       email: user.email,
       studentId: user.studentId,
-      role: user.role as "STUDENT" | "ADMIN",
+      role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
     };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
@@ -220,7 +220,7 @@ export const refreshToken = async (
       userId: user.id,
       email: user.email,
       studentId: user.studentId,
-      role: user.role as "STUDENT" | "ADMIN",
+      role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
     };
     const newAccessToken = generateAccessToken(payload);
     const newRefreshToken = generateRefreshToken(payload);

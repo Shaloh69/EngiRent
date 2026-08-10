@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Save,
   Terminal,
+  Unlock,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -140,6 +141,7 @@ export default function KioskPage() {
   const [cmdLoading, setCmdLoading] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [snapLoading, setSnapLoading] = useState<Record<string, boolean>>({});
+  const [releasing, setReleasing] = useState<Record<string, boolean>>({});
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeTab, setActiveTab] = useState("locker-1");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -373,6 +375,36 @@ export default function KioskPage() {
     }
   };
 
+  // Checklist Stage 9 — a database-state fix independent of hardware, for
+  // the "locker thinks it's occupied but isn't" support case. The existing
+  // door/actuator buttons above are live hardware commands (need the kiosk
+  // online); this clears Locker.status/currentRentalId directly and works
+  // even if the kiosk itself is unreachable.
+  const releaseLockerByNumber = async (lockerNumber: number) => {
+    const sid = String(lockerNumber);
+    if (
+      !window.confirm(
+        `Release Locker ${sid.padStart(2, "0")}? This clears its occupied state and detaches any rental — only do this if the locker is genuinely stuck.`,
+      )
+    ) {
+      return;
+    }
+    setReleasing((p) => ({ ...p, [sid]: true }));
+    try {
+      if (isDemoMode) {
+        await new Promise((r) => setTimeout(r, 600));
+        showToast(`Demo: Locker ${sid.padStart(2, "0")} released`);
+        return;
+      }
+      const res = await api.post(`/admin/kiosks/lockers/by-number/${sid}/release`);
+      showToast(res.data?.message ?? `Locker ${sid.padStart(2, "0")} released`);
+    } catch (e: any) {
+      showToast(e?.response?.data?.error ?? `Failed to release Locker ${sid}`, false);
+    } finally {
+      setReleasing((p) => ({ ...p, [sid]: false }));
+    }
+  };
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -521,6 +553,20 @@ export default function KioskPage() {
               onClick={() => sendCommand("actuator_retract", { locker_id: id })}
             >
               Retract
+            </Button>
+            {/* Checklist Stage 9 — deliberately NOT gated on `isOnline`,
+                unlike the hardware commands above: this is a database-only
+                fix for exactly the case where the kiosk (and so the locker)
+                is unreachable but still needs to be cleared. */}
+            <Button
+              size="sm"
+              variant="light"
+              color="red"
+              leftSection={<Unlock size={13} />}
+              loading={releasing[sid]}
+              onClick={() => releaseLockerByNumber(id)}
+            >
+              Release
             </Button>
           </div>
         </div>

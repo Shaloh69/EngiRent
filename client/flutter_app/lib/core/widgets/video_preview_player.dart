@@ -80,7 +80,16 @@ class _VideoPreviewPlayerState extends State<VideoPreviewPlayer> {
                   child: Icon(Icons.videocam_off_rounded, size: 32, color: p.muted),
                 )
               else if (_ready)
-                GestureDetector(onTap: _toggle, child: VideoPlayer(widget.controller))
+                // Covered entirely by the play-button overlay below while
+                // paused (same Stack region, same _toggle), so the label
+                // tracks actual state rather than always claiming "Pause" —
+                // avoids a contradictory announcement on the rare chance
+                // both nodes are reachable at once.
+                Semantics(
+                  label: _playing ? 'Pause video' : 'Play video',
+                  button: true,
+                  child: GestureDetector(onTap: _toggle, child: VideoPlayer(widget.controller)),
+                )
               else
                 Center(
                   child: SizedBox(
@@ -90,15 +99,20 @@ class _VideoPreviewPlayerState extends State<VideoPreviewPlayer> {
                   ),
                 ),
               if (_ready && !_playing)
-                GestureDetector(
-                  onTap: _toggle,
-                  child: Container(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_circle_fill_rounded,
-                        size: 54,
-                        color: Colors.white,
+                Semantics(
+                  label: 'Play video',
+                  button: true,
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    onTap: _toggle,
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      child: const Center(
+                        child: Icon(
+                          Icons.play_circle_fill_rounded,
+                          size: 54,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -107,15 +121,20 @@ class _VideoPreviewPlayerState extends State<VideoPreviewPlayer> {
                 Positioned(
                   top: 8,
                   right: 8,
-                  child: GestureDetector(
-                    onTap: widget.onRemove,
-                    child: Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: const BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
+                  child: Semantics(
+                    label: 'Remove video',
+                    button: true,
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      onTap: widget.onRemove,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 16, color: Colors.white),
                       ),
-                      child: const Icon(Icons.close_rounded, size: 16, color: Colors.white),
                     ),
                   ),
                 ),

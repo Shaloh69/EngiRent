@@ -5,6 +5,8 @@ import {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  getNotificationPreferences,
+  updateNotificationPreferences,
 } from "../controllers/notificationController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -13,6 +15,11 @@ const router = Router();
 
 // Get notifications (protected)
 router.get("/", authenticate, getNotifications);
+
+// Notification preferences (checklist Stage 9) — before "/:id" routes so
+// "preferences" never gets swallowed by an :id param.
+router.get("/preferences", authenticate, getNotificationPreferences);
+router.put("/preferences", authenticate, updateNotificationPreferences);
 
 // Mark notification as read (protected)
 router.patch(

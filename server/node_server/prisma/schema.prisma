@@ -71,6 +71,16 @@ model User {
   isActive        Boolean   @default(true)
   emailVerifiedAt DateTime?
 
+  // Checklist Stage 9 — notification preferences. A JSON array of
+  // NotificationType strings the user has muted (not a native array column
+  // — MySQL/Prisma doesn't support scalar list types the way Postgres
+  // does). Absence from this list means "on"; the UI only lets the user
+  // mute the non-critical types (see notificationController.ts's own
+  // MUTABLE_NOTIFICATION_TYPES) — SYSTEM_ANNOUNCEMENT and the
+  // verification-outcome types are never offered as mutable, but the
+  // storage/check mechanism itself is generic, not hardcoded to a subset.
+  notificationMutedTypes Json @default("[]")
+
   // Role
   role UserRole @default(STUDENT)
 
@@ -500,6 +510,35 @@ enum FeedbackStatus {
   RESOLVED
 }
 
+// Checklist Stage 9 — a real, structured, queryable audit trail. Before
+// this, "audit log" meant Winston text lines in logs/combined.log: not
+// structured (actor/action/target baked into one interpolated string),
+// not queryable, and not reachable through any API — so even the admin
+// console's own login page copy claiming sign-ins are "recorded against
+// the audit log" was aspirational, not true. actorId/actorEmail are both
+// stored (not just an FK) so a row still reads sensibly after the actor
+// account is deleted — same reasoning as User.verifiedById elsewhere.
+model AuditLog {
+  id String @id @default(uuid())
+
+  actorId    String?
+  actorEmail String
+  actorRole  UserRole
+
+  action     String // short machine-readable verb, e.g. "item.moderate", "user.suspend"
+  targetType String // "item" | "user" | "rental" | "feedback" | "kiosk" | ...
+  targetId   String?
+  reason     String? @db.Text
+  metadata   Json? // small, action-specific extra context (e.g. { from: "ACTIVE", to: "SUSPENDED" })
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
 // Review model - User reviews
 model Review {
   id          String  @id @default(uuid())
@@ -542,9 +581,15 @@ model Review {
 }
 
 // Enums
+// Checklist Stage 9 — admin role granularity. REVIEWER can decide ID
+// verifications, moderate items, and triage feedback (the queue-clearing
+// work), but not touch payments/refunds/disputes/kiosk config/other admin
+// accounts/settings — those stay ADMIN-only. See middleware/auth.ts's
+// requireAdmin (ADMIN only) vs requireStaff (ADMIN or REVIEWER).
 enum UserRole {
   STUDENT
   ADMIN
+  REVIEWER
 }
 
 enum ItemCategory {
@@ -593,6 +638,11 @@ enum TransactionType {
   DEPOSIT_REFUND
   LATE_FEE
   DAMAGE_FEE
+  // Checklist Stage 9 — extending a rental's end date raises totalPrice;
+  // the difference is deducted from the held deposit at settlement (same
+  // mechanism as LATE_FEE/DAMAGE_FEE), not collected as a second immediate
+  // PayMongo charge — see rentalController.ts's extendRental.
+  EXTENSION_FEE
   // The real Disbursement Transfer paying the item owner their rental
   // earnings at completion — distinct from RENTAL_PAYMENT, which is the
   // renter's original charge into the platform's own PayMongo wallet, not

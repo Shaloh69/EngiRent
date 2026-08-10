@@ -540,36 +540,42 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  GestureDetector(
-                    onTap: _camReady ? _capture : null,
-                    child: Container(
-                      width: 68,
-                      height: 68,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _camReady
-                              ? AppColors.primaryOnDark
-                              : Colors.white24,
-                          width: 3,
-                        ),
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
+                  Semantics(
+                    label: 'Capture photo',
+                    button: true,
+                    enabled: _camReady,
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      onTap: _camReady ? _capture : null,
+                      child: Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
                             color: _camReady
                                 ? AppColors.primaryOnDark
                                 : Colors.white24,
+                            width: 3,
                           ),
-                          child: Icon(
-                            Icons.camera_alt_rounded,
-                            size: 22,
-                            color: _camReady
-                                ? const Color(0xFF04211D)
-                                : Colors.white54,
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _camReady
+                                  ? AppColors.primaryOnDark
+                                  : Colors.white24,
+                            ),
+                            child: Icon(
+                              Icons.camera_alt_rounded,
+                              size: 22,
+                              color: _camReady
+                                  ? const Color(0xFF04211D)
+                                  : Colors.white54,
+                            ),
                           ),
                         ),
                       ),

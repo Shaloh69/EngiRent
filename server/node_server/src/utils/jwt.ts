@@ -5,7 +5,7 @@ export interface JWTPayload {
   userId: string;
   email: string;
   studentId: string;
-  role: "STUDENT" | "ADMIN";
+  role: "STUDENT" | "ADMIN" | "REVIEWER";
 }
 
 export const generateAccessToken = (payload: JWTPayload): string => {

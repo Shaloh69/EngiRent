@@ -182,6 +182,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back, size: 20),
+                    tooltip: 'Back',
                     onPressed: () => Navigator.pop(context),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -198,6 +199,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
                             ? null
                             : IconButton(
                                 icon: const Icon(Icons.close, size: 17),
+                                tooltip: 'Clear search',
                                 onPressed: () {
                                   _searchController.clear();
                                   _loadItems(reset: true, query: '');

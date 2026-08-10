@@ -42,6 +42,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   // just new.
   double? _renterOnTimeRate;
   int _renterRentalCount = 0;
+  bool _changingDates = false;
 
   RentalParty? get _otherParty {
     final myId = SocketService.instance.currentUserId;
@@ -232,6 +233,60 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
+  /// Checklist Stage 9 — PATCH /rentals/:id/dates. `firstDate` starts the
+  /// day after the rental's own startDate (a return date on or before
+  /// pickup makes no sense); `lastDate` is a generous 90-day window, same
+  /// horizon the initial checkout date picker already uses.
+  Future<void> _changeReturnDate() async {
+    final rental = _rental;
+    if (rental == null) return;
+    final firstSelectable = rental.startDate.add(const Duration(days: 1));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: rental.endDate.isBefore(firstSelectable) ? firstSelectable : rental.endDate,
+      firstDate: firstSelectable,
+      lastDate: DateTime.now().add(const Duration(days: 90)),
+      helpText: 'New return date',
+      // Inherit the app theme rather than overriding it — an explicit
+      // ColorScheme.light override elsewhere in this app once produced a
+      // white-on-white picker in dark mode; don't reintroduce that.
+      builder: (context, child) => child!,
+    );
+    if (picked == null || !mounted) return;
+    if (picked.year == rental.endDate.year &&
+        picked.month == rental.endDate.month &&
+        picked.day == rental.endDate.day) {
+      return;
+    }
+
+    setState(() => _changingDates = true);
+    try {
+      final resp = await _api.patch('/rentals/${rental.id}/dates', {
+        'endDate': picked.toIso8601String(),
+      });
+      final data = jsonDecode(resp.body);
+      if (!mounted) return;
+      if (resp.statusCode == 200 && data['success'] == true) {
+        final fee = (data['data']?['extensionFeeCharged'] as num?)?.toDouble() ?? 0;
+        AppToast.success(
+          context,
+          data['message'] as String? ?? 'Dates updated',
+          fee > 0
+              ? '₱${fee.toStringAsFixed(2)} will be deducted from your deposit at return.'
+              : 'Your return date has been updated.',
+        );
+        _load();
+      } else {
+        AppToast.error(context, 'Could not change dates',
+            (data['error'] as String?) ?? 'Please try again.');
+      }
+    } catch (e) {
+      if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _changingDates = false);
     }
   }
 
@@ -534,6 +589,27 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                                 AppToast.success(context, 'Review Submitted!', 'Thank you for your feedback.');
                               }
                             },
+                          ),
+                        ],
+                        // Checklist Stage 9 — "extend/shorten a rental,
+                        // better than the late-fee path, currently the
+                        // only option." Renter only, and only while the
+                        // dates still matter (not PENDING — nothing's
+                        // committed yet; not a terminal status).
+                        if (!_iAmOwner &&
+                            ['AWAITING_DEPOSIT', 'DEPOSITED', 'ACTIVE']
+                                .contains(_rental!.status)) ...[
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _changingDates ? null : _changeReturnDate,
+                            icon: _changingDates
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.edit_calendar_outlined, size: 17),
+                            label: const Text('Change return date'),
                           ),
                         ],
                         if (['CANCELLED', 'DISPUTED', 'COMPLETED', 'VERIFICATION']

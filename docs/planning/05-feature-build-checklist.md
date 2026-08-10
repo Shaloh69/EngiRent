@@ -265,24 +265,40 @@ The Admin Console has an items **list** (`/items/page.tsx`) and nothing else —
 
 ## Stage 9 — Enterprise hygiene (§2.10.3)
 
-- [ ] **Accessibility pass** — `Semantics` on every icon-only control; screen-reader test on the rental flow
-- [ ] Localisation scaffolding + Bisaya/Tagalog
-- [ ] Account activity log visible to the user
-- [ ] Designed session-expiry path when refresh fails mid-rental
-- [ ] **Force-update gate** — for an app that moves money and opens doors
-- [ ] Transaction history screen (`GET /payments` is called; nothing displays it)
-- [ ] Notification preferences
-- [ ] Profile editing beyond payout (`PUT /auth/profile` exists)
-- [ ] Extend/shorten a rental — better than the late-fee path, currently the only option
+- [x] **Accessibility pass** — `Semantics` on every icon-only control; screen-reader test on the rental flow
+- [x] Localisation scaffolding + Bisaya/Tagalog
+- [x] Account activity log visible to the user
+- [x] Designed session-expiry path when refresh fails mid-rental
+- [x] **Force-update gate** — for an app that moves money and opens doors
+- [x] Transaction history screen (`GET /payments` is called; nothing displays it)
+- [x] Notification preferences
+- [x] Profile editing beyond payout (`PUT /auth/profile` exists)
+- [x] Extend/shorten a rental — better than the late-fee path, currently the only option
+- **Done when:** all nine are real and live, not narration. — **met**, `scripts/e2e-enterprise-hygiene.mjs` (48/48) against the live API, plus direct live checks for the two pieces the E2E script doesn't touch (CSV content-type, kiosk release):
+  - **Accessibility / localisation**: two background agents ran concurrently against disjoint files, both landed `flutter analyze`-clean — ~21 icon-only controls given `Semantics` labels (including a shared-widget fix in `AppField`/`AppPickerField` covering 5 screens at once), and `flutter_localizations`/ARB scaffolding for en/fil/ceb (32 keys each) with a working language picker wired through a `LocaleController` mirroring the existing `ThemeController` pattern.
+  - **Account activity log**: no new audit table — `AccountActivityScreen` merges the user's own `GET /rentals` and `GET /notifications` (each already a real, timestamped record) into one reverse-chronological list, newest first. Verified live with a synthetic rental fixture (immediately deleted after the screenshot) showing the merge actually renders real data, not just its empty state, in both themes.
+  - **Session-expiry**: `ApiService.onSessionExpired` fires when a post-401 token refresh also fails; wired in `main.dart` to force-logout and navigate to `/login` via a root navigator key, guarded against duplicate firing from a burst of concurrent 401s. Modeled on the admin console's already-correct axios 401 interceptor.
+  - **Force-update gate**: new public `GET /app-config` (`MIN_APP_VERSION`/`LATEST_APP_VERSION`/`FORCE_UPDATE_MESSAGE`, env-driven, no DB table — these change rarely). `ForceUpdateGate` wraps the app shell, does a non-blocking version check, and shows a non-dismissible full-screen block only when genuinely below minimum — confirmed live that normal use is *not* blocked (every other screenshot in this stage is proof the gate lets a current build through).
+  - **Transaction history / notification preferences / profile editing / extend-shorten**: all four verified end to end against the live API and screenshotted. Extend/shorten got the deepest live test — a real rental fixture was walked through the actual UI (date picker → PATCH `/rentals/:id/dates` → price recompute → success toast → screen update), not just the server-side E2E; `EXTENSION_FEE` billing on a genuine extension and fee-free shortening are both covered by the E2E suite.
 
 ### Admin-side gaps found in the same pass
-- [ ] **No admin audit-log viewer.** Actions are logged server-side; no screen reads them back, so "who unlisted this item" is unanswerable from the UI
-- [ ] **No admin-side user detail page.** Users are a flat list — no per-user view of rentals, listings, reviews, payouts and verification history in one place
-- [ ] **No bulk actions** anywhere in the console; moderating a spam wave means one row at a time
-- [ ] **No export.** Reports cannot leave the screen — no CSV for a thesis defence or an audit
-- [ ] **No saved filters or column preferences** on any table
-- [ ] **Kiosk page is read-only** — no remote "release locker 03" for a stuck door, which is the single most likely support call
-- [ ] **No admin role granularity.** Any admin can do anything; a reviewer approving student IDs should not also be able to issue refunds
+- [x] **No admin audit-log viewer.** Actions are logged server-side; no screen reads them back, so "who unlisted this item" is unanswerable from the UI
+- [x] **No admin-side user detail page.** Users are a flat list — no per-user view of rentals, listings, reviews, payouts and verification history in one place
+- [x] **No bulk actions** anywhere in the console; moderating a spam wave means one row at a time
+- [x] **No export.** Reports cannot leave the screen — no CSV for a thesis defence or an audit
+- [x] **No saved filters or column preferences** on any table
+- [x] **Kiosk page is read-only** — no remote "release locker 03" for a stuck door, which is the single most likely support call
+- [x] **No admin role granularity.** Any admin can do anything; a reviewer approving student IDs should not also be able to issue refunds
+- **Done when:** all seven are real and live. — **met**, verified live in both themes via Playwright against the deployed admin console:
+  - **Audit log**: new `AuditLog` model (`actorId` + denormalized `actorEmail`/`actorRole` so rows stay readable after actor deletion), a best-effort `recordAudit()` wired into ~8 admin actions, and a new `/audit-log` page with humanized action labels, actor badges, and a target-type filter. Screenshotted live with 13 real rows from this session's own testing.
+  - **User detail page**: new `GET /admin/users/:id` (replacing an old client-side "filter the full list" hack) backs a rewritten `/users/[id]` page with Listings/Reviews/Recent-activity tabs. Screenshotted live against a real user in both themes, including tab switching.
+  - **Bulk actions**: `PATCH /admin/items/bulk` (checkbox selection, reason-required modal for Unlist/Flag) — hit a real Express routing-order bug during E2E (`/items/bulk` was being swallowed by the earlier-registered `/items/:id`, since "bulk" is a syntactically valid UUID-param value), fixed by reordering route registration. Screenshotted live: selection bar, reason modal.
+  - **CSV export**: `format=csv` branches on `listUsers`/`listAllRentals`/`listTransactions` (capped at 5000 rows). Confirmed live: all three return `200 text/csv; charset=utf-8` for a real authenticated request.
+  - **Saved filters**: `localStorage`-persisted search/filter state on the Items and Users pages. Confirmed live: set a filter, reload the page, filter is still applied.
+  - **Kiosk release**: new `POST /admin/kiosks/lockers/by-number/:lockerNumber/release` (the admin kiosk UI only knows hardware locker numbers, not the `Locker` table's UUID) plus a red "Release" button in Manual Controls, deliberately *not* gated on kiosk online-status since it's a DB-only fix meant to work even when the kiosk itself is unreachable. Confirmed live (404 on a nonexistent locker number — correct validation) and screenshotted.
+  - **Role granularity**: new `REVIEWER` role (ID verification, item moderation, feedback triage) vs `ADMIN`-only (users, money, kiosk, audit log). Enforced via per-route `requireStaff`/`requireAdmin` after removing the old blanket admin-only gate — covered by the E2E suite's authorization checks.
+- **Also fixed in this pass, not originally scoped:** a live, user-impacting rate-limiter bug found via a real-time user report. `rateLimiter.ts` keyed solely by `req.ip`; since the Cloudflare tunnel and this session's own direct-`localhost` E2E testing both resolved to `127.0.0.1`, heavy automated testing exhausted the real admin console's own rate-limit bucket. Fixed to prefer `cf-connecting-ip`, with an immediate remote fix (clearing the stuck bucket file) ahead of the code deploy.
+- **Honest scope note:** `settleDispute` always transitions a resolved dispute's rental to `COMPLETED` regardless of `outcome` — there's no stored "the owner lost this dispute" flag. `completionRate` (Stage 8) and the audit log's dispute-related entries measure "not currently stuck in an unresolved dispute," not "won every dispute." Documented in code, not silently assumed.
 
 ---
 

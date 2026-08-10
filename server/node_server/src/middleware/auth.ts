@@ -8,7 +8,7 @@ export interface AuthRequest extends Request {
     userId: string;
     email: string;
     studentId: string;
-    role: "STUDENT" | "ADMIN";
+    role: "STUDENT" | "ADMIN" | "REVIEWER";
   };
 }
 
@@ -48,7 +48,7 @@ export const authenticate = async (
         userId: user.id,
         email: user.email,
         studentId: user.studentId,
-        role: user.role as "STUDENT" | "ADMIN",
+        role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
       };
 
       next();
@@ -71,6 +71,27 @@ export const requireAdmin = (
   }
   if (req.user.role !== "ADMIN") {
     next(new ForbiddenError("Admin access required"));
+    return;
+  }
+  next();
+};
+
+// Checklist Stage 9 — admin role granularity. REVIEWER can reach the
+// review-queue-clearing routes (ID verification decisions, item
+// moderation, feedback triage) this gates; everything else (payments,
+// disputes, kiosk config, other admin accounts, settings) stays
+// requireAdmin-only, i.e. REVIEWER-exclusive.
+export const requireStaff = (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction,
+): void => {
+  if (!req.user) {
+    next(new UnauthorizedError("Authentication required"));
+    return;
+  }
+  if (req.user.role !== "ADMIN" && req.user.role !== "REVIEWER") {
+    next(new ForbiddenError("Admin or reviewer access required"));
     return;
   }
   next();
@@ -105,7 +126,7 @@ export const optionalAuth = async (
             userId: user.id,
             email: user.email,
             studentId: user.studentId,
-            role: user.role as "STUDENT" | "ADMIN",
+            role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
           };
         }
       } catch {

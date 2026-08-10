@@ -746,73 +746,91 @@ class _PhotoStrip extends StatelessWidget {
           }
 
           final entry = photos[i];
-          return GestureDetector(
+          // Label deliberately just "Photo N" — the visible "COVER" badge
+          // below is a real Text descendant, not excluded from semantics, so
+          // it already announces cover status on its own without duplicating
+          // it here.
+          return Semantics(
+            label: 'Photo ${i + 1}',
+            image: true,
+            // A long-press with no visible affordance is close to
+            // undiscoverable without a screen reader — this exposes "set as
+            // cover" as a real semantics action a screen reader can trigger
+            // directly, not just a bare gesture.
             onLongPress: () => onMakeCover(i),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: AppRadius.input,
-                  child: entry.existingUrl != null
-                      ? CachedNetworkImage(
-                          imageUrl: entry.existingUrl!,
-                          width: 96,
-                          height: stripHeight,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(color: p.surfaceAlt),
-                          errorWidget: (_, __, ___) => Container(
-                            color: p.surfaceAlt,
-                            child: Icon(Icons.broken_image_outlined,
-                                size: 18, color: p.muted),
+            child: GestureDetector(
+              onLongPress: () => onMakeCover(i),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: AppRadius.input,
+                    child: entry.existingUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: entry.existingUrl!,
+                            width: 96,
+                            height: stripHeight,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(color: p.surfaceAlt),
+                            errorWidget: (_, __, ___) => Container(
+                              color: p.surfaceAlt,
+                              child: Icon(Icons.broken_image_outlined,
+                                  size: 18, color: p.muted),
+                            ),
+                          )
+                        : Image.file(
+                            entry.file!,
+                            width: 96,
+                            height: stripHeight,
+                            fit: BoxFit.cover,
                           ),
-                        )
-                      : Image.file(
-                          entry.file!,
-                          width: 96,
-                          height: stripHeight,
-                          fit: BoxFit.cover,
-                        ),
-                ),
-                Positioned(
-                  top: 3,
-                  right: 3,
-                  child: GestureDetector(
-                    onTap: () => onRemove(i),
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.close_rounded,
-                          size: 13, color: Colors.white),
-                    ),
                   ),
-                ),
-                if (i == 0)
                   Positioned(
-                    bottom: 3,
-                    left: 3,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: p.primary,
-                        borderRadius: AppRadius.input,
-                      ),
-                      child: Text(
-                        'COVER',
-                        style: TextStyle(
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.4,
-                          color: p.isDark
-                              ? const Color(0xFF04211D)
-                              : Colors.white,
+                    top: 3,
+                    right: 3,
+                    child: Semantics(
+                      label: 'Remove photo ${i + 1}',
+                      button: true,
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        onTap: () => onRemove(i),
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close_rounded,
+                              size: 13, color: Colors.white),
                         ),
                       ),
                     ),
                   ),
-              ],
+                  if (i == 0)
+                    Positioned(
+                      bottom: 3,
+                      left: 3,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: p.primary,
+                          borderRadius: AppRadius.input,
+                        ),
+                        child: Text(
+                          'COVER',
+                          style: TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                            color: p.isDark
+                                ? const Color(0xFF04211D)
+                                : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           );
         },

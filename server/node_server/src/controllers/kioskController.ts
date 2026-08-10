@@ -8,6 +8,7 @@ import {
 } from "../utils/errors";
 import logger from "../utils/logger";
 import kioskEventBus from "../utils/kioskEventBus";
+import { recordAudit } from "../services/auditLogService";
 import { decryptFaceEncoding } from "../utils/crypto";
 import {
   signedMediaUrl,
@@ -450,6 +451,61 @@ export const releaseLocker = async (
     });
 
     logger.info(`Locker ${locker.lockerNumber} released`);
+    // Checklist Stage 9 — only the admin/support case is audited here; a
+    // renter or owner releasing the locker tied to their own rental is
+    // normal product flow, not an admin action worth a trail entry.
+    if (req.user.role === "ADMIN") {
+      await recordAudit(req, {
+        action: "kiosk.releaseLocker",
+        targetType: "kiosk",
+        targetId: lockerId,
+        metadata: { lockerNumber: locker.lockerNumber, hadRental: !!locker.currentRentalId },
+      });
+    }
+    res.json({
+      success: true,
+      message: `Locker ${locker.lockerNumber} released`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /admin/kiosks/lockers/by-number/:lockerNumber/release — checklist
+ * Stage 9's admin kiosk page. The kiosk admin UI works entirely in terms
+ * of locker *numbers* (it talks to hardware over the live command/SSE
+ * layer, never loading raw `Locker` rows with their database ids), so it
+ * has no `Locker.id` to call [releaseLocker] with directly. Admin-only —
+ * unlike [releaseLocker], there's no renter/owner self-service path here.
+ */
+export const releaseLockerByNumber = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+
+    const lockerNumber = req.params.lockerNumber as string;
+    const locker = await prisma.locker.findUnique({ where: { lockerNumber } });
+    if (!locker) throw new NotFoundError("Locker not found");
+    if (!locker.isOperational)
+      throw new ValidationError("Locker is not operational");
+
+    await prisma.locker.update({
+      where: { id: locker.id },
+      data: { status: "AVAILABLE", currentRentalId: null },
+    });
+
+    logger.info(`Locker ${locker.lockerNumber} released (by number, admin)`);
+    await recordAudit(req, {
+      action: "kiosk.releaseLocker",
+      targetType: "kiosk",
+      targetId: locker.id,
+      metadata: { lockerNumber: locker.lockerNumber, hadRental: !!locker.currentRentalId },
+    });
+
     res.json({
       success: true,
       message: `Locker ${locker.lockerNumber} released`,

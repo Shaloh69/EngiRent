@@ -10,6 +10,13 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Localisation scaffolding — checklist Stage 9. Ships with the SDK, so it
+  # tracks whatever intl version this Flutter install bundles rather than
+  # taking its own pin — that's why it's declared as `sdk: flutter` instead
+  # of a version constraint like every other dependency here.
+  flutter_localizations:
+    sdk: flutter
+
   # Typography — mandate §1.2 three-family stack (Space Grotesk /
   # IBM Plex Mono / Manrope), same families as every other surface.
   google_fonts: ^6.2.1
@@ -96,6 +103,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Checklist Stage 9 — turns the ARB files under lib/l10n/ (see l10n.yaml)
+  # into the generated AppLocalizations class main.dart wires up.
+  generate: true
 
   assets:
     - assets/images/

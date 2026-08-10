@@ -17,6 +17,8 @@ import env from "../config/env";
 import { finalizeRentalCompletion } from "../services/rentalSettlementService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 import { FEEDBACK_CATEGORIES } from "./feedbackController";
+import { recordAudit } from "../services/auditLogService";
+import { sendCsv } from "../utils/csv";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
 
@@ -92,7 +94,7 @@ export const listUsers = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const { search, page = "1", limit = "20" } = req.query;
+    const { search, page = "1", limit = "20", format } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const take = parseInt(limit as string);
 
@@ -106,24 +108,46 @@ export const listUsers = async (
       ];
     }
 
+    const userSelect = {
+      id: true,
+      email: true,
+      studentId: true,
+      firstName: true,
+      lastName: true,
+      phoneNumber: true,
+      isVerified: true,
+      isActive: true,
+      role: true,
+      createdAt: true,
+      lastLogin: true,
+    } as const;
+
+    // Checklist Stage 9 — CSV export ignores pagination (the whole point is
+    // getting everything out of the screen at once), capped at 5000 rows
+    // so a runaway filter can't turn this into an unbounded query.
+    if (format === "csv") {
+      const rows = await prisma.user.findMany({
+        where,
+        select: userSelect,
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+      });
+      sendCsv(
+        res,
+        "engirent-users",
+        ["Email", "Student ID", "First Name", "Last Name", "Phone", "Verified", "Active", "Role", "Joined", "Last Login"],
+        rows,
+        (u) => [u.email, u.studentId, u.firstName, u.lastName, u.phoneNumber, u.isVerified, u.isActive, u.role, u.createdAt.toISOString(), u.lastLogin?.toISOString() ?? ""],
+      );
+      return;
+    }
+
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
         skip,
         take,
-        select: {
-          id: true,
-          email: true,
-          studentId: true,
-          firstName: true,
-          lastName: true,
-          phoneNumber: true,
-          isVerified: true,
-          isActive: true,
-          role: true,
-          createdAt: true,
-          lastLogin: true,
-        },
+        select: userSelect,
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.count({ where }),
@@ -180,6 +204,12 @@ export const updateUser = async (
     logger.info(
       `Admin updated user ${id}: ${JSON.stringify({ isActive, isVerified, role })}`,
     );
+    await recordAudit(req, {
+      action: "user.update",
+      targetType: "user",
+      targetId: id,
+      metadata: { isActive, isVerified, role },
+    });
     res.json({
       success: true,
       message: "User updated",
@@ -196,8 +226,14 @@ export const createAdmin = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const { email, password, studentId, firstName, lastName, phoneNumber } =
+    const { email, password, studentId, firstName, lastName, phoneNumber, role } =
       req.body;
+
+    // Checklist Stage 9 — role granularity. Defaults to ADMIN (unchanged
+    // behavior for existing callers); REVIEWER is the only other value
+    // this endpoint is allowed to create — it must never be used to create
+    // a plain STUDENT account by accident.
+    const grantedRole = role === "REVIEWER" ? "REVIEWER" : "ADMIN";
 
     const existing = await prisma.user.findFirst({
       where: { OR: [{ email }, { studentId }] },
@@ -214,7 +250,7 @@ export const createAdmin = async (
         firstName,
         lastName,
         phoneNumber,
-        role: "ADMIN",
+        role: grantedRole,
       },
       select: {
         id: true,
@@ -226,10 +262,16 @@ export const createAdmin = async (
       },
     });
 
-    logger.info(`Admin account created: ${email} by ${req.user?.email}`);
+    logger.info(`${grantedRole} account created: ${email} by ${req.user?.email}`);
+    await recordAudit(req, {
+      action: "user.createStaff",
+      targetType: "user",
+      targetId: admin.id,
+      metadata: { email, role: grantedRole },
+    });
     res.status(201).json({
       success: true,
-      message: "Admin account created",
+      message: `${grantedRole === "ADMIN" ? "Admin" : "Reviewer"} account created`,
       data: { user: admin },
     });
   } catch (error) {
@@ -245,27 +287,46 @@ export const listAllRentals = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const { status, page = "1", limit = "20" } = req.query;
+    const { status, page = "1", limit = "20", format } = req.query;
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
     const take = parseInt(limit as string);
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
 
+    const rentalInclude = {
+      item: { select: { id: true, title: true, category: true } },
+      renter: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+      owner: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+    } as const;
+
+    if (format === "csv") {
+      const rows = await prisma.rental.findMany({
+        where,
+        include: rentalInclude,
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+      });
+      sendCsv(
+        res,
+        "engirent-rentals",
+        ["Item", "Category", "Renter", "Owner", "Status", "Start", "End", "Total Price", "Deposit", "Created"],
+        rows,
+        (r) => [r.item.title, r.item.category, `${r.renter.firstName} ${r.renter.lastName}`, `${r.owner.firstName} ${r.owner.lastName}`, r.status, r.startDate.toISOString(), r.endDate.toISOString(), r.totalPrice, r.securityDeposit, r.createdAt.toISOString()],
+      );
+      return;
+    }
+
     const [rentals, total] = await Promise.all([
       prisma.rental.findMany({
         where,
         skip,
         take,
-        include: {
-          item: { select: { id: true, title: true, category: true } },
-          renter: {
-            select: { id: true, firstName: true, lastName: true, email: true },
-          },
-          owner: {
-            select: { id: true, firstName: true, lastName: true, email: true },
-          },
-        },
+        include: rentalInclude,
         orderBy: { createdAt: "desc" },
       }),
       prisma.rental.count({ where }),
@@ -541,22 +602,41 @@ export const listTransactions = async (
     if (type) where.type = type as Prisma.TransactionWhereInput["type"];
     if (status) where.status = status as Prisma.TransactionWhereInput["status"];
 
+    const transactionInclude = {
+      rental: {
+        select: {
+          id: true,
+          item: { select: { id: true, title: true } },
+        },
+      },
+      user: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+    } as const;
+
+    if (req.query.format === "csv") {
+      const rows = await prisma.transaction.findMany({
+        where,
+        include: transactionInclude,
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+      });
+      sendCsv(
+        res,
+        "engirent-transactions",
+        ["User", "Type", "Item", "Amount", "Status", "Method", "Created"],
+        rows,
+        (t) => [`${t.user.firstName} ${t.user.lastName}`, t.type, t.rental?.item.title ?? "", t.amount, t.status, t.paymentMethod ?? "", t.createdAt.toISOString()],
+      );
+      return;
+    }
+
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
         where,
         skip,
         take,
-        include: {
-          rental: {
-            select: {
-              id: true,
-              item: { select: { id: true, title: true } },
-            },
-          },
-          user: {
-            select: { id: true, firstName: true, lastName: true, email: true },
-          },
-        },
+        include: transactionInclude,
         orderBy: { createdAt: "desc" },
       }),
       prisma.transaction.count({ where }),
@@ -749,6 +829,13 @@ export const settleDispute = async (
     logger.info(
       `Admin settled dispute ${id} → ${outcome} by ${req.user?.email}${damageFee ? ` damageFee=₱${damageFee}` : ""}`,
     );
+    await recordAudit(req, {
+      action: "dispute.settle",
+      targetType: "rental",
+      targetId: id,
+      reason: notes,
+      metadata: { outcome, damageFee: damageFee ?? null },
+    });
     res.json({ success: true, message: "Dispute settled" });
   } catch (error) {
     next(error);
@@ -1488,6 +1575,13 @@ export const decideIdVerification = async (
     logger.info(
       `Admin ${req.user?.userId} ${approved ? "approved" : "rejected"} ID for user ${id}${reason ? ` (${reason})` : ""}`,
     );
+    await recordAudit(req, {
+      action: approved ? "idVerification.approve" : "idVerification.reject",
+      targetType: "user",
+      targetId: id,
+      reason: approved ? null : reason,
+      metadata: { note: note?.trim() || null },
+    });
 
     res.json({ success: true, data: { user: updated } });
   } catch (error) {
@@ -1632,6 +1726,12 @@ export const updateFeedbackStatus = async (
     });
 
     logger.info(`Admin ${req.user?.userId} moved feedback ${id} to ${status}`);
+    await recordAudit(req, {
+      action: "feedback.updateStatus",
+      targetType: "feedback",
+      targetId: id,
+      metadata: { status },
+    });
 
     res.json({ success: true, data: { feedback: updated } });
   } catch (error) {
@@ -1851,6 +1951,12 @@ export const moderateItem = async (
     logger.info(
       `Admin ${req.user?.userId} ${action} item ${id}${reason ? ` (${reason})` : ""}`,
     );
+    await recordAudit(req, {
+      action: `item.${action.toLowerCase()}`,
+      targetType: "item",
+      targetId: id,
+      reason: reason?.trim() || null,
+    });
 
     res.json({ success: true, data: { item: updated } });
   } catch (error) {
@@ -1902,8 +2008,215 @@ export const deleteReview = async (
     }
 
     logger.info(`Admin ${req.user?.userId} removed review ${id} (${reason.trim()})`);
+    await recordAudit(req, {
+      action: "review.delete",
+      targetType: "review",
+      targetId: id,
+      reason: reason.trim(),
+    });
 
     res.json({ success: true, message: "Review removed" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Audit log (checklist Stage 9) ─────────────────────────────────────────
+
+/**
+ * GET /admin/audit-log
+ * Oldest-first would starve nothing here (there's no queue to clear), so
+ * this is newest-first — the normal "what just happened" read pattern.
+ */
+export const listAuditLog = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { actorId, targetType, action, page = "1", limit = "50" } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    const take = Math.min(200, parseInt(limit as string));
+
+    const where: Prisma.AuditLogWhereInput = {
+      ...(actorId ? { actorId: String(actorId) } : {}),
+      ...(targetType ? { targetType: String(targetType) } : {}),
+      ...(action ? { action: String(action) } : {}),
+    };
+
+    const [entries, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        entries,
+        pagination: {
+          total,
+          page: parseInt(page as string),
+          limit: take,
+          totalPages: Math.ceil(total / take),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── User detail (checklist Stage 9) ───────────────────────────────────────
+
+/**
+ * GET /admin/users/:id
+ * The admin console's user detail page previously had no dedicated
+ * endpoint at all — it resolved a single user by filtering the full
+ * GET /admin/users list client-side. This is the real thing: one user
+ * plus their listings, reviews, payout destination, and rental history
+ * in a single call, not a client-side find() over an already-loaded page.
+ */
+export const getUserDetail = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        studentId: true,
+        firstName: true,
+        lastName: true,
+        phoneNumber: true,
+        profileImage: true,
+        isVerified: true,
+        verificationStatus: true,
+        isActive: true,
+        role: true,
+        createdAt: true,
+        lastLogin: true,
+        payoutProvider: true,
+        payoutInstitutionName: true,
+        payoutAccountName: true,
+      },
+    });
+    if (!user) throw new NotFoundError("User not found");
+
+    const [items, reviewsReceived, rentalsAsOwner, rentalsAsRenter, auditEntries] =
+      await Promise.all([
+        prisma.item.findMany({
+          where: { ownerId: id },
+          select: {
+            id: true, title: true, isListed: true, isActive: true,
+            isFlagged: true, averageRating: true, totalRentals: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.review.findMany({
+          where: { recipientId: id, reviewType: "USER", isDeleted: false },
+          include: { author: { select: { id: true, firstName: true, lastName: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        }),
+        prisma.rental.count({ where: { ownerId: id } }),
+        prisma.rental.count({ where: { renterId: id } }),
+        prisma.auditLog.findMany({
+          where: { targetType: "user", targetId: id },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        }),
+      ]);
+
+    res.json({
+      success: true,
+      data: {
+        user,
+        items,
+        reviewsReceived,
+        rentalCounts: { asOwner: rentalsAsOwner, asRenter: rentalsAsRenter },
+        auditEntries,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Bulk item moderation (checklist Stage 9) ──────────────────────────────
+
+const BULK_ITEM_ACTIONS = ["UNLIST", "RELIST", "FLAG", "UNFLAG"] as const;
+
+/**
+ * PATCH /admin/items/bulk
+ * Same rules as the single-item moderateItem (a reason is required for
+ * UNLIST/FLAG, not for the reversals) — "moderating a spam wave" was
+ * previously one row at a time with nothing else available.
+ */
+export const bulkModerateItems = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { itemIds, action, reason } = req.body as {
+      itemIds?: string[];
+      action?: string;
+      reason?: string;
+    };
+
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      throw new ValidationError("itemIds must be a non-empty array");
+    }
+    if (itemIds.length > 100) {
+      throw new ValidationError("Cannot moderate more than 100 items at once");
+    }
+    if (!action || !BULK_ITEM_ACTIONS.includes(action as never)) {
+      throw new ValidationError(
+        `action must be one of: ${BULK_ITEM_ACTIONS.join(", ")}`,
+      );
+    }
+    if ((action === "UNLIST" || action === "FLAG") && !reason?.trim()) {
+      throw new ValidationError(`A reason is required to ${action.toLowerCase()} items`);
+    }
+
+    const data: Prisma.ItemUpdateInput = {
+      moderatedById: req.user?.userId ?? null,
+      moderatedAt: new Date(),
+    };
+    switch (action) {
+      case "UNLIST": data.isListed = false; break;
+      case "RELIST": data.isListed = true; break;
+      case "FLAG": data.isFlagged = true; data.flagReason = reason?.trim(); break;
+      case "UNFLAG": data.isFlagged = false; data.flagReason = null; break;
+    }
+
+    const result = await prisma.item.updateMany({
+      where: { id: { in: itemIds } },
+      data,
+    });
+
+    logger.info(
+      `Admin ${req.user?.userId} bulk-${action} ${result.count} item(s)${reason ? ` (${reason})` : ""}`,
+    );
+    await recordAudit(req, {
+      action: `item.bulk${action.charAt(0)}${action.slice(1).toLowerCase()}`,
+      targetType: "item",
+      reason: reason?.trim() || null,
+      metadata: { itemIds, count: result.count },
+    });
+
+    res.json({ success: true, message: `${result.count} item(s) updated`, data: { count: result.count } });
   } catch (error) {
     next(error);
   }

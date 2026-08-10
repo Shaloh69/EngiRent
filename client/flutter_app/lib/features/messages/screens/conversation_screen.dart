@@ -294,6 +294,7 @@ class _ComposeBar extends StatelessWidget {
             const SizedBox(width: AppSpacing.xs),
             IconButton.filled(
               onPressed: sending ? null : onSend,
+              tooltip: 'Send message',
               icon: sending
                   ? const SizedBox(
                       width: 16,

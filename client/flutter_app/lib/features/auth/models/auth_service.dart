@@ -142,6 +142,35 @@ class AuthService {
     }
   }
 
+  /// PUT /auth/profile — checklist Stage 9. Existed, called by nothing; the
+  /// only "profile editing" in the app was Payout Details. Only changed
+  /// fields need to be sent — the server merges (see authController.ts's
+  /// updateProfile), so a caller can send just what actually changed.
+  Future<Map<String, dynamic>> updateProfile({
+    String? firstName,
+    String? lastName,
+    String? phoneNumber,
+    String? parentName,
+    String? parentContact,
+  }) async {
+    try {
+      final response = await _api.put('/auth/profile', {
+        if (firstName != null) 'firstName': firstName,
+        if (lastName != null) 'lastName': lastName,
+        if (phoneNumber != null) 'phoneNumber': phoneNumber,
+        if (parentName != null) 'parentName': parentName,
+        if (parentContact != null) 'parentContact': parentContact,
+      });
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {'success': true, 'user': UserModel.fromJson(data['data']['user'])};
+      }
+      return {'success': false, 'error': (data['error'] ?? data['message']) ?? 'Could not update your profile'};
+    } catch (e) {
+      return {'success': false, 'error': friendlyErrorMessage(e)};
+    }
+  }
+
   Future<void> logout() async {
     try {
       await _api.post('/auth/logout', {});

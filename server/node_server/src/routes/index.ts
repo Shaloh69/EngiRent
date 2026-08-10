@@ -1,4 +1,5 @@
 import { Router } from "express";
+import env from "../config/env";
 import authRoutes from "./authRoutes";
 import itemRoutes from "./itemRoutes";
 import rentalRoutes from "./rentalRoutes";
@@ -18,6 +19,19 @@ router.get("/health", (_req, res) => {
     success: true,
     message: "EngiRent API is running",
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Checklist Stage 9 — force-update gate. Public (no auth — an app too old
+// to know its own status yet still needs to reach this), read-only.
+router.get("/app-config", (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      minVersion: env.MIN_APP_VERSION,
+      latestVersion: env.LATEST_APP_VERSION,
+      forceUpdateMessage: env.FORCE_UPDATE_MESSAGE,
+    },
   });
 });
 

@@ -266,73 +266,90 @@ class _TimelineRow extends StatelessWidget {
     final active = state != _StepState.upcoming;
     final color = state == _StepState.current ? p.primary : p.muted;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-            children: [
-              Container(
-                width: 16,
-                height: 16,
-                margin: const EdgeInsets.only(top: 2),
-                decoration: BoxDecoration(
-                  color: state == _StepState.current
-                      ? p.primary
-                      : (state == _StepState.done
-                          ? p.primary.withValues(alpha: 0.22)
-                          : Colors.transparent),
-                  borderRadius: AppRadius.circle,
-                  border: Border.all(
-                    color: active ? p.primary : p.border,
-                    width: 1.5,
-                  ),
-                ),
-                child: state == _StepState.done
-                    ? Icon(Icons.check, size: 10, color: p.primary)
-                    : null,
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 1.5,
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    color: state == _StepState.done ? p.primary : p.border,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    step.label,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight:
-                          state == _StepState.current ? FontWeight.w700 : FontWeight.w600,
-                      color: active ? p.ink : p.muted,
+    // The visible cues for where you are in the timeline are entirely
+    // visual — a filled dot, a checkmark, bold text, and (only for the
+    // current step) an extra detail line. A screen reader walking through
+    // six rows of plain step labels has no way to tell which one is
+    // "now" versus "already done" versus "still ahead". excludeSemantics
+    // + one explicit label per row makes that state audible without
+    // changing anything on screen.
+    final semanticLabel = switch (state) {
+      _StepState.current => 'Current step: ${step.label}. ${step.detail}',
+      _StepState.done => '${step.label}, completed',
+      _StepState.upcoming => '${step.label}, upcoming',
+    };
+
+    return Semantics(
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  margin: const EdgeInsets.only(top: 2),
+                  decoration: BoxDecoration(
+                    color: state == _StepState.current
+                        ? p.primary
+                        : (state == _StepState.done
+                            ? p.primary.withValues(alpha: 0.22)
+                            : Colors.transparent),
+                    borderRadius: AppRadius.circle,
+                    border: Border.all(
+                      color: active ? p.primary : p.border,
+                      width: 1.5,
                     ),
                   ),
-                  // Only the current step explains itself — showing every
-                  // detail line at once turns the timeline into a wall of
-                  // text and buries where the user actually is.
-                  if (state == _StepState.current) ...[
-                    const SizedBox(height: 2),
+                  child: state == _StepState.done
+                      ? Icon(Icons.check, size: 10, color: p.primary)
+                      : null,
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 1.5,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: state == _StepState.done ? p.primary : p.border,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      step.detail,
-                      style: TextStyle(fontSize: 12, height: 1.4, color: color),
+                      step.label,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight:
+                            state == _StepState.current ? FontWeight.w700 : FontWeight.w600,
+                        color: active ? p.ink : p.muted,
+                      ),
                     ),
+                    // Only the current step explains itself — showing every
+                    // detail line at once turns the timeline into a wall of
+                    // text and buries where the user actually is.
+                    if (state == _StepState.current) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        step.detail,
+                        style: TextStyle(fontSize: 12, height: 1.4, color: color),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

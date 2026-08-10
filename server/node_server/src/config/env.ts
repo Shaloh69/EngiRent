@@ -111,6 +111,17 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
   ADMIN_STUDENT_ID: z.string().optional(),
+
+  // Checklist Stage 9 — force-update gate. Compared against the app's real
+  // version (PackageInfo, already wired for display in Profile) via
+  // GET /app-config. No enforcement mechanism existed before this at all —
+  // config only, deliberately not a DB table, since this changes rarely and
+  // shouldn't need a migration to update.
+  MIN_APP_VERSION: z.string().default("1.0.0"),
+  LATEST_APP_VERSION: z.string().default("1.5.2"),
+  FORCE_UPDATE_MESSAGE: z
+    .string()
+    .default("Please update EngiRent to continue — this version is no longer supported."),
 });
 
 type EnvConfig = z.infer<typeof envSchema>;

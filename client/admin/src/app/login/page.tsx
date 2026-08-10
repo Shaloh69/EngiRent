@@ -229,9 +229,12 @@ export default function LoginPage() {
             </form>
 
             <Divider my="xl" />
+            {/* Checklist Stage 9 — this used to claim sign-in attempts and
+                IP addresses were audit-logged, which was never actually
+                built (the real AuditLog table records admin actions, not
+                login attempts). Corrected to state what's actually true. */}
             <Text size="xs" c="dimmed">
-              Every sign-in is recorded against the audit log, including failed
-              attempts and originating address.
+              Admin actions are recorded to a real, queryable audit log.
             </Text>
           </motion.div>
         </Box>

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
@@ -18,6 +19,18 @@ const _uploadTimeout = Duration(seconds: 45); // photos/screenshots are bigger
 
 class ApiService {
   final StorageService _storage = StorageService();
+
+  /// Checklist Stage 9 — set once from `main.dart`. Fires when an
+  /// authenticated call gets a 401 and the follow-up refresh attempt also
+  /// fails — the one place that genuinely means "this session is dead",
+  /// as opposed to a plain wrong-password 401 on the login screen itself
+  /// (which never goes through [_withRefresh] at all, since login calls are
+  /// `authenticated: false`). Previously this case just returned the raw
+  /// 401 to whichever screen happened to be calling — no storage was
+  /// cleared and nothing told the rest of the app the user was logged out,
+  /// so it surfaced as a generic, misleading error toast wherever it
+  /// happened to occur instead of a clear "please sign in again".
+  static VoidCallback? onSessionExpired;
 
   Future<Map<String, String>> _getHeaders({bool authenticated = false}) async {
     final headers = {
@@ -89,6 +102,7 @@ class ApiService {
     if (resp.statusCode == 401) {
       final refreshed = await _refreshTokens();
       if (refreshed) return _execute(call);
+      onSessionExpired?.call();
     }
     return resp;
   }

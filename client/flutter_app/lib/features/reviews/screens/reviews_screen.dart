@@ -606,20 +606,26 @@ class _PostReviewSheetState extends State<PostReviewSheet> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     for (var i = 1; i <= 5; i++)
-                      GestureDetector(
-                        onTap: () => setState(() => _rating = i.toDouble()),
-                        child: Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: AppSpacing.hair),
-                          child: AnimatedScale(
-                            duration: AppMotion.fast,
-                            scale: _rating >= i ? 1.0 : 0.86,
-                            child: Icon(
-                              _rating >= i
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              size: 40,
-                              color: _rating >= i ? AppColors.warning : p.border,
+                      Semantics(
+                        label: 'Rate $i star${i == 1 ? '' : 's'}',
+                        button: true,
+                        selected: _rating >= i,
+                        excludeSemantics: true,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _rating = i.toDouble()),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: AppSpacing.hair),
+                            child: AnimatedScale(
+                              duration: AppMotion.fast,
+                              scale: _rating >= i ? 1.0 : 0.86,
+                              child: Icon(
+                                _rating >= i
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                size: 40,
+                                color: _rating >= i ? AppColors.warning : p.border,
+                              ),
                             ),
                           ),
                         ),

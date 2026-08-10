@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import AdminLayout from "@/components/layout/AdminLayout";
@@ -8,6 +8,7 @@ import {
   Alert,
   Anchor,
   Avatar,
+  Badge,
   Button,
   Card,
   Divider,
@@ -15,6 +16,7 @@ import {
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
   ThemeIcon,
   Title,
@@ -22,19 +24,21 @@ import {
 import {
   AlertCircle,
   ArrowLeft,
+  History,
   Mail,
+  Package,
   Phone,
   Receipt,
   ShieldOff,
+  Star,
   UserCheck,
   Wallet,
 } from "lucide-react";
 import api from "@/lib/api";
-import type { Rental, User } from "@/types";
+import type { User } from "@/types";
 import { DataTableCard } from "@/components/ui/DataTableCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { roleColor } from "../../theme";
 
 const peso = new Intl.NumberFormat("en-PH", {
@@ -43,12 +47,52 @@ const peso = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 0,
 });
 
+interface UserItem {
+  id: string;
+  title: string;
+  isListed: boolean;
+  isActive: boolean;
+  isFlagged: boolean;
+  averageRating: number;
+  totalRentals: number;
+  createdAt: string;
+}
+
+interface UserReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  author: { id: string; firstName: string; lastName: string };
+}
+
+interface AuditEntry {
+  id: string;
+  action: string;
+  reason: string | null;
+  actorEmail: string;
+  actorRole: string;
+  createdAt: string;
+}
+
+interface UserDetail extends User {
+  role: string;
+  verificationStatus: string;
+  lastLogin: string | null;
+  payoutProvider: string | null;
+  payoutInstitutionName: string | null;
+  payoutAccountName: string | null;
+}
+
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
   const userId = params?.id;
 
-  const [user, setUser] = useState<User | null>(null);
-  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [user, setUser] = useState<UserDetail | null>(null);
+  const [items, setItems] = useState<UserItem[]>([]);
+  const [reviewsReceived, setReviewsReceived] = useState<UserReview[]>([]);
+  const [rentalCounts, setRentalCounts] = useState({ asOwner: 0, asRenter: 0 });
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -57,22 +101,19 @@ export default function UserDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // There is no GET /admin/users/:id endpoint — the list endpoint is the
-  // only source, so the single user is resolved from it client-side rather
-  // than inventing an API that doesn't exist.
+  // Checklist Stage 9 — a real GET /admin/users/:id endpoint, replacing the
+  // previous client-side "filter the full user list" workaround.
   const fetchAll = async () => {
     setLoading(true);
     setError("");
     try {
-      const [usersRes, rentalsRes] = await Promise.all([
-        api.get("/admin/users"),
-        api.get("/admin/rentals"),
-      ]);
-      const all: User[] = usersRes.data.data?.users || [];
-      setUser(all.find((u) => u.id === userId) ?? null);
-
-      const allRentals: Rental[] = rentalsRes.data.data?.rentals || [];
-      setRentals(allRentals.filter((r) => r.renter?.id === userId));
+      const res = await api.get(`/admin/users/${userId}`);
+      const data = res.data.data;
+      setUser(data.user);
+      setItems(data.items || []);
+      setReviewsReceived(data.reviewsReceived || []);
+      setRentalCounts(data.rentalCounts || { asOwner: 0, asRenter: 0 });
+      setAuditEntries(data.auditEntries || []);
     } catch (apiError: any) {
       setError(apiError?.response?.data?.error || "Failed to load user.");
     } finally {
@@ -90,12 +131,10 @@ export default function UserDetailPage() {
     }
   };
 
-  const stats = useMemo(() => {
-    const completed = rentals.filter((r) => r.status === "COMPLETED").length;
-    const active = rentals.filter((r) => r.status === "ACTIVE").length;
-    const spend = rentals.reduce((sum, r) => sum + Number(r.totalPrice || 0), 0);
-    return { total: rentals.length, completed, active, spend };
-  }, [rentals]);
+  const avgReviewRating =
+    reviewsReceived.length > 0
+      ? reviewsReceived.reduce((s, r) => s + r.rating, 0) / reviewsReceived.length
+      : 0;
 
   return (
     <AdminLayout>
@@ -142,6 +181,9 @@ export default function UserDetailPage() {
                     <Group gap="xs">
                       <StatusBadge status={user.isVerified ? "APPROVED" : "PENDING"} />
                       <StatusBadge status={user.isActive ? "ACTIVE" : "CANCELLED"} />
+                      <Badge variant="outline" color={user.role === "STUDENT" ? "gray" : roleColor.accent}>
+                        {user.role}
+                      </Badge>
                       <Text size="xs" c="dimmed" ff="monospace">
                         {user.studentId || "no student ID"}
                       </Text>
@@ -174,15 +216,38 @@ export default function UserDetailPage() {
                 <Text size="sm" c="dimmed">
                   Joined {new Date(user.createdAt).toLocaleDateString()}
                 </Text>
+                {user.lastLogin && (
+                  <Text size="sm" c="dimmed">
+                    Last active {new Date(user.lastLogin).toLocaleDateString()}
+                  </Text>
+                )}
               </Group>
+
+              {user.payoutProvider && (
+                <>
+                  <Divider my="md" />
+                  <Group gap={6}>
+                    <Wallet size={15} />
+                    <Text size="sm">
+                      Payout: {user.payoutInstitutionName ?? user.payoutProvider}
+                      {user.payoutAccountName ? ` — ${user.payoutAccountName}` : ""}
+                    </Text>
+                  </Group>
+                </>
+              )}
             </Card>
 
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
               {[
-                { label: "Total Rentals", value: stats.total, icon: Receipt, color: roleColor.brand },
-                { label: "Active", value: stats.active, icon: Receipt, color: roleColor.success },
-                { label: "Completed", value: stats.completed, icon: UserCheck, color: roleColor.accent },
-                { label: "Lifetime Value", value: peso.format(stats.spend), icon: Wallet, color: roleColor.cta },
+                { label: "Rentals as renter", value: rentalCounts.asRenter, icon: Receipt, color: roleColor.brand },
+                { label: "Rentals as owner", value: rentalCounts.asOwner, icon: Package, color: roleColor.accent },
+                { label: "Listings", value: items.length, icon: Package, color: roleColor.cta },
+                {
+                  label: "Avg. rating received",
+                  value: avgReviewRating > 0 ? avgReviewRating.toFixed(1) : "—",
+                  icon: Star,
+                  color: roleColor.success,
+                },
               ].map((s) => (
                 <Card key={s.label} withBorder radius="md" padding="lg">
                   <Group justify="space-between" align="flex-start">
@@ -202,47 +267,109 @@ export default function UserDetailPage() {
               ))}
             </SimpleGrid>
 
-            <Stack gap="xs">
-              <Title order={3} size="h4">
-                Rental History
-              </Title>
-              <DataTableCard
-                columns={["Item", "Period", "Status", "Total"]}
-                loading={loading}
-                isEmpty={rentals.length === 0}
-                emptyState={
-                  <EmptyState
-                    icon={Receipt}
-                    title="No rentals yet"
-                    description="This user hasn't rented anything."
-                  />
-                }
-              >
-                {rentals.map((r) => (
-                  <Table.Tr key={r.id}>
-                    <Table.Td>
-                      <Anchor component={Link} href={`/rentals/${r.id}`} fw={600} size="sm">
-                        {r.item?.title ?? "—"}
-                      </Anchor>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">
-                        {new Date(r.startDate).toLocaleDateString()} →{" "}
-                        {new Date(r.endDate).toLocaleDateString()}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <StatusBadge status={r.status} />
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" fw={600}>
-                        {peso.format(Number(r.totalPrice || 0))}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </DataTableCard>
-            </Stack>
+            <Tabs defaultValue="listings">
+              <Tabs.List>
+                <Tabs.Tab value="listings" leftSection={<Package size={15} />}>
+                  Listings ({items.length})
+                </Tabs.Tab>
+                <Tabs.Tab value="reviews" leftSection={<Star size={15} />}>
+                  Reviews received ({reviewsReceived.length})
+                </Tabs.Tab>
+                <Tabs.Tab value="activity" leftSection={<History size={15} />}>
+                  Recent activity ({auditEntries.length})
+                </Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="listings" pt="md">
+                <DataTableCard
+                  columns={["Title", "Status", "Rating", "Rentals"]}
+                  isEmpty={items.length === 0}
+                  emptyState={
+                    <EmptyState icon={Package} title="No listings" description="This user hasn't listed anything." />
+                  }
+                >
+                  {items.map((it) => (
+                    <Table.Tr key={it.id}>
+                      <Table.Td>
+                        <Anchor component={Link} href={`/items/${it.id}`} fw={600} size="sm">
+                          {it.title}
+                        </Anchor>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {!it.isActive && <Badge color="gray" size="sm">Deleted</Badge>}
+                          {it.isFlagged && <Badge color={roleColor.critical} size="sm">Flagged</Badge>}
+                          {!it.isListed && <Badge color="gray" variant="outline" size="sm">Unlisted</Badge>}
+                          {it.isActive && it.isListed && !it.isFlagged && (
+                            <Badge color={roleColor.success} size="sm">Listed</Badge>
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{it.averageRating > 0 ? it.averageRating.toFixed(1) : "—"}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{it.totalRentals}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </DataTableCard>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="reviews" pt="md">
+                <DataTableCard
+                  columns={["From", "Rating", "Comment", "Date"]}
+                  isEmpty={reviewsReceived.length === 0}
+                  emptyState={
+                    <EmptyState icon={Star} title="No reviews yet" description="Nobody has reviewed this user." />
+                  }
+                >
+                  {reviewsReceived.map((r) => (
+                    <Table.Tr key={r.id}>
+                      <Table.Td>
+                        <Text size="sm">{r.author.firstName} {r.author.lastName}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={600}>{r.rating} / 5</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed" lineClamp={2}>{r.comment || "—"}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{new Date(r.createdAt).toLocaleDateString()}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </DataTableCard>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="activity" pt="md">
+                <DataTableCard
+                  columns={["Action", "By", "Reason", "When"]}
+                  isEmpty={auditEntries.length === 0}
+                  emptyState={
+                    <EmptyState icon={History} title="No recorded activity" description="No admin action has targeted this account yet." />
+                  }
+                >
+                  {auditEntries.map((a) => (
+                    <Table.Tr key={a.id}>
+                      <Table.Td>
+                        <Text size="sm" fw={600}>{a.action}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{a.actorEmail}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">{a.reason || "—"}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{new Date(a.createdAt).toLocaleString()}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </DataTableCard>
+              </Tabs.Panel>
+            </Tabs>
           </>
         )}
       </Stack>

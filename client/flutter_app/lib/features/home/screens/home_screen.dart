@@ -24,9 +24,15 @@ import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/stale_data_banner.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../core/localization/locale_controller.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../auth/screens/edit_profile_screen.dart';
+import 'account_activity_screen.dart';
 import '../../notifications/models/notification_service.dart';
+import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../payments/screens/payout_details_screen.dart';
+import '../../payments/screens/transaction_history_screen.dart';
 import '../../rentals/models/rental_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -44,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final pages = [
       _HomeTab(onGoToRentals: _goToRentals),
       const _RentalsTab(),
@@ -73,11 +80,11 @@ class _HomeScreenState extends State<HomeScreen> {
           elevation: 0,
           selectedItemColor: AppColors.primary,
           unselectedItemColor: p.muted,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Rentals'),
-            BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Alerts'),
-            BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          items: [
+            BottomNavigationBarItem(icon: const Icon(Icons.home_filled), label: l10n.navHome),
+            BottomNavigationBarItem(icon: const Icon(Icons.receipt_long), label: l10n.navRentals),
+            BottomNavigationBarItem(icon: const Icon(Icons.notifications), label: l10n.navAlerts),
+            BottomNavigationBarItem(icon: const Icon(Icons.person), label: l10n.navProfile),
           ],
         ),
       ),
@@ -183,6 +190,7 @@ class _HomeTabState extends State<_HomeTab> {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final user = context.watch<AuthProvider>().user;
 
     return Scaffold(
@@ -285,7 +293,7 @@ class _HomeTabState extends State<_HomeTab> {
                           tooltipBorderRadius: AppRadius.card,
                           child: _SecondaryAction(
                             icon: Icons.add_box_outlined,
-                            label: 'List an item',
+                            label: l10n.listAnItem,
                             color: AppColors.secondary,
                             onTap: () =>
                                 Navigator.pushNamed(context, '/items/create'),
@@ -305,7 +313,7 @@ class _HomeTabState extends State<_HomeTab> {
                           tooltipBorderRadius: AppRadius.card,
                           child: _SecondaryAction(
                             icon: Icons.qr_code_scanner_rounded,
-                            label: 'Scan kiosk',
+                            label: l10n.scanKiosk,
                             color: AppColors.accent,
                             onTap: () =>
                                 Navigator.pushNamed(context, '/kiosk/scan'),
@@ -325,7 +333,7 @@ class _HomeTabState extends State<_HomeTab> {
                           tooltipBorderRadius: AppRadius.card,
                           child: _SecondaryAction(
                             icon: Icons.receipt_long_rounded,
-                            label: 'My rentals',
+                            label: l10n.myRentalsAction,
                             color: AppColors.info,
                             onTap: widget.onGoToRentals,
                           ),
@@ -340,7 +348,7 @@ class _HomeTabState extends State<_HomeTab> {
                       Expanded(
                         child: _SecondaryAction(
                           icon: Icons.inventory_2_rounded,
-                          label: 'My listings',
+                          label: l10n.myListingsAction,
                           color: AppColors.secondary,
                           onTap: () => Navigator.pushNamed(context, '/items/mine'),
                         ),
@@ -350,11 +358,11 @@ class _HomeTabState extends State<_HomeTab> {
                   const SizedBox(height: AppSpacing.lg),
 
                   SectionLabel(
-                    'Browse by category',
+                    l10n.browseByCategory,
                     trailing: GestureDetector(
                       onTap: () => Navigator.pushNamed(context, '/items'),
                       child: Text(
-                        'See all',
+                        l10n.seeAll,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -421,7 +429,7 @@ class _HomeTabState extends State<_HomeTab> {
                                 ),
                                 TextButton(
                                   onPressed: _loadFeatured,
-                                  child: const Text('Retry'),
+                                  child: Text(l10n.retry),
                                 ),
                               ],
                             ),
@@ -650,6 +658,7 @@ class _RentalsTabState extends State<_RentalsTab> {
     // order_status references: thumbnail, title, status, dates and money all
     // legible in one row, with a filter rail so "what do I still have out"
     // doesn't require reading the whole list.
+    final l10n = AppLocalizations.of(context)!;
     final visible = _filter == null
         ? _rentals
         : _rentals.where((r) => _filterMatches(r.status)).toList();
@@ -657,7 +666,7 @@ class _RentalsTabState extends State<_RentalsTab> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('My Rentals'),
+        title: Text(l10n.myRentalsTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -688,18 +697,18 @@ class _RentalsTabState extends State<_RentalsTab> {
                   : _error != null
                       ? AppEmptyState(
                           icon: Icons.wifi_off_rounded,
-                          title: 'Couldn\'t load your rentals',
+                          title: l10n.couldNotLoadRentals,
                           body: _error,
                           action: OutlinedButton(
                             onPressed: _load,
-                            child: const Text('Try again'),
+                            child: Text(l10n.tryAgain),
                           ),
                         )
                       : visible.isEmpty
                           ? AppEmptyState(
                               icon: Icons.receipt_long_outlined,
                               title: _filter == null
-                                  ? 'No rentals yet'
+                                  ? l10n.noRentalsYet
                                   : 'Nothing in this filter',
                               body: _filter == null
                                   ? 'Browse equipment to start your first rental.'
@@ -708,7 +717,7 @@ class _RentalsTabState extends State<_RentalsTab> {
                                   ? ElevatedButton(
                                       onPressed: () => Navigator.pushNamed(
                                           context, '/items'),
-                                      child: const Text('Browse equipment'),
+                                      child: Text(l10n.browseEquipment),
                                     )
                                   : OutlinedButton(
                                       onPressed: () =>
@@ -1132,6 +1141,7 @@ class _ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.user;
     return Scaffold(
@@ -1231,7 +1241,18 @@ class _ProfileTab extends StatelessWidget {
                       : null,
                 ),
                 const Divider(height: 1, indent: 56),
-                _ProfileTile(icon: Icons.phone_rounded, iconColor: AppColors.primary, title: 'Phone', subtitle: user?.phoneNumber ?? 'Not set'),
+                _ProfileTile(
+                  icon: Icons.phone_rounded,
+                  iconColor: AppColors.primary,
+                  title: 'Phone',
+                  subtitle: user?.phoneNumber ?? 'Not set',
+                  // Checklist Stage 9 — this tile was display-only before;
+                  // "profile editing beyond payout" opens from here.
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                  ),
+                ),
                 const Divider(height: 1, indent: 56),
                 // Mandate §2.1 — the light/dark choice is surfaced here as a
                 // real control, not just inherited from the OS. Reads through
@@ -1260,6 +1281,19 @@ class _ProfileTab extends StatelessWidget {
                   },
                 ),
                 const Divider(height: 1, indent: 56),
+                // Checklist Stage 9 — the language picker. Persists through
+                // LocaleController, same pattern as the Appearance switch
+                // above persists through ThemeController.
+                Consumer<LocaleController>(
+                  builder: (context, localeController, _) => _ProfileTile(
+                    icon: Icons.language_rounded,
+                    iconColor: AppColors.info,
+                    title: l10n.language,
+                    subtitle: _languageLabel(l10n, localeController.locale),
+                    onTap: () => _showLanguagePicker(context, l10n, localeController),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.inventory_2_rounded,
                   iconColor: AppColors.secondary,
@@ -1278,6 +1312,46 @@ class _ProfileTab extends StatelessWidget {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const PayoutDetailsScreen()),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
+                // Checklist Stage 9 — GET /payments existed and was called
+                // by nothing; a student had no way to see their own
+                // payment/refund/fee history at all.
+                _ProfileTile(
+                  icon: Icons.receipt_long_outlined,
+                  iconColor: AppColors.info,
+                  title: 'Transaction History',
+                  subtitle: 'Payments, deposits, refunds, and fees',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TransactionHistoryScreen()),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
+                // Checklist Stage 9 — "account activity log visible to the
+                // user." A merged, read-only view over rentals + notifications
+                // rather than a new audit table duplicating what those two
+                // already record.
+                _ProfileTile(
+                  icon: Icons.history_rounded,
+                  iconColor: AppColors.primary,
+                  title: 'Account Activity',
+                  subtitle: 'Your rentals and alerts, newest first',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AccountActivityScreen()),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
+                _ProfileTile(
+                  icon: Icons.notifications_active_outlined,
+                  iconColor: AppColors.accent,
+                  title: 'Notification Preferences',
+                  subtitle: 'Choose which alerts you get',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const NotificationPreferencesScreen()),
                   ),
                 ),
                 const Divider(height: 1, indent: 56),
@@ -1347,7 +1421,10 @@ class _ProfileTab extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: Text(AppLocalizations.of(dialogCtx)!.cancel),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('Delete Permanently', style: TextStyle(color: AppColors.error)),
@@ -1381,6 +1458,111 @@ class _ProfileTab extends StatelessWidget {
         AppToast.error(context, 'Could not delete account', friendlyErrorMessage(e));
       }
     }
+  }
+
+  /// Subtitle under the Language tile — shows what's actually applied.
+  /// `null` (no persisted choice) reads as "follows the device", matching
+  /// what `LocaleController.locale == null` really means at the MaterialApp
+  /// level.
+  String _languageLabel(AppLocalizations l10n, Locale? locale) {
+    return switch (locale?.languageCode) {
+      'fil' => l10n.languageFilipino,
+      'ceb' => l10n.languageBisaya,
+      _ => l10n.languageEnglish,
+    };
+  }
+
+  /// Bottom-sheet language picker — checklist Stage 9. Three options only
+  /// (English / Filipino / Bisaya), matching `LocaleController.supportedLocales`
+  /// and the three ARB files under lib/l10n/.
+  Future<void> _showLanguagePicker(
+    BuildContext context,
+    AppLocalizations l10n,
+    LocaleController localeController,
+  ) async {
+    final current = localeController.locale?.languageCode;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.language,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.languageSubtitle,
+                    style: TextStyle(
+                        fontSize: 12, color: AppPalette.of(sheetCtx).muted),
+                  ),
+                ],
+              ),
+            ),
+            _LanguageOption(
+              label: l10n.languageEnglish,
+              selected: current == 'en',
+              onTap: () {
+                localeController.setLocale(const Locale('en'));
+                Navigator.pop(sheetCtx);
+              },
+            ),
+            _LanguageOption(
+              label: l10n.languageFilipino,
+              selected: current == 'fil',
+              onTap: () {
+                localeController.setLocale(const Locale('fil'));
+                Navigator.pop(sheetCtx);
+              },
+            ),
+            _LanguageOption(
+              label: l10n.languageBisaya,
+              selected: current == 'ceb',
+              onTap: () {
+                localeController.setLocale(const Locale('ceb'));
+                Navigator.pop(sheetCtx);
+              },
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One row in the language picker bottom sheet. Plain ListTile + checkmark
+/// rather than RadioListTile — the Radio-family widgets' `groupValue`/
+/// `onChanged` were deprecated in favour of a `RadioGroup` ancestor, and
+/// three independently-tappable rows are simpler here than wiring one up.
+class _LanguageOption extends StatelessWidget {
+  const _LanguageOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(label),
+      trailing: selected
+          ? Icon(Icons.check_rounded, color: AppColors.primary)
+          : null,
+      onTap: onTap,
+    );
   }
 }
 

@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   CreditCard,
   HeartPulse,
+  History,
   IdCard,
   LayoutDashboard,
   LogOut,
@@ -57,6 +58,10 @@ const menuItems = [
   // side could read them.
   { name: "Feedback", icon: MessageSquareWarning, href: "/feedback" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
+  // Checklist Stage 9 — a real, structured, queryable audit trail. Before
+  // this "audit log" meant unstructured Winston text lines with no API
+  // reading them back at all.
+  { name: "Audit Log", icon: History, href: "/audit-log" },
   { name: "Kiosk", icon: MonitorSpeaker, href: "/kiosk" },
   { name: "Health Check", icon: HeartPulse, href: "/health" },
   { name: "Settings", icon: Settings, href: "/settings" },

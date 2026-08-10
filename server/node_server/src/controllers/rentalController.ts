@@ -451,3 +451,123 @@ export const cancelRental = async (
     next(error);
   }
 };
+
+/**
+ * PATCH /rentals/:id/dates — checklist Stage 9. "Extend/shorten a rental —
+ * better than the late-fee path, currently the only option." Only the
+ * renter can request it, only while the rental is genuinely in flight
+ * (AWAITING_DEPOSIT/DEPOSITED/ACTIVE — not PENDING, where nothing is
+ * committed yet, and not a terminal status). Reuses the exact same overlap
+ * check createRental uses (excluding this rental itself), so a new end
+ * date can never silently create the double-booking Stage 6 exists to
+ * prevent.
+ *
+ * Money: if the new range is longer, the price difference is billed as an
+ * EXTENSION_FEE — deducted from the held deposit at settlement, the same
+ * mechanism as a LATE_FEE, not a second immediate PayMongo charge. A
+ * shorter range reduces totalPrice with no refund of money not yet
+ * collected (the original RENTAL_PAYMENT, if already made, is untouched).
+ */
+export const extendRental = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new ForbiddenError("Authentication required");
+    }
+
+    const id = req.params.id as string;
+    const { endDate } = req.body;
+
+    const rental = await prisma.rental.findUnique({
+      where: { id },
+      include: { item: true },
+    });
+    if (!rental) throw new NotFoundError("Rental not found");
+    if (rental.renterId !== req.user.userId) {
+      throw new ForbiddenError("Only the renter can change a rental's dates");
+    }
+    if (!["AWAITING_DEPOSIT", "DEPOSITED", "ACTIVE"].includes(rental.status)) {
+      throw new ValidationError(
+        "Dates can only be changed while the rental is awaiting deposit, deposited, or active",
+      );
+    }
+
+    const newEnd = new Date(endDate);
+    if (Number.isNaN(newEnd.getTime()) || newEnd <= rental.startDate) {
+      throw new ValidationError("The new end date must be after the start date");
+    }
+    if (newEnd.getTime() === rental.endDate.getTime()) {
+      throw new ValidationError("That is already the current end date");
+    }
+
+    const overlapping = await findOverlappingRentals(
+      rental.itemId,
+      rental.startDate,
+      newEnd,
+      id,
+    );
+    if (overlapping.length > 0) {
+      throw new ValidationError(
+        "This item is booked by someone else for part of the new range. Pick an earlier date.",
+      );
+    }
+
+    const newDays = Math.ceil(
+      (newEnd.getTime() - rental.startDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const newTotalPrice = newDays * rental.item.pricePerDay;
+    const priceDelta = newTotalPrice - rental.totalPrice;
+    const extending = newEnd > rental.endDate;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.rental.update({
+        where: { id },
+        data: { endDate: newEnd, totalPrice: newTotalPrice },
+      });
+      if (extending && priceDelta > 0) {
+        await tx.transaction.create({
+          data: {
+            rentalId: id,
+            userId: rental.renterId,
+            type: "EXTENSION_FEE",
+            amount: priceDelta,
+            status: "COMPLETED",
+            paidAt: new Date(),
+            paymentMethod: "Held Deposit Deduction",
+          },
+        });
+      }
+      await tx.notification.create({
+        data: {
+          userId: rental.ownerId,
+          title: extending ? "Rental extended" : "Rental shortened",
+          message: `${req.user!.email} ${extending ? "extended" : "shortened"} the rental for ${rental.item.title} — new return date ${newEnd.toLocaleDateString()}.`,
+          type: "SYSTEM_ANNOUNCEMENT",
+          relatedEntityId: id,
+          relatedEntityType: "rental",
+        },
+      });
+    });
+
+    await recomputeItemAvailability(rental.itemId);
+
+    logger.info(
+      `Rental ${id} dates changed by ${req.user.userId}: endDate ${rental.endDate.toISOString()} → ${newEnd.toISOString()} (₱${priceDelta >= 0 ? "+" : ""}${priceDelta})`,
+    );
+
+    res.json({
+      success: true,
+      message: extending ? "Rental extended" : "Rental shortened",
+      data: {
+        endDate: newEnd,
+        totalPrice: newTotalPrice,
+        extensionFeeCharged: extending && priceDelta > 0 ? priceDelta : 0,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
