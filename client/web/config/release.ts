@@ -28,22 +28,22 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.5.2",
-  buildNumber: 15,
-  fileName: "Engirent_Prerelease15.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-08-09",
-  sizeMb: 73,
+  version: "1.6.0",
+  buildNumber: 16,
+  fileName: "Engirent_Prerelease16.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-08-10",
+  sizeMb: 83,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    'New "Blueprint" colour scheme — blue-led, across light and dark',
-    'Fixes text overflowing and getting cut off on phones with larger system font sizes',
-    'Checkout rebuilt — itemised cost breakdown showing what the deposit is and when you get it back',
-    'Listing an item rebuilt with photo cover selection and an earnings preview',
-    'Notifications grouped by day, with an unread filter',
-    'Reviews now open with an average and a tappable rating breakdown',
-    'Payout setup reworked with a searchable bank list and plain-English transfer rails',
-    'Kiosk scanning now shows the three steps and what happens at the kiosk itself',
-    'Profile no longer claims your identity is verified when it is still pending review',
+    "Renters can extend or shorten an active rental instead of only paying a late fee afterward",
+    "Item availability now checks real booking date ranges, not a single on/off flag",
+    "Owners can attach a short video to a listing",
+    "Owner completion rate and renter on-time rate shown where they matter, plus a report-a-listing path",
+    "The cancellation policy and the deposit's damage-protection cap are stated before payment",
+    "Works offline — the app caches the last good data and queues actions until you're back online",
+    "In-app messaging scoped to a rental, for real dispute transcripts",
+    "New account activity, transaction history, and notification preference screens",
+    "Bisaya and Tagalog language support, and a screen-reader pass across icon-only controls",
   ],
 };
 
