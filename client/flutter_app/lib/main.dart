@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toastification/toastification.dart';
+import 'core/localization/ceb_framework_localizations.dart';
 import 'core/localization/locale_controller.dart';
 import 'core/observability/crash_reporting.dart';
 import 'core/services/api_service.dart';
@@ -112,7 +113,17 @@ class MyApp extends StatelessWidget {
           // would without a `locale` argument at all: device locale if
           // supported, English otherwise.
           locale: localeController.locale,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          // Bug found via a live user report: switching to Bisaya crashed
+          // to a blank white screen — flutter_localizations has no Cebuano
+          // Material/Cupertino/Widgets data at all, and the framework
+          // delegate's load() force-unwraps a null lookup for it. The
+          // cebFrameworkLocalizationsDelegates fill that specific gap; see
+          // their doc comment for the full mechanism. Filipino needs none
+          // of this — flutter_localizations ships real `fil` data already.
+          localizationsDelegates: [
+            ...AppLocalizations.localizationsDelegates,
+            ...cebFrameworkLocalizationsDelegates,
+          ],
           supportedLocales: AppLocalizations.supportedLocales,
           navigatorKey: _rootNavigatorKey,
           initialRoute: showOnboarding ? '/onboarding' : '/login',
