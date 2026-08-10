@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import NextLink from "next/link";
 import { Download, ShieldCheck, Smartphone, TriangleAlert } from "lucide-react";
 import { Section, SectionHeading, Card, Reveal } from "@/components/velora/section";
 import { AuroraBackground } from "@/components/velora/aurora-background";
-import { androidRelease, androidDownloadPath } from "@/config/release";
+import { androidRelease } from "@/config/release";
 
 export const metadata: Metadata = {
   title: "Download the app",
@@ -42,9 +43,13 @@ export default function DownloadPage() {
               description="Rent and lend equipment, and open the smart locker from your phone. Currently distributed directly rather than through the Play Store."
             />
 
-            <a
-              href={androidDownloadPath}
-              download
+            {/* Routes into /downloading rather than linking the file
+                directly — that page runs the actual fetch (so it can show
+                real byte progress, not a spinner) and is where the
+                block-assembly transition and the pre-install disclaimer
+                live now. */}
+            <NextLink
+              href="/downloading"
               className="inline-flex items-center gap-2 rounded-md bg-[var(--brand-primary)] px-6 py-3.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
             >
               <Download size={18} />
@@ -53,7 +58,7 @@ export default function DownloadPage() {
               <span className="font-mono text-xs font-normal opacity-80">
                 v{version} · {sizeMb} MB
               </span>
-            </a>
+            </NextLink>
 
             <dl className="flex flex-wrap gap-x-8 gap-y-3 pt-2">
               {[

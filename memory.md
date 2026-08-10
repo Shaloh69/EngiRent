@@ -86,6 +86,26 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — A real /downloading page, with the kiosk's block-assembly transition ported to client/web
+
+Follow-up to the v1.6.0/changelog work. User asked for a proper interstitial page for the APK download — transition in, real progress, a thank-you + disclaimer, closeable when done — and specifically to move "the Tetris animation" onto it.
+
+**"The Tetris animation" is `BlockAssembly`** (`server/kiosk/kiosk_ui_react/src/components/BlockAssembly.tsx`) — the kiosk's screen-transition system. Despite the name, it isn't tetrominoes; the component's own doc comment explains that the *first* version was built with real Tetris pieces and was deliberately replaced with Mondrian-style binary-space-partition rectangles, because tetrominoes read as a video game rather than a piece of engineering equipment. The user's "Tetris" almost certainly refers to that original mental model / the effect's general appearance (falling/assembling blocks), not literally reintroducing tetrominoes — ported the *current* Mondrian version, kept the name in conversation only.
+
+**Researched real download-interstitial patterns first** (Red Hat Developer's confirmation page as a concrete reference) rather than guessing: the standard shape is auto-start the download, confirm it landed, offer a manual fallback link, keep legal/disclaimer text light. Built something a step further than that reference, since the user specifically wanted visible progress, not just a static confirmation.
+
+**Ported `BlockAssembly` to `client/web`** (`components/velora/block-assembly.tsx`), retheme'd from the kiosk's `--ink`/`--surf2`/`--sp-*` tokens onto this site's own `--brand-*` custom properties and `--font-display`/`--font-mono` — logic (the binary-space-partition tiling, the mirrored build/clear animation) is unchanged, only the visual tokens and the boot card's copy ("Preparing your download" + a curated subset of the product-fact quotes) are local to this surface. CSS added to `styles/globals.css` under a new "Block assembly" section, same treatment the site-header's title-block CSS already got.
+
+**New `/downloading` page** (`app/downloading/page.tsx`) — real fetch-based download, not a simulated progress bar: `response.body.getReader()` streams the APK (same-origin, so `Content-Length` is readable without a CORS workaround), tracking real bytes-received against the real total for the progress bar and percentage. Once fully received, the chunks are assembled into a `Blob`, given an object URL, and saved via a synthetic `<a download>` click — genuinely writes the file to disk, not a fake "done" state. `/download`'s button now routes here instead of linking the file directly.
+
+**Four states, not just happy-path**: `transition` (the block-assembly wall, `boot` mode) → `downloading` (real progress bar + a Cancel button wired to a real `AbortController`) → `done` (thank-you message, the same two disclaimers already on `/download` — pre-release build, signed by the project's key — plus "Close this tab" and "Back to site") → `error` (network failure or cancellation, with "Try again" and a plain `<a download>` fallback link that bypasses the fetch entirely).
+
+**Being honest about `window.close()`**: it only works on a tab the script itself opened — a normal top-level navigation (the actual case here, since the button is a same-tab link) makes it a silent no-op in every modern browser. Implemented as a best-effort call anyway, but the button's own microcopy doesn't promise it'll work and explicitly tells the user it's safe to just navigate away either way — matching this project's standing rule against overclaiming what code can actually do.
+
+**Verified for real, not just visually**: a Playwright test against the local build confirmed the downloaded file's SHA-256 matches the source file exactly (fetch/Blob round-trip doesn't corrupt anything). Network-throttled runs (via CDP `Network.emulateNetworkConditions`) caught the transition wall, a real in-flight percentage ("0.2 / 72.9 MB · 0%"), the cancel path, and a route-blocked error path, all screenshotted in both themes. Then repeated live against the deployed tunnel URL — the live-downloaded file's SHA-256 matches the real deployed APK on `desktop-gklhcri` exactly, in both colour schemes.
+
+Full-parity redeploy of `client/web`'s `app`/`components`/`styles` (15/6/1 files, exact match both ends), rebuilt and restarted clean.
+
 ### 2026-08-10 — v1.6.0 cut, a real changelog page built, and the public site's "Rev 1.5.2" stale-version report resolved
 
 Follow-up to Stage 9. The user asked why the public web link still showed "1.5.2" and asked for a changelog with real thought put into its design.
