@@ -157,6 +157,9 @@ async function run() {
   ownerToken = ownerReg.json?.data?.tokens?.accessToken;
   check("owner registers", !!ownerToken, `status ${ownerReg.status}`);
 
+  // Follow-up (2026-08-10) — listing now requires a verified account.
+  await prisma.user.update({ where: { id: ownerReg.json?.data?.user?.id }, data: { isVerified: true } });
+
   const cover = await uploadImage(ownerToken);
   check("cover photo uploads", !!cover.url, JSON.stringify(cover));
 

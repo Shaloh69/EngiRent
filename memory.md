@@ -86,6 +86,18 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — A real user-reported security gap: unverified students could list AND rent freely, since nothing ever enforced verification
+
+Another real feedback report, found while checking the queue: *"I haven't submitted my id yet, still I can list an item which is wrong... What if the unverified users submitted a wrong item on the kiosk and dangerous things."* Reproduced by reading the code directly: grepped every controller for `isVerified` — `createItem` and `createRental` never checked it at all. The entire ID-verification system existed and enforced **nothing** at the two points that actually matter — publishing a listing and starting a rental (which ends in real kiosk/locker access).
+
+**Fixed at the middleware layer, not ad-hoc per-controller**: `AuthRequest.user` gained a real `isVerified` field (populated fresh from the DB on every request, same as the rest of `req.user` — never trusted from a stale JWT claim), and a new `requireVerified` middleware rejects with a clear, actionable 403 ("Your student ID must be verified before you can do this. Submit it from Profile → Identity.") when it's false. Applied to `POST /items` and `POST /rentals` — the two creation points — not retroactively to browsing, messaging, editing an existing listing, or anything an already-existing unverified account had already legitimately done.
+
+**A real ripple, caught by the E2E suite, not guessed at**: every `e2e-*.mjs` script that registers a fresh test account and immediately creates an item or rental now legitimately needs that account verified first — a fresh registration is unverified by design, same as any real new student. Fixed the fixture setup in all four affected suites (`e2e-availability`, `e2e-listing-video`, `e2e-trust-safety`, `e2e-enterprise-hygiene`) with a direct-DB `isVerified: true` flip right after registration — the same "fast-forward through a state a fixture can't reach any other way" pattern already used elsewhere in this session for e.g. ACTIVE rental fixtures.
+
+**A second, unrelated snag found while re-running the suite**: hit the rate limiter mid-testing — this session's own heavy E2E traffic all runs through `127.0.0.1`, and pushed that one IP-keyed bucket over the limit (confirmed via reading `data/rate-limit-store.json` directly: real end-user buckets were nowhere near it). Cleared only the `127.0.0.1` entry, leaving real users' buckets untouched, and restarted the API (the store loads into memory once at startup, so the file edit alone wouldn't have taken effect without a restart — same lesson as the earlier rate-limiter incident this session).
+
+**Verified live, both directions**: a fresh unverified throwaway account got a real `403` on both `POST /items` and `POST /rentals` with the correct message; the long-standing verified test fixture (`ian.luna@uclm.edu.ph`) still creates listings normally (`201`) — no regression for legitimate verified users. Full E2E regression after all fixes: 19+19+24+48 = **110/110 passing**. Both throwaway test artifacts deleted immediately after.
+
 ### 2026-08-10 — Critical live bug: switching to Bisaya crashed the whole app to a blank white screen
 
 User reported it directly ("After Switching it turns white the whole app became unusable"). Reproduced immediately against the live deployed app — confirmed real, 100% reproducible.

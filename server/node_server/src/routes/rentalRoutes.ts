@@ -9,7 +9,7 @@ import {
   extendRental,
 } from "../controllers/rentalController";
 import { getConversation, sendMessage } from "../controllers/messageController";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requireVerified } from "../middleware/auth";
 import { validate } from "../middleware/validation";
 
 const router = Router();
@@ -18,6 +18,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
+  requireVerified,
   validate([
     body("itemId").isUUID().withMessage("Valid item ID is required"),
     body("startDate").isISO8601().withMessage("Valid start date is required"),

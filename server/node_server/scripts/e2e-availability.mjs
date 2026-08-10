@@ -160,6 +160,15 @@ async function run() {
   renterBToken = renterBReg.json?.data?.tokens?.accessToken;
   check("renter B registers", !!renterBToken, `status ${renterBReg.status}`);
 
+  // Follow-up (2026-08-10) — listing and renting now require a verified
+  // account (a real reported safety gap: unverified users could do both
+  // freely). Direct-DB fixture, same pattern already used elsewhere in
+  // this suite for states a fresh registration can't reach on its own.
+  await prisma.user.updateMany({
+    where: { id: { in: [ownerReg.json?.data?.user?.id, renterAReg.json?.data?.user?.id, renterBReg.json?.data?.user?.id].filter(Boolean) } },
+    data: { isVerified: true },
+  });
+
   section("Create item");
   const upload = await uploadImage(ownerToken);
   const create = await jreq("/items", {

@@ -9,6 +9,7 @@ export interface AuthRequest extends Request {
     email: string;
     studentId: string;
     role: "STUDENT" | "ADMIN" | "REVIEWER";
+    isVerified: boolean;
   };
 }
 
@@ -37,6 +38,7 @@ export const authenticate = async (
           studentId: true,
           isActive: true,
           role: true,
+          isVerified: true,
         },
       });
 
@@ -49,6 +51,7 @@ export const authenticate = async (
         email: user.email,
         studentId: user.studentId,
         role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
+        isVerified: user.isVerified,
       };
 
       next();
@@ -58,6 +61,32 @@ export const authenticate = async (
   } catch (error) {
     next(error);
   }
+};
+
+// Checklist follow-up (2026-08-10) — a real reported gap: an unverified
+// student could list AND rent items freely. The whole ID-verification
+// system existed but gated nothing. Applied only to *creating* a listing or
+// a rental — the two points where trust actually needs to be established —
+// not retroactively to browsing, messaging, or anything an already-existing
+// unverified account had already done.
+export const requireVerified = (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction,
+): void => {
+  if (!req.user) {
+    next(new UnauthorizedError("Authentication required"));
+    return;
+  }
+  if (!req.user.isVerified) {
+    next(
+      new ForbiddenError(
+        "Your student ID must be verified before you can do this. Submit it from Profile → Identity.",
+      ),
+    );
+    return;
+  }
+  next();
 };
 
 export const requireAdmin = (
@@ -118,6 +147,7 @@ export const optionalAuth = async (
             studentId: true,
             isActive: true,
             role: true,
+            isVerified: true,
           },
         });
 
@@ -127,6 +157,7 @@ export const optionalAuth = async (
             email: user.email,
             studentId: user.studentId,
             role: user.role as "STUDENT" | "ADMIN" | "REVIEWER",
+            isVerified: user.isVerified,
           };
         }
       } catch {

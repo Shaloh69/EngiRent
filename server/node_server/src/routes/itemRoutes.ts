@@ -9,7 +9,7 @@ import {
   getMyItems,
   getBookedDates,
 } from "../controllers/itemController";
-import { authenticate, optionalAuth } from "../middleware/auth";
+import { authenticate, optionalAuth, requireVerified } from "../middleware/auth";
 import { validate } from "../middleware/validation";
 
 const router = Router();
@@ -18,6 +18,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
+  requireVerified,
   validate([
     body("title").notEmpty().withMessage("Title is required"),
     body("description").notEmpty().withMessage("Description is required"),

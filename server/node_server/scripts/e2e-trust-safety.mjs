@@ -166,6 +166,12 @@ async function run() {
   renterBId = renterBReg.json?.data?.user?.id;
   check("renter B registers", !!renterBId, `status ${renterBReg.status}`);
 
+  // Follow-up (2026-08-10) — listing and renting now require a verified account.
+  await prisma.user.updateMany({
+    where: { id: { in: [ownerId, renterAId, renterBId].filter(Boolean) } },
+    data: { isVerified: true },
+  });
+
   const adminLogin = await jreq("/auth/login", {
     method: "POST",
     body: {
