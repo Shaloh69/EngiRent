@@ -116,6 +116,13 @@ export const listUsers = async (
       lastName: true,
       phoneNumber: true,
       isVerified: true,
+      // The list view previously collapsed this to `isVerified ? APPROVED :
+      // PENDING`, which showed "Pending" for a student who never submitted
+      // an ID at all (verificationStatus stays UNSUBMITTED until they do) —
+      // indistinguishable from someone genuinely sitting in the real
+      // /id-verifications queue. Sending the real 4-state field lets the
+      // client stop guessing.
+      verificationStatus: true,
       isActive: true,
       role: true,
       createdAt: true,
@@ -135,9 +142,9 @@ export const listUsers = async (
       sendCsv(
         res,
         "engirent-users",
-        ["Email", "Student ID", "First Name", "Last Name", "Phone", "Verified", "Active", "Role", "Joined", "Last Login"],
+        ["Email", "Student ID", "First Name", "Last Name", "Phone", "Verified", "Verification Status", "Active", "Role", "Joined", "Last Login"],
         rows,
-        (u) => [u.email, u.studentId, u.firstName, u.lastName, u.phoneNumber, u.isVerified, u.isActive, u.role, u.createdAt.toISOString(), u.lastLogin?.toISOString() ?? ""],
+        (u) => [u.email, u.studentId, u.firstName, u.lastName, u.phoneNumber, u.isVerified, u.verificationStatus, u.isActive, u.role, u.createdAt.toISOString(), u.lastLogin?.toISOString() ?? ""],
       );
       return;
     }

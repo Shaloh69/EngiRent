@@ -41,7 +41,7 @@ const FILTERS_KEY = "engirent-admin-filters-users";
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
-  const [verifiedFilter, setVerifiedFilter] = useState<string | null>(null);
+  const [verificationFilter, setVerificationFilter] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,7 +52,7 @@ export default function UsersPage() {
       if (raw) {
         const saved = JSON.parse(raw);
         if (saved.search) setSearch(saved.search);
-        if (saved.verifiedFilter) setVerifiedFilter(saved.verifiedFilter);
+        if (saved.verificationFilter) setVerificationFilter(saved.verificationFilter);
         if (saved.activeFilter) setActiveFilter(saved.activeFilter);
       }
     } catch {
@@ -63,11 +63,11 @@ export default function UsersPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(FILTERS_KEY, JSON.stringify({ search, verifiedFilter, activeFilter }));
+      localStorage.setItem(FILTERS_KEY, JSON.stringify({ search, verificationFilter, activeFilter }));
     } catch {
       // Ignore — convenience, not a requirement.
     }
-  }, [search, verifiedFilter, activeFilter]);
+  }, [search, verificationFilter, activeFilter]);
 
   const exportCsv = async () => {
     // Mirrors reports/page.tsx's existing handleExportCSV pattern.
@@ -116,11 +116,11 @@ export default function UsersPage() {
           u.email.toLowerCase().includes(term) ||
           (u.studentId ?? "").toLowerCase().includes(term);
         const matchesVerified =
-          !verifiedFilter || String(u.isVerified) === verifiedFilter;
+          !verificationFilter || u.verificationStatus === verificationFilter;
         const matchesActive = !activeFilter || String(u.isActive) === activeFilter;
         return matchesSearch && matchesVerified && matchesActive;
       }),
-    [users, search, verifiedFilter, activeFilter],
+    [users, search, verificationFilter, activeFilter],
   );
 
   const stats = useMemo(
@@ -189,12 +189,14 @@ export default function UsersPage() {
           }}
           filters={[
             {
-              value: verifiedFilter,
-              onChange: setVerifiedFilter,
+              value: verificationFilter,
+              onChange: setVerificationFilter,
               placeholder: "Verification",
               data: [
-                { value: "true", label: "Verified" },
-                { value: "false", label: "Unverified" },
+                { value: "UNSUBMITTED", label: "Unsubmitted" },
+                { value: "PENDING", label: "Pending review" },
+                { value: "APPROVED", label: "Approved" },
+                { value: "REJECTED", label: "Rejected" },
               ],
             },
             {
@@ -245,7 +247,7 @@ export default function UsersPage() {
                 <Text size="sm">{u.phoneNumber || "—"}</Text>
               </Table.Td>
               <Table.Td>
-                <StatusBadge status={u.isVerified ? "APPROVED" : "PENDING"} />
+                <StatusBadge status={u.verificationStatus} />
               </Table.Td>
               <Table.Td>
                 <StatusBadge status={u.isActive ? "ACTIVE" : "CANCELLED"} />

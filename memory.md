@@ -86,6 +86,20 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — A real admin bug: every unverified user showed "Pending" whether they'd submitted an ID or not
+
+User reported it directly, from a live screenshot: the Users list showed "Pending" on every unverified account, but the real `/id-verifications` queue had nothing in it.
+
+**Root cause, not a display glitch.** `User.verificationStatus` is a real 4-state field (`UNSUBMITTED | PENDING | APPROVED | REJECTED` — `UNSUBMITTED` is the actual default), and the real ID-verification queue (`listIdVerifications`) correctly filters on it. But `adminController.ts`'s `listUsers` never selected that column at all — only the boolean `isVerified` — and both `client/admin`'s `/users` list and `/users/[id]` detail page rendered `u.isVerified ? "APPROVED" : "PENDING"`, a two-state guess standing in for a real four-state fact. Every account that had simply never gotten around to uploading a student ID showed the exact same "Pending" badge as someone genuinely sitting in the admin's real review queue — indistinguishable from the outside, and the reason the queue looked empty against what the list implied.
+
+**Checked live data once the fix was deployed, not just the code**: all 8 real accounts on this deployment (including the user's own signups) are genuinely `UNSUBMITTED` — nobody has actually gone through ID upload yet. So the queue wasn't hiding anything; the list was just mislabeling "hasn't done this step" as "waiting on you."
+
+**Fixed end to end**: `listUsers`'s `userSelect` now includes `verificationStatus` (flows into both the JSON response and the CSV export, which gained a "Verification Status" column). `client/admin`'s shared `User` type gained the field; both the list and detail pages now render the real `u.verificationStatus` directly through the existing `StatusBadge` (already had color mappings for `PENDING`/`APPROVED`/`REJECTED`; `UNSUBMITTED` correctly falls through to the component's own documented gray default — semantically right here, not a gap). The Users page's verification filter dropdown changed from a fake Verified/Unverified boolean toggle to the real four options.
+
+**One deploy snag, self-caught**: relaunched the admin console without its `-p 3001` flag (used an ad-hoc command instead of the existing `run-admin.bat`), so it tried to bind :3000 — already held by `client/web` — and 502'd for about 15 seconds. Caught immediately via the same live-URL check this session runs after every deploy, fixed by using the actual existing batch file instead of reconstructing the command by hand.
+
+Verified live: the real deployed Users list and detail page both now show "Unsubmitted" instead of "Pending" for all 8 real accounts, in both colour schemes; CSV export confirmed carrying the new column with real values (`UNSUBMITTED` for every current row). Full-parity single-file syncs (`adminController.ts`, `types/index.ts`, `lib/api.ts`, `users/page.tsx`, `users/[id]/page.tsx`), both services rebuilt clean and restarted.
+
 ### 2026-08-10 — A real /downloading page, with the kiosk's block-assembly transition ported to client/web
 
 Follow-up to the v1.6.0/changelog work. User asked for a proper interstitial page for the APK download — transition in, real progress, a thank-you + disclaimer, closeable when done — and specifically to move "the Tetris animation" onto it.

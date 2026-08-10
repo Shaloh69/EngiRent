@@ -179,7 +179,7 @@ export default function UserDetailPage() {
                       {user.firstName} {user.lastName}
                     </Title>
                     <Group gap="xs">
-                      <StatusBadge status={user.isVerified ? "APPROVED" : "PENDING"} />
+                      <StatusBadge status={user.verificationStatus} />
                       <StatusBadge status={user.isActive ? "ACTIVE" : "CANCELLED"} />
                       <Badge variant="outline" color={user.role === "STUDENT" ? "gray" : roleColor.accent}>
                         {user.role}

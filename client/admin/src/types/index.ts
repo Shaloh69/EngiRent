@@ -6,6 +6,11 @@ export interface User {
   lastName: string;
   phoneNumber: string;
   isVerified: boolean;
+  // Real 4-state field (UNSUBMITTED | PENDING | APPROVED | REJECTED) —
+  // isVerified alone can't distinguish "never submitted an ID" from
+  // "sitting in the real review queue". Typed as a plain string, not a
+  // union, since it flows straight into StatusBadge's status: string prop.
+  verificationStatus: string;
   isActive: boolean;
   createdAt: string;
 }
