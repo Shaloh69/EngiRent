@@ -86,6 +86,18 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — v1.7.0: a real "Update Required" screen, with real release notes and real credit to the students who found the bugs it fixes
+
+New feature request: when a newer version exists, the old install should show a page — "New version released, please update through this page," what's actually new, and a special mention crediting whoever reported the bug that's fixed, marked "Resolved." Asked the user one clarifying question first (dismissible-with-"later" vs. hard block) since it's a real product decision, not something to guess — **hard block, no dismiss** was the answer, so *any* version behind latest blocks the app entirely, not just falling below the separately-tracked minimum floor.
+
+**Real content, not a bare version bump.** New `AppRelease` model (version/buildNumber/highlights, one row per shipped release) and `Feedback.fixedInVersion` (set when resolving a BUG report that's actually fixed in a specific build) — both real, queryable data `GET /app-config` now reads from, rather than a static string. Credited-fix names are first-name + last-initial only, same privacy bar as everywhere else a student's name surfaces outside their own account. The endpoint also now returns `downloadUrl` pointing at the real `/downloading` flow (built earlier this session) — the previous gate's "Update now" button linked a Play Store listing EngiRent doesn't have, a dead placeholder nobody had caught yet since the gate had never actually fired live.
+
+**`ForceUpdateGate` rebuilt**, comparing against `latestVersion` instead of `minVersion` (a strictly stronger condition — `minVersion` still exists server-side as a documented floor). Renders real highlights and a "Special mention" section crediting real reporters by name with "Resolved," `PopScope(canPop: false)` with no dismiss button anywhere, matching the chosen hard-block behavior.
+
+**Verified the actual rendered UI, not just the API payload** — Playwright route-interception forced a fake `latestVersion` against the live deployed app (the only practical way to trigger a hard-block gate without a genuinely stale second binary) and confirmed the full screen renders correctly end to end, in both themes: heading, real highlights, real "Mc Jerrel A. noticed this — Resolved" credit lines with real bug summaries, and the download button.
+
+**Shipped as v1.7.0 (build 17)** bundling three real things: the Bisaya crash fix, the verification-gate security fix, and this feature itself — a real signed APK built and deployed, `AppRelease` row created with honest highlights, both pending feedback reports resolved with `fixedInVersion: "1.7.0"` (closing the loop for real — Mc Jerrel gets credited on the update screen for both). Confirmed live: `/app-config` returns the real highlights and two real credited fixes; the download page and changelog both correctly show "Rev 1.7.0."
+
 ### 2026-08-10 — A real user-reported security gap: unverified students could list AND rent freely, since nothing ever enforced verification
 
 Another real feedback report, found while checking the queue: *"I haven't submitted my id yet, still I can list an item which is wrong... What if the unverified users submitted a wrong item on the kiosk and dangerous things."* Reproduced by reading the code directly: grepped every controller for `isVerified` — `createItem` and `createRental` never checked it at all. The entire ID-verification system existed and enforced **nothing** at the two points that actually matter — publishing a listing and starting a rental (which ends in real kiosk/locker access).

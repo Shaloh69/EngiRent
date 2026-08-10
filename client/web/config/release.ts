@@ -28,22 +28,17 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.6.0",
-  buildNumber: 16,
-  fileName: "Engirent_Prerelease16.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.7.0",
+  buildNumber: 17,
+  fileName: "Engirent_Prerelease17.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-08-10",
   sizeMb: 83,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Renters can extend or shorten an active rental instead of only paying a late fee afterward",
-    "Item availability now checks real booking date ranges, not a single on/off flag",
-    "Owners can attach a short video to a listing",
-    "Owner completion rate and renter on-time rate shown where they matter, plus a report-a-listing path",
-    "The cancellation policy and the deposit's damage-protection cap are stated before payment",
-    "Works offline — the app caches the last good data and queues actions until you're back online",
-    "In-app messaging scoped to a rental, for real dispute transcripts",
-    "New account activity, transaction history, and notification preference screens",
-    "Bisaya and Tagalog language support, and a screen-reader pass across icon-only controls",
+    "Fixed a crash that turned the whole app white when switching the language to Bisaya",
+    "Listing an item or starting a rental now requires a verified student ID — closing a real safety gap",
+    "The Identity tile in Profile is now tappable whenever verification isn't done yet, not just after a rejection",
+    "A real Update Required screen — release notes, and credit to the students who found the bugs",
   ],
 };
 

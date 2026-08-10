@@ -118,7 +118,7 @@ const envSchema = z.object({
   // config only, deliberately not a DB table, since this changes rarely and
   // shouldn't need a migration to update.
   MIN_APP_VERSION: z.string().default("1.0.0"),
-  LATEST_APP_VERSION: z.string().default("1.6.0"),
+  LATEST_APP_VERSION: z.string().default("1.7.0"),
   FORCE_UPDATE_MESSAGE: z
     .string()
     .default("Please update EngiRent to continue — this version is no longer supported."),

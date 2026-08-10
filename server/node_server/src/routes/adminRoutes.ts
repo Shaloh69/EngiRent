@@ -218,6 +218,7 @@ router.patch(
     param("id").isUUID(),
     body("status").isIn(["ACKNOWLEDGED", "RESOLVED"]),
     body("note").optional().isString().isLength({ max: 2000 }),
+    body("fixedInVersion").optional().isString().isLength({ max: 32 }),
   ]),
   updateFeedbackStatus,
 );

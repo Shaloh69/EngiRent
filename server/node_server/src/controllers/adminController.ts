@@ -1693,7 +1693,15 @@ export const updateFeedbackStatus = async (
 ) => {
   try {
     const id = String(req.params.id);
-    const { status, note } = req.body as { status: string; note?: string };
+    const { status, note, fixedInVersion } = req.body as {
+      status: string;
+      note?: string;
+      // Set when this BUG report is what prompted a new app release — the
+      // Update Required screen credits the reporter by name for whichever
+      // version this matches. Optional: most resolutions aren't tied to a
+      // shippable fix (a "how do I..." question, a duplicate, etc).
+      fixedInVersion?: string;
+    };
 
     if (!["ACKNOWLEDGED", "RESOLVED"].includes(status)) {
       throw new ValidationError("status must be ACKNOWLEDGED or RESOLVED");
@@ -1708,6 +1716,7 @@ export const updateFeedbackStatus = async (
         data: {
           status: status as never,
           adminNote: note?.trim() || existing.adminNote,
+          ...(fixedInVersion?.trim() ? { fixedInVersion: fixedInVersion.trim() } : {}),
           ...(status === "RESOLVED"
             ? { resolvedById: req.user?.userId ?? null, resolvedAt: new Date() }
             : {}),

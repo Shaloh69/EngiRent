@@ -4,7 +4,7 @@
 // same rule the /blog page's project journal follows (§3.5 of the design
 // mandate bans fabricated changelog/blog content).
 
-export type ChangelogTag = "release" | "feature" | "design" | "infra";
+export type ChangelogTag = "release" | "feature" | "fix" | "design" | "infra";
 
 export interface ChangelogEntry {
   date: string; // ISO, real
@@ -15,6 +15,18 @@ export interface ChangelogEntry {
 }
 
 export const changelog: ChangelogEntry[] = [
+  {
+    date: "2026-08-10",
+    version: "1.7.0",
+    tag: "fix",
+    title: "A crash fix, a real safety gap closed, and an update screen that credits who found them",
+    bullets: [
+      "Fixed a crash that turned the whole app white when switching the language to Bisaya",
+      "Listing an item or starting a rental now requires a verified student ID — a real reported safety gap",
+      "The Identity tile in Profile is tappable whenever verification isn't done, not just after a rejection",
+      "A real \"update required\" screen for outdated installs — real release notes, and credit to the students who reported the bugs it fixes",
+    ],
+  },
   {
     date: "2026-08-10",
     version: "1.6.0",
@@ -115,6 +127,7 @@ export const changelog: ChangelogEntry[] = [
 export const changelogTagLabel: Record<ChangelogTag, string> = {
   release: "Release",
   feature: "Feature",
+  fix: "Fix",
   design: "Design",
   infra: "Infrastructure",
 };

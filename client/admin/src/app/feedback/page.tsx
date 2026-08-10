@@ -15,6 +15,7 @@ import {
   Stack,
   Text,
   Textarea,
+  TextInput,
   ThemeIcon,
   Title,
 } from "@mantine/core";
@@ -90,6 +91,9 @@ export default function FeedbackPage() {
 
   const [resolveTarget, setResolveTarget] = useState<Row | null>(null);
   const [note, setNote] = useState("");
+  // Only meaningful for BUG reports fixed by shipping a new build — the
+  // Update Required screen reads this to credit the real reporter by name.
+  const [fixedInVersion, setFixedInVersion] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,9 +134,11 @@ export default function FeedbackPage() {
       await api.patch(`/admin/feedback/${resolveTarget.id}`, {
         status: "RESOLVED",
         note: note.trim() || undefined,
+        fixedInVersion: fixedInVersion.trim() || undefined,
       });
       setResolveTarget(null);
       setNote("");
+      setFixedInVersion("");
       await load();
     } catch {
       setError("Could not resolve the report.");
@@ -324,6 +330,7 @@ export default function FeedbackPage() {
                         onClick={() => {
                           setResolveTarget(row);
                           setNote("");
+                          setFixedInVersion("");
                         }}
                       >
                         Resolve…
@@ -359,6 +366,16 @@ export default function FeedbackPage() {
             autosize
             minRows={3}
           />
+          {resolveTarget?.category === "BUG" && (
+            <TextInput
+              label="Fixed in version (optional)"
+              description="If this bug is what prompted a new release, the app's Update Required screen will credit this student by name for it."
+              placeholder="e.g. 1.6.1"
+              value={fixedInVersion}
+              onChange={(e) => setFixedInVersion(e.currentTarget.value)}
+              maxLength={32}
+            />
+          )}
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setResolveTarget(null)}>
               Cancel

@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 const tagColor: Record<ChangelogTag, string> = {
   release: "var(--brand-primary)",
   feature: "var(--brand-secondary)",
+  fix: "#dc2626",
   design: "var(--brand-accent)",
   infra: "var(--brand-muted)",
 };

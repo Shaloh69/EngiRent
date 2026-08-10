@@ -484,6 +484,12 @@ model Feedback {
   resolvedById String?
   resolvedAt   DateTime?
 
+  // Set when resolving a BUG report that required shipping a new app
+  // build — lets the Update Required screen credit the real reporter by
+  // name for a fix that's actually in the version being announced,
+  // rather than a generic changelog line nobody can verify.
+  fixedInVersion String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -537,6 +543,24 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// Real, versioned "what's new" content — a single source of truth read by
+// both the public site's /changelog and the app's own Update Required
+// screen (GET /app-config), instead of duplicating release notes between a
+// Next.js config file and a mobile-facing endpoint. One row per shipped
+// version; highlights are real bullet points written at release time, same
+// discipline as client/web/config/changelog.ts (no invented copy).
+model AppRelease {
+  id          String   @id @default(uuid())
+  version     String   @unique
+  buildNumber Int
+  highlights  Json // string[]
+  releasedAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@map("app_releases")
 }
 
 // Review model - User reviews
