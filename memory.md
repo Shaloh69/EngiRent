@@ -86,6 +86,22 @@ The user edited `docs/planning/00-start-here.md` and `docs/planning/03-revamp-ma
 
 ## Session log
 
+### 2026-08-10 — A real user-submitted bug report, from the app's own real feedback pipeline: a dead "Identity" tile stranding a genuine ID submission
+
+The user asked to check Feedback for a report "just now." Found it immediately — a real `BUG` report, submitted 12 minutes earlier through the live app by the user's own real account: *"Id is not submitted but i already submitted my id during account creation. Also i cant change my id. See my Id."* With a real attached screenshot (downloaded and viewed — Profile showing a "NOT SUBMITTED" badge and no chevron on the Identity tile, i.e. genuinely unclickable).
+
+**Traced it to a real data inconsistency, not user error.** `User.idImageUrl` was genuinely set (`users/{id}/id.jpg`, and the file really exists in storage — checked directly, not assumed) and `User.verificationStatus` was stuck at `UNSUBMITTED`. That combination should be impossible under the current code: `idImageUrl` is *only* ever written inside `completeProfile()` (`authController.ts`), which sets `verificationStatus: "PENDING"` in the exact same Prisma `update()` call — the two fields can't currently drift apart. Grepped the whole codebase for every write to `User.verificationStatus`: nothing ever sets it back to `UNSUBMITTED` (that's purely the schema's `@default`). Likely explanation: this specific account was created right around Stage 3.5's deployment window (2026-08-09, the session that first added the `verificationStatus: "PENDING"` line to `completeProfile`) and landed in the narrow gap before that fix was live — a historical artifact of an already-fixed root cause, not a currently-reproducible data bug.
+
+**But the *consequence* was 100% currently reproducible, and worse than the data glitch itself**: `home_screen.dart`'s Identity tile's `onTap` was wired to fire *only* when `verificationStatus == 'REJECTED'` — `null` for every other non-verified state, including `UNSUBMITTED`. Its own subtitle text for that exact state reads "Submit your student ID to unlock renting and listing" — an explicit instruction to tap something that does nothing. Any account that ever ends up profile-complete with `verificationStatus` still `UNSUBMITTED` — however rare — hits a permanent dead end with no way to ever submit an ID from the app. Confirmed `/profile/setup` needs no special-casing to handle this (the REJECTED path already reuses it for a resubmission, proving it's safe for a first submission too). Fixed the tile to route to `/profile/setup` for `REJECTED`, `UNSUBMITTED`, or `null` alike.
+
+**Fixed both halves, and verified both for real:**
+- Data: corrected this one account's `verificationStatus` to `PENDING` (matching the real, already-uploaded evidence — not fabricating anything) — confirmed live via `GET /admin/id-verifications?status=PENDING` that the real submission (real ID photo + real face photo, both fetched and genuinely present) now actually appears in the admin's real review queue.
+- Code: reproduced the exact historical bug condition on a disposable throwaway account (`profileComplete: true` + `verificationStatus: UNSUBMITTED`, forced via direct DB write, deleted immediately after) and confirmed live — before the fix this state has no chevron on the Identity tile; after redeploying, the same account shows the chevron and tapping it correctly opens "Verify your identity — Step 1 of 3."
+
+**Closed the loop on the actual report**: marked it `RESOLVED` through the real admin API with a note explaining exactly what was found and fixed — which also fires the existing resolve-notification back to the reporter, so the loop is genuinely closed, not just fixed silently in the database.
+
+Flutter web rebuilt and redeployed (36/36 file parity) with the fix.
+
 ### 2026-08-10 — A real admin bug: every unverified user showed "Pending" whether they'd submitted an ID or not
 
 User reported it directly, from a live screenshot: the Users list showed "Pending" on every unverified account, but the real `/id-verifications` queue had nothing in it.

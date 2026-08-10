@@ -1227,6 +1227,17 @@ class _ProfileTab extends StatelessWidget {
                 // A rejected student previously saw the same "awaiting
                 // review" line as everyone else, with no reason and no way
                 // forward. Rejection now says why and routes to re-submit.
+                //
+                // Real bug found via a live feedback report: UNSUBMITTED
+                // (the schema default, and the state a profile-complete
+                // account can be left in by a historical data
+                // inconsistency — see server memory.md 2026-08-10) was
+                // NOT in the tappable set, even though its own subtitle
+                // below literally says "Submit your student ID" — a
+                // dead tile telling the student to do something it gives
+                // them no way to do. `/profile/setup` already handles a
+                // re-submission (the REJECTED path proves that), so it's
+                // just as safe for a first-time submission.
                 _ProfileTile(
                   icon: _verifyIcon(
                       user?.verificationStatus, user?.isVerified ?? false),
@@ -1236,9 +1247,11 @@ class _ProfileTab extends StatelessWidget {
                   subtitle: _verifySubtitle(user?.verificationStatus,
                       user?.verificationReason, user?.verificationNote,
                       user?.isVerified ?? false),
-                  onTap: user?.verificationStatus == 'REJECTED'
-                      ? () => Navigator.pushNamed(context, '/profile/setup')
-                      : null,
+                  onTap: switch (user?.verificationStatus) {
+                    'REJECTED' || 'UNSUBMITTED' || null =>
+                      () => Navigator.pushNamed(context, '/profile/setup'),
+                    _ => null,
+                  },
                 ),
                 const Divider(height: 1, indent: 56),
                 _ProfileTile(
