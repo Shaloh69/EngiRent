@@ -367,6 +367,18 @@ Asked directly: "how does a person get verified?" Traced through the code, the a
 
 This is a **blocker**, not a gap: the Profile tab was recently corrected to stop claiming "Identity Verified" unconditionally, which means students now correctly see "Pending review" — forever, because nothing can move them out of it.
 
+---
+
+## 2.12 Update-required gate — built 2026-08-10, real content not a bare version check
+
+An app that moves money and opens physical lockers cannot let an arbitrarily old build keep talking to a since-changed API contract. §Stage 9 already shipped a force-update gate keyed off `MIN_APP_VERSION` — a hard floor for genuinely broken old builds. This adds the stricter, explicitly-requested version: **any** installed version behind `LATEST_APP_VERSION` now hard-blocks (no dismiss), not just below the separately-tracked minimum.
+
+**The gate must show real content, not just a version number**: what's actually new (`AppRelease.highlights`, one row per shipped version — a real source of truth, not an invented changelog line), and a "special mention" crediting the real student who reported a bug that's fixed in this build (`Feedback.fixedInVersion`, set when resolving a report that prompted a release), rendered as "*Name* noticed this — **Resolved**." Both are read from real, queryable rows — never hand-written into the gate itself.
+
+**A dead placeholder found while building this**: the original gate's "Update now" button linked a Play Store listing that doesn't exist (EngiRent has never published one) — nobody had caught it because the gate had never actually fired against a real device. The fix generalizes: **an update gate's call-to-action must point at the app's real, working distribution path** (here, the site's own `/downloading` flow), not an assumed store listing.
+
+**Verification note**: a hard-block screen can't be triggered live without a genuinely stale second build, so this was verified by intercepting `/app-config` and forcing a fake `latestVersion` against the real deployed app — confirms the actual render path (not just the API payload) without needing to keep an old binary around on purpose.
+
 Full build spec in `05-feature-build-checklist.md` Stage 3.5.
 
 ---
