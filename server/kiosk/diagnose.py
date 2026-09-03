@@ -224,21 +224,18 @@ if _preview_caps:
 else:
     warn("No USB cameras could be opened for preview")
 
-# ── 7. Face cascade ────────────────────────────────────────────────────────────
-section("Face detection (Haar cascade)")
-try:
-    from services.face_service import _find_cascade_path
-    p = _find_cascade_path()
-    ok(f"Cascade found: {p}")
-except Exception as e:
-    fail(str(e))
+# Section 7 used to check the Haar-cascade face-detection fallback here.
+# Removed 2026-09-03 along with the rest of the kiosk's face pipeline — the
+# face camera is gone, verification happens on the user's phone now (design
+# mandate §2.13), and the kiosk no longer has any face-detection code to
+# check the health of.
 
 # ── 8. .env config ─────────────────────────────────────────────────────────────
 section(".env configuration")
 from dotenv import load_dotenv
 load_dotenv()
 keys = ["KIOSK_ID", "SERVER_URL", "KIOSK_SHARED_SECRET",
-        "ML_SERVICE_URL", "ML_SERVICE_API_KEY", "UI_PORT", "RELAY_ACTIVE_LEVEL",
+        "UI_PORT", "RELAY_ACTIVE_LEVEL",
         "MOCK_GPIO", "MOCK_CAMERA"]
 for k in keys:
     v = os.getenv(k, "")

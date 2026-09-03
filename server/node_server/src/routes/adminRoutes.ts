@@ -12,6 +12,7 @@ import {
   settleDispute,
   listTransactions,
   adminRefund,
+  adminDecidePayment,
   listVerifications,
   reviewVerification,
   getKioskConfig,
@@ -118,6 +119,19 @@ router.post(
   requireAdmin,
   validate([param("transactionId").isUUID()]),
   adminRefund,
+);
+
+// Manual PayMongo bypass, testing only — see adminController.adminDecidePayment
+// for the full reasoning. requireAdmin (not requireStaff): this moves money-
+// adjacent state, same tier as refunds above, not REVIEWER territory.
+router.post(
+  "/transactions/:transactionId/decide-payment",
+  requireAdmin,
+  validate([
+    param("transactionId").isUUID(),
+    body("decision").optional().isIn(["APPROVE", "REJECT"]),
+  ]),
+  adminDecidePayment,
 );
 
 // ── Verifications ──────────────────────────────────────────────────────────

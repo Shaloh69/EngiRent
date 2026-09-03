@@ -29,6 +29,10 @@ class SocketService {
   final _returnDisputed = StreamController<Map<String, dynamic>>.broadcast();
   final _returnRetry = StreamController<Map<String, dynamic>>.broadcast();
   final _kioskScanError = StreamController<Map<String, dynamic>>.broadcast();
+  // The kiosk validated the scanned QR and now needs this user to prove who
+  // they are. Since 2026-09-03 that happens here on the phone, not at the
+  // kiosk — the kiosk's face camera was removed (design mandate 2.13).
+  final _kioskFaceRequired = StreamController<Map<String, dynamic>>.broadcast();
   // Checklist Stage 5 — real-time message delivery.
   final _newMessage = StreamController<Map<String, dynamic>>.broadcast();
 
@@ -43,6 +47,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onReturnDisputed => _returnDisputed.stream;
   Stream<Map<String, dynamic>> get onReturnRetry => _returnRetry.stream;
   Stream<Map<String, dynamic>> get onKioskScanError => _kioskScanError.stream;
+  Stream<Map<String, dynamic>> get onKioskFaceRequired => _kioskFaceRequired.stream;
   Stream<Map<String, dynamic>> get onNewMessage => _newMessage.stream;
 
   String? get currentUserId => _userId;
@@ -96,6 +101,7 @@ class SocketService {
       ..on('return:disputed', _handle(_returnDisputed))
       ..on('return:retry', _handle(_returnRetry))
       ..on('kiosk:scan_error', _handle(_kioskScanError))
+      ..on('kiosk:face_required', _handle(_kioskFaceRequired))
       // Not routed through _handle()/_anyRentalChange — a new message isn't
       // a rental status change, and piggybacking it there would make every
       // rentals-list screen refetch on every incoming chat message.
@@ -136,6 +142,7 @@ class SocketService {
     _returnDisputed.close();
     _returnRetry.close();
     _kioskScanError.close();
+    _kioskFaceRequired.close();
     _newMessage.close();
     _anyRentalChange.close();
   }

@@ -6,11 +6,11 @@ Events emitted TO server:
   kiosk:status          – locker states update
   kiosk:images          – captured item images (URLs) for a rental
   kiosk:admin_snapshot  – captured images with no rental_id (admin preview only)
-  kiosk:face            – face verification result
   kiosk:log             – Pi log lines forwarded to Render server logs
   kiosk:ack             – command execution result (ok / error)
   kiosk:rental_lookup   – ask Node.js for rental details by ID (QR scan flow)
-  kiosk:flow_start      – user confirmed rental; Node.js sends capture_face command
+  kiosk:flow_start      – user confirmed rental; verification now happens on the
+                          renter's phone (2026-09-03) — the kiosk just waits
 
 Events received FROM server:
   kiosk:command         – action to perform (open_door, drop_item, capture_image, etc.)
@@ -42,7 +42,6 @@ from hardware.gpio_controller import SolenoidController
 from hardware.actuator_controller import ActuatorController
 from hardware.camera_manager import CameraManager
 from services.image_uploader import upload_locker_images
-from services.face_service import verify_face
 
 log = logging.getLogger("kiosk.socket")
 
@@ -60,8 +59,7 @@ def get_main_loop() -> asyncio.AbstractEventLoop | None:
 # Events in this set are persisted to disk and replayed on reconnect.
 # Volatile events (kiosk:status, kiosk:log) are excluded — they carry live state
 # that would be stale by the time the kiosk reconnects.
-_QUEUED_EVENTS = {"kiosk:ack", "kiosk:face", "kiosk:images", "kiosk:admin_snapshot",
-                  "kiosk:rental_lookup", "kiosk:flow_start"}
+_QUEUED_EVENTS = {"kiosk:ack", "kiosk:images", "kiosk:admin_snapshot", "kiosk:flow_start"}
 
 _QUEUE_FILE = os.path.join(os.path.dirname(__file__), "..", "offline_queue.json")
 _QUEUE_MAX = 100  # hard cap — prevents unbounded growth if offline for a long time
@@ -277,13 +275,14 @@ async def on_command(data: dict):
         "open_door":        _cmd_open_door,
         "drop_item":        _cmd_drop_item,
         "capture_image":    _cmd_capture_image,
-        "capture_face":     _cmd_capture_face,
         "lock_all":         _cmd_lock_all,
         "actuator_extend":  _cmd_actuator_extend,
         "actuator_retract": _cmd_actuator_retract,
         "flow_error":       _cmd_flow_error,
         "self_test":        _cmd_self_test,
         "verification_done": _cmd_verification_done,
+        "await_phone_verification": _cmd_await_phone_verification,
+        "face_failed":      _cmd_face_failed,
     }
 
     handler = handlers.get(action)
@@ -420,42 +419,29 @@ async def _cmd_verification_done(data: dict):
     log.info("Verification result for command_id=%s: %s", data.get("command_id"), result)
 
 
-async def _cmd_capture_face(data: dict):
-    reference_url = data.get("reference_face_url", "")
-    # Preferred over reference_url when present — the Node backend decrypts
-    # User.faceEncoding and sends the raw floats directly, skipping a
-    # reference-image download + re-encode on the ML service side. Falls back
-    # to reference_url for accounts registered before encoding capture existed.
-    stored_encoding = data.get("stored_encoding")
-    rental_id = data.get("rental_id")
-    _set_ui("face_scan", "Please look directly at the camera…")
+# capture_face / verify_face removed 2026-09-03 — the kiosk's face camera is
+# physically gone. Identity verification now happens on the renter's own
+# phone (design mandate §2.13); the kiosk's only remaining job during that
+# step is to sit on a waiting screen. See _cmd_await_phone_verification below
+# and kiosk_ui_react's FaceScreen (mandate §4.7).
 
-    cfg = load_timing_config()
-    face_cfg = cfg.get("face_recognition", {})
-    attempts = face_cfg.get("capture_attempts", 3)
+async def _cmd_await_phone_verification(data: dict):
+    """Node has handed verification to the user's phone (see
+    faceVerificationService.ts server-side) — just show a waiting screen.
+    The next thing the kiosk hears is either open_door (success) or
+    face_failed (the phone reported a bad match) or a timeout back to main,
+    all driven from Node."""
+    _set_ui(
+        "face_scan",
+        data.get("message") or "Check your phone — we're verifying it's you",
+    )
 
-    result = {"detected": False, "verified": False, "confidence": 0.0}
 
-    for attempt in range(1, attempts + 1):
-        frames = _camera.capture_face(num_frames=1)
-        if not frames:
-            break
-
-        _set_ui("face_scan", f"Verifying… (attempt {attempt}/{attempts})")
-        result = await verify_face(frames[0], reference_url, stored_encoding, rental_id)
-
-        if result["detected"] and result["verified"]:
-            break
-        if result["detected"] and not result["verified"]:
-            _set_ui("face_scan", "Face not recognised – please try again")
-            await asyncio.sleep(1.5)
-
-    await safe_emit("kiosk:face", {
-        "kiosk_id": KIOSK_ID,
-        "rental_id": data.get("rental_id"),
-        "user_id": data.get("user_id"),
-        **result,
-    })
+async def _cmd_face_failed(data: dict):
+    """The phone's verification attempt didn't match. Node has already told
+    the phone directly (face:failed) — this just updates what's shown on the
+    kiosk screen, since the person may be looking at either device."""
+    _set_ui("error", data.get("message") or "Verification failed — please try again on your phone")
 
     if result.get("verified"):
         _set_ui("verified", "Identity verified ✓")
@@ -507,7 +493,8 @@ async def _cmd_self_test(data: dict):
         except Exception as e:
             components.append({"component": name, "ok": False, "error": str(e)})
 
-    # Cameras — one locker camera per locker + the face camera.
+    # Cameras — one per locker. The face camera was removed 2026-09-03; it
+    # no longer has an entry here because the hardware no longer exists.
     for locker_id in range(1, 5):
         name = f"camera_locker_{locker_id}"
         try:
@@ -515,12 +502,6 @@ async def _cmd_self_test(data: dict):
             components.append({"component": name, "ok": bool(frames)})
         except Exception as e:
             components.append({"component": name, "ok": False, "error": str(e)})
-
-    try:
-        face_frames = _camera.capture_face(num_frames=1)
-        components.append({"component": "camera_face", "ok": bool(face_frames)})
-    except Exception as e:
-        components.append({"component": "camera_face", "ok": False, "error": str(e)})
 
     # Tailscale/network connectivity to the backend is implicitly confirmed
     # by the fact that this command was received at all (it arrived over
@@ -567,38 +548,16 @@ async def _cmd_actuator_retract(data: dict):
     await sio.emit("kiosk:status", _build_status())
 
 
-# ── QR callback (set by kiosk_ui.server to push rental info to browser) ───────
-_qr_callback = None
-
-
-def register_qr_callback(cb):
-    global _qr_callback
-    _qr_callback = cb
-
-
-# ── Kiosk-initiated rental flow ───────────────────────────────────────────────
-
-async def emit_rental_lookup(rental_id: str):
-    """Ask Node.js for rental details via socket — response comes back in on_rental_info.
-    If offline the lookup is queued; the UI receives the info once reconnected."""
-    await safe_emit("kiosk:rental_lookup", {
-        "kiosk_id": KIOSK_ID,
-        "rental_id": rental_id,
-    })
-    if not sio.connected:
-        log.warning("Rental lookup queued (offline): %s", rental_id)
-
-
-@sio.on("kiosk:rental_info")
-async def on_rental_info(data: dict):
-    """Node.js sends rental details back after a kiosk:rental_lookup request."""
-    if _qr_callback:
-        _qr_callback({
-            "rental_id": data.get("rental_id", ""),
-            "rental_info": data.get("rental_info") or {"id": data.get("rental_id", "")},
-        })
-    else:
-        log.warning("Received kiosk:rental_info but no QR callback registered")
+# register_qr_callback / emit_rental_lookup / kiosk:rental_info removed
+# 2026-09-03. These existed to support the kiosk scanning a QR shown on the
+# user's phone (the reversed direction from how QR hand-off actually works
+# here — the kiosk displays the code, the phone scans it, see
+# kiosk_ui_react's MainScreen). Their only caller was the camera-worker's
+# QR-decode loop in kiosk_ui/server.py, which read frames from the face
+# camera — removed in the same pass, since that hardware is gone. Kept only
+# as a comment, not code, so a future reader doesn't go looking for a
+# "kiosk:rental_lookup" handler on the Node side that no longer has anything
+# to answer.
 
 
 @sio.on("kiosk:session_validate")
@@ -638,7 +597,11 @@ async def on_session_validate(data: dict):
     )
 
     if rental_id:
-        # App-initiated flow: go directly to face verification
+        # App-initiated flow: go directly to identity verification. This is
+        # the only flow that exists now — the app always sends a rentalId
+        # (KioskScanScreen requires one), since 2026-09-03 the kiosk is
+        # app-first only: every transaction starts by picking a rental in
+        # the app, never by walking up to the touchscreen cold.
         _mode_label = {
             "place":    "Deposit item",
             "retrieve": "Pick up item",
@@ -647,7 +610,10 @@ async def on_session_validate(data: dict):
         _set_ui("face_scan", f"{_mode_label} — identity verification in progress…")
         await initiate_rental_flow(rental_id)
     else:
-        # Legacy kiosk-UI flow: show welcome screen, wait for button press
+        # Legacy walk-up flow (no rentalId): kept for now, but unreachable
+        # from the real app — app-first-only means every scan carries a
+        # rentalId. Not deleted outright since it's a self-contained no-op
+        # when unused; a candidate for removal in a later cleanup pass.
         from kiosk_ui.server import local_sio as ui_sio
         ui_sio.emit("kiosk_session_started", {
             "userId":    data.get("userId", ""),
@@ -659,8 +625,11 @@ async def on_session_validate(data: dict):
 
 
 async def initiate_rental_flow(rental_id: str):
-    """Called by local browser confirm → emit kiosk:flow_start to Node.js.
-    Node.js looks up the rental and sends back capture_face command."""
+    """Called after a validated scan → emit kiosk:flow_start to Node.js.
+    Node.js resolves who needs to verify and hands it to their phone — see
+    faceVerificationService.ts and design mandate §2.13. The kiosk just waits
+    (kiosk:command "await_phone_verification") until Node tells it to open a
+    door or report a failure."""
     await safe_emit("kiosk:flow_start", {
         "kiosk_id": KIOSK_ID,
         "rental_id": rental_id,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import type { KioskServerState, Mode, RentalInfo, Screen } from "./types";
+import { PRE_FLOW_SCREENS } from "./types";
 
 const IDLE_MS = 30_000; // MAIN -> IDLE
 const RETURN_MS = 5 * 60_000; // flow screens -> MAIN
@@ -148,7 +149,17 @@ export function useKioskState() {
         setRentalInfo(data.rental_info ?? {});
         setQrStatus("found");
         setTimeout(() => {
-          if (screenRef.current === "qr") goTo("confirm");
+          // The QR the phone scans is the one rendered on MainScreen, so the
+          // screen at scan time is almost always "main" — never "qr" (that
+          // screen is only reachable by backing out of "confirm"). Guarding on
+          // "qr" alone deadlocked the whole kiosk: the session banner turned
+          // green, but confirm never opened, so "user_confirm" was never sent
+          // and initiate_rental_flow never ran (found 2026-09-03).
+          //
+          // Allow any pre-flow screen through, but not the in-flow ones —
+          // "face"/"verifying"/"success" must not be yanked back to confirm by
+          // a late or duplicate event.
+          if (PRE_FLOW_SCREENS.includes(screenRef.current)) goTo("confirm");
         }, 700);
       },
     );

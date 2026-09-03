@@ -169,6 +169,15 @@ async function run() {
   check("renter registers", renterReg.status === 201 || renterReg.status === 200, `status ${renterReg.status}`);
   renterId = renterReg.json?.data?.user?.id;
 
+  // A fresh registration is unverified by design (requireVerified middleware,
+  // 2026-08-10) — fast-forward through a state this suite can't reach any
+  // other way, same pattern as e2e-availability/listing-video/trust-safety/
+  // enterprise-hygiene.
+  await prisma.user.updateMany({
+    where: { id: { in: [ownerId, renterId].filter(Boolean) } },
+    data: { isVerified: true },
+  });
+
   section("Create a listing through the real flow");
   const upload = await uploadImage(ownerToken);
   check("photo upload succeeds", !!upload?.url, JSON.stringify(upload));

@@ -294,8 +294,56 @@ systemctl enable engirent-kiosk.service
 echo "  ✓ engirent-kiosk.service installed and enabled"
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 7b. Build the React kiosk UI
+#     kiosk_ui/server.py serves kiosk_ui_react's `dist/` as static files and
+#     returns index.html from it at "/". Without this build step there is no
+#     dist/, so "/" 404s — and because the browser autostart below gates on
+#     `curl -sf` (which fails on a 404), the wait loop spins forever and
+#     Chromium never launches. Net effect: a completely blank touchscreen with
+#     no error anywhere obvious. That is exactly what was found on the real
+#     kiosk 2026-09-03 — setup.sh had never built this at all.
+# ══════════════════════════════════════════════════════════════════════════════
+step "Building the React kiosk UI"
+REACT_UI_DIR="$KIOSK_DIR/kiosk_ui_react"
+if [ ! -d "$REACT_UI_DIR" ]; then
+    echo "  ! $REACT_UI_DIR not found — skipping (older checkout?)"
+elif ! command -v npm >/dev/null 2>&1; then
+    echo "  ! npm not found — install Node.js, then re-run, or the touchscreen will stay blank"
+    echo "    (Pi OS: sudo apt install -y nodejs npm)"
+else
+    ( cd "$REACT_UI_DIR" && sudo -u "$SERVICE_USER" npm install --no-audit --no-fund && sudo -u "$SERVICE_USER" npm run build )
+    if [ -f "$REACT_UI_DIR/dist/index.html" ]; then
+        echo "  ✓ Kiosk UI built → $REACT_UI_DIR/dist"
+    else
+        echo "  ! Build finished but dist/index.html is missing — the touchscreen will be blank"
+    fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 8. Chromium kiosk browser autostart
-#    Waits for the Flask UI to be ready before opening the browser.
+#    Waits for the Flask UI to be ready before opening the browser, then keeps
+#    it alive: if Chromium ever exits or crashes, the loop relaunches it rather
+#    than leaving an unattended kiosk sitting on a blank screen until someone
+#    physically notices.
+#
+#    The `pgrep` guard matters. A bare `while true; do chromium; done` loop
+#    will happily stack a second fullscreen window on top of a Chromium that
+#    is already running (e.g. one started manually, or a second autostart
+#    trigger) — observed for real 2026-09-03, several kiosk windows piled up
+#    on the same screen. Only relaunch when nothing is actually serving the
+#    kiosk URL.
+#
+#    The guard pattern is fussier than it looks, and got this wrong twice in
+#    both directions (2026-09-03):
+#      - `pgrep -f "chromium.*--app=..."` also matches THIS bash supervisor,
+#        whose own command line contains that very string. The guard is then
+#        permanently true and a browser that dies is never brought back —
+#        the kiosk sits on a blank screen forever.
+#      - `pgrep -f "^/usr/bin/chromium..."` never matches, because
+#        /usr/bin/chromium is a POSIX shell wrapper that execs the real binary
+#        at /usr/lib/chromium/chromium. The guard is then permanently false
+#        and the loop stacks a new window every 10 seconds.
+#    So: launch through the wrapper, but match the binary it execs.
 # ══════════════════════════════════════════════════════════════════════════════
 step "Installing Chromium autostart"
 AUTOSTART_DIR="$USER_HOME/.config/autostart"
@@ -305,7 +353,7 @@ cat > "$AUTOSTART_DIR/engirent-browser.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=EngiRent Kiosk Browser
-Exec=bash -c 'until curl -sf http://localhost:8080 >/dev/null 2>&1; do sleep 1; done && /usr/bin/chromium --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-restore-session-state --disable-pinch --overscroll-history-navigation=0 --ozone-platform-hint=auto --password-store=basic --kiosk --start-fullscreen --start-maximized --window-size=1920,1080 --force-device-scale-factor=1 --app=http://localhost:8080 --check-for-update-interval=31536000'
+Exec=bash -c 'until curl -sf http://localhost:8080 >/dev/null 2>&1; do sleep 2; done; while true; do if ! pgrep -f "^/usr/lib/chromium/chromium.*--app=http://localhost:8080" >/dev/null 2>&1; then /usr/bin/chromium --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-restore-session-state --disable-pinch --overscroll-history-navigation=0 --ozone-platform-hint=auto --password-store=basic --kiosk --start-fullscreen --start-maximized --window-size=1920,1080 --force-device-scale-factor=1 --app=http://localhost:8080 --check-for-update-interval=31536000; fi; sleep 10; done'
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

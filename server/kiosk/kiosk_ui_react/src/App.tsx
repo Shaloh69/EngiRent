@@ -90,12 +90,7 @@ export default function App() {
         />
       )}
       {k.screen === "face" && (
-        <FaceScreen
-          instr={k.faceInstr}
-          progress={k.faceProgress}
-          label={k.faceLabel}
-          isDemo={k.isDemo}
-        />
+        <FaceScreen instr={k.faceInstr} onCancel={k.actions.cancel} />
       )}
       {k.screen === "verifying" && <VerifyingScreen sub={k.verifyingSub} />}
       {k.screen === "success" && (

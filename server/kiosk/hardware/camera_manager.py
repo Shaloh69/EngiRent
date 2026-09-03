@@ -1,21 +1,61 @@
 """
-Camera manager — all 5 cameras are USB (OpenCV / GStreamer).
+Camera manager — the 4 locker cameras are USB (OpenCV / GStreamer).
 
-  Index 0 → Locker 1  (/dev/video0)
-  Index 1 → Locker 2  (/dev/video2)
-  Index 2 → Locker 3  (/dev/video4)
-  Index 3 → Locker 4  (/dev/video6)
-  Index 4 → Face cam  (/dev/video8)
+**Face camera removed 2026-09-03.** Identity verification moved to the
+user's own phone (design mandate §2.13) — this manager no longer opens,
+reads, or reinitialises a 5th camera for faces. If you're looking for that
+code, it's gone on purpose, not missing by accident: a `capture_face()` here
+would be opening hardware the kiosk no longer has.
 
-USB cameras on Pi OS expose two V4L2 nodes each (video + metadata).
-Always use the even-numbered node (0, 2, 4 …) — that is the actual capture device.
-Run `v4l2-ctl --list-devices` to verify and update USB_DEVICE_MAP if your
-cameras land on different indices after a reboot or replug.
+**Re-corrected 2026-09-03, later the same day — physically removing the face
+camera shifted the USB topology for two of the four remaining cameras.**
+Lockers 3 and 4 stayed at their already-verified ports; lockers 1 and 2's
+cameras disappeared from their previous by-path identities entirely and
+reappeared at two different, previously-unmapped ports (moved from
+`xhci-hcd.1`'s hub to `xhci-hcd.0`'s — almost certainly the hub they shared
+with the face camera got disturbed during its removal). Re-verified the same
+way as the correction above: captured a live photo from each of the two new
+ports, described each to the person standing at the kiosk, had them confirm
+which real locker each one showed (locker 1 had a small remote control
+sitting on the floor; locker 2 had a dark folded item inside).
+
+**Corrected 2026-09-03 — the previous raw `/dev/videoN` mapping was both
+unstable AND wrong.** Two separate real bugs, found by direct physical
+verification (captured a real photo from each camera, matched each one
+against what a person standing at the kiosk could see was actually inside
+each locker):
+
+1. `/dev/videoN` numbers are assigned by USB enumeration order, which is
+   **not stable across reboots or replugs** — confirmed directly: the same
+   physical camera landed on a different `/dev/videoN` on consecutive boots
+   this session. A hardcoded raw device path silently starts pointing at a
+   different physical camera (or nothing) the next time the kiosk restarts.
+2. Independent of (1), the *port-to-locker* assignment itself was wrong —
+   the map's own inline comments claimed a specific physical-port-to-locker
+   correspondence that direct testing disproved. Real, physically-confirmed
+   mapping (captured a distinct real photo per camera, matched against real
+   locker contents by a person physically checking each one):
+     - Locker 1 ← the port previously labeled "Locker 4" in this file
+     - Locker 2 ← correct, no change
+     - Locker 3 ← the port previously labeled "Locker 1" in this file
+     - Locker 4 ← the port previously labeled "Locker 3" in this file
+
+**Fix for both at once: `/dev/v4l/by-path/...` symlinks instead of raw
+`/dev/videoN`.** These stay tied to the physical USB port regardless of
+enumeration-order drift, so they survive reboots — and they're now assigned
+to the locker each one was actually, physically confirmed to serve.
+
+If hardware changes again (a camera physically moved to a different port),
+re-verify with the same method: capture a real photo per camera via the
+admin console's "Capture Image" per locker, and have someone standing at the
+kiosk confirm which real locker each photo actually shows — don't just trust
+a port-topology comment written down previously, this file already had one
+that was wrong. `v4l2-ctl --list-devices` and `ls /dev/v4l/by-path/` show
+the current raw topology if the by-path names themselves ever need updating.
 """
 
 import io
 import logging
-import threading
 import time
 from pathlib import Path
 
@@ -23,22 +63,25 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from config import LOCKER_PINS, MOCK_CAMERA, FACE_CAMERA_INDEX
+from config import LOCKER_PINS, MOCK_CAMERA
 
 log = logging.getLogger("kiosk.camera")
 
-# Map camera_index (0-4) → V4L2 device node.
-# Update these paths if v4l2-ctl --list-devices shows different numbers.
+# Map camera_index (0-3) → a stable, physical-port-based V4L2 device path.
+# Each entry physically confirmed 2026-09-03 (locker 1 & 2 entries re-confirmed
+# later the same day, after the face camera's removal shifted their ports —
+# see the module docstring). If hardware moves again, re-verify the same way
+# — don't just edit the comment from a topology diagram, that's exactly how
+# this went wrong the first time.
+_BY_PATH = "/dev/v4l/by-path/{}-video-index0"
 USB_DEVICE_MAP: dict[int, str] = {
-    0: "/dev/video2",    # Locker 1  ← Web Camera usb-xhci-hcd.1-1.1
-    1: "/dev/video6",    # Locker 2  ← Web Camera usb-xhci-hcd.1-1.3
-    2: "/dev/video4",    # Locker 3  ← Web Camera usb-xhci-hcd.1-1.2
-    3: "/dev/video8",    # Locker 4  ← Web Camera usb-xhci-hcd.1-1.4
-    4: "/dev/video0",    # Face cam  ← A4tech FHD 1080P usb-xhci-hcd.0-1
+    0: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.2:1.0"),  # Locker 1
+    1: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.3:1.0"),  # Locker 2
+    2: _BY_PATH.format("platform-xhci-hcd.0-usb-0:2:1.0"),    # Locker 3
+    3: _BY_PATH.format("platform-xhci-hcd.1-usb-0:2:1.0"),    # Locker 4
 }
 
 LOCKER_RESOLUTION = (1280, 720)   # MJPEG 30fps — supported by all cameras
-FACE_RESOLUTION   = (640, 480)    # MJPEG 30fps — sufficient for face detection
 JPEG_QUALITY      = 90
 
 
@@ -73,9 +116,7 @@ def _open_usb(device: str, width: int, height: int) -> cv2.VideoCapture | None:
 
 class CameraManager:
     def __init__(self):
-        self._usb:       dict[int, cv2.VideoCapture] = {}   # locker_id → capture
-        self._face_cap:  cv2.VideoCapture | None = None
-        self._face_lock: threading.Lock = threading.Lock()  # shared with UI server worker
+        self._usb: dict[int, cv2.VideoCapture] = {}   # locker_id → capture
         self._init_cameras()
 
     def _init_cameras(self):
@@ -92,14 +133,6 @@ class CameraManager:
             if cap:
                 self._usb[locker_id] = cap
                 log.info("Locker camera locker=%s device=%s ✓", locker_id, device)
-
-        # ── Face camera ───────────────────────────────────────────────────────
-        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video8")
-        fw, fh = FACE_RESOLUTION
-        cap = _open_usb(face_device, fw, fh)
-        if cap:
-            self._face_cap = cap
-            log.info("Face camera device=%s ✓", face_device)
 
     # ── Internal helpers ───────────────────────────────────────────────────────
 
@@ -146,56 +179,10 @@ class CameraManager:
         log.info("Captured %s frames from locker=%s", len(frames), locker_id)
         return frames
 
-    def capture_face(self, num_frames: int = 1) -> list[bytes]:
-        if MOCK_CAMERA:
-            return [self._mock_frame(640, 480) for _ in range(num_frames)]
-
-        if self._face_cap is None:
-            log.error("Face camera not initialised")
-            return []
-
-        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video0")
-        frames = []
-        for _ in range(num_frames):
-            try:
-                with self._face_lock:
-                    ret, frame = self._face_cap.read()
-                if not ret:
-                    raise RuntimeError(f"Camera read failed: {face_device}")
-                frames.append(self._to_jpeg(frame))
-            except Exception as e:
-                log.error("Face capture failed: %s", e)
-        return frames
-
-    def reinit_face_camera(self) -> bool:
-        """Release and reopen the face camera. Thread-safe via _face_lock.
-        Called by the UI server worker after too many consecutive read failures."""
-        face_device = USB_DEVICE_MAP.get(FACE_CAMERA_INDEX, "/dev/video0")
-        fw, fh = FACE_RESOLUTION
-        with self._face_lock:
-            if self._face_cap:
-                try:
-                    self._face_cap.release()
-                except Exception:
-                    pass
-                self._face_cap = None
-            cap = _open_usb(face_device, fw, fh)
-            if cap:
-                self._face_cap = cap
-                log.info("Face camera reinitialised ✓ device=%s", face_device)
-                return True
-            log.error("Face camera reinit failed — device=%s unavailable", face_device)
-            return False
-
     def cleanup(self):
         for cap in list(self._usb.values()):
             try:
                 cap.release()
-            except Exception:
-                pass
-        if self._face_cap:
-            try:
-                self._face_cap.release()
             except Exception:
                 pass
         log.info("All cameras released")

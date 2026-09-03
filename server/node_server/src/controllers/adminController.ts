@@ -2,7 +2,7 @@ import { Response, NextFunction } from "express";
 import { Prisma } from "@prisma/client";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
-import { NotFoundError, ValidationError } from "../utils/errors";
+import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors";
 import logger from "../utils/logger";
 import { hashPassword } from "../utils/bcrypt";
 import kioskEventBus from "../utils/kioskEventBus";
@@ -731,6 +731,140 @@ export const adminRefund = async (
   }
 };
 
+// ---------------------------------------------------------------------------
+// Admin PayMongo bypass — testing only, added 2026-09-03
+// ---------------------------------------------------------------------------
+// paymentController.confirmPayment's manual/dev-confirm branch is
+// deliberately gated to `NODE_ENV !== "production"` — the live deployed
+// server genuinely runs in production, so that branch is correctly
+// unreachable there, not a bug. The right way to give an admin a manual
+// override isn't to weaken that gate (it exists specifically so an
+// unauthenticated caller can never fake a payment in production) — it's a
+// real, separately-authenticated endpoint (requireAdmin, see the route) that
+// only a genuine admin session can reach. Deliberately duplicates
+// confirmPayment's COMPLETED/FAILED + rental-advancement logic rather than
+// refactoring that function — this is explicitly a temporary testing
+// feature (remove once a real PayMongo sandbox key is wired up), and the
+// webhook path is production-critical and already covered by real tests;
+// not worth the regression risk of restructuring it for something meant to
+// be short-lived.
+export const adminDecidePayment = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+
+    const transactionId = req.params.transactionId as string;
+    const approve = req.body?.decision !== "REJECT"; // default: approve
+
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        rental: {
+          include: {
+            item: true,
+            renter: { select: { email: true, firstName: true } },
+          },
+        },
+      },
+    });
+    if (!transaction) throw new NotFoundError("Transaction not found");
+
+    if (transaction.status === "COMPLETED" || transaction.status === "REFUNDED") {
+      res.json({ success: true, message: "Already confirmed", data: { transaction } });
+      return;
+    }
+
+    if (!approve) {
+      const failedTransaction = await prisma.transaction.update({
+        where: { id: transactionId },
+        data: { status: "FAILED" },
+      });
+      logger.info(
+        `Payment marked FAILED (admin bypass, testing): ${transactionId} by ${req.user.email}`,
+      );
+      res.json({
+        success: true,
+        message: "Payment marked as failed",
+        data: { transaction: failedTransaction },
+      });
+      return;
+    }
+
+    const claimed = await prisma.transaction.updateMany({
+      where: { id: transactionId, status: "PENDING" },
+      data: { status: "PROCESSING" },
+    });
+    if (claimed.count === 0) {
+      res.json({ success: true, message: "Already processing" });
+      return;
+    }
+
+    const updatedTransaction = await prisma.transaction.update({
+      where: { id: transactionId },
+      data: { status: "COMPLETED", paidAt: new Date() },
+    });
+
+    if (
+      transaction.type === "RENTAL_PAYMENT" ||
+      transaction.type === "SECURITY_DEPOSIT"
+    ) {
+      const otherType =
+        transaction.type === "RENTAL_PAYMENT"
+          ? "SECURITY_DEPOSIT"
+          : "RENTAL_PAYMENT";
+      const otherCompleted = await prisma.transaction.findFirst({
+        where: {
+          rentalId: transaction.rentalId,
+          type: otherType,
+          status: "COMPLETED",
+        },
+      });
+
+      if (otherCompleted) {
+        await prisma.rental.update({
+          where: { id: transaction.rentalId },
+          data: { status: "AWAITING_DEPOSIT" },
+        });
+        await prisma.notification.create({
+          data: {
+            userId: transaction.rental.ownerId,
+            title: "Payment Received",
+            message: `Payment received for ${transaction.rental.item.title}. Please deposit the item at the kiosk.`,
+            type: "PAYMENT_RECEIVED",
+            relatedEntityId: transaction.rentalId,
+            relatedEntityType: "rental",
+          },
+        });
+      } else {
+        await prisma.notification.create({
+          data: {
+            userId: transaction.userId,
+            title: "Payment Received — One More Step",
+            message: `Your ${transaction.type === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} for ${transaction.rental.item.title} was received. Complete the ${otherType === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} to proceed.`,
+            type: "PAYMENT_RECEIVED",
+            relatedEntityId: transaction.rentalId,
+            relatedEntityType: "rental",
+          },
+        });
+      }
+    }
+
+    logger.info(
+      `Payment confirmed (admin bypass, testing): ${transactionId} by ${req.user.email}`,
+    );
+    res.json({
+      success: true,
+      message: "Payment confirmed successfully",
+      data: { transaction: updatedTransaction },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const settleDispute = async (
   req: AuthRequest,
   res: Response,
@@ -953,7 +1087,9 @@ export const sendKioskCommand = async (
       "open_door",
       "drop_item",
       "capture_image",
-      "capture_face",
+      // "capture_face" removed 2026-09-03 — the kiosk no longer has a face
+      // camera to run it. Face verification is exercised from the app now
+      // (POST /kiosk/verify-face), not this manual command channel.
       "lock_all",
       "actuator_extend",
       "actuator_retract",
@@ -1577,7 +1713,14 @@ export const decideIdVerification = async (
       });
 
       return u;
-    });
+    }, { timeout: 15_000 }); // default 5s had zero headroom — hit a real
+    // "Transaction already closed" failure 2026-09-03 (5668ms against a
+    // 5000ms budget) that then cascaded into unrelated requests failing
+    // ("Server has closed the connection") until the pool recovered. The
+    // transaction body itself is two trivial writes, so the slow part is
+    // almost certainly connection acquisition under real load on a shared
+    // machine, not the queries — a longer budget is the right fix, not
+    // trying to make the writes themselves faster.
 
     logger.info(
       `Admin ${req.user?.userId} ${approved ? "approved" : "rejected"} ID for user ${id}${reason ? ` (${reason})` : ""}`,

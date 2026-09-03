@@ -48,13 +48,12 @@ GPIO_CHIP = _detect_gpio_chip()
 # ── Server connection ──────────────────────────────────────────────────────────
 KIOSK_ID = os.getenv("KIOSK_ID", "kiosk-1")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
-ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
-# Sent as the X-API-Key header on every direct kiosk→ML call (currently just
-# /verify-face). MUST match ML_API_KEY on the ML service. The kiosk is a
-# physically-secured, server-side device (unlike the distributed mobile app),
-# so holding this secret in its own .env is the same trust model as
-# KIOSK_SHARED_SECRET above, not a public-client secret-embedding problem.
-ML_SERVICE_API_KEY = os.getenv("ML_SERVICE_API_KEY", "")
+# ML_SERVICE_URL / ML_SERVICE_API_KEY used to live here too: the kiosk called
+# /verify-face directly for its own face camera. Removed 2026-09-03 — face
+# verification moved to the phone (design mandate §2.13), and the comparison
+# now runs entirely inside node_server, so the kiosk no longer talks to the
+# ML service at all, and no longer needs a copy of that key. One fewer
+# secret on a device that sits in a public corridor.
 
 # Shared secret presented on the Socket.io handshake so the backend can prove
 # this connection is a genuine kiosk before honouring any lock/verification
@@ -116,8 +115,6 @@ LOCKER_PINS = {
         "camera_index": 3,
     },
 }
-
-FACE_CAMERA_INDEX = 4   # 5th USB camera → /dev/video8 (index into USB_DEVICE_MAP)
 
 
 def load_timing_config() -> dict:

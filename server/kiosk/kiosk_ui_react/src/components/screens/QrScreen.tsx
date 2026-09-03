@@ -1,3 +1,18 @@
+/**
+ * Vestigial screen — kept but effectively dead, not deleted (2026-09-03).
+ *
+ * This is the *reversed* hand-off direction: the kiosk scanning a QR shown
+ * on the user's phone. That's backwards from how hand-off actually works
+ * (MainScreen displays the kiosk's own code; the phone scans it with
+ * mobile_scanner). Under app-first-only, every real session starts with a
+ * rentalId already known, so the app-side flow never routes here.
+ *
+ * The `/camera/face/stream` feed below is now a 404 — its camera was
+ * physically removed the same day (design mandate §2.13). Left in place
+ * rather than deleted to bound the size of that change; a candidate for a
+ * real removal pass alongside ConfirmScreen and the "qr"/"confirm" states in
+ * useKioskState.ts, which are equally unreachable now.
+ */
 interface Props {
   onBack: () => void;
   status: "scanning" | "found" | "error";

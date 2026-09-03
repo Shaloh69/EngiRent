@@ -22,12 +22,12 @@ Complete guide to understanding and setting up the EngiRent kiosk codebase on Ra
 The EngiRent kiosk is a **Raspberry Pi 5-based IoT device** that manages 4 hardware-controlled lockers. It handles:
 
 - **GPIO Control** – 3× 4-channel relay boards + 4× single-channel relay boards for solenoid locks and linear actuators
-- **Camera Management** – 5× USB cameras via GStreamer MJPEG pipeline (4 locker cams + 1 face cam)
+- **Camera Management** – 4× USB cameras via GStreamer MJPEG pipeline (one per locker interior). The face camera was removed 2026-09-03.
 - **Local UI** – Flask-based web interface for touchscreen display
 - **Real-time Communication** – Socket.io client connecting to Node.js backend
 - **WiFi Provisioning** – AP (Access Point) mode for first-time network setup
 - **Image Upload** – Supabase integration for storing captured images
-- **Face Verification** – ML service for renter identity check
+- ~~**Face Verification**~~ – no longer done here. Identity verification moved to the mobile app on 2026-09-03; the kiosk only waits for Node to report the result. See the design mandate §2.13.
 
 ---
 
@@ -60,7 +60,7 @@ Each locker has a **main door** (solenoid), **bottom door** (solenoid), and a **
 
 ### USB Camera Map
 
-All 5 cameras are USB. Each USB camera exposes **two V4L2 nodes** — always use the first (lower-numbered) node.
+All 4 locker cameras are USB. Each USB camera exposes **two V4L2 nodes** — always use the first (lower-numbered) node.
 
 | Camera | V4L2 Device | Role |
 |---|---|---|
@@ -68,7 +68,6 @@ All 5 cameras are USB. Each USB camera exposes **two V4L2 nodes** — always use
 | USB cam 1 | `/dev/video2` | Locker 2 interior |
 | USB cam 2 | `/dev/video4` | Locker 3 interior |
 | USB cam 3 | `/dev/video7` | Locker 4 interior |
-| USB cam 4 | `/dev/video10` | Face verification |
 
 > Run `v4l2-ctl --list-devices` to verify device nodes after reboot or replug. Update `USB_DEVICE_MAP` in `hardware/camera_manager.py` if nodes differ.
 
@@ -95,7 +94,7 @@ kiosk/
 ├── hardware/                        # GPIO & camera control
 │   ├── gpio_controller.py           # Solenoid relay control via lgpio
 │   ├── actuator_controller.py       # Linear actuator relay control
-│   ├── camera_manager.py            # 5× USB cameras via GStreamer MJPEG
+│   ├── camera_manager.py            # 4× USB cameras via GStreamer MJPEG
 │   └── __init__.py
 │
 ├── kiosk_ui/                        # Local Flask web server (backend half only)
@@ -109,7 +108,7 @@ kiosk/
 │
 ├── services/                        # Background services
 │   ├── socket_client.py             # Socket.io client (backend comms)
-│   ├── face_service.py              # Face detection & recognition
+│   │   (face_service.py removed 2026-09-03 — verification moved to the app)
 │   ├── image_uploader.py            # Upload images via the Node API's local storage
 │   └── __init__.py
 │
@@ -154,7 +153,7 @@ Loads settings from `.env` and `kiosk_config.json`.
 | `KIOSK_ID` | Unique identifier (e.g. `kiosk-1`) |
 | `SERVER_URL` | Backend Socket.io endpoint |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Storage credentials |
-| `ML_SERVICE_URL` | Face recognition service |
+| `ML_SERVICE_URL` | Item-verification ML service (no longer used for faces) |
 | `RELAY_ACTIVE_LOW` | `True` for active-LOW relay modules |
 | `MOCK_GPIO` | `True` to skip real GPIO (testing on non-Pi) |
 | `MOCK_CAMERA` | `True` to return placeholder images |
@@ -169,7 +168,8 @@ LOCKER_PINS = {
     3: { "main_door_pin": 4,  "bottom_door_pin": 8,  "actuator_extend_pin": 14, "actuator_retract_pin": 15, "camera_index": 2 },
     4: { "main_door_pin": 5,  "bottom_door_pin": 9,  "actuator_extend_pin": 16, "actuator_retract_pin": 17, "camera_index": 3 },
 }
-FACE_CAMERA_INDEX = 4
+# No FACE_CAMERA_INDEX — the face camera was removed 2026-09-03; face
+# verification now happens in the mobile app (design mandate §2.13).
 ```
 
 > **Never override `LOCKER_PINS` from the admin panel.** The server's `kiosk:config` event only updates timing values — pin wiring stays local.
@@ -190,10 +190,10 @@ FACE_CAMERA_INDEX = 4
 - Key method: `ActuatorController.place_item(locker_id, extend_s, retract_s)`
 
 #### `camera_manager.py`
-- **All 5 cameras are USB** — no CSI/picamera2
+- **All 4 locker cameras are USB** — no CSI/picamera2
 - Opens cameras via **GStreamer MJPEG pipeline** (low CPU, 30fps)
 - Fallback to YUYV 640×480 if MJPEG pipeline fails
-- Locker cameras: 1280×720 MJPEG | Face camera: 640×480 MJPEG
+- Locker cameras: 1280×720 MJPEG (no face camera — removed 2026-09-03)
 - Device node map defined in `USB_DEVICE_MAP` (update after hardware changes)
 
 ---
@@ -209,7 +209,6 @@ Persistent Socket.io connection to Node.js backend.
 | `kiosk:register` | `{kiosk_id, locker_count, version}` | On connect |
 | `kiosk:status` | `{kiosk_id, ui_state, config}` | After each command |
 | `kiosk:images` | `{kiosk_id, locker_id, image_urls, rental_id}` | After capture_image |
-| `kiosk:face` | `{detected, verified, confidence, ...}` | After capture_face |
 | `kiosk:ack` | `{command_id, action, status: "ok"\|"error"}` | After every command |
 | `kiosk:log` | `{level, module, message}` | All INFO+ log lines |
 
@@ -217,7 +216,7 @@ Persistent Socket.io connection to Node.js backend.
 
 | Event | Actions supported |
 |---|---|
-| `kiosk:command` | `open_door`, `drop_item`, `capture_image`, `capture_face`, `lock_all`, `actuator_extend`, `actuator_retract` |
+| `kiosk:command` | `open_door`, `drop_item`, `capture_image`, `lock_all`, `actuator_extend`, `actuator_retract` (`capture_face` removed 2026-09-03) |
 | `kiosk:config` | Timing update (seconds) — pin wiring is **ignored** from server |
 
 **Config update behaviour:** The server sends `kiosk:config` on every kiosk connect. The handler only saves `lockers`-format timing data and ignores `solenoid_pins`, `actuator_pins`, and `camera_indices` — the Pi's local `config.py` is always the source of truth for wiring.
@@ -421,7 +420,6 @@ python3 main.py
 [INFO]  kiosk.camera  – Locker camera locker=2 device=/dev/video2 ✓
 [INFO]  kiosk.camera  – Locker camera locker=3 device=/dev/video4 ✓
 [INFO]  kiosk.camera  – Locker camera locker=4 device=/dev/video7 ✓
-[INFO]  kiosk.camera  – Face camera device=/dev/video10 ✓
 [INFO]  kiosk.ui      – Flask server started on 0.0.0.0:8080
 [INFO]  kiosk.socket  – Connecting to https://api.engirent.com ...
 [INFO]  kiosk.socket  – Connected to server ✓

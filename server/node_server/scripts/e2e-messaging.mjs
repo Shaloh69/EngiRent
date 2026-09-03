@@ -165,6 +165,16 @@ async function run() {
   strangerToken = strangerReg.json?.data?.tokens?.accessToken;
   check("stranger registers", !!strangerToken, `status ${strangerReg.status}`);
 
+  // A fresh registration is unverified by design (requireVerified middleware,
+  // 2026-08-10) — fast-forward through a state this suite can't reach any
+  // other way, same pattern as e2e-availability/listing-video/trust-safety/
+  // enterprise-hygiene/my-listings/item-moderation. The stranger account never
+  // creates an item or rental, so it doesn't need the flip.
+  await prisma.user.updateMany({
+    where: { id: { in: [ownerId, renterId].filter(Boolean) } },
+    data: { isVerified: true },
+  });
+
   const adminLogin = await jreq("/auth/login", {
     method: "POST",
     body: {

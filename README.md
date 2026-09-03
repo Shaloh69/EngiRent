@@ -14,7 +14,7 @@
 
 ## Overview
 
-EngiRent Hub is a thesis project at the University of Cebu Lapu-Lapu and Mandaue (UCLM), College of Engineering: a physical locker kiosk plus a mobile app and admin console that let engineering students list, rent, and return equipment (lab gowns, scientific calculators, Arduino kits, power banks, and more) without a human attendant. Items are dropped off and picked up through solenoid-locked lockers; a camera captures images at each checkpoint; a purpose-built computer-vision pipeline compares those images against the item's listing photos to confirm nothing was swapped or damaged; face verification gates locker access; payment runs through PayMongo.
+EngiRent Hub is a thesis project at the University of Cebu Lapu-Lapu and Mandaue (UCLM), College of Engineering: a physical locker kiosk plus a mobile app and admin console that let engineering students list, rent, and return equipment (lab gowns, scientific calculators, Arduino kits, power banks, and more) without a human attendant. Items are dropped off and picked up through solenoid-locked lockers; a camera captures images at each checkpoint; a purpose-built computer-vision pipeline compares those images against the item's listing photos to confirm nothing was swapped or damaged; face verification — done in the mobile app, on the user's own phone, not at the kiosk — gates locker access; payment runs through PayMongo.
 
 This README describes the system **as it is verified to actually work today**, cross-checked file-by-file against the real code — not a product pitch. For the full technical audit behind every claim here, see [`docs/audit/documentation.md`](docs/audit/documentation.md).
 
@@ -40,7 +40,7 @@ A structured revamp (`docs/planning/03-revamp-master.md`) closed most of the gap
 | Student registration, login, item listing/browsing | Yes |
 | Rental request → approval → PayMongo checkout | Yes — the charged amount is derived server-side from the rental record; a client-supplied amount is never trusted |
 | QR-scan-initiated kiosk deposit, AI item verification, locker lock/unlock | Yes, end-to-end, including a dedicated "verifying" kiosk state while the AI check runs |
-| Face verification to claim/return an item | Yes, with a weaker local fallback if the AI service is briefly unreachable — now flagged visibly when that fallback fires, not silent |
+| Face verification to claim/return an item | Yes — captured in the app on the user's own phone (the kiosk's face camera was removed 2026-09-03). The photo is verified server-side by the ML service; the app never decides the result. The kiosk's old weaker local Haar-cascade fallback is gone with it: verification now either runs against the real model or fails closed |
 | AI condition verification on return, dispute routing to admin | Yes |
 | Real escrow/payout to the item owner | Built on PayMongo's Disbursements API — code-complete, **not yet confirmed against a real PayMongo sandbox transfer** (see limitations) |
 | Security deposit collection/refund, net of damage/late fees | Built and wired into rental completion — same sandbox-verification caveat as above |

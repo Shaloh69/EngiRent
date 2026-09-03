@@ -9,7 +9,6 @@ import {
 import logger from "../utils/logger";
 import kioskEventBus from "../utils/kioskEventBus";
 import { recordAudit } from "../services/auditLogService";
-import { decryptFaceEncoding } from "../utils/crypto";
 import {
   signedMediaUrl,
   saveBuffer,
@@ -17,6 +16,17 @@ import {
 } from "../services/storageService";
 import { Request } from "express";
 import { v4 as uuidv4 } from "uuid";
+import {
+  KIOSK_ACTIONABLE_STATUSES,
+  resolveFaceSubject,
+  compareFaceWithMl,
+  applyFaceVerificationOutcome,
+} from "../services/faceVerificationService";
+import {
+  getKioskSession,
+  consumeKioskSession,
+  recordFailedFaceAttempt,
+} from "../services/kioskSessionStore";
 
 /**
  * POST /kiosk/deposit
@@ -108,170 +118,56 @@ export const depositItem = async (
 };
 
 /**
- * POST /kiosk/claim
- * Initiates the claim sequence.  The Pi captures the renter's face; the
- * kiosk:face socket handler (index.ts) opens the door and advances to ACTIVE.
+ * POST /kiosk/claim, POST /kiosk/return — retired 2026-09-03.
+ *
+ * Both used to command the kiosk to run `capture_face` itself. That command
+ * no longer exists on the kiosk (the face camera was physically removed —
+ * design mandate §2.13; see server/kiosk/services/socket_client.py's
+ * dispatch table), so as of that date these endpoints silently stopped
+ * working: claim would emit a command the kiosk logs as unrecognised and
+ * does nothing with, and — worse — return would still open the locker door
+ * immediately (its `open_door` call has no verification gate of its own),
+ * then wait forever for a `capture_face` reply that will never come.
+ *
+ * The real replacement is the QR-scan flow → POST /kiosk/verify-face (see
+ * faceVerificationService.ts), which is what the app actually uses and
+ * which does the whole claim/return sequence itself once the phone's
+ * captured selfie verifies — see applyFaceVerificationOutcome's "claim" and
+ * "return" branches for the equivalent logic, now gated on a real check
+ * instead of dead hardware calls.
+ *
+ * Kept as named, callable functions (rather than deleted outright) only
+ * because nothing in this repo currently calls them — grepped clean across
+ * server/, client/, and docs/ — so there was nothing to migrate; a
+ * hard failure here is safer than leaving them silently broken for
+ * whatever future caller reaches for them.
  */
 export const claimItem = async (
-  req: AuthRequest,
-  res: Response,
+  _req: AuthRequest,
+  _res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  try {
-    if (!req.user) throw new ForbiddenError("Authentication required");
-
-    const { rentalId } = req.body;
-
-    const rental = await prisma.rental.findUnique({
-      where: { id: rentalId },
-      include: { item: true, renter: true, depositLocker: true },
-    });
-
-    if (!rental) throw new NotFoundError("Rental not found");
-    if (rental.renterId !== req.user.userId)
-      throw new ForbiddenError("Only the renter can claim the item");
-    if (rental.status !== "DEPOSITED")
-      throw new ValidationError("Item is not ready for claim");
-    if (!rental.depositLocker)
-      throw new ValidationError("No locker assigned to this rental");
-
-    const { depositLocker: locker } = rental;
-
-    // Command Pi: capture face → kiosk:face socket handler takes over.
-    // Prefer the decrypted stored encoding (fast, no re-download/re-encode on
-    // the ML side) over the reference URL, which stays as a fallback.
-    const decodedEncoding = decryptFaceEncoding(rental.renter.faceEncoding);
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`kiosk:${locker.kioskId}`).emit("kiosk:command", {
-        action: "capture_face",
-        locker_id: parseInt(locker.lockerNumber, 10),
-        rental_id: rentalId,
-        user_id: req.user.userId,
-        // signedMediaUrl() converts the stored path into a short-lived,
-        // single-purpose URL the kiosk can fetch over plain HTTP — the
-        // kiosk has no user JWT (only its Socket.io shared-secret), so the
-        // authenticated /media/users/:id/face.jpg route isn't reachable to
-        // it; a signed link is the correct tier for this consumer.
-        reference_face_url: signedMediaUrl(rental.renter.profileImage) ?? "",
-        ...(decodedEncoding
-          ? { stored_encoding: JSON.stringify(decodedEncoding) }
-          : {}),
-      });
-    }
-
-    logger.info(
-      `Claim face-check initiated: rental ${rentalId}, locker ${locker.lockerNumber}`,
-    );
-
-    res.json({
-      success: true,
-      message: "Face verification started. Please look at the camera.",
-      data: {
-        locker: { lockerNumber: locker.lockerNumber, kioskId: locker.kioskId },
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
+  next(
+    new ValidationError(
+      "POST /kiosk/claim no longer works — the kiosk's face camera was removed. " +
+        "Claiming an item now happens by scanning the kiosk's QR code in the app, " +
+        "which opens a verification page on the phone.",
+    ),
+  );
 };
 
-/**
- * POST /kiosk/return
- * Initiates the return sequence.  Face verification → image capture → ML.
- * The full verification is handled by the kiosk:face and kiosk:images
- * socket handlers in index.ts.
- */
 export const returnItem = async (
-  req: AuthRequest,
-  res: Response,
+  _req: AuthRequest,
+  _res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  try {
-    if (!req.user) throw new ForbiddenError("Authentication required");
-
-    const { rentalId, lockerId } = req.body;
-
-    const rental = await prisma.rental.findUnique({
-      where: { id: rentalId },
-      include: { item: true, renter: true },
-    });
-
-    if (!rental) throw new NotFoundError("Rental not found");
-    if (rental.renterId !== req.user.userId)
-      throw new ForbiddenError("Only the renter can return the item");
-    if (rental.status !== "ACTIVE")
-      throw new ValidationError("Rental is not active");
-
-    const locker = lockerId
-      ? await prisma.locker.findUnique({ where: { id: lockerId } })
-      : await prisma.locker.findFirst({
-          where: { status: "AVAILABLE", isOperational: true },
-        });
-
-    if (!locker || locker.status !== "AVAILABLE")
-      throw new ValidationError("No available locker");
-
-    // Reserve the return locker
-    await prisma.locker.update({
-      where: { id: locker.id },
-      data: {
-        status: "RESERVED",
-        currentRentalId: rentalId,
-        lastUsedAt: new Date(),
-      },
-    });
-
-    // Command Pi: open door so renter can place item, then capture face + images
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`kiosk:${locker.kioskId}`).emit("kiosk:command", {
-        action: "open_door",
-        locker_id: parseInt(locker.lockerNumber, 10),
-        door: "main_door",
-        rental_id: rentalId,
-      });
-
-      // After door closes — request face capture first
-      const decodedEncoding = decryptFaceEncoding(rental.renter.faceEncoding);
-      setTimeout(() => {
-        io.to(`kiosk:${locker.kioskId}`).emit("kiosk:command", {
-          action: "capture_face",
-          locker_id: parseInt(locker.lockerNumber, 10),
-          rental_id: rentalId,
-          user_id: req.user!.userId,
-          // signedMediaUrl() converts the stored path into a short-lived,
-        // single-purpose URL the kiosk can fetch over plain HTTP — the
-        // kiosk has no user JWT (only its Socket.io shared-secret), so the
-        // authenticated /media/users/:id/face.jpg route isn't reachable to
-        // it; a signed link is the correct tier for this consumer.
-        reference_face_url: signedMediaUrl(rental.renter.profileImage) ?? "",
-          ...(decodedEncoding
-            ? { stored_encoding: JSON.stringify(decodedEncoding) }
-            : {}),
-        });
-      }, 20_000);
-    }
-
-    logger.info(
-      `Return initiated: rental ${rentalId}, locker ${locker.lockerNumber}`,
-    );
-
-    res.json({
-      success: true,
-      message:
-        "Locker opened. Place item inside — face verification will follow.",
-      data: {
-        locker: {
-          id: locker.id,
-          lockerNumber: locker.lockerNumber,
-          kioskId: locker.kioskId,
-        },
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
+  next(
+    new ValidationError(
+      "POST /kiosk/return no longer works — the kiosk's face camera was removed. " +
+        "Returning an item now happens by scanning the kiosk's QR code in the app, " +
+        "which opens a verification page on the phone.",
+    ),
+  );
 };
 
 export const getAvailableLockers = async (
@@ -509,6 +405,163 @@ export const releaseLockerByNumber = async (
     res.json({
       success: true,
       message: `Locker ${locker.lockerNumber} released`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /kiosk/verify-face
+ *
+ * The phone-side replacement for the kiosk's removed face camera
+ * (design mandate §2.13). The app uploads a freshly captured selfie; this
+ * endpoint decides whether it matches the enrolled identity and, if so, opens
+ * the locker.
+ *
+ * The app sends an **image**, never a verdict — see faceVerificationService.ts
+ * for why that distinction is the whole security model of this endpoint.
+ *
+ * Bound to a live kiosk session: the caller must pass the QR token they just
+ * scanned, and it must still be inside the kiosk's 90 s TTL. That is what stops
+ * a verification from being replayed later, away from the kiosk, and it is why
+ * the token is re-checked here rather than trusted from the earlier scan.
+ */
+export const verifyFaceFromApp = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+    if (!req.file) throw new ValidationError("A face image is required");
+
+    const { rentalId } = req.body as { rentalId?: string };
+    if (!rentalId) throw new ValidationError("rentalId is required");
+
+    // The kioskId is deliberately NOT taken from anything the client sends.
+    // It comes only from a session the kiosk itself opened — see
+    // kioskSessionStore.ts for why that's the whole security model here. No
+    // session means either nobody scanned a QR for this rental recently, or
+    // the 120s window since they did has closed.
+    const session = getKioskSession(rentalId);
+    if (!session) {
+      throw new ValidationError(
+        "No active kiosk session for this rental — scan the kiosk QR code again",
+      );
+    }
+    if (session.userId !== req.user.userId) {
+      throw new ForbiddenError(
+        "You are not the person this step requires verification from",
+      );
+    }
+
+    const rental = await prisma.rental.findUnique({
+      where: { id: rentalId },
+      include: {
+        owner: { select: { profileImage: true, faceEncoding: true } },
+        renter: { select: { profileImage: true, faceEncoding: true } },
+      },
+    });
+    if (!rental) throw new NotFoundError("Rental not found");
+
+    if (!KIOSK_ACTIONABLE_STATUSES.includes(rental.status as never)) {
+      throw new ValidationError(
+        `Rental status "${rental.status}" is not actionable at a kiosk`,
+      );
+    }
+
+    // Whose face is required is derived from the rental's own state, never
+    // from the request — otherwise the wrong party could open the locker.
+    // (This is a second, independent check of the same fact the session's
+    // userId already encodes — cheap, and it stays correct even if a rental
+    // somehow changes status mid-session.)
+    const subject = resolveFaceSubject(rental);
+    if (subject.userId !== req.user.userId) {
+      throw new ForbiddenError(
+        "You are not the person this step requires verification from",
+      );
+    }
+    if (!subject.storedEncoding && !subject.referenceFaceUrl) {
+      throw new ValidationError(
+        "No enrolled face on this account — finish profile setup first",
+      );
+    }
+
+    let result;
+    try {
+      result = await compareFaceWithMl(
+        req.file.buffer,
+        req.file.mimetype,
+        subject,
+      );
+    } catch (err) {
+      // Fail closed. The kiosk's old local Haar-cascade fallback is gone on
+      // purpose: a quietly weaker identity check is worse than a clear error.
+      // The session is left open (not consumed, no attempt recorded) — an
+      // ML outage isn't a bad match, and shouldn't burn the user's retry
+      // budget or force them to rescan.
+      logger.error(`Face verification unavailable for rental ${rentalId}:`, err);
+      throw new ValidationError(
+        "Verification service is unavailable right now — please try again in a moment",
+      );
+    }
+
+    if (!result.verified) {
+      const { exhausted, attemptsRemaining } = recordFailedFaceAttempt(rentalId);
+      logger.info(
+        `[APP-FACE]  rental=${rentalId} user=${req.user.userId} kiosk=${session.kioskId} ` +
+          `verified=false confidence=${(result.confidence * 100).toFixed(1)}% ` +
+          `exhausted=${exhausted} attemptsRemaining=${attemptsRemaining}`,
+      );
+      res.json({
+        success: true,
+        data: {
+          verified: false,
+          detected: result.detected,
+          confidence: result.confidence,
+          action: "none",
+          mustRescan: exhausted,
+          attemptsRemaining,
+        },
+        message: exhausted
+          ? "We couldn't match your face after several tries — please scan the kiosk QR code again"
+          : "We couldn't match your face — please try again",
+      });
+      return;
+    }
+
+    const io = req.app.get("io");
+    if (!io) throw new ValidationError("Realtime channel unavailable");
+
+    const { action, error: outcomeError } = await applyFaceVerificationOutcome({
+      io,
+      rentalId,
+      kioskId: session.kioskId,
+      confidence: result.confidence,
+    });
+
+    // Verified is single-use either way — a locker either opened or the
+    // outcome failed for a reason a retry within this session won't fix
+    // (missing locker record, no space at this kiosk).
+    consumeKioskSession(rentalId);
+
+    logger.info(
+      `[APP-FACE]  rental=${rentalId} user=${req.user.userId} kiosk=${session.kioskId} ` +
+        `detected=${result.detected} verified=true ` +
+        `confidence=${(result.confidence * 100).toFixed(1)}% action=${action}` +
+        (outcomeError ? ` error=${outcomeError}` : ""),
+    );
+
+    res.json({
+      success: true,
+      data: {
+        verified: true,
+        detected: result.detected,
+        confidence: result.confidence,
+        action,
+      },
+      message: outcomeError ?? "Identity confirmed",
     });
   } catch (error) {
     next(error);

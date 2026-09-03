@@ -30,9 +30,9 @@
 | 12V linear actuator | 4 | 1 per locker — controlled by relay pairs (extend/retract) |
 | 12V 10A power supply | 1 | Solenoids + actuators |
 | 5V 3A USB-C power supply | 1 | Pi only |
-| USB camera | 5 | 4 locker interior cams + 1 face cam (USB extension cables) |
+| USB camera | 4 | One per locker interior (USB extension cables). The 5th unit — the face camera — was removed 2026-09-03; face verification now happens in the mobile app. |
 | HDMI monitor / touchscreen | 1 | 7–10″ for kiosk display |
-| USB hub (powered) | 1 | For 5 simultaneous USB cameras |
+| USB hub (powered) | 1 | For 4 simultaneous USB cameras |
 
 > **No CSI cameras.** All cameras are USB. `picamera2` is not used.  
 > **No H-bridge / L298N motor drivers.** Actuators are controlled by relay pairs (one relay extends, one retracts).
@@ -196,7 +196,7 @@ cat > ~/.config/autostart/engirent-browser.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=EngiRent Kiosk Browser
-Exec=bash -c 'until curl -sf http://localhost:8080 >/dev/null 2>&1; do sleep 1; done && /usr/bin/chromium --noerrdialogs --disable-infobars --kiosk --start-fullscreen --app=http://localhost:8080'
+Exec=bash -c 'until curl -sf http://localhost:8080 >/dev/null 2>&1; do sleep 2; done; while true; do if ! pgrep -f "^/usr/lib/chromium/chromium.*--app=http://localhost:8080" >/dev/null 2>&1; then /usr/bin/chromium --noerrdialogs --disable-infobars --disable-session-crashed-bubble --kiosk --start-fullscreen --window-size=1920,1080 --app=http://localhost:8080; fi; sleep 10; done'
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
@@ -317,9 +317,8 @@ USB Camera (usb-xhci-hcd.1-1.3):
     /dev/video7    ← use this  (Locker 4)
     /dev/video8
 
-USB Camera (usb-xhci-hcd.1-1.4):
-    /dev/video10   ← use this  (Face cam)
-    /dev/video11
+(A fifth USB camera used to appear here as the face cam. It was removed on
+2026-09-03 — face verification moved to the user's phone.)
 ```
 
 > Device nodes can shift after reboot or replug. Always verify with `v4l2-ctl --list-devices` and update `USB_DEVICE_MAP` in `hardware/camera_manager.py` if they change.
@@ -345,13 +344,25 @@ Once confirmed, update `USB_DEVICE_MAP` in `hardware/camera_manager.py`:
 
 ```python
 USB_DEVICE_MAP: dict[int, str] = {
-    0: "/dev/video0",    # Locker 1
-    1: "/dev/video2",    # Locker 2
-    2: "/dev/video4",    # Locker 3
-    3: "/dev/video7",    # Locker 4
-    4: "/dev/video10",   # Face cam
+    0: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.2:1.0"),  # Locker 1
+    1: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.3:1.0"),  # Locker 2
+    2: _BY_PATH.format("platform-xhci-hcd.0-usb-0:2:1.0"),    # Locker 3
+    3: _BY_PATH.format("platform-xhci-hcd.1-usb-0:2:1.0"),    # Locker 4
+    # Lockers 1 & 2 re-confirmed 2026-09-03 (later the same day) after
+    # removing the face camera shifted their ports off xhci-hcd.1 onto
+    # xhci-hcd.0 — see camera_manager.py's module docstring.
 }
 ```
+
+> **Do not go back to bare `/dev/videoN` here.** Those indices are assigned in
+> enumeration order and genuinely do move between reboots and replugs — on
+> 2026-09-03 this silently mapped three lockers to each other's cameras, so item
+> verification was comparing photos of the wrong locker and reporting success.
+> The `/dev/v4l/by-path/` symlinks are tied to the physical USB port, so a
+> camera keeps its identity as long as it stays plugged into the same socket.
+>
+> **There is no index 4.** The face camera was removed on 2026-09-03 when face
+> verification moved to the user's phone — see the design mandate §2.13.
 
 ### Check Supported Formats
 
@@ -405,11 +416,7 @@ nano ~/engirent/server/kiosk/.env
     "3": { "...same keys..." },
     "4": { "...same keys..." }
   },
-  "face_recognition": {
-    "confidence_threshold": 0.6,
-    "capture_attempts": 3,
-    "capture_timeout_seconds": 30
-  }
+  "_note": "The old 'face_recognition' block was removed on 2026-09-03. The kiosk no longer captures or verifies faces; the phone does, and the ML comparison runs server-side in Node. See the design mandate 2.13."
 }
 ```
 
@@ -448,11 +455,10 @@ sudo journalctl -u engirent-kiosk.service -f
 Expected startup log:
 ```
 [INFO]  kiosk.gpio    – GPIO chip detected: gpiochip0
-[INFO]  kiosk.camera  – Locker camera locker=1 device=/dev/video0 ✓
-[INFO]  kiosk.camera  – Locker camera locker=2 device=/dev/video2 ✓
-[INFO]  kiosk.camera  – Locker camera locker=3 device=/dev/video4 ✓
-[INFO]  kiosk.camera  – Locker camera locker=4 device=/dev/video7 ✓
-[INFO]  kiosk.camera  – Face camera device=/dev/video10 ✓
+[INFO]  kiosk.camera  – Locker camera locker=1 device=…usb-0:1.2:1.0 ✓
+[INFO]  kiosk.camera  – Locker camera locker=2 device=…usb-0:1.3:1.0 ✓
+[INFO]  kiosk.camera  – Locker camera locker=3 device=…usb-0:2:1.0   ✓
+[INFO]  kiosk.camera  – Locker camera locker=4 device=…usb-0:2:1.0   ✓
 [INFO]  kiosk.socket  – Connected to server ✓
 [INFO]  kiosk.socket  – 🟢 [PI-ONLINE] Kiosk registered
 ```

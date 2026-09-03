@@ -3,12 +3,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
 import {
+  Affix,
+  AspectRatio,
   Badge,
+  Box,
   Button,
+  Card,
+  Center,
   Divider,
+  Group,
   Loader,
+  LoadingOverlay,
+  Notification,
   NumberInput,
+  ScrollArea,
+  SimpleGrid,
+  Stack,
   Tabs,
+  Text,
+  ThemeIcon,
+  Title,
 } from "@mantine/core";
 import {
   Activity,
@@ -19,7 +33,6 @@ import {
   LockOpen,
   Monitor,
   RefreshCw,
-  RotateCcw,
   Save,
   Terminal,
   Unlock,
@@ -27,6 +40,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import api, { isDemoMode } from "@/lib/api";
+import { roleColor } from "../theme";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -60,8 +74,16 @@ const DEFAULT_TIMING: LockerTiming = {
   actuator_retract_seconds: 5,
 };
 
+// The real deployed kiosk registers itself as "KIOSK-001" (its KIOSK_ID env
+// var on the Pi). This page previously hardcoded "kiosk-1" in five places —
+// a stale seed value that matched nothing live, so config saves and commands
+// went to an ID the hardware never answers to. Same class of bug as the
+// Locker.kioskId mismatch fixed server-side 2026-09-03. Only a fallback:
+// the real ID still comes from GET /admin/kiosks when that responds.
+const FALLBACK_KIOSK_ID = "KIOSK-001";
+
 const DEMO_STATE: KioskState = {
-  id: "kiosk-1",
+  id: FALLBACK_KIOSK_ID,
   status: "online",
   lastSeen: new Date().toISOString(),
   lockers: {
@@ -88,11 +110,14 @@ function fmtTime(ts: number) {
   });
 }
 
+// Returns a Mantine colour token (was Tailwind classes before the 2026-09-03
+// Mantine rebuild). Kept as the log-level convention this project uses
+// everywhere: red critical, amber warning, green healthy.
 function levelColor(level: string) {
-  if (level === "ERROR" || level === "CRITICAL") return "text-red-400";
-  if (level === "WARNING") return "text-amber-400";
-  if (level === "INFO") return "text-green-400";
-  return "text-[var(--color-muted)]";
+  if (level === "ERROR" || level === "CRITICAL") return "red.4";
+  if (level === "WARNING") return "yellow.4";
+  if (level === "INFO") return "green.4";
+  return "dimmed";
 }
 
 function NumInput({
@@ -111,11 +136,11 @@ function NumInput({
   max?: number;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+    <Stack gap={4}>
+      <Text size="xs" fw={600} tt="uppercase" c="dimmed">
         {label}
-      </span>
-      <div className="flex items-center gap-2">
+      </Text>
+      <Group gap="xs">
         <NumberInput
           size="xs"
           min={min}
@@ -125,9 +150,11 @@ function NumInput({
           w={96}
           styles={{ input: { textAlign: "center" } }}
         />
-        <span className="text-xs text-[var(--color-muted)]">{unit}</span>
-      </div>
-    </div>
+        <Text size="xs" c="dimmed">
+          {unit}
+        </Text>
+      </Group>
+    </Stack>
   );
 }
 
@@ -162,12 +189,12 @@ export default function KioskPage() {
       }
       const [kioskRes, configRes] = await Promise.allSettled([
         api.get("/admin/kiosks"),
-        api.get("/admin/kiosks/kiosk-1/config"),
+        api.get(`/admin/kiosks/${FALLBACK_KIOSK_ID}/config`),
       ]);
       const kioskId =
         kioskRes.status === "fulfilled"
-          ? (kioskRes.value.data.data?.kiosks?.[0]?.id ?? "kiosk-1")
-          : "kiosk-1";
+          ? (kioskRes.value.data.data?.kiosks?.[0]?.id ?? FALLBACK_KIOSK_ID)
+          : FALLBACK_KIOSK_ID;
       const config =
         configRes.status === "fulfilled"
           ? (configRes.value.data.data?.config ?? {})
@@ -313,7 +340,7 @@ export default function KioskPage() {
     setSaving((p) => ({ ...p, [lockerId]: true }));
     try {
       if (!isDemoMode) {
-        await api.put(`/admin/kiosks/${kiosk?.id ?? "kiosk-1"}/config`, {
+        await api.put(`/admin/kiosks/${kiosk?.id ?? FALLBACK_KIOSK_ID}/config`, {
           config: { lockers: { ...timing, [lockerId]: timing[lockerId] } },
         });
       }
@@ -333,7 +360,7 @@ export default function KioskPage() {
     setCmdLoading(key);
     try {
       if (!isDemoMode) {
-        await api.post(`/admin/kiosks/${kiosk?.id ?? "kiosk-1"}/command`, {
+        await api.post(`/admin/kiosks/${kiosk?.id ?? FALLBACK_KIOSK_ID}/command`, {
           action: cmd,
           ...payload,
         });
@@ -362,7 +389,7 @@ export default function KioskPage() {
         );
         return;
       }
-      await api.post(`/admin/kiosks/${kiosk?.id ?? "kiosk-1"}/command`, {
+      await api.post(`/admin/kiosks/${kiosk?.id ?? FALLBACK_KIOSK_ID}/command`, {
         action: "capture_image",
         locker_id: lockerId,
         num_frames: 1,
@@ -409,9 +436,9 @@ export default function KioskPage() {
   if (loading) {
     return (
       <AdminLayout>
-        <div className="flex h-64 items-center justify-center">
+        <Center h={256}>
           <Loader size="lg" />
-        </div>
+        </Center>
       </AdminLayout>
     );
   }
@@ -429,41 +456,48 @@ export default function KioskPage() {
       `${cmd}-${JSON.stringify({ locker_id: id, ...extra })}`;
 
     return (
-      <div className="space-y-4">
+      <Stack gap="md">
         {/* Camera snapshot */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <div className="pb-2 flex items-center gap-2 font-semibold text-[var(--color-ink)]">
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
             <Camera size={15} />
-            <span>Camera Snapshot — Locker {String(id).padStart(2, "0")}</span>
-          </div>
+            <Text fw={600}>
+              Camera Snapshot — Locker {String(id).padStart(2, "0")}
+            </Text>
+          </Group>
           <Divider />
-          <div className="pt-3 space-y-3">
-            <div
-              className="relative w-full overflow-hidden rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
-              style={{ aspectRatio: "4/3" }}
-            >
-              {snap ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={snap}
-                  alt={`Locker ${id} snapshot`}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[var(--color-muted)]">
-                  <Camera size={36} className="opacity-30" />
-                  <p className="text-sm">No snapshot yet</p>
-                  <p className="text-xs opacity-60">
-                    {'Click "Take Snapshot" to capture'}
-                  </p>
-                </div>
-              )}
-              {snapLoading[sid] && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-xl">
-                  <Loader size="lg" />
-                </div>
-              )}
-            </div>
+          <Stack gap="sm" pt="md">
+            <AspectRatio ratio={4 / 3}>
+              <Box
+                pos="relative"
+                style={{
+                  overflow: "hidden",
+                  borderRadius: "var(--mantine-radius-md)",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-surface-soft)",
+                }}
+              >
+                {snap ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={snap}
+                    alt={`Locker ${id} snapshot`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <Stack align="center" justify="center" gap="xs" h="100%">
+                    <Camera size={36} opacity={0.3} />
+                    <Text size="sm" c="dimmed">
+                      No snapshot yet
+                    </Text>
+                    <Text size="xs" c="dimmed" opacity={0.7}>
+                      {'Click "Take Snapshot" to capture'}
+                    </Text>
+                  </Stack>
+                )}
+                <LoadingOverlay visible={!!snapLoading[sid]} />
+              </Box>
+            </AspectRatio>
             <Button
               size="sm"
               variant="light"
@@ -474,16 +508,16 @@ export default function KioskPage() {
             >
               Take Snapshot
             </Button>
-          </div>
-        </div>
+          </Stack>
+        </Card>
 
         {/* Door status */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <div className="pb-1 font-semibold text-[var(--color-ink)]">
-            <Monitor size={15} className="mr-2" />
-            Door Status
-          </div>
-          <div className="pt-2 flex flex-row gap-3">
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
+            <Monitor size={15} />
+            <Text fw={600}>Door Status</Text>
+          </Group>
+          <Group gap="sm">
             {(["main", "bottom"] as const).map((door) => {
               const unlocked =
                 (doors as Record<string, string>)?.[door] === "unlocked";
@@ -491,13 +525,10 @@ export default function KioskPage() {
                 <Badge
                   key={door}
                   size="sm"
+                  variant={unlocked ? "light" : "outline"}
+                  color={unlocked ? roleColor.success : "gray"}
                   leftSection={
                     unlocked ? <LockOpen size={12} /> : <Lock size={12} />
-                  }
-                  className={
-                    unlocked
-                      ? "border border-green-500 bg-green-500/10 text-green-400"
-                      : "border border-[var(--color-border)] bg-transparent text-[var(--color-muted)]"
                   }
                 >
                   {door === "main" ? "Main" : "Bottom"}{" "}
@@ -505,16 +536,16 @@ export default function KioskPage() {
                 </Badge>
               );
             })}
-          </div>
-        </div>
+          </Group>
+        </Card>
 
         {/* Manual controls */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <div className="pb-2 font-semibold text-[var(--color-ink)]">
-            <Activity size={15} className="mr-2" />
-            Manual Controls
-          </div>
-          <div className="pt-0 flex flex-wrap gap-2">
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
+            <Activity size={15} />
+            <Text fw={600}>Manual Controls</Text>
+          </Group>
+          <Group gap="xs">
             {(["main", "bottom"] as const).map((door) => {
               const doorKey = door === "main" ? "main_door" : "bottom_door";
               return (
@@ -568,18 +599,18 @@ export default function KioskPage() {
             >
               Release
             </Button>
-          </div>
-        </div>
+          </Group>
+        </Card>
 
         {/* Timing */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <div className="pb-2 font-semibold text-[var(--color-ink)]">
-            <Clock size={15} className="mr-2" />
-            Timing Configuration
-          </div>
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
+            <Clock size={15} />
+            <Text fw={600}>Timing Configuration</Text>
+          </Group>
           <Divider />
-          <div className="pt-3 space-y-4">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <Stack gap="md" pt="md">
+            <SimpleGrid cols={2} spacing="md">
               <NumInput
                 label="Main Door Open"
                 unit="s"
@@ -610,7 +641,7 @@ export default function KioskPage() {
                   updateTiming(sid, "actuator_retract_seconds", v)
                 }
               />
-            </div>
+            </SimpleGrid>
             <Button
               size="sm"
               color="primary"
@@ -620,121 +651,81 @@ export default function KioskPage() {
             >
               Save Locker {String(id).padStart(2, "0")} Timing
             </Button>
-          </div>
-        </div>
-      </div>
+          </Stack>
+        </Card>
+      </Stack>
     );
   }
 
-  // ── Face cam tab content ──────────────────────────────────────────────────
-  function FaceCamTab() {
-    const snap = snapshots["face"];
-    return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <div className="pb-2 flex items-center gap-2 font-semibold text-[var(--color-ink)]">
-            <Camera size={15} />
-            <span>Face Camera (Index 4)</span>
-          </div>
-          <Divider />
-          <div className="pt-3 space-y-3">
-            <div
-              className="relative w-full overflow-hidden rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)]"
-              style={{ aspectRatio: "4/3" }}
-            >
-              {snap ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={snap}
-                  alt="Face camera"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[var(--color-muted)]">
-                  <Camera size={36} className="opacity-30" />
-                  <p className="text-sm">No snapshot</p>
-                </div>
-              )}
-            </div>
-            <Button
-              size="sm"
-              variant="light"
-              leftSection={<RotateCcw size={14} />}
-              loading={cmdLoading === "capture_face-{}"}
-              disabled={!isOnline && !isDemoMode}
-              onClick={() => sendCommand("capture_face")}
-            >
-              Test Face Capture
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Face cam tab removed 2026-09-03 — the kiosk's face camera was physically
+  // removed (design mandate §2.13). Identity verification now happens in the
+  // mobile app, so there is no longer a hardware component here for the
+  // Components Check to exercise.
 
   return (
     <AdminLayout>
       {/* Toast */}
       {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 rounded-xl px-5 py-3 text-sm font-semibold shadow-lg transition ${
-            toast.ok
-              ? "bg-green-500/20 text-green-400 border border-green-500"
-              : "bg-red-500/20 text-red-400 border border-red-500"
-          }`}
-        >
-          {toast.msg}
-        </div>
+        <Affix position={{ bottom: 24, right: 24 }}>
+          <Notification
+            color={toast.ok ? roleColor.success : roleColor.critical}
+            withCloseButton={false}
+            withBorder
+          >
+            {toast.msg}
+          </Notification>
+        </Affix>
       )}
 
-      <div className="space-y-6">
+      <Stack gap="lg">
         {/* ── Hero / Status header ─────────────────────────────────────────── */}
-        <div
-          className={`relative overflow-hidden rounded-2xl border p-6 ${
-            isOnline
-              ? "border-green-500/25 bg-gradient-to-br from-green-950/30 via-[var(--color-surface)] to-[var(--color-surface)]"
+        <Card
+          withBorder
+          radius="md"
+          padding="lg"
+          style={{
+            borderColor: isOnline
+              ? "var(--mantine-color-green-6)"
               : isOffline
-                ? "border-red-500/25 bg-gradient-to-br from-red-950/30 via-[var(--color-surface)] to-[var(--color-surface)]"
-                : "border-[var(--color-border)] bg-[var(--color-surface)]"
-          }`}
+                ? "var(--mantine-color-red-6)"
+                : undefined,
+          }}
         >
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <Group justify="space-between" align="flex-start" wrap="wrap">
             <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black ${
-                    isOnline
-                      ? "bg-green-500/15 text-green-400"
-                      : "bg-red-500/15 text-red-400"
-                  }`}
+              <Group gap="sm" mb="xs">
+                <ThemeIcon
+                  size={40}
+                  radius="md"
+                  variant="light"
+                  color={isOnline ? roleColor.success : roleColor.critical}
                 >
-                  ER
-                </div>
+                  <Text fw={900} size="sm">
+                    ER
+                  </Text>
+                </ThemeIcon>
                 <div>
-                  <h1 className="text-2xl font-extrabold text-[var(--color-ink)] leading-none">
+                  <Title order={2} fw={800} lh={1}>
                     Kiosk Control
-                  </h1>
-                  <p className="text-xs text-[var(--color-muted)] mt-1 uppercase tracking-wider">
-                    {kiosk?.id ?? "kiosk-1"}
-                  </p>
+                  </Title>
+                  <Text size="xs" c="dimmed" tt="uppercase" mt={4}>
+                    {kiosk?.id ?? FALLBACK_KIOSK_ID}
+                  </Text>
                 </div>
-              </div>
-              <p className="text-sm text-[var(--color-muted)]">
+              </Group>
+              <Text size="sm" c="dimmed">
                 Manage lockers, review snapshots, and monitor live logs
-              </p>
+              </Text>
             </div>
 
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
+            <Stack gap="xs" align="flex-end">
+              <Group gap="xs">
                 <Badge
                   size="sm"
+                  variant="light"
+                  color={isOnline ? roleColor.success : roleColor.critical}
                   leftSection={
                     isOnline ? <Wifi size={12} /> : <WifiOff size={12} />
-                  }
-                  className={
-                    isOnline
-                      ? "border border-green-500 bg-green-500/10 text-green-400"
-                      : "border border-red-500 bg-red-500/10 text-red-400"
                   }
                 >
                   {isOnline
@@ -751,50 +742,58 @@ export default function KioskPage() {
                 >
                   Refresh
                 </Button>
-              </div>
+              </Group>
               {kiosk?.lastSeen && (
-                <p className="text-xs text-[var(--color-muted)]">
+                <Text size="xs" c="dimmed">
                   Last seen: {new Date(kiosk.lastSeen).toLocaleTimeString()}
-                </p>
+                </Text>
               )}
-            </div>
-          </div>
+            </Stack>
+          </Group>
 
           {/* Locker status mini-row */}
-          <div className="mt-5 flex flex-wrap gap-3">
+          <Group gap="sm" mt="lg" wrap="wrap">
             {[1, 2, 3, 4].map((id) => {
               const doors = kiosk?.lockers?.[String(id)];
               const anyOpen =
                 doors?.main === "unlocked" || doors?.bottom === "unlocked";
               return (
-                <div
+                <Card
                   key={id}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
-                    anyOpen
-                      ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
-                      : "border-[var(--color-border)] bg-transparent text-[var(--color-muted)]"
-                  }`}
+                  withBorder
+                  radius="sm"
+                  py={8}
+                  px="sm"
+                  style={{
+                    borderColor: anyOpen
+                      ? "var(--mantine-color-blue-6)"
+                      : undefined,
+                  }}
                 >
-                  {anyOpen ? <LockOpen size={13} /> : <Lock size={13} />}
-                  <span>Locker {String(id).padStart(2, "0")}</span>
-                  <ChevronRight size={13} className="opacity-40" />
-                  <span
-                    className={
-                      anyOpen ? "text-blue-400" : "text-[var(--color-muted)]"
-                    }
-                  >
-                    {anyOpen ? "Open" : "Locked"}
-                  </span>
-                </div>
+                  <Group gap={6} wrap="nowrap">
+                    {anyOpen ? <LockOpen size={13} /> : <Lock size={13} />}
+                    <Text size="sm" fw={600}>
+                      Locker {String(id).padStart(2, "0")}
+                    </Text>
+                    <ChevronRight size={13} opacity={0.4} />
+                    <Text
+                      size="sm"
+                      fw={600}
+                      c={anyOpen ? "blue" : "dimmed"}
+                    >
+                      {anyOpen ? "Open" : "Locked"}
+                    </Text>
+                  </Group>
+                </Card>
               );
             })}
-          </div>
+          </Group>
 
           {/* Global commands row */}
-          <div className="mt-4 flex flex-wrap gap-2">
+          <Group gap="xs" mt="md">
             <Button
               size="sm"
-              color="danger"
+              color={roleColor.critical}
               variant="light"
               leftSection={<Lock size={13} />}
               loading={cmdLoading === "lock_all-{}"}
@@ -804,8 +803,8 @@ export default function KioskPage() {
             >
               Emergency Stop — Lock All Doors
             </Button>
-          </div>
-        </div>
+          </Group>
+        </Card>
 
         {/* ── Tab navigation ───────────────────────────────────────────────── */}
         <Tabs
@@ -820,7 +819,6 @@ export default function KioskPage() {
                 {`Locker ${String(id).padStart(2, "0")}`}
               </Tabs.Tab>
             ))}
-            <Tabs.Tab value="face">Face Cam</Tabs.Tab>
           </Tabs.List>
 
           {[1, 2, 3, 4].map((id) => (
@@ -828,66 +826,75 @@ export default function KioskPage() {
               <LockerTab id={id} />
             </Tabs.Panel>
           ))}
-          <Tabs.Panel value="face">
-            <FaceCamTab />
-          </Tabs.Panel>
         </Tabs>
 
         {/* ── Live Pi Log terminal ─────────────────────────────────────────── */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <div className="pb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold text-[var(--color-ink)]">
+        <Card withBorder radius="md" padding="lg">
+          <Group justify="space-between" mb="sm">
+            <Group gap="xs">
               <Terminal size={15} />
-              <span>Live Pi Logs</span>
+              <Text fw={600}>Live Pi Logs</Text>
               {logs.length > 0 && (
-                <span className="text-xs text-[var(--color-muted)] font-normal">
+                <Text size="xs" c="dimmed">
                   ({logs.length} entries)
-                </span>
+                </Text>
               )}
-            </div>
-            <Button
-              size="sm"
-              variant="light"
-              onClick={() => setLogs([])}
-              className="text-xs text-[var(--color-muted)]"
-            >
+            </Group>
+            <Button size="xs" variant="subtle" onClick={() => setLogs([])}>
               Clear
             </Button>
-          </div>
+          </Group>
           <Divider />
-          <div className="p-0">
-            <div className="h-72 overflow-y-auto bg-black/40 rounded-b-xl font-mono text-[12px] p-4 space-y-0.5">
+          {/* Deliberately kept monospace and dense — this is a real log
+              terminal, so terminal conventions are the correct design here,
+              not a leftover to normalise away. */}
+          <ScrollArea h={288} mt="xs">
+            <Box
+              ff="monospace"
+              fz={12}
+              p="md"
+              style={{
+                background: "var(--mantine-color-dark-9)",
+                borderRadius: "var(--mantine-radius-sm)",
+              }}
+            >
               {logs.length === 0 ? (
-                <p className="text-[var(--color-muted)] opacity-50 text-center mt-8">
+                <Text c="dimmed" ta="center" mt="xl" opacity={0.6}>
                   {isDemoMode
                     ? "Demo mode — no live logs"
                     : "Waiting for Pi logs…"}
-                </p>
+                </Text>
               ) : (
                 logs.map((entry, i) => (
-                  <div key={i} className="flex gap-2 leading-relaxed">
-                    <span className="text-[var(--color-muted)] whitespace-nowrap flex-shrink-0">
+                  <Group key={i} gap="xs" wrap="nowrap" align="flex-start">
+                    <Text span c="dimmed" fz={12} ff="monospace" style={{ flexShrink: 0 }}>
                       {fmtTime(entry.ts)}
-                    </span>
-                    <span
-                      className={`font-bold flex-shrink-0 w-14 ${levelColor(entry.level)}`}
+                    </Text>
+                    <Text
+                      span
+                      fw={700}
+                      fz={12}
+                      ff="monospace"
+                      c={levelColor(entry.level)}
+                      w={52}
+                      style={{ flexShrink: 0 }}
                     >
                       [{(entry.level ?? "INFO").substring(0, 4)}]
-                    </span>
-                    <span className="text-[var(--color-muted)] flex-shrink-0 w-36 truncate">
+                    </Text>
+                    <Text span c="dimmed" fz={12} ff="monospace" w={140} truncate style={{ flexShrink: 0 }}>
                       {entry.module}
-                    </span>
-                    <span className="text-[var(--color-ink)] opacity-80 min-w-0 break-all">
+                    </Text>
+                    <Text span fz={12} ff="monospace" style={{ minWidth: 0, wordBreak: "break-all" }}>
                       {entry.message}
-                    </span>
-                  </div>
+                    </Text>
+                  </Group>
                 ))
               )}
               <div ref={logEndRef} />
-            </div>
-          </div>
-        </div>
-      </div>
+            </Box>
+          </ScrollArea>
+        </Card>
+      </Stack>
     </AdminLayout>
   );
 }

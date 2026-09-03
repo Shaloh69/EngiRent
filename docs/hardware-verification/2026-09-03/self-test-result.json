@@ -1,0 +1,30 @@
+{
+  "kiosk_id": "KIOSK-001",
+  "command_id": "9ECE1F92",
+  "triggered_via": "POST /admin/kiosks/KIOSK-001/command {action: self_test}, real admin session (admin@engirent.edu.ph)",
+  "overall": "degraded",
+  "components": [
+    { "component": "solenoid_1_main_door", "ok": true },
+    { "component": "solenoid_1_bottom_door", "ok": true },
+    { "component": "solenoid_2_main_door", "ok": true },
+    { "component": "solenoid_2_bottom_door", "ok": true },
+    { "component": "solenoid_3_main_door", "ok": true },
+    { "component": "solenoid_3_bottom_door", "ok": true },
+    { "component": "solenoid_4_main_door", "ok": true },
+    { "component": "solenoid_4_bottom_door", "ok": true },
+    { "component": "actuator_1", "ok": true },
+    { "component": "actuator_2", "ok": true },
+    { "component": "actuator_3", "ok": true },
+    { "component": "actuator_4", "ok": true },
+    { "component": "camera_locker_1", "ok": true },
+    { "component": "camera_locker_2", "ok": true },
+    { "component": "camera_locker_3", "ok": false, "error": "Locker camera locker=3 not initialised" },
+    { "component": "camera_locker_4", "ok": false, "error": "Locker camera locker=4 not initialised" },
+    { "component": "camera_face", "ok": true },
+    { "component": "backend_connectivity", "ok": true }
+  ],
+  "ts": 1788420453316,
+  "ts_iso": "2026-09-03T15:27:33+08:00",
+  "root_cause_of_failures": "USB port 3-2 in a continuous disconnect/reconnect crash loop (dmesg: 'device not accepting address', error -71) — a real electrical/physical fault, likely a hub or port, taking both cameras plugged through it down together. Requires physical inspection at the kiosk; not fixable remotely.",
+  "note": "Which two specific device-index cameras fail has been observed to shift slightly between runs (locker_3/locker_4 here vs. an earlier locker_2/face split observed during log review), consistent with USB device renumbering on each disconnect/reconnect cycle from the same underlying fault, not two independent problems."
+}

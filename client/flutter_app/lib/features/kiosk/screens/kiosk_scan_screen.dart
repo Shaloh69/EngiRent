@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/theme/tokens.dart';
+import 'face_verify_screen.dart';
 
 enum _Phase { scanning, waiting, success, failed }
 
@@ -61,6 +62,7 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     _subs.add(sock.onFaceVerified.listen(_onFaceVerified));
     _subs.add(sock.onFaceFailed.listen(_onFaceFailed));
     _subs.add(sock.onKioskScanError.listen(_onScanError));
+    _subs.add(sock.onKioskFaceRequired.listen(_onFaceRequired));
 
     _sweep = AnimationController(
       vsync: this,
@@ -129,21 +131,64 @@ class _KioskScanScreenState extends State<KioskScanScreen>
 
   // ── Socket event handlers ───────────────────────────────────────────────────
 
+  bool _faceScreenOpen = false;
+
+  /// The kiosk validated our scan and is now waiting on us — time to open the
+  /// on-phone verification page (design mandate §2.13). This is the moment
+  /// the flow moves from "scanned a code" to "prove it's you".
+  void _onFaceRequired(Map<String, dynamic> data) async {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (_faceScreenOpen || !mounted) return;
+    _timeout?.cancel();
+    _faceScreenOpen = true;
+
+    final result = await Navigator.of(context).push<Object?>(
+      MaterialPageRoute(
+        builder: (_) => FaceVerifyScreen(
+          rentalId: widget.rentalId,
+          mode: widget.mode,
+          kioskId: (data['kioskId'] as String?) ?? _kioskId,
+        ),
+      ),
+    );
+
+    _faceScreenOpen = false;
+    if (!mounted) return;
+
+    // 'rescan' means the session ran out of retries — FaceVerifyScreen
+    // already explained why; back here, just go back to scanning.
+    if (result == 'rescan') {
+      _retry();
+    }
+    // On a real success, `_onFaceVerified` already fired the socket event
+    // while FaceVerifyScreen was on top (this screen's State stayed alive
+    // underneath), so `_phase` is already "success" by the time we get here
+    // — nothing else to do.
+  }
+
   void _onFaceVerified(Map<String, dynamic> data) {
     if (data['rentalId'] != widget.rentalId) return;
     _timeout?.cancel();
     if (mounted) setState(() => _phase = _Phase.success);
   }
 
+  /// Verification itself is fully handled on FaceVerifyScreen now (design
+  /// mandate §2.13) — a bad face match never reaches this event at all, it's
+  /// resolved directly from that screen's own HTTP response so retrying
+  /// there doesn't flicker this screen underneath. By the time this DOES
+  /// fire, the face already matched; it's node_server reporting it couldn't
+  /// complete the rest of the step (e.g. no free locker at this kiosk right
+  /// now) — always carries its own `message`, so that's shown verbatim
+  /// rather than a canned "face not recognised" line that would be wrong.
   void _onFaceFailed(Map<String, dynamic> data) {
     if (data['rentalId'] != widget.rentalId) return;
     _timeout?.cancel();
     if (mounted) {
       setState(() {
         _phase = _Phase.failed;
-        _errorMessage =
-            'The kiosk couldn\'t match your face. Stand square to the camera in '
-            'good light, remove hats or sunglasses, and try again.';
+        _errorMessage = (data['message'] as String?)?.isNotEmpty == true
+            ? data['message'] as String
+            : 'Something went wrong completing this step. Please try again.';
         // Only overwrite the QR-derived fallback with an authoritative
         // value — this event always carries one, but guard anyway so a
         // stray null can't erase a fallback that was actually correct.
@@ -190,18 +235,20 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         _ => 'Confirming your return…',
       };
 
-  /// What the user physically does after the QR scan. The face-verification
-  /// step happens at the kiosk, not on the phone — without saying so, people
-  /// held their phone up to their face and waited.
+  /// What the user physically does after the QR scan. Since 2026-09-03,
+  /// identity verification happens in a page on THIS phone, not at the
+  /// kiosk — the kiosk no longer has a camera to look at.
   String get _waitingDetail => switch (widget.mode) {
         'place' =>
-          'Look at the kiosk camera. Once it recognises you, a locker door opens — '
-              'place the item inside and close it.',
+          "We're checking with the kiosk. A verification page will open on "
+              'your phone next — once confirmed, a locker door opens.',
         'retrieve' =>
-          'Look at the kiosk camera. Once it recognises you, your locker opens.',
+          "We're checking with the kiosk. A verification page will open on "
+              'your phone next — once confirmed, your locker opens.',
         _ =>
-          'Look at the kiosk camera. Once it recognises you, open the locker and '
-              'place the item back inside.',
+          "We're checking with the kiosk. A verification page will open on "
+              'your phone next — once confirmed, open the locker and place '
+              'the item back inside.',
       };
 
   String get _successLabel => switch (widget.mode) {
@@ -213,17 +260,17 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   List<String> get _steps => switch (widget.mode) {
         'place' => const [
             'Scan the QR code on the kiosk screen',
-            'Look at the kiosk camera to verify',
+            'Verify your identity on this phone',
             'Place the item in the open locker',
           ],
         'retrieve' => const [
             'Scan the QR code on the kiosk screen',
-            'Look at the kiosk camera to verify',
+            'Verify your identity on this phone',
             'Take your item from the open locker',
           ],
         _ => const [
             'Scan the QR code on the kiosk screen',
-            'Look at the kiosk camera to verify',
+            'Verify your identity on this phone',
             'Return the item to the open locker',
           ],
       };

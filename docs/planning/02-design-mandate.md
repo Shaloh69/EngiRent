@@ -381,6 +381,35 @@ An app that moves money and opens physical lockers cannot let an arbitrarily old
 
 Full build spec in `05-feature-build-checklist.md` Stage 3.5.
 
+## 2.13 Face verification moves to the phone — the kiosk no longer has a face camera (2026-09-03)
+
+**The architecture change.** Identity verification at handover used to happen *at the kiosk*: a dedicated USB face camera, `capture_face` over the socket, and the kiosk calling the ML service itself. That camera is now **physically removed**. When a user links to a kiosk by scanning its QR, verification happens **in the app**, on a new full-screen camera page, and the kiosk waits.
+
+**Why this is better, and not merely different:**
+- **The kiosk stops holding a biometric capture device in a public corridor.** One fewer unattended camera pointed at people's faces, and one fewer component to fail, calibrate, or have its `/dev/video*` index shuffle on reboot (a real, recurring failure — see `memory.md`).
+- **The phone's front camera is better hardware than the USB module**, and it is already at a natural, well-lit distance and angle. Face capture at the kiosk fought the mounting height and corridor lighting constantly.
+- **It is the user's own device.** People are already accustomed to face-unlocking a phone; presenting a face to a fixed public terminal reads as surveillance in a way a phone selfie does not.
+- **One fewer trust boundary.** The kiosk no longer needs its own copy of `ML_SERVICE_API_KEY` for face work.
+
+**The security rule this must not break — the phone is not the authority.** The app captures an image; it **never** asserts a verification result. The photo is uploaded to Node, which attaches the ML key server-side and calls `/api/v1/verify-face`, exactly as `POST /auth/register-face` already does for enrolment (§ that endpoint's own doc comment explains why the app must never hold that key). Node — not the app — decides, and Node alone emits the locker-open command. **A client that could send `{verified: true}` would be a client that could open any locker.** This is the single most important constraint in this section.
+
+**The spoofing tradeoff, stated honestly.** Kiosk capture was implicitly supervised — the person stood at a fixed camera in a public corridor. Phone capture is unsupervised, so holding up a photo of someone else is materially easier. Mitigations required: the capture must be bound to a **live, unexpired kiosk QR session** (90 s TTL), the rental must belong to the authenticated user, and the window between scan and capture must be short. Full liveness detection is a follow-up, not a launch blocker — but this page must be built so a liveness check can be dropped in without a redesign.
+
+**Explicit template references, with real links:**
+- **[`camera`](https://pub.dev/packages/camera) + the app's own `profile_setup_screen.dart`** — the primary implementation reference, and deliberately *not* a new dependency. Face enrolment already does exactly this: `availableCameras()`, prefer the front lens, `ResolutionPreset.high`, `enableAudio: false`, `takePicture()`. The verification page is the same capture with a different destination, so it must reuse that pattern rather than introduce a second camera idiom in one app.
+- **[flutter_face_liveness](https://github.com/sanjaysharmajw/flutter_face_liveness)** — reference for the *liveness follow-up* named above (ML Kit + TFLite, on-device, anti-replay). Cited as the intended upgrade path; do not add it in the first build.
+- **[codewithwan/flutter-liveness-detection](https://github.com/codewithwan/flutter-liveness-detection)** — a smaller, readable ML Kit face-detection loop; the better structural reference for "detect a face in the preview and gate the shutter button on it," which is the one piece of liveness worth having early.
+- **[KYC Verification UI Design (Figma Community)](https://www.figma.com/community/file/1297964854440837794/kyc-verification-ui-design)** and the [Dribbble KYC verification collection](https://dribbble.com/search/kyc-verification-ui) — layout references only. Take the **oval-cutout framing and the state progression**; reject their palettes and rounded, shadow-heavy cards, which violate §1.1/§1.4 exactly as FlutterShop's do in §2.2.
+
+**The interaction pattern to inherit** (this is the settled KYC pattern, and it is worth following literally): the face cutout is a **dotted outline with the shutter disabled** while the face is not framed, carrying a specific instruction — "Center your face", "Find better lighting" — and becomes a **solid outline with the shutter enabled** once it is. The instruction line must say what to *do*, never just "Verifying…".
+
+**What the page must actually do:**
+- **Full-bleed front-camera preview** with an oval cutout; the surrounding scrim is a §1.3 surface colour, not black.
+- **Named states, each a real component, never a bare spinner**: framing → captured → uploading → verified → failed. §2.2's rule against centred spinners applies here too.
+- **A failure state that is recoverable and honest.** "Face not recognised" must offer retry, and must say which kiosk it happened at — `kioskId` is already threaded through `face:failed` for exactly this reason. After repeated failures, offer the existing report-a-problem channel (§2.9.3) rather than dead-ending.
+- **It must survive being backgrounded.** Dispose and re-acquire the controller on lifecycle change — a camera page that black-screens after an app switch is the most common bug in this screen type.
+- **Kiosk-side counterpart**: the kiosk's face screen becomes a *waiting* screen — "Verification is happening on your phone" — with no camera feed, since there is no longer a camera to feed it (§4.7).
+
 ---
 
 ## 3. Admin Console
@@ -485,6 +514,18 @@ Required, all present as of the rebuild:
 - ["Self Service Kiosk"](https://www.figma.com/community/file/1475972798185896799/self-service-kiosk) (Figma Community) — general self-service touchscreen patterns.
 - ["Home Screen Design for Dodo Pizza's Self-Service Kiosk"](https://www.figma.com/community/file/1446517148275617940/home-screen-design-for-dodo-pizzas-self-service-kiosk) (Figma Community) — structural pattern for categorised offerings with an active-category highlight.
 - ["Interactive and Accessible Product Card Design for a Self-Service Kiosk"](https://www.figma.com/community/file/1446514995844693138/interactive-and-accessible-product-card-design-for-a-self-service-kiosk) — the item-card pattern behind the catalogue screen.
+
+### 4.7 The face screen is now a waiting screen — no camera, no preview (2026-09-03)
+
+The face camera has been **removed from the hardware** and verification moved to the user's phone (§2.13). The kiosk's face screen therefore has nothing to show and nothing to capture. It must not keep a dead camera frame, a fake preview, or a progress bar that implies the kiosk is doing the work.
+
+**What it becomes**: a single-purpose waiting screen that says verification is happening on the user's phone, and tells them to look there. This is a good fit for §4.1's portrait format and §4.5's "active" mode — one instruction, no controls competing with it.
+
+**Rules specific to this screen:**
+- **Name the device the user should be looking at.** "Check your phone — we're verifying it's you" beats "Verifying…", which leaves someone staring at the kiosk waiting for it to do something.
+- **It must be able to end without a success.** Verification can fail or be abandoned on the phone entirely. This screen needs a real timeout back to the main screen and a visible cancel — §4.2's always-available cancel applies, and a screen that can only be left by succeeding will strand the next user behind a stuck terminal.
+- **No spinner as the whole screen** (§2.2's rule). Show the actual step.
+- The camera-feed element on the old screen is deleted, not hidden — a `<img src="/camera/face/stream">` pointing at a camera that no longer exists is a broken request every render.
 
 ---
 

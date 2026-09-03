@@ -156,6 +156,15 @@ async function run() {
   renterId = renterReg.json?.data?.user?.id;
   check("renter registers", !!renterToken, `status ${renterReg.status}`);
 
+  // A fresh registration is unverified by design (requireVerified middleware,
+  // 2026-08-10) — fast-forward through a state this suite can't reach any
+  // other way, same pattern as e2e-availability/listing-video/trust-safety/
+  // enterprise-hygiene/my-listings.
+  await prisma.user.updateMany({
+    where: { id: { in: [ownerId, renterId].filter(Boolean) } },
+    data: { isVerified: true },
+  });
+
   const adminLogin = await jreq("/auth/login", {
     method: "POST",
     body: {

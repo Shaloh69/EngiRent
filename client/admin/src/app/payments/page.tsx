@@ -16,15 +16,18 @@ import {
   Text,
   Textarea,
   ThemeIcon,
+  Tooltip,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
   AlertCircle,
+  Check,
   CreditCard,
   Download,
   RotateCcw,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import api from "@/lib/api";
 import type { Transaction } from "@/types";
@@ -67,6 +70,7 @@ export default function PaymentsPage() {
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
   const [opened, { open, close }] = useDisclosure(false);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -137,6 +141,31 @@ export default function PaymentsPage() {
     open();
   };
 
+  // Manual PayMongo bypass, testing only — calls the same /payments/confirm
+  // endpoint the real webhook and the dev mock-checkout page use. Only
+  // reachable outside production (server-enforced, see confirmPayment).
+  // Approving genuinely advances the rental (marks the transaction
+  // COMPLETED and, once both payment + deposit are in, flips the rental to
+  // AWAITING_DEPOSIT with a real notification) — this is not a fake shortcut,
+  // it's the real confirmation path with the PayMongo signature requirement
+  // skipped.
+  const decidePendingPayment = async (tx: Transaction, approve: boolean) => {
+    setDecidingId(tx.id);
+    try {
+      await api.post(`/admin/transactions/${tx.id}/decide-payment`, {
+        decision: approve ? "APPROVE" : "REJECT",
+      });
+      await fetchTransactions();
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.message ??
+          `Failed to ${approve ? "approve" : "reject"} payment.`,
+      );
+    } finally {
+      setDecidingId(null);
+    }
+  };
+
   const handleRefund = async () => {
     if (!selected) return;
     setRefunding(true);
@@ -174,6 +203,20 @@ export default function PaymentsPage() {
             {error}
           </Alert>
         )}
+
+        <Alert icon={<AlertCircle size={16} />} color={roleColor.cta} variant="light">
+          <Text size="sm" fw={600}>
+            PayMongo sandbox not yet configured — Approve/Reject on PENDING
+            rows below is a manual testing bypass.
+          </Text>
+          <Text size="xs" c="dimmed" mt={2}>
+            Approving genuinely advances the real rental flow (marks the
+            transaction COMPLETED, flips the rental to AWAITING_DEPOSIT once
+            both payment and deposit are in) — it just skips PayMongo&apos;s
+            signature check to do it. Only reachable outside production.
+            Remove this once a real PayMongo sandbox key is wired up.
+          </Text>
+        </Alert>
 
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
           {[
@@ -279,16 +322,47 @@ export default function PaymentsPage() {
                 <StatusBadge status={t.status} />
               </Table.Td>
               <Table.Td>
-                <Button
-                  size="xs"
-                  variant="light"
-                  color={roleColor.cta}
-                  leftSection={<RotateCcw size={13} />}
-                  onClick={() => openRefund(t)}
-                  disabled={t.status !== "COMPLETED"}
-                >
-                  Refund
-                </Button>
+                {t.status === "PENDING" ? (
+                  <Group gap={6} wrap="nowrap">
+                    <Tooltip label="Testing bypass — marks this paid, skips PayMongo">
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color={roleColor.success}
+                        leftSection={<Check size={13} />}
+                        onClick={() => decidePendingPayment(t, true)}
+                        loading={decidingId === t.id}
+                        disabled={decidingId !== null && decidingId !== t.id}
+                      >
+                        Approve
+                      </Button>
+                    </Tooltip>
+                    <Tooltip label="Testing bypass — marks this failed, skips PayMongo">
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color={roleColor.critical}
+                        leftSection={<X size={13} />}
+                        onClick={() => decidePendingPayment(t, false)}
+                        loading={decidingId === t.id}
+                        disabled={decidingId !== null && decidingId !== t.id}
+                      >
+                        Reject
+                      </Button>
+                    </Tooltip>
+                  </Group>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color={roleColor.cta}
+                    leftSection={<RotateCcw size={13} />}
+                    onClick={() => openRefund(t)}
+                    disabled={t.status !== "COMPLETED"}
+                  >
+                    Refund
+                  </Button>
+                )}
               </Table.Td>
             </Table.Tr>
           ))}

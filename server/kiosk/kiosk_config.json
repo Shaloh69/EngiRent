@@ -3,26 +3,26 @@
     "1": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
-      "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5
+      "actuator_extend_seconds": 22,
+      "actuator_retract_seconds": 22
     },
     "2": {
-      "main_door_open_seconds": 15,
-      "bottom_door_open_seconds": 15,
-      "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5
+      "main_door_open_seconds": 5,
+      "bottom_door_open_seconds": 5,
+      "actuator_extend_seconds": 21,
+      "actuator_retract_seconds": 21
     },
     "3": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
-      "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5
+      "actuator_extend_seconds": 17,
+      "actuator_retract_seconds": 17
     },
     "4": {
       "main_door_open_seconds": 15,
       "bottom_door_open_seconds": 15,
-      "actuator_extend_seconds": 5,
-      "actuator_retract_seconds": 5
+      "actuator_extend_seconds": 23,
+      "actuator_retract_seconds": 23
     }
   },
   "face_recognition": {

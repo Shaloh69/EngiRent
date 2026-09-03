@@ -19,8 +19,12 @@ import kioskEventBus from "./utils/kioskEventBus";
 import { installKioskEventLog } from "./utils/kioskEventLog";
 import { recomputeItemAvailability } from "./services/itemAvailabilityService";
 import { verifyAccessToken } from "./utils/jwt";
-import { decryptFaceEncoding } from "./utils/crypto";
-import { signedMediaUrl } from "./services/storageService";
+// decryptFaceEncoding/signedMediaUrl were used here to ship a user's face
+// encoding and reference photo down to the kiosk for local comparison. Both
+// became unnecessary on 2026-09-03: the comparison now runs server-side, so
+// the biometric never leaves this process. See faceVerificationService.
+import { resolveFaceSubject } from "./services/faceVerificationService";
+import { openKioskSession } from "./services/kioskSessionStore";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
   sendItemReadyForClaim,
@@ -1135,43 +1139,54 @@ io.on("connection", (socket: Socket) => {
           return;
         }
 
-        let reference_face_url = "";
-        let user_id = "";
-        let storedEncodingRaw: unknown = null;
+        // Face verification moved off the kiosk on 2026-09-03 (design mandate
+        // §2.13) — the kiosk's face camera is physically gone. So instead of
+        // commanding the Pi to capture, tell the *phone* to open its
+        // verification page, and leave the kiosk waiting.
+        //
+        // Note what is no longer sent anywhere: the decrypted face encoding.
+        // It used to be pushed to the kiosk over the socket so the Pi could
+        // run the comparison itself. Now the comparison happens in this
+        // process (see faceVerificationService), so the biometric never
+        // leaves the server at all — strictly less exposure than before.
+        const subject = resolveFaceSubject(rental);
 
-        // signedMediaUrl() converts the stored path into a short-lived URL
-        // the kiosk can fetch over plain HTTP — it has no user JWT (only its
-        // Socket.io shared secret), so the authenticated
-        // /media/users/:id/face.jpg route isn't reachable to it.
-        if (rental.status === "AWAITING_DEPOSIT") {
-          reference_face_url = signedMediaUrl(rental.owner?.profileImage) ?? "";
-          user_id = rental.ownerId;
-          storedEncodingRaw = rental.owner?.faceEncoding ?? null;
-        } else {
-          reference_face_url = signedMediaUrl(rental.renter?.profileImage) ?? "";
-          user_id = rental.renterId ?? "";
-          storedEncodingRaw = rental.renter?.faceEncoding ?? null;
+        if (!subject.userId) {
+          socket.emit("kiosk:command", {
+            action: "flow_error",
+            message: "Could not determine who needs to verify — contact staff",
+          });
+          return;
         }
 
-        // Prefer the decrypted stored encoding (fast, no image download/
-        // re-encode on the ML side) over the reference URL, which stays as a
-        // fallback for accounts that registered before encoding capture
-        // existed. The raw floats only ever leave process memory over this
-        // already-authenticated kiosk socket channel.
-        const decodedEncoding = decryptFaceEncoding(storedEncodingRaw);
+        // Open the session THIS event's own validation earns: the kiosk only
+        // ever emits kiosk:flow_start after checking the scanned token's
+        // signature and TTL itself (validate_qr_token_internal, Pi-side).
+        // Everything downstream of here — verify-face, the door command —
+        // trusts this record and nothing the phone sends. See
+        // kioskSessionStore.ts.
+        openKioskSession(rental_id, data.kiosk_id, subject.userId);
+
+        io.to(`user:${subject.userId}`).emit("kiosk:face_required", {
+          rentalId: rental_id,
+          kioskId: data.kiosk_id,
+          action:
+            rental.status === "AWAITING_DEPOSIT"
+              ? "deposit"
+              : rental.status === "DEPOSITED"
+                ? "claim"
+                : "return",
+        });
 
         socket.emit("kiosk:command", {
-          action: "capture_face",
+          action: "await_phone_verification",
           rental_id,
-          reference_face_url,
-          user_id,
-          ...(decodedEncoding
-            ? { stored_encoding: JSON.stringify(decodedEncoding) }
-            : {}),
+          message: "Check your phone — we're verifying it's you",
         });
 
         logger.info(
-          `[PI-FLOW]  Sent capture_face for rental ${rental_id} (status=${rental.status})`,
+          `[PI-FLOW]  Face verification handed to phone for rental ${rental_id} ` +
+            `(user=${subject.userId}, status=${rental.status})`,
         );
       } catch (err) {
         logger.error(`kiosk:flow_start error for rental ${rental_id}:`, err);
