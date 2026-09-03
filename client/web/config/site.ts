@@ -21,7 +21,7 @@ export const siteConfig = {
     { label: 'Download the app', href: '/download' },
   ],
   links: {
-    github: 'https://github.com/',
+    github: 'https://github.com/Shaloh69/EngiRent',
     docs: '/docs',
     admin: 'http://localhost:3001',
     mobile: '/download',

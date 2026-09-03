@@ -2,14 +2,23 @@ import 'package:flutter/foundation.dart';
 
 class AppConstants {
   // API Configuration — build-configurable via --dart-define, e.g.:
-  //   flutter build apk --dart-define=API_BASE_URL=http://desktop-gklhcri:5000/api/v1
-  // Falls back to the current production (Render) URL so existing build
-  // commands without --dart-define keep working exactly as before; update
-  // the fallback once the Phase 0.5 PC-hosting migration is live and the
-  // default should point there instead.
+  //   flutter build apk --dart-define=API_BASE_URL=https://<current-tunnel>.trycloudflare.com/api/v1
+  //
+  // The old fallback here was the Render URL, which was decommissioned in the
+  // Phase 0.5 self-hosting migration — so any APK built without --dart-define
+  // was silently pointing at a dead host (found 2026-09-03).
+  //
+  // This default must be a *publicly* reachable address: real students are on
+  // mobile data, not the tailnet, so `http://desktop-gklhcri:5000` would not
+  // work for them even though it is the stabler address. That leaves the
+  // Cloudflare quick tunnel, which rotates its hostname on every restart —
+  // meaning this default goes stale and the APK needs rebuilding each time
+  // the tunnel restarts. That is the accepted tradeoff of the free tunnel
+  // (see memory.md); the fix, if it ever becomes worth it, is a stable
+  // hostname rather than a smarter default here.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://engirent-api.onrender.com/api/v1',
+    defaultValue: 'https://mpg-clothing-maui-chicago.trycloudflare.com/api/v1',
   );
   // Note: the ML service is no longer called directly by this app — face
   // registration goes through POST /auth/register-face (a Node proxy) so the

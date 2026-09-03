@@ -28,17 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.7.0",
-  buildNumber: 17,
-  fileName: "Engirent_Prerelease17.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-08-10",
-  sizeMb: 83,
+  version: "1.8.0",
+  buildNumber: 18,
+  fileName: "Engirent_Prerelease18.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-09-03",
+  sizeMb: 85.6,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Fixed a crash that turned the whole app white when switching the language to Bisaya",
-    "Listing an item or starting a rental now requires a verified student ID — closing a real safety gap",
-    "The Identity tile in Profile is now tappable whenever verification isn't done yet, not just after a rejection",
-    "A real Update Required screen — release notes, and credit to the students who found the bugs",
+    "Identity verification for claiming, depositing, or returning an item now happens on your own phone, not a kiosk camera",
+    "Fixed the API address baked into the app — a build from before today silently pointed at a decommissioned server, so login failed for anyone who downloaded it",
+    "The kiosk's QR hand-off actually completes now, instead of stalling after the connection banner turns green",
   ],
 };
 

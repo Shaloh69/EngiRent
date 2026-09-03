@@ -18,7 +18,7 @@ const SURFACES = [
   {
     icon: Cpu,
     title: "Smart Kiosk",
-    body: "Raspberry Pi 5 driving solenoid locks, linear actuators, and five cameras, with a React touchscreen UI.",
+    body: "Raspberry Pi 5 driving solenoid locks, linear actuators, and four cameras (one per locker), with a React touchscreen UI.",
   },
   {
     icon: Radio,

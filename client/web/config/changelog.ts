@@ -16,6 +16,41 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-09-03",
+    version: "1.8.0",
+    tag: "feature",
+    title: "Identity verification moved from the kiosk to your phone",
+    bullets: [
+      "Claiming, depositing, or returning an item no longer needs a kiosk camera pointed at your face — after scanning the kiosk's QR code, a verification page opens on your own phone instead",
+      "One less camera watching a public corridor, and your phone's camera does a better job in real lighting than a fixed one ever could",
+      "The kiosk now just waits and tells you to check your phone, with a real cancel — it never stalls on a step it can no longer perform",
+      "Verification still runs against your enrolled ID photo, and the phone never decides the result itself — only the server does, exactly as before",
+    ],
+  },
+  {
+    date: "2026-09-03",
+    tag: "fix",
+    title: "The kiosk, made genuinely usable end to end",
+    bullets: [
+      "Scanning the kiosk's QR code now actually starts a rental — it used to mark the session connected and then sit there, because the screen the code is displayed on was not one the app's scan was allowed to advance from",
+      "The touchscreen no longer comes up blank after a power cut: the installer never built the kiosk interface, so there was nothing for the browser to load",
+      "Fixed the kiosk browser both failing to reopen after a crash and, in the opposite case, stacking a new fullscreen window every ten seconds",
+      "Each locker camera is now bound to a stable hardware address, so the photos taken for item verification are of the locker they claim to be",
+      "Locker open/close commands reached the hardware again — the console was addressing a kiosk ID that did not match the one the hardware registers under, and reported success either way",
+    ],
+  },
+  {
+    date: "2026-09-03",
+    tag: "infra",
+    title: "Admin tooling and deployment hardening",
+    bullets: [
+      "Admins can approve or reject a payment directly while card payments are still being finalised, so a rental is never stuck waiting on a payment provider",
+      "The console's kiosk page was rebuilt on the same design system as the rest of the console instead of its own one-off styling",
+      "ID verification no longer times out when a reviewer approves during heavy load",
+      "Restored the full deployment after a site-wide brownout, and wrote down the recovery steps so the next outage is a checklist rather than a diagnosis",
+    ],
+  },
+  {
     date: "2026-08-10",
     version: "1.7.0",
     tag: "fix",
