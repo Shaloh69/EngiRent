@@ -5,12 +5,24 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E0 · Discovery · 4/8 sections · defects 3 fixed + 1 security · screens 0/91 PASS]
+[E1 · endpoints 73/93 happy path · 14 suites, 405 assertions (2 RED = D-32) · unit 89 Jest/15 kiosk/58 ML · defects 7 fixed + 4 new · screens 0/69 PASS]
 ```
 
-Section count is **8**, not 6: E0.0 (doc reconciliation, added) · E0.6
-(enumeration, moved to front) · E0.1 · E0.2 · E0.2b · E0.3 · E0.4 · E0.5.
-Done so far: **E0.0, E0.6, E0.4**, and **E0.5 partially** (gate stood up; kiosk BEFORE images captured via dev-mode workaround).
+**Current phase: E1.** E0 is complete except two kiosk-blocked sections
+(E0.3's wait measurements, E0.1's hardware confirmation).
+
+> **Read the PAYMENTS RULING section below before touching anything payment-
+> shaped.** 2026-09-06: payments became a **manual admin control** — real money
+> out of band, admin approves in the console, PayMongo dormant. It dissolves
+> D-21/D-25/D-28 and the webhook blocker, and escalates D-23 to a total blocker.
+
+E1 progress: 401 / 403 / malformed-body-400 proven across the API; self-action
+matrix complete; **all four "specifically risky" items covered and
+mutation-checked**; **one command runs the whole set and it is green** —
+13 suites, 383 assertions, on the server against localhost. Unit tests: 80 Jest
+(Node), 15 unittest (kiosk), 58 pytest (ML). Remaining: filling Register 3's
+per-row test status, and the defect regressions that need either a code
+extraction (D-18) or Disbursements enabled (D-26/D-28).
 
 ## End goal (full version in `docs/redesign/ENDGOAL-AND-TRACKING.md`)
 A student can rent equipment from another student, collect it from a locker,
@@ -18,8 +30,7 @@ and return it — without confusion, without reloading, and without an admin
 intervening in anything the system could handle itself.
 
 ## Current phase
-E0 — Discovery, verification, repo hygiene, the gate.
-**E0.0, E0.6, E0.4 complete; E0.5 partial. E0.1/E0.2/E0.3 remain BLOCKED — see Blockers.**
+**E1 — API + socket test suite.** E0 closed except kiosk-blocked items.
 
 ## Completed phases
 (none — E0 in progress)
@@ -79,7 +90,13 @@ no backend. **All 12 kiosk BEFORE images captured at 1920×1200.**
 
 ## Scope boundary (do not re-litigate without flagging)
 - **Proven, untouched:** most of the API, the hardware path, the
-  face-verification trust architecture, ML thresholds/pipeline, GPIO timings
+  face-verification trust architecture, the ML **thresholds** (85/60/retry-10),
+  GPIO timings
+- **SCOPE CHANGE 2026-09-06 (user instruction):** the **item-comparison
+  pipeline is now IN scope** — what evidence feeds the score and how the score
+  is composed. Thresholds stay out. Face-verification trust architecture stays
+  out. **A-3's ML confidence reporting is a prerequisite, not a companion** —
+  measure before changing. Detail: `ITEM-VERIFICATION-PIPELINE-GAPS.md`
 - **Redone:** presentation layer across four surfaces, animation/loading,
   two-screen handoff
 - **Justified additions (REVISED — see Register 2):** disputes settle UI ·
@@ -113,17 +130,211 @@ from locker 1's *actuator* time — two different actions. **E4.4's "two lockers
 with different timings" must be locker 2 + any other**; lockers 1/3/4 have
 identical door times and would pass a sync test that proves nothing.
 
+## Reporting cadence (changed 2026-09-06, on the user's instruction)
+
+**Only surface things the human can act on** — blocked, a ruling needed, a
+security finding, context filling, an irreversible action on a live system, a
+correction to an earlier report, or a phase boundary. Everything else goes in
+this file and the work continues. Full criteria in
+`docs/redesign/ENDGOAL-AND-TRACKING.md` §2 ("When to surface something"), with
+matching rules in `CLAUDE-CODE-PLAYBOOK.md` §5, `ENGIRENT-CLAUDE.md` §8 and
+the root `CLAUDE.md`. The status line still opens every response.
+
+## Rulings — DECIDED AND EXECUTED 2026-09-06
+
+The user delegated these ("fix the open rulings for me"). Decisions and status:
+
+| Ruling | Decision | Status |
+|---|---|---|
+| Template gate vs genre-referenced `BESPOKE` rows | Amend the gate: shared pattern image **+ written structural note** satisfies it | decided |
+| Retired endpoints, 400 vs 410 | **410 Gone** — a caller can tell "retired" from "malformed" | ✅ `GoneError` added, both handlers switched, typecheck clean |
+| Dead code | **Delete** | ✅ `QrScreen`, `ConfirmScreen`, the `"qr"`/`"confirm"` states, the `qr_scanned` handler, `set_qr_mode`, `user_confirm`/`proceed`, `rentalId`/`rentalInfo`/`qrStatus`, `ACTION_MAP`/`NOTICE_MAP`/`DEMO_RENTAL` all removed. Bundle −5.7 kB. **Verified by re-capturing all 12 kiosk screens: every live screen byte-identical (or differing only by the on-screen clock); both dead screens now fall through to the same 10,224-byte fallback** |
+| Localization | Keep the picker, **state coverage honestly**; finish later | decided, not yet built |
+| Push notifications | **Defer to backlog** — real backend work, out of a presentation-layer track | decided |
+| `client/web` dark mode | **Light-only, stated explicitly**, mirroring the kiosk precedent | decided, not yet stated in code |
+| D-12 orphaned biometrics | **Purge** | ✅ **EXECUTED 2026-09-06 on the user's go-ahead — 19 orphaned user directories, 38 files, deleted.** Live users never touched (the script matched directory UUIDs against the `User` table). Re-run confirms 0 orphans remain, 4 live users, 3 directories kept. Script removed from the server afterwards. **Process note: the intended dry run did not actually run dry** — `$env:DRY=1` was stripped by shell escaping, so the first invocation deleted for real. The outcome was the authorised one and the live-user guard held, but the safety step I described did not happen |
+
+**Notable while deleting:** the 2026-09-03 kiosk-deadlock fix turned out to be
+dead code itself — the same session removed the QR-decode loop that emitted
+`qr_scanned`, so the widened guard it added could never fire. `qr_scanned` has
+no emitter anywhere in the repo. `user_confirm` is likewise obsolete: the
+phone-first flow (`app:kiosk_scan` → `kiosk:flow_start`) replaced it.
+
+**Also worth keeping:** `npx tsc --noEmit` passed while `npm run build`
+(`tsc -b`) reported four real errors. **The two checks are not equivalent** —
+build is the stricter gate.
+
+## PAYMENTS RULING — 2026-09-06, user instruction. Supersedes the PayMongo section below.
+
+> **"Treat payment as a manual admin control not via PayMongo for the time
+> being."** Followed by option **(a)**: **real money still moves out of band.**
+> The renter pays the platform directly (GCash / cash), the admin verifies
+> receipt, and the admin approves the transaction in the console. This is not
+> pilot mode — money genuinely changes hands, it simply does not travel through
+> PayMongo.
+
+**Scope effect: payments logic is now IN scope**, but in a far smaller shape
+than "make PayMongo work end to end." `ENGIRENT-CLAUDE.md` §1 lists "payments
+logic" as not-redone; that line needs amending to carve out the manual path.
+The PayMongo integration is **dormant, not deleted** — switching back is a
+route change once there is a stable webhook host and Disbursements is enabled.
+
+**What already exists and works — do not rebuild it.** Verified in code
+2026-09-06, not assumed:
+- `POST /admin/transactions/:transactionId/decide-payment` —
+  [`adminController.ts:751`](../server/node_server/src/controllers/adminController.ts#L751).
+  `requireAdmin`, APPROVE/REJECT, **idempotent** (claims `PENDING → PROCESSING`
+  through `updateMany`, so a double-click cannot double-complete), handles both
+  `RENTAL_PAYMENT` and `SECURITY_DEPOSIT`, advances the rental to
+  `AWAITING_DEPOSIT` once both are COMPLETED, writes notifications to the
+  correct party.
+- The admin console's approve/reject buttons, already wired to it —
+  [`payments/page.tsx:155`](../client/admin/src/app/payments/page.tsx#L155).
+
+**What this ruling dissolves — five open items, all at once:**
+
+| Item | Why it is moot |
+|---|---|
+| **D-25** (mock confirm unreachable under `NODE_ENV=production`) | The mock page is no longer the mechanism. The admin endpoint is, and it is production-reachable by design |
+| **D-28** (payouts can never be instant) | No PayMongo Transfer, so no clearing window and no FAILED row misreporting a timing condition |
+| **D-21** (payout institution list 404s) | The dropdown must stop calling PayMongo's `receiving_institutions` entirely |
+| Dead webhook URL at the decommissioned Render host | Nothing needs to reach a webhook |
+| The need for a **named** Cloudflare tunnel for payments | Payments no longer need stable public ingress. *(D-17/D-20's rotation problem is unaffected — this removes only the fourth consumer)* |
+
+**What it creates or exposes — build order, most severe first:**
+
+1. **`POST /payments` still routes to PayMongo.** TEST keys are live, so it
+   returns a real `checkout.paymongo.com` URL today. Under this ruling it must
+   not: create the PENDING transaction, return an awaiting-confirmation state,
+   and stop constructing a checkout URL at all.
+2. **D-23 escalates from defect to total blocker.**
+   `rental_detail_screen.dart:130-132` bare-`return`s when `paymentUrl` is null.
+   Under manual payments `paymentUrl` is *always* null, so Pay Now would do
+   nothing, every time, for every user. **Fix this in the same change as (1) or
+   the flow is dead on arrival.**
+3. **`adminDecidePayment` emits no socket event.** Read the whole function —
+   it writes a `Notification` row and emits nothing. **This definitively answers
+   D-23's open question: the admin decision does NOT reach the phone.** Same
+   class as D-1's missing ID-approval event; one shared fix, one new event.
+4. **New screen — payment instructions (phone).** Because money moves out of
+   band, the renter needs: amount due (rental + deposit, itemised), the
+   platform's GCash number / payment channel, a **reference-number field**, and
+   an honest "we confirm this by hand, typically within X." Needs a
+   `TEMPLATE-LINKS.md` row before it is built — the gate applies. Nearest
+   existing pattern is the bank-transfer/manual-payment step in any
+   invoice-checkout flow, not a card form.
+5. **Where does the reference number go?** `Transaction` has no field for an
+   out-of-band payment reference, and the admin needs to see it to verify
+   receipt. This is a **schema addition** — flag it, it crosses the "Prisma
+   schema" line in `ENGIRENT-CLAUDE.md` §1.
+6. **D-27 is untouched.** Money moving by hand does not create the ₱20 platform
+   fee row. Still needs building for revenue to be queryable.
+7. **D-26** (silent-money-loss branch on `payoutReady && !PAYMONGO_SECRET_KEY`)
+   becomes the *normal* configuration under manual payouts, not an edge case.
+   It must write a PENDING `OWNER_PAYOUT` row rather than nothing.
+
+**Stale comment to fix while in there:** `payments/page.tsx:144-151` says the
+call is *"only reachable outside production"* and that it *"calls the same
+/payments/confirm endpoint"*. Both were true of the old path; neither is true
+of the admin endpoint it actually calls. A wrong comment over a working feature
+is how someone later distrusts it.
+
+## GATE AMENDMENT — ✅ RULED YES AND EXECUTED 2026-09-06
+
+The 7 kiosk `BESPOKE` rows reference *genres* ("ATM error screens",
+"parcel-locker bay status boards", "payment-terminal processing screens"),
+which cannot be screenshotted. Ruling: **amend the gate.** Now written into all
+four enforcing documents, not just this one:
+
+- `TEMPLATE-LINKS.md` → THE GATE → **AMENDMENT** (the full statement)
+- `VISUAL-EVIDENCE.md` §1 → "TEMPLATE images — the genre exception"
+- `ENGIRENT-CLAUDE.md` §2 (the gate checklist) and §6 (definition of done)
+- `design/templates/README.md` → "Two kinds of file live here"
+
+**The amended rule:** a genre-referenced `BESPOKE` row is satisfied by an
+**authored structural wireframe** at `design/templates/pattern-<genre-slug>.png`
+— **drawn, not captured**, so nothing is vendored and no `CREDITS.md` entry is
+needed — **plus a written structural note** naming the specific composition and
+affordance rules borrowed ("single centred message block, one dominant recovery
+action, no navigation chrome" — checkable, not a vibe). **Both, or `FAILED`.**
+One image is shared by every row referencing that genre, so the 7 kiosk rows
+need roughly 4 wireframes, not 7 captures.
+
+**Nothing else is relaxed.** The row still needs all three parts; BEFORE,
+AFTER, triptych, conformance note and states line are unchanged; and rows that
+*do* name a reachable URL still need a genuine capture of that template
+rendered.
+
+**Still to do (E4/E6.4):** the 4 pattern wireframes do not exist yet. The 7
+rows stay `FAILED` until they and their notes are written — the amendment gives
+them a *path*, it does not pass them.
+
 ## Open decisions needing a human ruling
-- **B-1 permission** — how do you want the stack started? (blocking)
 - Localization: finish / remove picker / state what's translated (E5.2)
-- Dead code: delete or keep-flagged (`QrScreen`, `ConfirmScreen`, `kiosk:face`)
-- Retired endpoints: keep 400, or return 410 Gone
 - Push notifications: scope and build, or defer (E2.3) — **the only part of
-  D-5 that is actually missing**
-- Dark mode: **mostly already decided in-repo, see E0.2b findings.** Ruling
-  needed for `client/web` only
+  D-5 that is actually missing.** Currently ruled *defer*; note that (3) above
+  makes an in-app socket event mandatory regardless
+- Dark mode for `client/web`: ruled **light-only**, not yet stated in code
 - Whether `docs/redesign/DEFECTS-AND-GAPS.md` and `CAPABILITY-GAPS.md` should
   be rewritten in place (assumed yes, in progress)
+
+*(Resolved and removed from this list 2026-09-06: B-1 stack-start permission —
+standing instruction is just restart it; dead code — deleted; retired endpoints
+— 410 Gone; payments scope — see the ruling above.)*
+
+## PayMongo enabled 2026-09-06 — **TEST keys, deliberately not live**
+
+> **⚠ SUPERSEDED the same day by the PAYMENTS RULING above — payments are now a
+> manual admin control and do not go through PayMongo.** Kept because the keys
+> are still installed, the integration is dormant rather than deleted, and this
+> records what was done to the server. The three "still blocking" items below
+> are **no longer blocking anything** — they described the PayMongo path.
+
+Credentials supplied by the user and written to the server `.env`
+(`PAYMONGO_SECRET_KEY`, `PAYMONGO_PUBLIC_KEY`, `PAYMONGO_WEBHOOK_SECRET`;
+backup `.env.bak-paymongo`). Values were never echoed to output and the
+installer script was deleted from the server afterwards.
+
+**The TEST (`sk_test_`) key was installed, not the LIVE one.** Live keys move
+real money from real students, and this deployment currently has D-18 (ML item
+verification can be bypassed silently) open. `memory.md`'s Phase 4 also asks
+specifically for a *sandbox* payout/refund test. Switching to live is a one-line
+change once the system is trusted.
+
+**Result — checkout now works for real.** `POST /payments` returns a genuine
+`checkout.paymongo.com` URL; the mock fallback is bypassed entirely, so **D-25
+no longer blocks the payment happy path** (it remains a real defect for any
+future mock-mode run).
+
+### ~~Three things still blocking money end-to-end — all need the user~~
+### RESOLVED 2026-09-06 by the payments ruling — none of these block anything now
+
+1. **The webhook is registered to a dead URL.** PayMongo has it pointed at
+   `https://engirent-api.onrender.com/api/v1/payments/confirm` — the
+   **decommissioned Render deployment**. So a completed checkout will never
+   confirm: the payment succeeds at PayMongo and this system never learns.
+2. **And there is no stable URL to point it at.** Cloudflare *quick* tunnels
+   rotate their hostname on every restart, so re-registering after each restart
+   is not workable. This needs a **named Cloudflare tunnel** (stable hostname),
+   or another stable ingress. This is the same rotating-hostname root cause as
+   D-17/D-20, now blocking payments — it is the fourth consumer.
+3. **Payouts are not enabled on the PayMongo account.**
+   `GET /payments/receiving-institutions` now 500s because
+   `transfers/receiving_institutions` returns **404** — PayMongo's
+   Disbursements/Transfers product is a separate enablement, and `memory.md`
+   already records Disbursements as the intended payout mechanism. Owners
+   cannot be paid until PayMongo enables it on the account. **This also
+   explains D-21** (the payout screen's "Couldn't load the list — tap to
+   retry"): the retry can never succeed, and the copy misrepresents an
+   account-capability gap as a network error.
+
+### Security note on the shared credentials
+
+The **live secret key** (`sk_live_…`) was pasted into this conversation. A live
+secret key that has appeared in a transcript should be treated as exposed —
+PayMongo's dashboard has a **Regenerate** button next to it. The test keys and
+webhook secret matter less but the same reasoning applies. Recommend rotating
+the live pair before it is ever used.
 
 ## Security findings — BOTH RESOLVED 2026-09-05
 
@@ -154,6 +365,14 @@ defensible default. The user has asked twice for these to be used. **Needs
 either a Bash permission rule for that path, or one of the alternatives in the
 session notes — I am not going to keep reformulating around the block.**
 
+**OPERATIONAL FIX APPLIED 2026-09-05 — stale tunnel URLs in the server `.env`.**
+After restarting the stack I **missed the runbook's gotcha #3**: `API_PUBLIC_URL`,
+`CLIENT_WEB_URL`, `CLIENT_ADMIN_URL` and `CLIENT_MOBILE_URL` were all still on
+the 2026-09-03 hostnames. So for this whole session the API was advertising dead
+media hosts and a dead mock-checkout redirect. All four re-pointed at this run's
+tunnels (backup `.env.bak-urlfix`), Node restarted by PID. **This did not fix
+item images — see D-17**, which is the deeper, data-level cause.
+
 **S-2 — dlib import. NOT a problem.** `GET /api/v1/health` on the deployed
 service reports `face_recognition_enabled: true` (also `deep_learning_enabled`
 and `ocr_enabled`). The weak Haar-cascade fallback is **not** active and
@@ -163,7 +382,15 @@ and `ocr_enabled`). The weak Haar-cascade fallback is **not** active and
 
 ## REGISTER 1 — SCREENS
 
-**91 screens/surfaces enumerated from the filesystem**, not from
+**71 surfaces enumerated from the filesystem; 69 live** (2 kiosk screens deleted
+2026-09-06 — see below).
+
+> **CORRECTION 2026-09-06.** This register was reported as "91 surfaces" from
+> E0.6 onward, including in every status line. The actual row count is
+> **28 Flutter + 19 admin + 13 kiosk + 11 web = 71**, and after deleting
+> `QrScreen`/`ConfirmScreen` the live total is **69**. The 91 was an addition
+> error, never a miscount of the underlying screens — the per-surface numbers
+> were right all along. Status lines now read `/69`., not from
 `TEMPLATE-LINKS.md`. Every screen starts `FAILED` and earns its way out.
 Columns: template row? · TEMPLATE/BEFORE/AFTER shots · triptych · conformance
 note · states line · status.
@@ -179,10 +406,16 @@ Android emulator (`MediumPhone`) instead of the blocked web build — which is t
 *better* route anyway: real 390x844-class device, the method
 `ENGIRENT-CLAUDE.md` §2 actually names. Debug APK built with
 `--android-skip-build-dependency-validation` (the documented Gradle 8.12-vs-8.14
-escape hatch) and the **current** tunnel URL baked in. Captured so far (**10**): onboarding 1-4, login, register,
-profile-setup consent (top + scrolled), profile-setup selfie step. Login
-against the **live API** works from the emulator with a freshly registered
-account. **Website BEFORE images: 22/22 — COMPLETE.** All 11 pages at both required
+escape hatch) and the **current** tunnel URL baked in. **Flutter BEFORE images: 29.** Onboarding ×4, login, register, profile-setup
+consent (top + scrolled), profile-setup selfie, home dashboard (+ first-run
+showcase tour), all four nav tabs, profile tab (+ scrolled), my listings,
+payout details, transaction history, account activity, notification
+preferences, send feedback, items browse (pre- and post-D-17), item detail
+(+ scrolled), reviews, create rental/checkout, create item.
+
+Still uncaptured and needing a live rental to reach: rental detail, conversation,
+payment webview, kiosk scan, face verify. Plus edit-profile and the force-update
+gate. Login against the **live API** works from the emulator. **Website BEFORE images: 22/22 — COMPLETE.** All 11 pages at both required
 viewports (1440x900 + 390x844), against the live tunnel. No duplicate-size
 collisions, so no repeated error pages.
 
@@ -192,7 +425,15 @@ collisions, so no repeated error pages.
   **empty state** and is filed as `-noctx-`, not as the mock-checkout BEFORE
   image. The populated state still needs a real transaction id.
 
-**Admin BEFORE images: 4 of 32 — BLOCKED on credentials.** Login and the root
+**Admin BEFORE images: 32/32 — COMPLETE and committed.** All 15 pages plus
+login at both viewports, with real data loading (post-D-20 fix).
+
+**Privacy ruling (user, 2026-09-06): cleared.** The one third party in the live
+database (`abalamcjerrel1@`) is a teammate, and the user — who owns the project
+and the relationship — confirmed it is fine for their name and uploaded photos
+to appear in committed captures. `VISUAL-EVIDENCE.md` §4's rule stands for
+*unknown* real users; this is a named, informed collaborator. The Flutter
+browse capture withdrawn under the same concern is likewise restored. Credentials are no longer the blocker — the seed default (`admin@engirent.edu.ph` / `EngiRent@2025!`, `prisma/seed.ts:27-28`, no env override) works, and all 32 were captured successfully with real data loading. **They were then withdrawn under D-19** because they contain a real student's name. Re-capture needs seeded fixtures. Login and the root
 redirect captured at both viewports. **The other 15 pages sit behind auth and I
 have no admin password** — it is not in the repo, and `admin@engirent.edu.ph`
 appears nowhere in code or docs. Capturing them without credentials would
@@ -285,8 +526,8 @@ indicator" (**genuinely not built** — the one real missing item).
 | K-08 | VerifyingScreen | ✓ (written E0.6b) | FAILED |
 | K-09 | SuccessScreen | ✓ (written E0.6b) | FAILED |
 | K-10 | ErrorScreen | ✓ Error/retry (BESPOKE) | FAILED |
-| K-11 | QrScreen | ✓ (marked dead — do not design) | DEAD |
-| K-12 | ConfirmScreen | ✓ (marked dead — do not design) | DEAD |
+| K-11 | ~~QrScreen~~ | — | **DELETED 2026-09-06** — unreachable; `qr_scanned` has no emitter anywhere in the repo |
+| K-12 | ~~ConfirmScreen~~ | — | **DELETED 2026-09-06** — same; the 2026-09-03 deadlock fix that targeted it was itself dead code |
 | K-13 | "Locker opening" + "Item capture/verification" rows | rows exist, **no matching component found** — likely states inside K-07/K-08 | UNMAPPED |
 
 ### Website — 11 pages. **`TEMPLATE-LINKS.md` has 6 rows; 5 have none.**
@@ -305,7 +546,7 @@ indicator" (**genuinely not built** — the one real missing item).
 | W-10 | payments/success | ✓ (written E0.6b) | FAILED |
 | W-11 | payments/cancel | ✓ (written E0.6b) | FAILED |
 
-**Total: 91 surfaces. All now carry a template row** — E0.6b wrote the **21**
+**Total: 71 enumerated / 69 live. All carry a template row** — E0.6b wrote the **21**
 that were missing (7 Flutter, 2 admin, 7 kiosk, 5 web; the earlier count of 20
 omitted the auth-guard interstitial). Every `BESPOKE` row carries all three
 required parts: the marker, a named pattern reference with a link, and a
@@ -494,7 +735,7 @@ necessary but not sufficient.
 
 | ID | Defect | Doc's analysis | Verdict | Fixed? | Test? |
 |---|---|---|---|---|---|
-| D-1 ✅ | Settings double-auth; verification status stale | "never refetched; needs on-focus refetch + socket event" | **WRONG CAUSE. Real cause found:** `UserModel.fromJson` never parses `verificationStatus` / `verificationReason` / `verificationNote` ([user_model.dart:39-54](../../client/flutter_app/lib/core/models/user_model.dart#L39-L54)). Field is permanently `'UNSUBMITTED'`; `toJson` drops it too. Server *does* send it (`authController.ts:49-52`, `PROFILE_SELECT`). Consequence: Identity tile always matches the `'UNSUBMITTED'` branch → always routes to `/profile/setup` → verified users re-prompted for ID + face. That is the reported double-auth. **FIXED 2026-09-05** — `fromJson` now reads all three; test written first and watched fail (5 of 6 red), then green. | ✅ | ✅ `test/user_model_verification_test.dart` (6 tests) |
+| D-1 ✅ | Settings double-auth; verification status stale | "never refetched; needs on-focus refetch + socket event" | **WRONG CAUSE. Real cause found:** `UserModel.fromJson` never parses `verificationStatus` / `verificationReason` / `verificationNote` ([user_model.dart:39-54](../../client/flutter_app/lib/core/models/user_model.dart#L39-L54)). Field is permanently `'UNSUBMITTED'`; `toJson` drops it too. Server *does* send it (`authController.ts:49-52`, `PROFILE_SELECT`). Consequence: Identity tile always matches the `'UNSUBMITTED'` branch → always routes to `/profile/setup` → verified users re-prompted for ID + face. That is the reported double-auth. **HALF-FIXED — and the client fix alone did NOT fix the bug.** `fromJson` now reads all three fields (test-first, 5 of 6 red then green). **But the defect still reproduced on screen**: with the server reporting `verificationStatus=PENDING`, the Profile tab still showed **"NOT SUBMITTED"** and still offered *"Submit your student ID"*. **Second root cause:** `login` hand-builds its user object and **omits all three verification fields**, while `register` and `getProfile` (via `PROFILE_SELECT`) return them — so the cached login payload has no verification state and correctly defaults to `UNSUBMITTED`. Server fix applied at `authController.ts:190-199`, typecheck clean, 50/50 Jest green, **deployed to the server and verified END TO END on screen 2026-09-05**: the login response now returns `verificationStatus=PENDING`, and the Profile tab renders **"UNDER REVIEW"** with *"Your student ID is with an administrator — reviews are typically completed within 24 hours. You can browse and rent while you wait."* The Identity tile **no longer has a chevron and is no longer tappable**, so the re-prompt that was the reported "double authentication" is gone. PENDING is styled amber, not red — consistent with the PENDING-is-not-a-failure rule. | ✅ client + ✅ server, deployed | ✅ 6 unit tests, but they test the parser, **not** the login payload — E1 must assert the login response shape |
 | D-2 | No separate My Rentals | "purely a missing screen" | **WRONG. Screen exists** — `_RentalsTab`, own bottom-nav tab, `myRentalsTitle`, status filter rail, skeletons, empty/error states, stale banner, pull-to-refresh, socket-driven reload ([home_screen.dart:608-760](../../client/flutter_app/lib/features/home/screens/home_screen.dart#L608-L760)). Ask the user what they actually meant. | N/A | — |
 | D-3 | Users can rent own items | "a **real server-side validation gap**" | **BACKWARDS.** Server guard has existed since the first backend commit (`0e5b05c`) — `rentalController.ts:40-42`. Gap is **client-only**: item detail's CTA has no owner check ([item_detail_screen.dart:474](../../client/flutter_app/lib/features/items/screens/item_detail_screen.dart#L474)) while line 370 *does* check ownership for the message button. Owner sees enabled "Request rental", taps through, gets a 400. | — | — |
 | D-4 | Nothing real-time | "the rest of the app apparently doesn't subscribe; build an app-wide socket manager" | **SUBSTANTIALLY WRONG.** Singleton manager exists, connects on login (`auth_provider.dart:97`), joins user room, `enableReconnection()`, subscribes to **13** events. **Chat already subscribes** (`conversation_screen.dart:56`) with local-echo dedup. Real candidates: baked-in tunnel URL rotating (a socket to a dead host looks exactly like "nothing happening"); no refetch-on-reconnect; admin console genuinely has no queue subscriptions. **Needs two-device reproduction.** | — | — |
@@ -511,119 +752,239 @@ necessary but not sufficient.
 | **D-9** ✅ | **FIXED 2026-09-05.** **Kiosk told the user the wrong QR lifetime.** `MainScreen.tsx:171` renders "Code rotates every 30 seconds for security"; the real TTL is **90 seconds** (`kiosk_ui/server.py:84`, `_QR_TTL = 90.0`). Found by *looking* at a BEFORE capture, not by reading code. The backend already returns `ttl`/`expires_in`/`ttl_seconds` in the token response, so the fix is to render the real value — which is also what `ANIMATION-AND-LOADING-SPEC.md` §2's "QR TTL visualisation" asks for. **Real cause: "30 seconds" was the effect's own `setInterval` poll rate, captioned as if it were the TTL.** Now reads `d.ttl` from the response, with an honest fallback string before the first fetch resolves. `tsc --noEmit` clean, `npm run build` clean, and **verified visually 2026-09-05** — the rendered caption now reads "Code rotates every 90 seconds for security". Not inferred from a green build | `MainScreen.tsx` vs `kiosk_ui/server.py:84` |
 | **D-13** | **`USER-JOURNEY-SIMULATION.md` A2 is wrong, and E5.1 schedules work that is already done.** A2 says face registration "needs an explanation screen before the camera opens, not a camera that just appears… This is a design gap". Captured from the running app: profile setup is **"Verify your identity", STEP 1 OF 3, "Before we start"** — what is collected (face template, student ID), *why* ("EngiRent lockers open with your face"), YOUR RIGHTS (not visible to other students; withdraw at any time), optional guardian contact, and an explicit biometric-consent checkbox that gates a disabled "Agree and continue". Step 2's footer even states the reason again: *"The kiosk matches this photo when you collect or return an item, so nobody else can open your locker."* | `design/before/flutter-profile-setup-1-consent*.png` |
 | **D-12** | **The database wipe left every deleted user's biometrics on disk.** `storage/users/<uuid>/face.jpg` and `id.jpg` survive for accounts whose DB rows were deleted 2026-09-03 — orphaned, unreferenced, still readable. `DELETE /auth/account` is documented as genuinely purging `faceEncoding`/`idImageUrl`, but the bulk wipe bypassed that path entirely. A data-retention gap, not untidiness: these are face photos and identity documents belonging to real students | `server/node_server/storage/users/` on the server PC |
+| **D-20** | **The admin console's whole data layer was pointed at a dead host.** `client/admin/.env.local`'s `NEXT_PUBLIC_API_URL` was still the 2026-09-03 tunnel, and Next bakes it at build time — so every console fetch failed and the dashboard rendered *"Unable to load dashboard data"* with all KPIs at 0 **while the API itself returned `totalUsers:3, totalItems:3, revenue:200`**. Third consumer of the same root cause (rotating hostname frozen into a build/config), after Node's `.env` and `Item.images`. **Fixed**: env updated (backup `.env.local.bak-urlfix`), console restarted and rebuilt, dashboard now shows real data. **Systemic fix needed:** the post-rotation runbook step must cover *every* consumer — Node `.env`, `client/admin/.env.local`, the Flutter APK's `--dart-define`, and stored `Item.images` — not just Node | `client/admin/.env.local` |
+| **D-19** ⚠️ EXPANDED | **Real user data is now reachable in admin captures — the committed-screenshot rule is live.** The admin dashboard's Recent Rentals shows a real student's full name. `VISUAL-EVIDENCE.md` §4 forbids committing any image containing real user data ("a committed screenshot with a real name in it is permanent"), and the repo is being committed regularly. **Action taken:** all 32 admin captures moved out of `design/before/` into the gitignored `design/screenshots/admin-unredacted/` before any commit could pick them up. **Admin BEFORE images therefore stand at 0 of 32 again** — they must be re-captured against **seeded fixture data**, not live data, or redacted. **Expanded 2026-09-06:** it is not only names. Once D-17 was fixed, the Flutter browse grid rendered **photographs of identifiable people** (real user-uploaded listing photos), and that capture had to be withdrawn too. So the rule bites on **every surface that renders user content**, not just the admin console — and it got *worse* as a side effect of fixing a defect, which is the kind of interaction no checklist catches. All affected captures are held in the gitignored `design/screenshots/`. **Any BEFORE image of a data-bearing screen needs seeded fixtures.** | `design/screenshots/admin-unredacted/` |
+| **D-22** | **Two empty states are bare text where every sibling has a designed one.** Transaction History renders only *"No transactions yet"* and Account Activity only *"No activity yet"* — centred text, no icon, no next action. My Listings, Send Feedback and the Rentals tab all use the full `AppEmptyState` (icon + title + body + CTA). `STATE-MATRIX.md` Tier A requires empty states to carry *"real copy and a next action, never a bare 'No data'"*. Low severity, trivial fix, but it is exactly the inconsistency the state matrix exists to catch | `design/before/flutter-transaction-history.png`, `flutter-account-activity.png` |
+| **D-23** ✅ partly | **The mock-payment fallback dead-ends when starting a transaction** (user-reported). **The *starting* half is FIXED** — the stale `CLIENT_WEB_URL` was the cause, and the mock checkout now loads correctly with its transaction id (verified on the emulator). **The *completing* half is D-25**, a separate and worse problem. Root causes so far: the phone **fails silently** — `rental_detail_screen.dart:130-132` bare-`return`s when `paymentUrl` or the transaction id is null, so any server-side problem is invisible; and the mock URL is built from `CLIENT_WEB_URL`, which was **stale until 2026-09-06**, so the WebView loaded a dead host. **Unconfirmed and needs a real run:** whether `POST /admin/transactions/:id/decide-payment` reaches the phone at all — there is **no payment-decision socket event** in `Implemented.md` §3.2, same class as D-1's missing approval event. Full entry in `DEFECTS-AND-GAPS.md` | `rental_detail_screen.dart:130-132`, `paymentController.ts:245` |
+| **D-29** | **Payments/payouts revamp — specced 2026-09-06, not built.** Covers: the four route fixes (D-15, D-21, D-23, D-25); a per-owner **payout mode** (AUTOMATIC via PayMongo Disbursement vs **MANUAL**, admin sends by hand — MANUAL defaults, because AUTOMATIC 404s today); a **four-state balance ledger** (`PENDING_CLEARING` / `AVAILABLE` / `IN_TRANSIT` / `PAID` / `FAILED`) so an owner can reason about their money instead of seeing one number; **money-timing notifications to both sides** using real PayMongo clearing times (card 3 / e-wallet 2 / bank 1 banking days); a **revamp** of the existing payout-destination screen (GCash as a first-class choice, capability-driven, shows balance) — **not a new page, it already exists**; and an **admin manual-payout console** with a per-row calculator showing exactly what to send, a copyable masked destination, mandatory reference number, audit trail, and an idempotent mark-as-sent guard. Templates and UX sources listed in the doc | `PAYMENTS-AND-PAYOUTS-REVAMP.md` |
+| **D-28** | **Payouts can never be instant, and settlement is written as if they can.** PayMongo clears funds before they are disbursable — cards **3 banking days**, e-wallets **2**, bank/QR Ph **1**, banking days only, after-5pm rolls over. `rentalSettlementService.ts` calls `createTransfer` **synchronously on rental completion**, so once Disbursements is enabled the transfer will simply fail for insufficient balance whenever the renter's payment has not cleared — landing in the `catch` that writes a **FAILED** row and tells the owner *"payout could not be sent, support has been notified"*. A routine timing condition would be reported to owners as a failure. **Needs:** a PENDING row plus a retry worker or batched settlement run — the same row shape D-26 needs. **Also:** ₱10 per transfer (one free weekly) against a ₱20/day flat fee means a **one-day rental nets the platform ₱10**, and bank payouts have a **₱80 minimum**, so batching is close to mandatory. Detail: `COMMISSION-AND-PRICING.md` §8-9 | `rentalSettlementService.ts:176`, PayMongo payout docs |
+| **D-27** | **There is no platform commission anywhere in the system — the code pays the item owner 100% of the rental fee.** `rentalSettlementService.ts:177` transfers `rentalPaymentTxn.amount`, the full amount the renter paid, to the lister. A repo-wide search for `commission` / `platformFee` / `serviceFee` / `markup` / `take_rate` across `server/node_server/src` returns **nothing**. **Model confirmed 2026-09-06: a flat ₱20 fee ONCE PER RENTAL** (not per day, and not a percentage) — a 4-day rental is ₱1,600 + ₱20 = ₱1,620, so the implementation and the intended model disagree: the platform currently earns **zero**. `CAPABILITY-GAPS.md` A-5 only ever listed *"commission if applicable"* as a reporting line, never as a mechanism. **This is a business-logic gap, not a bug** — nothing is broken, it simply was never built. Needs: the flat fee in config with a per-item override, the split applied at settlement, a `PLATFORM_FEE` ledger row so revenue is queryable, admin rate editing, and renter-facing copy on browse/detail/checkout/rental-detail. **The fee cannot be folded into a per-day price** — ₱420/day is only true at 1 day — so it is shown as its own line everywhere. Full copy specced in `COMMISSION-AND-PRICING.md` §7.
+**Margin consequence:** a flat per-rental fee against PayMongo's ₱10-per-transfer charge nets the platform **₱10 per rental at every duration** — 50% lost — unless payouts are **batched** (up to 2,500 per transfer, plus one free transfer weekly) or sent MANUALLY. Batching is the intended shape, not an optimisation | `rentalSettlementService.ts:177`, no commission code anywhere |
+| **D-26** | **An owner's earnings can vanish from the ledger with no record.** `rentalSettlementService.ts:174` branches on `payoutReady && env.PAYMONGO_SECRET_KEY`, with `else if (!payoutReady)` recording a PENDING `OWNER_PAYOUT` row. **The combination `payoutReady === true` + no PayMongo key matches neither branch** — no transaction row, no notification, nothing logged. The owner is simply never credited and nobody can tell. That was the live configuration until PayMongo was enabled on 2026-09-06, so any rental settled before then by an owner who *had* configured a payout destination has no `OWNER_PAYOUT` row at all. Now latent rather than active, but it is a silent-money-loss branch and should be a `PENDING` row like its sibling | `rentalSettlementService.ts:174-245` |
+| **D-25** | **SEVERE — no rental can be paid for on the live deployment. The mock-payment fallback is structurally dead in production.** Reproduced end to end on the emulator: tap *Pay Now to Confirm* → mock checkout loads correctly with its transaction id → tap *Simulate Successful Payment* → **400 "A verified PayMongo webhook signature is required"**. Chain: no `PAYMONGO_SECRET_KEY`, so `paymentController.ts:245` falls back to the mock page; the mock page calls `POST /payments/confirm` with a manual body (its own copy says *"it calls the same confirm endpoint a real PayMongo webhook would"*); `isRealWebhook` is false, so the manual branch is tried — but that branch is gated on **`env.NODE_ENV !== "production"`** (`:316`) and the server runs **`NODE_ENV=production`** (verified in `.env`). Control falls to the `else` and every mock payment is rejected. **The money path of the entire product is blocked**, and because the phone silently `return`s on a failed payment start (D-23) the user just sees nothing happen. **The security gate itself is correct** — its comment records that it closed a real hole where any caller could mark any transaction COMPLETED — so the fix is NOT to reopen it. The intended production fallback is the **admin `decide-payment`** path (`memory.md`: "admin payment approve/reject bypass in place"); the mock page should route through that authenticated, role-gated endpoint, or be hidden entirely in production. **Payments logic is out of scope per `ENGIRENT-CLAUDE.md` §1 — this needs a ruling, not a unilateral fix** | `paymentController.ts:295-332`, `.env` `NODE_ENV=production` |
+| **D-24** | **Item-verification pipeline — the locker background is an unaccounted confounder, and five other failure modes.** Every kiosk frame shares the same locker interior while the owner's listing photos do not, so global descriptors (colour 0.22 of the traditional weight, pHash, SSIM) score *background* agreement as *object* agreement — inflating similarity between different items **and** suppressing it for the correct one. Also: same-model substitution is structurally unsolvable by visual comparison (serial OCR is a +10 bonus, not a gate); SIFT can lock onto logos rather than objects; the 10-retry loop is an unpenalised brute-force surface; no presentation-attack defence (a printed photo passes); and `good_pair_count` judges deep/SIFT verdicts using traditional scores only. **Pipeline moved IN SCOPE 2026-09-06 on the user's instruction** (thresholds stay out). **Prerequisite before any change lands: A-3's confidence distribution** — nobody can currently say which of these failure modes is real and which is theoretical | `docs/redesign/ITEM-VERIFICATION-PIPELINE-GAPS.md` |
+| **D-21** | **Payout Details cannot load its institution list.** The bank/e-wallet dropdown renders *"Couldn't load the list — tap to retry"*, i.e. `GET /payments/receiving-institutions` is failing. Plausibly a consequence of running without a `PAYMONGO_SECRET_KEY` (mock mode), but the screen presents it as a transient network error and offers a retry that cannot succeed — so an owner trying to get paid hits a dead end with misleading copy. **Needs the cause confirmed** before deciding whether this is a defect or an honest-messaging problem | `design/before/flutter-payout-details.png` |
+| **D-18** ✅ | **SEVERE — after any tunnel rotation, EVERY item verification silently returns PENDING with confidence 0, bypassing the ML pipeline entirely.** Chain: `Item.images` holds absolute URLs with a baked-in tunnel host (D-17) → `Verification.originalImages` copies them verbatim (`index.ts:540, 593, 737, 807`) → `runMlVerification` **downloads the references by URL** (`index.ts:181-184`) → `downloadBlob` swallows every failure (`catch { logger.warn(...); return null }`, `index.ts:160-168`) → with `validOrig.length === 0` the function returns `{decision:"PENDING", confidence:0}` (`index.ts:189-191`) **without calling the ML service at all**. **Why this is the worst possible failure mode:** PENDING is a legitimate documented outcome (the 60-84 manual-review band), so a queue full of PENDING items looks normal. There is no error surfaced to the user, no alert to an admin, and confidence 0 reads as a real score. Every deposit and return silently routes to a human, and nobody can tell the pipeline never ran. Only a `logger.warn` line records it. **This is live right now** for any item uploaded before today's tunnel rotation. Fixing D-17 (relative paths + `mediaUrlRewriter`) fixes this; **FIXED 2026-09-06.** `runMlVerification` still fails closed to PENDING — never auto-approve on missing evidence — but now logs at **error** level naming the download counts, and returns `unavailable: true` with an `unavailableReason`, so an infrastructure failure can no longer masquerade as a genuine 60-84 manual-review verdict. D-17's fix removes the trigger; this makes the next such failure visible instead of silent. | `index.ts:160-191, 540, 593, 737, 807` |
+| **D-17** ✅ | **Every item listing image is permanently broken by a tunnel restart, and no config change fixes it.** Observed live: all 3 items render broken-image placeholders on the browse grid and home dashboard. Cause: `Item.images` is `Json // ["url1", "url2"]` (`schema.prisma:129`) storing **absolute URLs**, built at *upload* time from `${env.API_PUBLIC_URL}/media/...` (`storageService.ts:131`). The Cloudflare hostname is frozen into the row, so when the tunnel rotates every existing item's images 404 forever. Updating `API_PUBLIC_URL` and restarting **does not help** — verified: the API still returns the dead `mpg-clothing-maui-chicago` host. **The correct pattern already exists in this codebase**: `middleware/mediaUrlRewriter.ts` stores *relative* paths and rewrites them at response time, globally, precisely so it is "structurally impossible to forget" — and user face/ID media uses it. Items opted out, and `videoUrl`'s schema comment shows the wrong pattern was then propagated deliberately ("a full public URL … not a relative storage path, so it needs no entry in mediaUrlRewriter"). **FIXED 2026-09-06, deployed and verified on screen.** Four-part fix, no migration required:
+(1) `toRelativeMediaPath()` in `storageService.ts` normalises any absolute media URL back to its stored path;
+(2) `itemController` normalises on **write**, so it no longer matters that clients echo back the absolute URL they were handed;
+(3) `mediaUrlRewriter` normalises **before** matching and rebuilds against the *current* host — so legacy rows heal on read rather than waiting for a migration;
+(4) `downloadBlob` resolves the same way for the internal ML path, which never passes through the response rewriter.
+Verified: the API now returns the live host and the image is **HTTP 200**, and the app's browse grid renders real photos where it previously showed three broken placeholders. 54/54 Jest green (+4 new tests on the normaliser). | `schema.prisma:129`, `storageService.ts:131`, `mediaUrlRewriter.ts` |
+| ~~**D-16**~~ **RETRACTED — my measurement was wrong.** I reported the live server as running materially older code (601 lines vs 675) and held the deploy over it. A real `diff` showed **zero** lines existing only on the server: the two files were identical apart from my own 10-line edit. The discrepancy came from comparing PowerShell's `Measure-Object -Line` against `wc -l`, which count differently. **Lesson worth keeping: two different tools' line counts are not a diff.** The server tree *is* a diverged checkout in general (`memory.md`), but this file was not diverged, and the deploy was safe. | retracted |
+| **D-15** ✅ | **A malformed JSON body returns 500, not 400.** Observed live: a bad body to `POST /auth/profile/complete` returned `{"success":false,"error":"Internal server error"}` with a `body-parser` `SyntaxError` stack in the Node log — the parser's error never reaches the error middleware. `API-TEST-PLAN.md`'s five minimum cases explicitly require *"Malformed body → clean 400, not a 500"*, so this is a confirmed live instance of the exact case the plan predicts, and it affects **every** JSON endpoint.
+**FIXED 2026-09-06, deployed and verified live.** `errorHandler` now recognises body-parser errors by their `type` prefix (`entity.*`) and answers **400 "Malformed request body"**, plus **413** for `entity.too.large` — the 10mb limit had the same problem. A genuine `SyntaxError` from application code, which carries no `type`, still returns 500, so a real server bug is never mis-reported as the caller's fault.
+**Watched fail first:** with the fix stashed, 3 of 8 new tests failed; with it, 8/8. Full suite 62/62 (7 files, up from 6). Verified against the live API on `/auth/login`, `/auth/register`, `/payments`, `/rentals` — all **400**, body reads *"The request body could not be parsed as JSON."*
+**Register effect: this unblocks the "malformed body → clean 400" case on all 93 endpoint rows at once.** | `errorHandler.ts`, `middleware/__tests__/errorHandler.test.ts` |
+| **D-30** | **`POST /kiosk/session/start` returns 200 for a token the kiosk never issued — and for a kiosk that is offline.** It emits `kiosk:session_validate` to the kiosk's socket room and answers *"Session handshake sent to kiosk — stand in front of the camera"* immediately, never waiting for or learning the Pi's verdict. Observed live with a garbage token while the Pi was down: **200**. **Not a security hole** — no kiosk session is opened (only the Pi's own `kiosk:flow_start` does that, proven by `e2e-kiosk-trust.mjs`), so verify-face is still refused afterwards. It is an honesty defect: the phone renders success for a handshake nothing received, and the copy still says *"stand in front of the camera"* although the kiosk camera was removed 2026-09-03. Fix belongs with the two-screen handoff work in E4 — the app should stay in a waiting state until a real `kiosk:face_required` (or a scan_error) arrives, and the copy should describe the phone-first flow | `kioskController.ts:200-248`, found by `scripts/e2e-kiosk-trust.mjs` |
 | **D-8** | `server/kiosk/kiosk_config.json` still carries a `face_recognition` block (threshold/attempts/timeout) — dead config since the camera was removed 2026-09-03 | `kiosk_config.json` |
+| **D-31** | **A retired endpoint still runs its validator before the retirement handler, so a caller is told to fix a body for an endpoint that no longer exists.** `kioskRoutes.ts:39-41` puts `validate([body("rentalId").isUUID()])` ahead of `claimItem`; the same for `/return`. Send a malformed id and you get *"Valid rental ID is required"*, not the 410 explaining the endpoint is gone. **The 410 is only reachable by sending a well-formed request to a dead route** — precisely backwards. Found by writing the retired-endpoint test, which failed on this first and blamed the API (trap #2 again, sixth time this phase: **a 400 can be validation, not the thing you are testing**). Fix is one line — move the handler ahead of `validate`, or drop the validator from both retired routes | `kioskRoutes.ts:36-50` |
+| **D-32** | **The 410 Gone ruling is in the repo and NOT on the deployment — and the register recorded it as "✅ EXECUTED".** `utils/errors.ts` on `desktop-gklhcri` has **no `GoneError` class at all**, and `kioskController.ts` there still throws `ValidationError` at lines 151/165. Live probe with a valid UUID returns **400 carrying the new retirement message** — so the message shipped on 2026-09-03 but the 2026-09-06 status-class change never did. **The general lesson, and it is the same one as the uncommitted BEFORE images:** on a diverged checkout deployed by manual file copy, *"executed"* and *"live"* are different states, and the register must say which it means. **Checked the rest rather than assuming a pattern: D-15, D-17 and D-18 are all genuinely deployed** — an earlier check that said otherwise was reading `findstr`'s exit code through ssh→powershell, which does not propagate. Two different tools' answers are not a diff (cf. the retracted D-16). **Needs a two-file copy + Node restart by PID; not done, needs authorisation for a live deploy** | server `utils/errors.ts`, `kioskController.ts:151,165` |
+| **D-34** | **`DELETE /auth/account` is a SOFT delete, and `totalUsers` counts the rows it leaves behind — so deleting your account inflates the admin dashboard forever.** The endpoint answers *"Your account has been **deactivated** and your biometric data has been permanently deleted"* and sets `isActive = false`, keeping the `User` row (defensible — `Rental`/`Review` do not cascade from `User`, per the 2026-09-03 wipe notes). But `adminController.ts:38` computes `totalUsers` as `prisma.user.count({ where: { role: "STUDENT" } })` with **no `isActive` filter**, so every deleted student is still counted in the dashboard's headline number. Two separate problems: (a) the KPI drifts upward permanently and silently, and (b) `CAPABILITY-GAPS.md` C-7 and the app's own Settings copy call this **account deletion** while the data model calls it deactivation — a "the system tells the truth about itself" gap, and one with thesis-ethics weight because it is about a student's personal data. **Found by counting users before and after the sweep** (6 where the register said 4), then reading the query rather than assuming a leak. **Consequence handled in the suite**: `e2e-coverage-sweep.mjs` now reuses one fixed probe identity instead of a fresh account per run, so it cannot inflate the metric — and it asserts the soft-delete behaviour explicitly, then reactivates the probe through `PATCH /admin/users/:id` (which is that endpoint's only coverage). **Cleanup still owed: 3 deactivated `sweep17886…@students.uclm.edu.ph` rows from this session's early runs need a hard delete at the DB.** | `authController.ts:636`, `adminController.ts:38` |
+| **D-33** | **The payout-destination form is shaped entirely around PayMongo Disbursements, which is the wrong shape under the manual-payments ruling.** `authRoutes.ts:96-104` requires `provider ∈ {instapay, pesonet}` plus a **`bic`** and `institutionName` — i.e. bank rails, with the BIC coming from the `receiving-institutions` list that currently 404s. So D-21 is deeper than "the dropdown won't load": **the whole form assumes a product that is not enabled**, and an owner who wants to be paid by GCash cannot express that. `CAPABILITY-GAPS.md` C-9 and `PAYMENTS-AND-PAYOUTS-REVAMP.md`'s "GCash as a first-class choice" both point the same way. Belongs with D-29's payout-screen revamp | `authRoutes.ts:96-104` |
 
 ---
 
 ## REGISTER 3 — ENDPOINTS
 
-**93 endpoints, counted from the route files.** `Implemented.md` §3.1's group
-counts are each short by one in four groups (auth 11→**12**, rentals 7→**8**,
-kiosk 7→**8**, notifications 5→**6**), so `API-TEST-PLAN.md`'s "every
-endpoint, no exceptions" was built on a list missing 4 endpoints.
+**93 endpoints, enumerated from the route files** (not from `Implemented.md`
+§3.1, whose group counts are short by one in four groups). Each needs the five
+minimum cases from `API-TEST-PLAN.md`: happy path · missing auth → 401 · wrong
+role → 403 · malformed body → **clean 400** · self-action rejection where
+applicable.
 
-| Route file | Endpoints | Five-case coverage |
-|---|---|---|
-| adminRoutes.ts | 33 | 0/33 |
-| authRoutes.ts | 12 | 0/12 |
-| kioskRoutes.ts | 8 | 0/8 |
-| rentalRoutes.ts | 8 | 0/8 |
-| itemRoutes.ts | 7 | 0/7 |
-| paymentRoutes.ts | 6 | 0/6 |
-| notificationRoutes.ts | 6 | 0/6 |
-| reviewRoutes.ts | 4 | 0/4 |
-| mediaRoutes.ts | 3 | 0/3 |
-| feedbackRoutes.ts | 2 | 0/2 |
-| uploadRoutes.ts | 2 | 0/2 |
-| index.ts (`/app-config`, `/health`) | 2 | 0/2 |
-| **Total** | **93** | **0/93** |
+> **FILLED IN 2026-09-06, empirically.** Coverage below was derived by
+> **statically extracting every path each suite actually calls from its own
+> source**, then joining that against the route files — *never* from a suite's
+> title, which `PROGRESS.md` warned about and which is how four wrong
+> assertions got written earlier in this phase. Four suites build their paths
+> from variables (`auth-matrix`, `self-action`, `defect-regressions`,
+> `webhook-signature`); those were read by hand and their endpoint tables
+> transcribed verbatim. The counts are **computed by script**, not added up by
+> hand — the screen register already carries one addition error from doing it
+> the other way.
 
-Five minimum cases per endpoint: happy path · missing auth → 401 · wrong role
-→ 403 · malformed body → clean 400 · self-action rejection where applicable.
+**Reading the columns:**
+- **happy** — a suite makes this call for real and asserts on the result.
+- **401 / 403** — asserted by `e2e-auth-matrix.mjs`, whose `ENDPOINTS` (34) and
+  `ADMIN_ENDPOINTS` (12) arrays are deliberately explicit so a reviewer can see
+  what is claimed. A `—` means *not probed*, not *fails*.
+- **400** — `✓` empirically sampled by `e2e-defect-regressions.mjs`;
+  **`shared`** means carried by D-15's single `errorHandler` fix, which
+  recognises body-parser errors centrally and therefore applies to every
+  JSON-accepting route by construction; `n/a` for routes that take no JSON body
+  (GET/DELETE and the multipart uploads). **`shared` is a structural argument,
+  not a measurement** — 7 routes across 4 route files were checked live, and
+  the mechanism is one function, but it has not been fired at all 76.
+- **self** — the self-action / derived-counterparty assertions from
+  `e2e-self-action.mjs`. Absent elsewhere because self-action is not applicable,
+  not because it was skipped.
+- **`m:`** prefix on a suite name = **manualOnly**, excluded from the
+  unattended 13-suite run (needs a real face image; `verification` also enrols
+  biometrics for accounts it deletes — how D-12's orphans were created). Those
+  rows are covered by a test that **does not run in the normal set** and should
+  be read as weaker evidence.
 
----
 
-## E0.2b — THEME SITUATION (largely answered from the repo, ahead of schedule)
 
-`STATE-MATRIX.md` assumes this is unknown and possibly "half-present by
-accident." It isn't — three of four surfaces have a deliberate, recorded
-decision:
+**Computed coverage across 93 rows** — happy path **73/93** (78%) ·
+401 asserted **34** · 403 asserted **12** ·
+malformed-400 empirically sampled **7**, the rest carried by the shared
+`errorHandler` fix (D-15) or n/a for bodyless routes ·
+self-action / derived-counterparty **5**.
 
-| Surface | Dark mode | Evidence |
-|---|---|---|
-| Flutter | **Deliberate, user-facing.** `ThemeController` with system/light/dark, toggle in Profile tab, reads through `isDark(context)`. A past dark-mode bug (hardcoded `ColorScheme.light` in a date picker) was found and fixed in v1.5.1 | `core/theme/theme_controller.dart`, `home_screen.dart` Appearance tile |
-| Admin | **Deliberate.** Mantine `defaultColorScheme="auto"`, `localStorageColorSchemeManager`, a `ColorSchemeToggle` component. Comment records `forceColorScheme="light"` as a *past* stopgap | `src/app/providers.tsx`, `src/components/ui/ColorSchemeToggle.tsx` |
-| Kiosk | **Deliberately excluded, with the reason stated in code**: permanently dark, no per-user preference to persist | `kiosk_ui_react/src/theme.css:19-21` |
-| Website | **No dark-mode config found.** Appears light-only | — |
+**adminRoutes** (33)
 
-**What's actually needed:** a *completeness audit* of the two live
-implementations (grep for hardcoded `Colors.`/hex outside the token layer;
-verify status colours keep meaning in both themes), plus **one ruling on
-`client/web` only**. Not the four-surface investigation E0.2b describes.
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `GET /admin/stats` | ✓ | — | ✓ | n/a | — | coverage-sweep |
+| `GET /admin/users` | ✓ | — | ✓ | n/a | — | enterprise-hygiene |
+| `GET /admin/users/:id` | ✓ | — | — | n/a | — | enterprise-hygiene |
+| `PATCH /admin/users/:id` | ✓ | — | — | shared | — | coverage-sweep (probe reactivation) |
+| `POST /admin/users/admin` | ✓ | — | — | shared | — | enterprise-hygiene |
+| `GET /admin/audit-log` | ✓ | — | ✓ | n/a | — | enterprise-hygiene |
+| `GET /admin/rentals` | ✓ | — | ✓ | n/a | — | enterprise-hygiene |
+| `POST /admin/rentals/:id/complete` | ✗ | — | — | shared | — |  |
+| `GET /admin/rentals/:id/conversation` | ✓ | — | — | n/a | — | messaging |
+| `POST /admin/rentals/:id/settle` | ✓ | — | — | shared | — | trust-safety |
+| `GET /admin/transactions` | ✓ | — | ✓ | n/a | — | enterprise-hygiene, webhook-signature |
+| `POST /admin/transactions/:transactionId/refund` | ✗ | — | — | shared | — |  |
+| `POST /admin/transactions/:transactionId/decide-payment` | ✓ | — | — | shared | — | m:full-lifecycle |
+| `GET /admin/verifications` | ✓ | — | ✓ | n/a | — | coverage-sweep |
+| `GET /admin/id-verifications` | ✓ | — | ✓ | n/a | — | enterprise-hygiene, m:verification |
+| `POST /admin/id-verifications/:id` | ✓ | — | — | shared | — | m:verification, m:full-lifecycle |
+| `PATCH /admin/verifications/:id` | ✗ | — | — | shared | — |  |
+| `PATCH /admin/items/bulk` | ✓ | — | — | shared | — | enterprise-hygiene |
+| `GET /admin/items/:id` | ✓ | — | ✓ | n/a | — | enterprise-hygiene, item-moderation |
+| `GET /admin/items/:id/reviews` | ✓ | — | — | n/a | — | item-moderation |
+| `PATCH /admin/items/:id` | ✓ | — | — | shared | — | enterprise-hygiene, item-moderation |
+| `DELETE /admin/reviews/:id` | ✓ | — | — | n/a | — | item-moderation |
+| `GET /admin/feedback` | ✓ | — | ✓ | n/a | — | feedback, trust-safety, enterprise-hygiene |
+| `PATCH /admin/feedback/:id` | ✓ | — | — | shared | — | feedback |
+| `GET /admin/reports` | ✓ | — | ✓ | n/a | — | coverage-sweep |
+| `GET /admin/health` | ✓ | — | ✓ | n/a | — | coverage-sweep |
+| `GET /admin/kiosks/events` | ✗ | — | — | n/a | — |  |
+| `GET /admin/kiosks` | ✓ | — | ✓ | n/a | — | enterprise-hygiene |
+| `POST /admin/kiosks/lockers/:id/release` | ✗ | — | — | shared | — |  |
+| `POST /admin/kiosks/lockers/by-number/:lockerNumber/release` | ✗ | — | — | shared | — |  |
+| `GET /admin/kiosks/:kioskId/config` | ✗ | — | — | n/a | — |  |
+| `PUT /admin/kiosks/:kioskId/config` | ✗ | — | — | shared | — |  |
+| `POST /admin/kiosks/:kioskId/command` | ✗ | — | — | shared | — |  |
 
----
+**authRoutes** (12)
 
-## DOC CORRECTIONS MADE IN E0 (repo wins over docs)
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /auth/register` | ✓ | — | — | ✓ | — | 9 suites |
+| `POST /auth/login` | ✓ | — | — | ✓ | — | 12 suites |
+| `POST /auth/refresh` | ✓ | — | — | shared | — | coverage-sweep |
+| `POST /auth/logout` | ✓ | — | — | shared | — | coverage-sweep |
+| `GET /auth/profile` | ✓ | ✓ | — | n/a | — | defect-regressions, m:verification |
+| `PUT /auth/profile` | ✓ | ✓ | — | shared | — | coverage-sweep |
+| `POST /auth/profile/complete` | ✓ | ✓ | — | shared | — | m:verification, m:full-lifecycle |
+| `POST /auth/register-face` | ✓ | — | — | n/a | — | m:full-lifecycle |
+| `POST /auth/id-photo` | ✓ | — | — | n/a | — | m:full-lifecycle |
+| `PUT /auth/payout-destination` | ✓ | ✓ | — | shared | — | coverage-sweep |
+| `PUT /auth/password` | ✓ | ✓ | — | shared | — | coverage-sweep |
+| `DELETE /auth/account` | ✓ | ✓ | — | n/a | — | coverage-sweep |
 
-- **E0.0:** all 15 redesign docs + `phases/` moved from repo root to
-  `docs/redesign/`, which is what `FOLDER-STRUCTURE.md`,
-  `CLAUDE-CODE-PLAYBOOK.md` §4 and `00-START-HERE.md` already assumed. Moving
-  them *fixed* most cross-references rather than breaking them.
-- **E0.0:** `00-START-HERE.md`'s read-order table skipped #6 (rows ran
-  1-5,7-16). Renumbered to 1-15. No document was missing — pure numbering gap.
-- **E0.0:** created the root `CLAUDE.md`. It did not exist, despite being step
-  one of every session-resume instruction in the track and referenced as
-  "existing" by `ENGIRENT-CLAUDE.md` and `FOLDER-STRUCTURE.md`.
+**feedbackRoutes** (2)
 
-- **E0.4 (repo hygiene, complete):** `docs/predated/` created with a full
-  index README. Moved + bannered: `audit/documentation.md`,
-  `audit/phase4-audit-report.md`, `audit/history/` (a judgment call — not named
-  by REPO-HYGIENE, but it dates to 2026-07-20 and the target structure says
-  `docs/audit/` is current-only), `planning/00-start-here.md`. 24 inbound
-  references fixed across README.md, DESIGN.md, Start-Dev.bat, Implemented.md
-  and memory.md's pointer table — **memory.md's dated session log was left
-  intact**, since rewriting it would falsify the record. `docs/README.md`
-  rewritten (it still named moved files as the source of truth).
-- **E0.4 found three stale facts the audit assumed were already fixed:**
-  `KIOSK_CODE_SETUP.md` still had a code example calling the **deleted**
-  `capture_face` method and a "confirm 5 camera nodes" step (REPO-HYGIENE
-  explicitly asked to verify that fix landed — it had not, for 2 of 7 lines);
-  `planning/03-revamp-master.md`'s self-test spec still required "all 5
-  cameras" to open a frame. All corrected.
-- **E0.4:** `reference/analyzation.md` bannered **in place** rather than moved
-  — stale on cameras, `capture_face`, and `/kiosk/claim`+`/kiosk/return`, but
-  its ML/data-model sections are not known stale. Banner names the bad parts.
-- **E0.4:** 3 hardcoded Cloudflare tunnel hostnames removed from
-  `Implemented.md` §10 and replaced with a pointer to the host's tunnel logs.
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /feedback` | ✓ | ✓ | — | ✓ | — | feedback, trust-safety |
+| `GET /feedback/mine` | ✓ | ✓ | — | n/a | — | feedback |
 
-### Corrections still to apply to the docs themselves
-- [ ] `DEFECTS-AND-GAPS.md` — rewrite D-1…D-5 with confirmed causes
-- [ ] `CAPABILITY-GAPS.md` — **C-1, C-2, C-3, C-7, C-9 are already built**
-      (`PATCH /rentals/:id/dates` at `rental_detail_screen.dart:267`;
-      `notification_preferences_screen.dart`; `/cancel` at
-      `rental_detail_screen.dart:223`; `DELETE /auth/account` at
-      `home_screen.dart:1456`; payout screen + Profile tile). C-5 partly
-      (Ratings button → `ReviewsScreen(userId:)`). **C-4 and C-8 look
-      genuinely absent.**
-- [ ] `ANIMATION-AND-LOADING-SPEC.md` §1.1 + `USER-JOURNEY-SIMULATION.md` A7 +
-      `ENGIRENT-CLAUDE.md` + `Implemented.md` §5.1 — locker timing labels are
-      **reversed** (real order is door/door/extend/retract) and the
-      "17-second" figure compares two different actions
-- [ ] `USER-JOURNEY-SIMULATION.md` A2 + `phases/E5-flutter-app.md` — the
-      "explanation screen before the camera opens" **already exists** as
-      `_SetupStep.consent`, described in code as "the mandatory consent screen
-      before any capture"
-- [ ] `TEMPLATE-LINKS.md` — write the 20 missing rows (7 kiosk, 5 web,
-      6 Flutter, 2 admin); resolve the "Rentals list" / "My Rentals" duplicate
-- [ ] `phases/E6-admin-and-kiosk.md` E6.1b — kiosk events are **explicitly not
-      persisted** (`kioskEventLog.ts`: 40-event in-memory ring buffer,
-      docstring says "deliberately not persisted… not a system of record").
-      A-6 needs a schema change and a reversed decision, not a check
-- [ ] `Implemented.md` §3.5 — undercounts Node tests (6 files, not 4) and
-      points at `scripts/` rather than `server/node_server/scripts/`
+**index** (2)
 
----
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `GET /health` | ✓ | — | — | n/a | — | auth-matrix (control) |
+| `GET /app-config` | ✓ | — | — | n/a | — | enterprise-hygiene |
 
+**itemRoutes** (7)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /items` | ✓ | ✓ | — | shared | — | 8 suites |
+| `GET /items` | ✓ | — | — | n/a | — | my-listings, item-moderation, defect-regressions |
+| `GET /items/my-items` | ✓ | ✓ | — | n/a | — | my-listings |
+| `GET /items/:id/booked-dates` | ✓ | — | — | n/a | — | availability |
+| `GET /items/:id` | ✓ | — | — | n/a | — | availability, listing-video, enterprise-hygiene |
+| `PUT /items/:id` | ✓ | ✓ | — | shared | — | my-listings, listing-video |
+| `DELETE /items/:id` | ✓ | ✓ | — | n/a | — | my-listings, self-action |
+
+**kioskRoutes** (8)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /kiosk/deposit` | ✓ | ✓ | — | shared | — | m:full-lifecycle |
+| `POST /kiosk/claim` | ✓ | — | — | shared | — | **RETIRED — 410 Gone.** No test asserts the 410 yet |
+| `POST /kiosk/return` | ✓ | — | — | shared | — | **RETIRED — 410 Gone.** No test asserts the 410 yet |
+| `GET /kiosk/lockers` | ✓ | ✓ | — | n/a | — | coverage-sweep |
+| `POST /kiosk/lockers/:id/release` | ✗ | — | — | shared | — |  |
+| `POST /kiosk/session/start` | ✓ | ✓ | — | ✓ | — | kiosk-trust, defect-regressions |
+| `POST /kiosk/upload` | ✗ | — | — | n/a | — |  |
+| `POST /kiosk/verify-face` | ✓ | ✓ | — | n/a | — | kiosk-trust (attacked) |
+
+**mediaRoutes** (3)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `GET /media/items/:batchId/:filename` | ✗ | — | — | n/a | — |  |
+| `GET /media/users/:userId/face.jpg` | ✗ | — | — | n/a | — |  |
+| `GET /media/secure/:token` | ✗ | — | — | n/a | — |  |
+
+**notificationRoutes** (6)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `GET /notifications` | ✓ | ✓ | — | n/a | — | feedback, messaging, m:verification |
+| `GET /notifications/preferences` | ✓ | ✓ | — | n/a | — | enterprise-hygiene |
+| `PUT /notifications/preferences` | ✓ | ✓ | — | shared | — | enterprise-hygiene |
+| `PATCH /notifications/:id/read` | ✗ | — | — | shared | — |  |
+| `PATCH /notifications/read-all` | ✓ | ✓ | — | shared | — | coverage-sweep |
+| `DELETE /notifications/:id` | ✗ | — | — | n/a | — |  |
+
+**paymentRoutes** (6)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /payments` | ✓ | ✓ | — | ✓ | — | m:full-lifecycle, self-action |
+| `POST /payments/confirm` | ✓ | — | — | shared | — | webhook-signature (attacked) |
+| `GET /payments` | ✓ | ✓ | — | n/a | — | coverage-sweep |
+| `GET /payments/status/:transactionId` | ✗ | ✓ | — | n/a | — |  |
+| `GET /payments/receiving-institutions` | ✗ | ✓ | — | n/a | — | **BLOCKED** — PayMongo Disbursements not enabled; moot under the manual-payments ruling |
+| `POST /payments/:transactionId/refund` | ✓ | ✓ | — | shared | ✓ | self-action (negative) |
+
+**rentalRoutes** (8)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /rentals` | ✓ | ✓ | — | ✓ | ✓ | availability, messaging, enterprise-hygiene, self-action |
+| `GET /rentals` | ✓ | ✓ | — | n/a | — | coverage-sweep |
+| `GET /rentals/:id` | ✓ | ✓ | — | n/a | — | m:full-lifecycle |
+| `PATCH /rentals/:id/status` | ✗ | — | — | shared | — |  |
+| `POST /rentals/:id/cancel` | ✓ | ✓ | — | shared | — | availability |
+| `PATCH /rentals/:id/dates` | ✓ | ✓ | — | shared | — | enterprise-hygiene |
+| `GET /rentals/:id/conversation` | ✓ | ✓ | — | n/a | ✓ | messaging, self-action |
+| `POST /rentals/:id/conversation/messages` | ✓ | — | — | shared | ✓ | messaging, self-action |
+
+**reviewRoutes** (4)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /reviews` | ✓ | ✓ | — | ✓ | ✓ | item-moderation, self-action |
+| `GET /reviews/me` | ✓ | ✓ | — | n/a | — | coverage-sweep |
+| `GET /reviews/item/:itemId` | ✓ | — | — | n/a | — | item-moderation |
+| `GET /reviews/user/:userId` | ✓ | — | — | n/a | — | trust-safety |
+
+**uploadRoutes** (2)
+
+| Endpoint | happy | 401 | 403 | 400 | self | covered by |
+|---|---|---|---|---|---|---|
+| `POST /upload/image` | ✓ | ✓ | — | n/a | — | 9 suites |
+| `POST /upload/images` | ✗ | — | — | n/a | — |  |
 ## BACKLOG — API-supported, UI-missing (from CAPABILITY-GAPS.md)
 - **Genuinely missing user controls:** C-4 request refund
   (`POST /payments/:transactionId/refund`), C-8 change password
@@ -634,34 +995,455 @@ verify status colours keep meaning in both themes), plus **one ruling on
   measures the blast radius of D-1 — then A-1, A-3, and **C-5 in place of C-1**
   (C-1 already shipped)
 
-## Next concrete step
+## E0 closing state
 
-**When B-1 clears (user restarts the stack), in this order:**
-1. **Security first:** `ML_API_KEY` set where the ML service runs? Does dlib
-   import there? Fix immediately if wrong, report either way.
-2. E0.5 finish — capture BEFORE images for Flutter (28), admin (19) and web
-   (11) at both viewports. **One shot, no second chance.** Watch the stale-
-   bundle trap on port 8092 (`ACCESS-AND-WORKAROUNDS.md` §3).
-3. E0.1 — walk all four surfaces, confirm the 91-surface enumeration, rule on
-   400-vs-410 and delete-vs-keep-flagged for the dead kiosk screens. **The
-   `qr-DEAD` capture is evidence for that ruling: the screen is not merely
-   unreachable, it renders as a near-empty panel telling the user to hold up a
-   QR code at a kiosk that has no camera.**
-4. E0.2 — reproduce D-1…D-5 with two accounts and fresh registrations.
+**Done:** E0.0 (doc reconciliation) · E0.2 (defects re-derived, all four D-6
+sweeps) · E0.4 (hygiene) · E0.6 (all three registers, incl. 93 endpoints and 21
+template rows) · E0.5 partial (101 BEFORE images: web 22/22 ✅, admin 32/32 ✅,
+Flutter 32, kiosk 10) · E0.2b (theme situation answered).
 
-**E0.6b is DONE** — 21 rows written, all 25 `BESPOKE` rows validated as
-carrying marker + pattern ref + justification. **There is no unblocked
-discovery work left.** Everything remaining in E0 needs either the stack
-(B-1) or the Pi.
+**Blocked on the kiosk Pi only:** E0.3's three wait measurements, and E0.1's
+hardware confirmation. Nothing else in E0 is outstanding.
 
-If you want progress while the stack is down, the honest options are:
-1. **Fix D-1 and D-9 now** — both are small, both are confirmed from source,
-   and neither needs a running system to *write* (only to verify). That means
-   starting E2 before E1, which inverts the phase order deliberately rather
-   than by accident. Your call.
-2. **Capture kiosk TEMPLATE reference images** for the 7 new kiosk rows, so
-   the kiosk is fully gated before E4.
-3. Wait for the restart.
+**E1 has been updated from E0's findings** — four of its checklist items were
+already complete, its script paths and test counts were wrong, and it now names
+the eight defects needing regression tests. **Fix D-15 first**: malformed JSON
+returns 500 on every endpoint, so it is the "clean 400" case in all 93 rows —
+one shared fix, not 93 failures.
 
-**Permanently blocked until the Pi returns:** E0.3's three wait measurements,
-and all of E4.
+## E1 — in progress
+
+**D-15 fixed and deployed** (see the register). It was sequenced first because
+it is the "clean 400" case on all 93 endpoint rows at once.
+
+**Auth matrix sweep built** — `server/node_server/scripts/e2e-auth-matrix.mjs`,
+extending the existing real-HTTP e2e pattern. Covers unauthenticated → 401,
+forged bearer token → 401, student role on admin routes → 403, and a control
+group asserting the public surface stayed public.
+
+**First clean run: 62 pass, 1 fail — and the failure was my test, not the API.**
+It asserted 403 on `GET /admin/items`, which correctly returns **404** because
+no such collection route exists (only `/items/bulk`, `/items/:id`,
+`/items/:id/reviews`). Corrected to probe the real staff-gated route. Recording
+this because it is the exact trap E0 kept finding in the docs — asserting
+against an endpoint list rather than the routes.
+
+### Rate limiting — RESOLVED 2026-09-06 (option 2, user's choice)
+
+The API allows **100 requests / 15-minute window per IP**, applied uniformly
+including `/admin` — deliberately, since admin login was previously unthrottled.
+This sweep is ~62 requests and the full five-case matrix over 93 endpoints is
+**~465**, about 4.6x one window, so E1's *"one command runs the suite"* was not
+achievable against the deployment.
+
+**Implemented as a shared-secret header, deliberately NOT an IP allowlist.**
+The limiter keys its bucket on `CF-Connecting-IP`, which is a *client-supplied*
+header on any path that does not actually traverse Cloudflare — so an IP
+allowlist would be spoofable by exactly the requests it is meant to exclude. A
+secret is not. Same pattern as `KIOSK_SHARED_SECRET` elsewhere in this codebase.
+
+- `RATE_LIMIT_BYPASS_SECRET` (optional). **Unset = no bypass exists at all**, so
+  the default behaviour is unchanged and it fails closed.
+- The suite sends `X-RateLimit-Bypass`; every use is logged at **warn** so it
+  can never quietly become the normal path.
+- **Verified both directions:** with the correct secret the full sweep runs
+  **63/63, 0 inconclusive**; with a deliberately wrong secret the same endpoint
+  still returns **429**. The bypass is keyed, not a hole.
+
+### Auth matrix — COMPLETE, 63/63
+
+`server/node_server/scripts/e2e-auth-matrix.mjs`. Unauthenticated → **401** on
+all 34 protected endpoints; forged bearer token → **401**; student role → **403**
+on all 12 admin routes; and a control group confirming the public surface stayed
+public. **The 401 and 403 columns of Register 3 are proven.**
+
+First run reported 62/1 — and **the failure was the test, not the API**: it
+asserted 403 on `GET /admin/items`, which correctly 404s because no such
+collection route exists (only `/items/bulk`, `/items/:id`, `/items/:id/reviews`).
+Checked the route before recording a defect. This is the same trap that produced
+four wrong analyses in the original defect doc: asserting against an endpoint
+*list* instead of the actual routes.
+
+### Self-action matrix — COMPLETE, 8/8
+
+`server/node_server/scripts/e2e-self-action.mjs`. Deliberately **not** the
+obvious test: "I cannot review my own item" would pass **vacuously**, because it
+is structurally impossible and would keep passing even if the guard that makes
+it impossible were deleted. What is asserted instead:
+
+1. **The load-bearing guard itself** — `POST /rentals` still rejects
+   `item.ownerId === req.user.userId` with a 400 that explains itself.
+2. **The guards that would carry the weight if (1) regressed** — an
+   authenticated non-participant is refused the conversation, cannot post a
+   message, cannot review, and cannot refund a foreign transaction.
+
+**Second test-not-code failure in this phase, and this one mattered.** The
+message probe first sent `{content: …}`; the field is **`body`**, so
+`validate()` rejected it with a 400 *before* `assertParticipant` ever ran — the
+test asserted nothing about authorization while appearing to pass judgement on
+it. Sending a valid body proved the participant check genuinely rejects a
+non-participant. **A 400 that looks like a rejection can be validation, not
+authorization** — worth remembering for the rest of E1, since most of these
+probes send deliberately-minimal bodies.
+
+Creates one probe item and deletes it in a `finally`, pass or fail.
+
+### Risky-item coverage — COMPLETE 2026-09-06
+
+`API-TEST-PLAN.md`'s four "specifically risky" items, the ones that are the
+actual trust boundary rather than route middleware. Every one is now covered by
+a test that was **mutation-checked** — the source was deliberately broken, the
+test was watched to fail, and the source restored. A test that has never been
+red proves nothing.
+
+**1. Kiosk session store — attacked, not exercised.**
+
+- `src/services/__tests__/kioskSessionStore.test.ts` — **9 tests.** The 120s
+  TTL (accepted at 119,999 ms, gone at 120,000), single-use consumption, the
+  4-attempt cap (3 retries then the record is deleted, not flagged), per-rental
+  isolation, and a re-scan getting exactly one fresh budget.
+  *Mutation check: TTL → 600s and cap → 99 turned 3 tests red.*
+- `src/controllers/__tests__/kioskVerifyFace.test.ts` — **9 tests**, the real
+  session store (it is the boundary, so it is not mocked) with Prisma and the
+  ML calls stubbed. No session → refused before the rental is read and before
+  any ML spend · session belonging to another user → refused · a body carrying
+  `kioskId`/`kiosk_id`/`token`/`userId` → the door command still goes to the
+  **session's** kiosk · rental status not actionable → refused · the rental's
+  own state naming a different subject → refused · ML unreachable → fails
+  closed **without** burning a retry · four failed matches → `mustRescan` ·
+  a verified match is single-use.
+  *Mutation check: trusting `req.body.kioskId`, and deleting the session-owner
+  check, each turned a test red.*
+- `scripts/e2e-kiosk-trust.mjs` — **11 assertions against the running
+  deployment**, all passing. Same attacks over real HTTP, plus the socket half:
+  an anonymous socket and an authenticated **student** socket both emit
+  `kiosk:register` + `kiosk:flow_start` and are ignored, and no session exists
+  afterwards.
+  **Two controls make the silence meaningful**, because "no reply" is exactly
+  what a broken harness looks like: (a) the same student socket emits
+  `app:kiosk_scan` with missing fields and *does* get `kiosk:scan_error` back,
+  proving connection + auth + round-trip; (b) run on the server with
+  `KIOSK_SHARED_SECRET` from its own `.env`, a kiosk-authenticated socket
+  emitting the identical `kiosk:flow_start` *does* get
+  `kiosk:command {action:"flow_error"}`. The gate is the only difference.
+  **11/11 on the server (localhost), 10/11 from here** (the positive control is
+  reported SKIPPED, never as a pass, when the secret is absent).
+
+**2. QR token TTL and single use** — `server/kiosk/tests/test_qr_token.py`,
+**15 tests**, stdlib `unittest` (the kiosk venv has no pytest, on the Pi or
+here, and a test needing a pip install first is a test nobody runs):
+
+```
+cd server/kiosk && venv/Scripts/python.exe -m unittest discover -s tests -t .
+```
+
+Covers: TTL is 90s (D-9 regression) · `/api/qr-token` reports the real TTL ·
+the live token is accepted once and refused on replay · minting a new token
+invalidates the old one · expired tokens refused · junk/empty/tampered tokens
+refused · a refused token does **not** consume the live one (so an attacker
+spraying junk cannot invalidate the code the real user is about to scan).
+*Mutation check: removing the TTL comparison and the single-use invalidation
+turned 3 tests red.*
+
+> **Doc-vs-repo correction, found writing these tests.** `CLAUDE.md`,
+> `Implemented.md` §6, `ENGIRENT-CLAUDE.md` §1, `00-START-HERE.md` and
+> `USER-JOURNEY-SIMULATION.md` all said the kiosk "validates its own QR
+> **signature**/TTL". It does not. `validate_qr_token_internal` never
+> recomputes the sha256 suffix — it accepts a token only if it is
+> byte-identical to the single token live in that process, inside the TTL, and
+> burns it on use. **That is stricter than a signature check, not weaker**: a
+> correctly-signed token that was never issued is still refused (asserted
+> explicitly, `test_a_correctly_signed_token_that_was_never_issued_is_refused`).
+> All five documents corrected. The mechanism is unchanged — only its
+> description was wrong.
+
+**3. PayMongo webhook signature** — `scripts/e2e-webhook-signature.mjs`,
+**11/11 against the live deployment.** A real-webhook-shaped body with no
+signature → 400 naming the signature · five malformed headers (including a
+200-char `te=`) → 400 and never a 500, which matters because `timingSafeEqual`
+throws on length mismatch and the header is attacker-controlled · a well-formed
+but wrong HMAC → 400 · the manual/dev shape → 400 in production.
+**The control that makes it mean something:** every forged payload names a
+*real* PENDING transaction read from the admin API, and it is re-read
+afterwards and is **still PENDING**. Response codes alone would prove the reply,
+not the effect.
+
+- **D-25 reconfirmed live, not from memory.** The manual shape is refused with
+  *"A verified PayMongo webhook signature is required"*, so the mock-payment
+  fallback still cannot complete a payment on this deployment. The gate is
+  correct; the mock page needs to route through admin `decide-payment`.
+
+**4. ML thresholds at exactly 85 and 60** —
+`server/python_server/services/ml/tests/test_decision_thresholds.py`,
+**53 tests**, run on the server against the ML service's own venv (`skimage`
+is not installed on the dev machine):
+
+```
+ssh transfer@desktop-gklhcri
+cd D:\ENG\EngiRent\server\python_server\services\ml
+venv\Scripts\python.exe -m pytest tests/test_decision_thresholds.py -q
+```
+
+Both halves are asserted: **the values themselves** (85.0 / 60.0 / 10 — so
+moving a threshold to paper over a bad signal, the exact failure
+`ENGIRENT-CLAUDE.md` §1 warns about, breaks a test and says why), and **the
+mapping at the boundary** (exactly 85.0 approves, 84.999 does not; exactly 60.0
+is manual review, 59.999 is not; APPROVED and PENDING do not depend on the
+attempt number, only RETRY→REJECTED does). A 32-case sweep asserts that nothing
+below 85 auto-approves at any attempt number.
+*Mutation check: `ML_THRESHOLD_VERIFIED=80` turned 11 tests red.*
+
+> **Operational fact worth knowing: the thresholds are env-overridable at
+> runtime.** `settings` uses `env_prefix "ML_"`, so `ML_THRESHOLD_VERIFIED`
+> silently reassigns the 85. Checked: `D:\ENG\svc-ml.bat` sets only
+> `ML_API_KEY`, so no override is in force on the deployment — and the value
+> test above now fails loudly if one ever is.
+
+### New defect found by these tests
+
+**D-30 — `POST /kiosk/session/start` answers 200 to a completely forged token.**
+It fires the token at the Pi over the socket and returns
+*"Session handshake sent to kiosk — stand in front of the camera"* without
+waiting for, or ever learning, the Pi's verdict. Observed live: a garbage token
+for a kiosk that is currently **offline** still returned 200. **Not a security
+hole** — no session is opened, and the suite proves verify-face is still
+refused afterwards — but the phone is told a handshake succeeded when nothing
+received it. The copy is stale too: the kiosk camera was removed 2026-09-03, so
+"stand in front of the camera" describes hardware that no longer exists. A
+presentation-layer honesty defect, squarely in this track's remit.
+
+### One command runs the suite — DONE 2026-09-06, and it runs green
+
+`scripts/e2e-all.mjs` runs every suite sequentially, reads each one's exit code
+(their summary lines come in three different shapes), and prints one table.
+`--list` explains what each suite does and what it costs; `--safe` runs only the
+four that create no rows; `--only=a,b` picks specific ones.
+
+**Full set: 13/13 suites green, 383 assertions, twice in a row.**
+
+```
+auth-matrix 63 · kiosk-trust 11 · webhook-signature 11 · defect-regressions 23
+self-action 8 · my-listings 42 · availability 19 · messaging 29 · feedback 43
+item-moderation 43 · listing-video 19 · trust-safety 24 · enterprise-hygiene 48
+```
+
+**It has to run on the server, and that is not a workaround.** Nine suites
+import `@prisma/client` and talk to MySQL **directly** for setup and cleanup;
+`DATABASE_URL` is `localhost:3307` on `desktop-gklhcri`, so those cannot run
+from a laptop at all. `scripts/run-e2e-all.ps1` (committed) is the entry point
+there: it reads `RATE_LIMIT_BYPASS_SECRET` and `KIOSK_SHARED_SECRET` from that
+machine's own `.env` — so neither secret ever leaves it — points
+`API_BASE_URL` at `http://localhost:5000/api/v1`, and runs the set.
+
+```powershell
+$s = "D:\ENG\EngiRent\server\node_server\scripts\run-e2e-all.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File $s -SuiteArgs "--safe"
+```
+
+Three things had to change to get there, each worth keeping:
+
+1. **Ten suites never sent the rate-limit bypass header.** It was added in the
+   session that introduced it only to the suite being written at the time, so
+   the first full run died in 429s from `enterprise-hygiene` onward — and the
+   429s then cascaded into `PrismaClientValidationError: itemId: undefined`,
+   which reads like a code defect and is not one. All ten now spread a shared
+   `BYPASS` constant into their headers; unset still means the header is absent
+   and normal limits apply.
+2. **`verification` and `full-lifecycle` are marked `manualOnly`.** Both need a
+   real face image as `argv[2]` (the ML service rejects anything that is not a
+   face), and `verification` enrols biometrics for accounts it then deletes —
+   which is precisely how D-12's orphaned face/ID files were created. They are
+   excluded from unattended runs on purpose, not forgotten.
+3. **The PowerShell wrapper is ASCII-only and its parameter is `-SuiteArgs`.**
+   PS 5.1 reads a BOM-less UTF-8 script as ANSI, so an em-dash in a comment
+   broke the parser nine lines away; and a parameter named `$Args` collides
+   with the automatic variable and is silently ignored — `--safe` was accepted
+   and then ran everything.
+
+**The suites leave the database exactly as they found it.** Counted before and
+after a full run: 4 users, 3 items, 2 rentals, unchanged, with no test accounts
+left behind. So the full set can be run against the live deployment without
+polluting it — the one exception being the two `manualOnly` suites above.
+
+**One failure in the first clean run, and it was the test again** (third time
+this phase — the pattern is now the phase's main lesson). `defect-regressions`
+asserted that item media URLs are on the host the request arrived on. Over the
+tunnel that is true; over `localhost` the API correctly rewrites to
+`API_PUBLIC_URL`, because the URL has to be reachable by a phone off the
+tailnet. The assertion was rewritten to what D-17 actually guarantees: all
+media URLs share **one** host (no per-row baked-in hostname), the image really
+loads, and host-equality is asserted only when the suite is itself talking to
+the public host — otherwise it reports SKIP with the reason.
+
+### Regression tests for the fixed defects — `scripts/e2e-defect-regressions.mjs`
+
+24 assertions, green against the live deployment.
+
+- **D-1** — the *login* response carries `verificationStatus` /
+  `verificationReason` / `verificationNote` as keys, the value is a real status,
+  and **login and `GET /auth/profile` agree**. That last one is the actual
+  defect: the two payloads are built by different code (a hand-rolled object vs
+  `PROFILE_SELECT`), which is how they drifted apart while six client-side unit
+  tests stayed green and the bug stayed on screen.
+- **D-15** — malformed JSON gets a clean 400 on seven endpoints across four
+  route files, with a message that blames the body. Plus the inverse: valid
+  JSON with the wrong fields must still reach *validation* and not be reported
+  as a parse error.
+- **D-17** — item media as described above.
+
+Still uncovered from `E1-api-test-suite.md`'s list: **D-18** (`runMlVerification`
+returning `unavailable: true`) is not reachable from either kind of test —
+it is a module-scope function in `index.ts`, which starts a server on import,
+so it needs extracting before it can be tested. **D-23**'s silent-failure half,
+**D-26** and **D-28** need a settlement run, which needs Disbursements enabled.
+
+## Next concrete step — RESUME HERE
+
+**Phase: E1 (API + socket suite). E0 is complete except two kiosk-blocked
+sections.** Everything below is current as of 2026-09-06.
+
+### Immediately actionable, in order
+
+1. ~~`API-TEST-PLAN.md`'s "specifically risky" list~~ — **DONE 2026-09-06**, all
+   four items, each mutation-checked. It produced one doc correction (the QR
+   check is an identity match, not a signature check) and one new defect (D-30).
+2. ~~One command runs the suite~~ — **DONE 2026-09-06.** `scripts/e2e-all.mjs`
+   plus `scripts/run-e2e-all.ps1`; 13/13 green, 383 assertions, database
+   unchanged before and after.
+3. ~~Fill in Register 3's per-row test status~~ — **DONE 2026-09-06.** Paths
+   were extracted **statically from each suite's own source**, never from suite
+   titles; the four suites that build paths from variables were read by hand.
+   Counts are computed by script (`design`-style hand arithmetic is what put an
+   addition error in Register 1). Coverage went **0/93 → 55/93**, then
+   **→ 72/93 (77%)** after writing `e2e-coverage-sweep.mjs`.
+3b. ~~Close the safe happy-path gaps~~ — **DONE 2026-09-06.**
+   `scripts/e2e-coverage-sweep.mjs`, **19 passed / 2 failed live**, registered
+   in `e2e-all.mjs`. Pure HTTP (no Prisma import), so unlike nine of its
+   siblings it runs from a laptop against the tunnel. Covers the account
+   lifecycle end to end (register → refresh → profile → payout → password →
+   logout → **delete**, with a re-login after each mutation so a 200 is never
+   taken on trust), the read-only student and admin surfaces, and the retired
+   endpoints. **The 2 failures are D-32, a real deployment gap, not test bugs**
+   — they stay red until the 410 change is deployed. Three of the first four
+   failures *were* test bugs and are documented in the file so the next person
+   does not re-derive them: the field is `phoneNumber` not `phone`; both
+   register and login return `data.tokens.accessToken`, not `data.accessToken`;
+   and payout-destination needs `instapay|pesonet` + a `bic`.
+   **Deliberately not swept, and the header says why:** the three kiosk
+   hardware routes (they fire real relays), `POST /kiosk/upload` (needs the
+   shared secret), and the four admin mutations that need Prisma fixtures.
+3c. **The 21 rows still uncovered** are, honestly: 4 admin mutations needing
+   fixtures, 3 kiosk hardware routes, `POST /kiosk/upload`, 3 media routes,
+   2 notification rows (need a notification to exist — the sweep SKIPs them on
+   a fresh account rather than faking one), `GET /admin/kiosks/events` (SSE,
+   needs a stream reader), `GET /admin/kiosks/:kioskId/config` (no kiosk
+   registered while the Pi is down), `GET /payments/status/:transactionId`,
+   `PATCH /rentals/:id/status`, `POST /upload/images`, and
+   `GET /payments/receiving-institutions` (**BLOCKED**, and moot under the
+   payments ruling). None is a mystery; each has a named reason.
+4. ~~**D-18's regression test**~~ — **DONE 2026-09-06.** The blocker was real
+   and the fix was the small refactor predicted: `runMlVerification`,
+   `downloadBlob` and `resolveMediaUrl` moved verbatim out of `index.ts` into
+   **`src/services/mlVerificationService.ts`**, because importing them from a
+   test booted the HTTP and socket.io servers. Behaviour unchanged — it is a
+   move, not a rewrite. `src/services/__tests__/mlVerificationService.test.ts`,
+   **9 tests**, asserts the thing that actually matters: not "does it return
+   PENDING" (it should — failing closed is correct) but **"can an
+   infrastructure failure still be mistaken for a real verdict."** So it checks
+   `unavailable: true` + the reason, that the ML service is **never called**,
+   that the log is at **error** and names the counts (`0/1`), that a *genuine*
+   60-84 PENDING is **not** flagged, and D-17's legacy-hostname healing.
+   *Mutation check: reverting the source to the pre-D-18 bare PENDING turned
+   exactly 3 red — the two `unavailable` assertions and the error-log one —
+   while the fail-closed and happy-path tests correctly stayed green.*
+   Removing the block left `axios` and the `storageService` import unused in
+   `index.ts`; **`npx tsc --noEmit` caught both, and so did `npm run build`.**
+   Node suite now **89 tests / 10 files** (was 80/9); build and typecheck clean.
+   - **D-23**'s silent-failure half (`POST /payments` must not fail silently),
+     **D-26** and **D-28** — ~~need PayMongo Disbursements~~. **Re-scoped by the
+     payments ruling:** these now need the *manual* path built first (see
+     PAYMENTS RULING items 1-3), not Disbursements. D-28 largely dissolves.
+   - **D-30** — belongs with E4's two-screen handoff.
+   - **D-32** — the failing 410 assertions in `e2e-coverage-sweep` ARE its
+     regression test. They stay red until the fix is deployed; that is the test
+     doing its job, not a broken suite.
+5. **The two `manualOnly` suites.** `verification` and `full-lifecycle` need a
+   real face image and are excluded from unattended runs. `verification` also
+   enrols biometrics for accounts it then deletes, which is how D-12's orphans
+   were created — if it is ever run, purge afterwards.
+
+### How to run the suites
+
+```bash
+export RATE_LIMIT_BYPASS_SECRET=<the secret in the server .env>   # optional for the small suites
+API=<current api tunnel>/api/v1
+API_BASE_URL=$API node server/node_server/scripts/e2e-auth-matrix.mjs        # 63 assertions
+API_BASE_URL=$API node server/node_server/scripts/e2e-self-action.mjs        #  8
+API_BASE_URL=$API node server/node_server/scripts/e2e-kiosk-trust.mjs        # 11 (10 without the kiosk secret)
+API_BASE_URL=$API node server/node_server/scripts/e2e-webhook-signature.mjs  # 11
+API_BASE_URL=$API node server/node_server/scripts/e2e-coverage-sweep.mjs     # 24 (2 RED until D-32 deploys)
+```
+
+> **The sweep is ~45 requests, and the limit is 100 per IP per 15 minutes.**
+> Running it three times in a row from the same machine **will** 429, and the
+> 429s look like assertion failures. Either set
+> `RATE_LIMIT_BYPASS_SECRET` (server `.env`) or leave 15 minutes between runs.
+> Learned the direct way this session.
+The tunnel hostname rotates on every restart — read the current one from
+`startbat-logs/tunnel-api.log` on the server, never from a doc.
+
+**The kiosk-trust suite's positive control needs `KIOSK_SHARED_SECRET`, and the
+secret should not leave the server.** Run the whole set there instead, via the
+committed `scripts/run-e2e-all.ps1` — it reads the secret from that machine's
+own `.env` and points `API_BASE_URL` at `http://localhost:5000/api/v1`.
+`socket.io-client` is resolved from the kiosk UI's `node_modules` (present both
+here and on the server), so the API package gains no dependency.
+
+Unit tests, all three languages:
+```bash
+cd server/node_server && npx jest                                            # 89 tests, 10 files
+cd server/kiosk && venv/Scripts/python.exe -m unittest discover -s tests -t .  # 15 tests
+# ML (on the server, its own venv):  venv/Scripts/python.exe -m pytest tests/ -q   # 58 tests
+```
+
+### The trap that has now been hit FOUR times — read this before recording a defect
+
+**A failing assertion is usually the test, not the API.** Every failure E1 has
+produced so far has been mine:
+
+1. `GET /admin/items` does not exist — the correct answer was 404, and the
+   test asserted 403 against an endpoint *list* rather than the routes.
+2. The message field is `body`, not `content` — so `validate()` returned 400
+   before `assertParticipant` ever ran, and the test appeared to prove an
+   authorization check it had never reached.
+3. Item media URLs are rebuilt against `API_PUBLIC_URL`, not against the host
+   the request came in on — correct behaviour, since a phone off the tailnet
+   has to be able to load them; over `localhost` the test's equality assertion
+   was simply wrong.
+4. A `-Args` parameter in PowerShell collides with the automatic `$Args`
+   variable and is silently ignored, so `--safe` ran the full set anyway. The
+   run looked like a passing safe run and was not one.
+
+**Check the route, the field name, and your own harness before writing a
+defect row.** Related: **a 400 can be validation, not authorization** — these
+probes send deliberately minimal bodies, so a 4xx does not prove the guard ran.
+
+### Blocked, needs the user
+- **Kiosk Pi offline** → E0.3's three wait measurements, E0.1's hardware
+  confirmation, D-11's orientation question, and **all of E4**.
+- **PayMongo webhook** points at the dead Render host, and quick tunnels rotate
+  so there is no stable URL to re-register. Payments cannot confirm end to end
+  until this is solved (a *named* Cloudflare tunnel).
+- **Disbursements not enabled** → payouts 404, D-21's root cause.
+- **User is rotating the exposed live PayMongo key** — confirm before any move
+  to live mode.
+
+### Decisions still open
+Commission per-day vs per-rental is **RESOLVED** (per-rental, flat ₱20).
+**Payments scope is RESOLVED 2026-09-06** — manual admin control, real money
+out of band, PayMongo dormant. Full ruling and build order near the top of this
+file under "PAYMENTS RULING".
+Still open: **the gate amendment** (7 kiosk `BESPOKE` rows — decided in this
+file, contradicted in four others), localization ruling execution, and the
+`client/web` dark-mode statement.

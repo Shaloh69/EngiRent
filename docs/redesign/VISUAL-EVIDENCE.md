@@ -29,6 +29,32 @@ surfaces** before a single line changes — miss it and that screen has no
 before-image for the rest of the project. Treat it as a one-shot opportunity,
 because it is.
 
+**A BEFORE image is not safe until it is committed.** Sitting untracked in
+`design/before/` it survives nothing — not a `git clean`, not a disk failure,
+not a machine swap. "Captured" and "committed" are two different states and the
+register must not conflate them.
+
+### TEMPLATE images — the genre exception (amended 2026-09-06)
+
+A `BESPOKE` row whose pattern reference names a **genre** rather than a
+reachable URL ("ATM error screens", "parcel-locker bay status boards") cannot
+have a captured TEMPLATE image, and forcing one would mean committing a real
+product's pixels. Such a row satisfies the TEMPLATE requirement with **both**:
+
+- **A shared pattern image we authored** — a structural wireframe at
+  `design/templates/pattern-<genre-slug>.png`, **drawn, not captured**. One
+  image serves every row referencing that genre.
+- **A written structural note** naming the specific composition and affordance
+  rules being borrowed — recorded in the register alongside the conformance
+  note, and specific enough to be checked against ("single centred message
+  block, one dominant recovery action, no navigation chrome"), not a vibe.
+
+Both, or the row is `FAILED`. Nothing else is relaxed: BEFORE, AFTER, the
+triptych, the conformance note and the states line are all still required, and
+rows that *do* name a reachable URL still need a genuine capture of that
+template rendered. Full statement of the amendment: `TEMPLATE-LINKS.md` → THE
+GATE → AMENDMENT.
+
 ---
 
 ## 2. The comparison artifact — a triptych per screen

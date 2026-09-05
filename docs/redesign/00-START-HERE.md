@@ -27,7 +27,10 @@ behaviour, not to what a rental app is generally assumed to do.
 | 13 | `FOLDER-STRUCTURE.md` | Where everything lives |
 | 14 | `phases/E0`–`E7` | In order, one per session |
 | 15 | `KICKOFF_PROMPT.md` | Paste into a fresh Claude Code session |
-| 16 | `ACCESS-AND-WORKAROUNDS.md` | **How to reach each surface when it isn't there** — and what a dev-mode result does not prove |
+| 16 | `ITEM-VERIFICATION-PIPELINE-GAPS.md` | Failure modes of the deposit/return item-matching pipeline — the locker-background confounder, same-model substitution, phantom matches, the retry surface. **IN SCOPE as of 2026-09-06** — thresholds are not, and A-3's measurement is a prerequisite |
+| 17 | `COMMISSION-AND-PRICING.md` | The ₱400 + ₱20 = ₱420 platform-fee model, admin rate editing, and why the ₱10 transfer fee changes the economics |
+| 18 | `PAYMENTS-AND-PAYOUTS-REVAMP.md` | Payment-route fixes, the two payout modes, the owner balance ledger, money-timing notifications, and the admin manual-payout console |
+| 19 | `ACCESS-AND-WORKAROUNDS.md` | **How to reach each surface when it isn't there** — and what a dev-mode result does not prove |
 
 ## The end goal, in one sentence
 
@@ -88,11 +91,20 @@ net. Screenshots are currently the only thing that would catch a broken screen.
 especially — that's established, don't re-litigate it.** E1 exists to make
 that provenness automated and repeatable, not to question it.
 
-Also untouched: the face-verification trust architecture (kiosk validates its
-own QR signature/TTL, identity derived from rental status not client input,
+Also untouched: the face-verification trust architecture (kiosk validates the
+scanned QR against the one token live in its own process — single-use, inside
+the 90s TTL, not a signature recomputation; corrected 2026-09-06 in E1 —
+identity derived from rental status not client input,
 server-side session store, Node calls ML server-side, fails closed when ML is
-unreachable), ML thresholds and pipeline, and the hand-calibrated per-locker
-GPIO timings.
+unreachable), the ML **thresholds** (85/60/retry-10), and the hand-calibrated
+per-locker GPIO timings.
+
+**Scope change 2026-09-06 — the item-comparison *pipeline* is now IN scope**
+(the thresholds are not). E0 found that the locker's fixed background is an
+unaccounted confounder that both inflates similarity between different items
+and suppresses it for the correct one, plus five further failure modes. See
+`ITEM-VERIFICATION-PIPELINE-GAPS.md`. **A-3's ML reporting is a prerequisite:**
+measure which failure modes are real before changing any of them.
 
 **Justified additions this track does make**, each a design gap over a working
 backend: the disputes settle UI, admin client-side role gating, an

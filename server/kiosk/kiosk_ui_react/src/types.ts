@@ -8,8 +8,6 @@ export type Screen =
   | "how"
   | "catalogue"
   | "lockers"
-  | "qr"
-  | "confirm"
   | "face"
   | "verifying"
   | "success"
@@ -20,18 +18,17 @@ export type Screen =
  *  a transaction. */
 export const INFO_SCREENS: Screen[] = ["how", "catalogue", "lockers"];
 
-/** Screens a user can be sitting on when their phone scans the kiosk QR — the
- *  code is rendered on "main", and they may have wandered into an info screen
- *  or let the display fall back to "idle" before scanning. A "qr_scanned"
- *  event arriving on any of these is legitimate and should open "confirm";
- *  arriving on a flow screen ("face"/"verifying"/"success") is a late or
- *  duplicate event and must be ignored so it cannot interrupt a live scan. */
-export const PRE_FLOW_SCREENS: Screen[] = [
-  "idle",
-  "main",
-  ...INFO_SCREENS,
-  "qr",
-];
+/** Screens a user can be sitting on before a rental flow starts. Retained for
+ *  guard checks on in-flight events: arriving on a flow screen
+ *  ("face"/"verifying"/"success") means a late or duplicate event that must not
+ *  interrupt a live session.
+ *
+ *  The "qr"/"confirm" screens that used to be in this list were removed
+ *  2026-09-06. They belonged to the reversed hand-off (kiosk scanning a code on
+ *  the phone), whose camera was physically removed 2026-09-03 along with the
+ *  QR-decode loop that emitted `qr_scanned` — leaving the states, and the
+ *  deadlock fix written for them the same day, permanently unreachable. */
+export const PRE_FLOW_SCREENS: Screen[] = ["idle", "main", ...INFO_SCREENS];
 
 export type Mode = "place" | "retrieve" | null;
 

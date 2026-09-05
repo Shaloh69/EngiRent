@@ -29,6 +29,44 @@ template screenshot on disk is `FAILED` at review time even if this file has
 a row for it — the row is the plan, the screenshot pair is the evidence. See
 `ENGIRENT-CLAUDE.md` §2 for the capture discipline.
 
+### AMENDMENT — genre-referenced `BESPOKE` rows (ruled 2026-09-06)
+
+**The problem this fixes.** Seven kiosk rows name a *genre* as their pattern
+reference — "ATM error screens", "parcel-locker bay status boards",
+"payment-terminal processing screens", "transit ticket-machine home screens".
+A genre has no URL. It cannot be screenshotted. The only way to force a PNG
+would be to capture a real product's UI and commit third-party pixels, which
+needs a `CREDITS.md` licence entry and still wouldn't be a *template* — it
+would be one vendor's instance of the genre.
+
+**The amended rule.** Where a `BESPOKE` row's pattern reference names a genre
+rather than a specific reachable URL, the template-image requirement is
+satisfied by **both** of:
+
+1. **A shared pattern image, authored by us** — a structural wireframe of the
+   composition being borrowed, at
+   `design/templates/pattern-<genre-slug>.png`. **Drawn, not captured.** One
+   image serves every row referencing that genre; seven rows do not need seven
+   images. It is not a screenshot of anyone's product, so it vendors nothing
+   and needs no licence entry.
+2. **A written structural note** in the register, naming what is actually
+   being taken from the genre — the specific composition, hierarchy and
+   affordance rules, not a vibe. "ATM error screens: single centred message
+   block, one dominant recovery action, no navigation chrome, nothing that
+   requires reading below the fold" is a note. "ATM-like" is not.
+
+**Both, or the row is `FAILED`.** This relaxes exactly one thing: the
+requirement that the template image be a *capture of an external product*.
+Everything else stands unchanged — the row still needs all three parts
+(`BESPOKE` + pattern reference + justification), and BEFORE, AFTER, the
+triptych, the conformance note and the states line are all still required.
+
+**This does not apply to rows with a real URL.** Every Flutter, admin and
+website row names a reachable template. Those still need a genuine capture of
+the template rendered — `design/templates/README.md` already records an
+earlier pass that filed documentation pages and a Dribbble search grid as
+"templates", and that was wrong then and stays wrong now.
+
 ---
 
 ## Surface 1 — Flutter mobile app (24 existing screens + 3 added by this track, v1.8.0)

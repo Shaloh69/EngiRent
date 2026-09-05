@@ -139,7 +139,12 @@ list its sections, and tell me which register rows it should move and roughly
 how many. If the phase file conflicts with what's actually in the repo, say so
 now rather than working around it silently.
 
-Then start section <N>.1 only. Report before moving to <N>.2.
+Then work the phase's sections in order. **Don't stop between sections to
+report** — put findings in docs/PROGRESS.md as you go and keep moving. Surface
+something only if it meets the bar in ENDGOAL-AND-TRACKING.md §2 ("When to
+surface something"): blocked, needs my ruling, a security finding, context
+filling, an irreversible action, a correction to something you already told me,
+or the phase is done.
 ```
 
 ### Resuming mid-phase
@@ -181,6 +186,9 @@ Defect: <D-N>. Before fixing:
    API surface, not from reading the failing code.
 3. Write a failing test first. Show me it failing.
 Then fix, show the test passing, and update the defect register.
+**Verify it on screen before calling it fixed** — a green test is not a fix.
+Work straight through the defect list; report per ENDGOAL-AND-TRACKING.md §2,
+not per defect.
 ```
 
 ### End-of-phase checkpoint
@@ -217,6 +225,15 @@ the doc without showing me the conflict first.
 4. **Server-side stays authoritative.** Client-side role gating is a UX fix
    and must never be described as a security boundary
 5. **Predated docs get moved and bannered, never deleted**
-6. **Every response opens with the status line** (`ENDGOAL-AND-TRACKING.md` §2)
-7. **Every session ends with:** *"Which parts of this did you actually run,
-   and what are you unsure about?"*
+6. **Every response opens with the status line** (`ENDGOAL-AND-TRACKING.md` §2).
+   One line, always — it is not a report and needs no prose around it
+7. **Default to continuing, not reporting.** `docs/PROGRESS.md` is the running
+   record; interrupt the human only for the reasons in
+   `ENDGOAL-AND-TRACKING.md` §2 — blocked, a ruling needed, a security finding,
+   context filling, an irreversible action, a correction, or a phase boundary.
+   Routine progress goes in the registers, not the conversation
+8. **When the work stops, answer:** *"Which parts of this did you actually run,
+   and what are you unsure about?"* — at a phase boundary, a blocker, or a
+   `/clear`, not after every chunk
+9. **A green test is not a fix.** Verify on screen before recording anything as
+   fixed — D-1 passed six unit tests while still visibly broken

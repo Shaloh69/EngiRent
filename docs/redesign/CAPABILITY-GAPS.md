@@ -6,6 +6,24 @@ endpoint or model that already exists** — these are missing front doors, not
 new features. That distinction matters: each item costs UI work, not backend
 work, unless the row says otherwise.
 
+> **⚠ CORRECTED 2026-09-06 — five of the ten user-facing items are ALREADY
+> BUILT.** Verified against the running app, not the endpoint list:
+> **C-1 extend rental** (`rental_detail_screen.dart:267`) — the doc calls this
+> "the single most valuable missing user control in the product" and E5.1b makes
+> it the priority; it shipped long ago · **C-2 notification preferences** (its
+> own screen, GET+PUT) · **C-3 cancel rental** (`:223`) · **C-7 account
+> deletion** (`home_screen.dart:1456`, with password confirmation) · **C-9
+> payout destination** (own screen + a Profile tile that changes on
+> `payoutConfigured`). **C-5 is partial** (a Ratings button reaches
+> `ReviewsScreen(userId:)`, but there is no full profile). Only **C-4 refund**
+> and **C-8 change password** look genuinely absent.
+>
+> **Consequence for the recommended four:** C-1 is done, so the recommendation
+> is now **A-2 first** (the verification funnel — it measures the blast radius
+> of D-1, which affected every user who had submitted an ID), then A-1, A-3,
+> and **C-5 in place of C-1** — a public trust profile is the strongest genuinely
+> missing item, and `GET /reviews/user/:userId` is already public.
+
 **Verify in E0 before building.** These are inferred from the documented
 surface; some may already be partially built and simply hard to find, which is
 itself a finding worth recording.

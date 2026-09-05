@@ -120,6 +120,188 @@ all four should show up once fully started. Then check the tunnels resolve from 
 
 ## Session log
 
+### 2026-09-06 (later) — Payments ruled to a manual admin control; Register 3 filled in empirically; D-18 finally testable
+
+**Two user rulings, both executed.**
+
+1. **Payments become a manual admin control, not PayMongo** — with real money
+   still moving out of band (renter pays by GCash/cash, admin verifies receipt
+   and approves). It **dissolves five open items at once** (D-21, D-25, D-28,
+   the dead webhook URL, and the need for a named Cloudflare tunnel) — every one
+   of which was blocked on the user rather than on work. The manual path already
+   exists and is better than expected: `adminDecidePayment` is idempotent
+   (claims `PENDING -> PROCESSING` via `updateMany`), handles both transaction
+   types, advances the rental, and notifies — and the admin console already has
+   the buttons wired. **What it creates:** `POST /payments` must stop building a
+   PayMongo checkout URL; **D-23 escalates to a total blocker** (the phone
+   bare-`return`s on a null `paymentUrl`, which is now *always* null); and
+   `adminDecidePayment` **emits no socket event** — read the whole function —
+   so the decision never reaches the phone. That definitively answers D-23's
+   open question. Full build order in `docs/PROGRESS.md` -> PAYMENTS RULING.
+2. **Gate amendment ruled YES and written into all four enforcing documents**
+   (`TEMPLATE-LINKS.md`, `VISUAL-EVIDENCE.md`, `ENGIRENT-CLAUDE.md` x2,
+   `design/templates/README.md`). It had been recorded as "decided" in
+   `PROGRESS.md` and contradicted everywhere else. Genre-referenced `BESPOKE`
+   rows are now satisfied by an **authored structural wireframe** (drawn, not
+   captured, so nothing is vendored) **plus a written structural note**. The 7
+   kiosk rows stay FAILED until those exist — the amendment gives them a path,
+   it does not pass them.
+
+**Register 3 went 0/93 -> 73/93 happy path**, and the method matters more than
+the number. Coverage was derived by **statically extracting the paths each suite
+actually calls from its own source**, never from suite titles; the four suites
+that build paths from variables were read by hand. Counts are **computed by a
+script now committed at `server/node_server/scripts/tools/`**, because Register 1
+already carries an addition error from doing this by hand.
+
+**New suite: `scripts/e2e-coverage-sweep.mjs`, 22 passed / 2 failed.** Pure HTTP
+(no Prisma), so unlike nine siblings it runs from a laptop. The 2 failures are
+real:
+
+**D-32 — the 410 Gone ruling is in the repo and NOT on the deployment.** The
+server's `utils/errors.ts` has no `GoneError` class at all; `kioskController.ts`
+there still throws `ValidationError`. The register said "✅ EXECUTED". **On a
+diverged checkout deployed by manual file copy, "executed" and "live" are
+different states** — the same conflation as "captured" vs "committed" for the
+BEFORE images. I nearly reported this as a systemic pattern; checking first
+showed D-15, D-17 and D-18 *are* all genuinely deployed, and my "absent" reading
+came from trusting `findstr`'s **exit code through ssh->powershell**, which does
+not propagate. Two tools' answers are not a diff (cf. retracted D-16).
+
+**Three more real findings, all from writing the sweep rather than reading code:**
+- **D-31** — retired endpoints run `validate()` *before* the retirement handler,
+  so a malformed body gets "Valid rental ID is required" for an endpoint that no
+  longer exists. The 410 is only reachable by sending a well-formed request to a
+  dead route.
+- **D-33** — payout-destination requires `instapay|pesonet` + a **BIC**, i.e. it
+  is shaped entirely around PayMongo Disbursements. So D-21 is deeper than "the
+  dropdown won't load": the whole form assumes a product that is not enabled,
+  and an owner cannot say "pay me by GCash".
+- **D-34** — `DELETE /auth/account` is a **soft** delete, and `totalUsers`
+  counts `role: STUDENT` with **no `isActive` filter** — so deleting an account
+  permanently inflates the admin dashboard. Found by counting users before/after
+  (6 where the register said 4) and then reading the query instead of assuming a
+  leak. **Consequence handled:** the sweep now reuses one fixed probe identity
+  instead of a fresh account per run, and reactivates it through
+  `PATCH /admin/users/:id` — which is that endpoint's only coverage. *3
+  deactivated `sweep178864…` rows from early runs still need a hard delete.*
+
+**D-18 is finally covered.** `runMlVerification`/`downloadBlob`/`resolveMediaUrl`
+moved verbatim from `index.ts` (which boots servers on import, the actual
+blocker) into `services/mlVerificationService.ts`. 9 tests asserting the thing
+that matters — not "does it return PENDING" but **"can an infrastructure failure
+still be mistaken for a real verdict"**. *Mutation-checked: reverting to the
+pre-fix bare PENDING turned exactly 3 red.* Node suite **89 tests / 10 files**
+(was 80/9). The extraction left two unused imports — **`npm run build` and
+`tsc --noEmit` both caught them**, unlike the earlier case where only build did.
+
+**The trap hit twice more, both mine, now six times this phase.** The register
+field is `phoneNumber` not `phone` (`Implemented.md` §3.1 said `phone` — fixed);
+register and login return `data.tokens.accessToken`, not `data.accessToken`, so
+a *successful* 200 read as "login failed"; and `/kiosk/return` validates
+`lockerId` and `images` too, so a rentalId-only probe got a validation 400 that
+looked exactly like a missing 410. **A 400 is not evidence you reached the thing
+you were testing.** The sweep's retired-endpoint assertion now prints which of
+the two happened, and that diagnostic separated the cases on its first run.
+
+**Also learned:** the API allows 100 req/15min/IP, and running a ~45-request
+suite three times in a row 429s — the 429s then read as assertion failures.
+
+### 2026-09-06 — E1's four "specifically risky" tests written and run; the QR-validation story in every doc was wrong
+
+Redesign track, phase E1. `API-TEST-PLAN.md` names four items as specifically
+risky because they are the actual trust boundary rather than route middleware.
+All four are now covered, and **every test was mutation-checked** — the source
+was deliberately broken, the test watched to fail, the source restored. Detail,
+commands and results: `docs/PROGRESS.md` → "Risky-item coverage".
+
+- **Kiosk session store** — 18 new Jest tests (`kioskSessionStore.test.ts`,
+  `kioskVerifyFace.test.ts`) plus `scripts/e2e-kiosk-trust.mjs`, which attacks
+  the *running* deployment over HTTP **and socket.io**: an anonymous socket and
+  an authenticated student socket both emit `kiosk:flow_start` and are ignored,
+  and no session exists afterwards. "No reply" is what a broken harness looks
+  like, so two controls run alongside: the same student socket gets
+  `kiosk:scan_error` back from `app:kiosk_scan` (round-trip works), and a
+  kiosk-authenticated socket emitting the identical event *does* get
+  `flow_error`. 11/11 on the server. `socket.io-client` is borrowed from the
+  kiosk UI's `node_modules`, so the API package gains no dependency.
+- **PayMongo webhook signature** — `scripts/e2e-webhook-signature.mjs`, 11/11
+  live. Unsigned, five malformed headers, and a wrong HMAC all 400 (never 500 —
+  `timingSafeEqual` throws on length mismatch and the header is
+  attacker-controlled). Every forged payload names a **real PENDING
+  transaction**, re-read afterwards and still PENDING. D-25 reconfirmed live
+  rather than from memory: mock payments still cannot complete in production.
+- **ML thresholds** — 53 pytest cases on the boundary mapping *and* on the
+  values themselves (85.0 / 60.0 / 10). Run on the server's ML venv; `skimage`
+  isn't installed on the dev machine. **Worth knowing: the thresholds are
+  env-overridable** (`env_prefix "ML_"` → `ML_THRESHOLD_VERIFIED`).
+  `svc-ml.bat` sets only `ML_API_KEY`, so no override is live — and the value
+  test now fails loudly if one ever is.
+- **QR token** — 15 stdlib-`unittest` tests on the kiosk (no pytest in that
+  venv, on the Pi or here).
+
+**The doc correction, and it touched five files.** `CLAUDE.md`,
+`Implemented.md` §6, `ENGIRENT-CLAUDE.md` §1, `00-START-HERE.md` and
+`USER-JOURNEY-SIMULATION.md` all said the kiosk "validates its own QR
+**signature**/TTL". It does not. `validate_qr_token_internal` never recomputes
+the sha256 suffix — it accepts a token only if it is byte-identical to the one
+token live in that process, inside the 90s TTL, and burns it on use. **That is
+stricter than a signature check**, since a correctly-signed token that was
+never issued is still refused (now asserted explicitly). The mechanism is
+unchanged and correct; only its description was wrong. All five corrected —
+this is the "repo wins over the docs" rule in action, and the claim had been
+repeated across three sessions.
+
+**New defect D-30:** `POST /kiosk/session/start` answers **200** to a token the
+kiosk never issued, and does so while the Pi is offline — it fires the token at
+the kiosk's socket room and returns *"Session handshake sent — stand in front
+of the camera"* without ever learning the verdict. Not a security hole (no
+session is opened; verify-face is still refused, proven in the same suite), but
+the phone shows success for a handshake nothing received, and the copy still
+describes a camera removed on 2026-09-03.
+
+Node suite now 80 tests / 9 files (was 62 / 7); `tsc --noEmit` and
+`npm run build` both clean.
+
+**Same session, second half — the whole test set now runs from one command, and
+it is green.** `scripts/e2e-all.mjs` + `scripts/run-e2e-all.ps1`:
+**13/13 suites, 383 assertions**, run on the server against `localhost:5000`.
+Three things had to be fixed first, all worth remembering:
+
+1. **Ten of the twelve existing suites never sent the rate-limit bypass
+   header** — it was only ever added to the suite being written when the
+   feature was introduced. The first full run died in 429s from
+   `enterprise-hygiene` onward, and those 429s then surfaced as
+   `PrismaClientValidationError: itemId: undefined`, which reads exactly like a
+   code defect and is not one.
+2. **Nine suites import `@prisma/client` directly**, so they cannot run from
+   the dev machine at all (`DATABASE_URL` is `localhost:3307` on the server).
+   The set only runs end to end on `desktop-gklhcri`. `run-e2e-all.ps1` reads
+   both secrets from that machine's own `.env` so neither leaves it.
+3. `e2e-verification` and `e2e-full-lifecycle` are **manual-only**: both need a
+   real face image as `argv[2]`, and `verification` enrols biometrics for
+   accounts it then deletes — exactly how D-12's orphaned face/ID files were
+   created.
+
+**The suites leave the database exactly as they found it** — 4 users, 3 items,
+2 rentals, counted before and after. So the full set can be run against the
+live deployment without polluting it.
+
+**The trap has now been hit four times in this phase, every time by me, never
+by the API:** a nonexistent endpoint asserted as 403 (correct answer 404); the
+message field being `body` not `content` (so a 400 from *validation* looked
+like an authorization result); item media URLs asserted against the request
+host when they are correctly rebuilt against `API_PUBLIC_URL`; and a PowerShell
+`-Args` parameter colliding with the automatic `$Args`, so `--safe` silently
+ran the full set. Check the route, the field name, and your own harness before
+writing a defect row.
+
+**Two PowerShell facts worth keeping:** PS 5.1 reads a BOM-less UTF-8 script as
+ANSI, so an em-dash in a comment breaks the parser several lines away; and
+`$env:X` inside an `ssh "powershell -Command ..."` string gets eaten before it
+arrives — put anything with variables in a `.ps1` and run it with `-File`.
+
+
 ### 2026-09-03 (same day, latest) — Brownout recovery: full stack restored, and it exposed two more real startup bugs
 
 **A mains brownout took down both machines.** Server rebooted 19:34:55; the Pi lost power and came back a few minutes later. Recovery followed the runbook above and worked, but surfaced two genuine bugs that had been hidden because nothing had cold-started this way before.

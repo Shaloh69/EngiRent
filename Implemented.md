@@ -65,7 +65,7 @@ Ordered roughly by how likely each is to bite a real user or grader first.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | /register | none | email, password≥8, studentId, firstName, lastName, phone |
+| POST | /register | none | email, password≥8, studentId, firstName, lastName, **`phoneNumber`** (corrected 2026-09-06 — this table said `phone`; `authRoutes.ts:37` validates `phoneNumber` with `isMobilePhone("any")`, so a client following this doc gets a 400) |
 | POST | /login | none | email, password |
 | POST | /refresh | none | refreshToken |
 | POST | /logout | authenticate | |
@@ -83,7 +83,7 @@ Ordered roughly by how likely each is to bite a real user or grader first.
 
 **Payments** (`/payments`): POST / — createPayment (auth), POST /confirm — webhook, signature-verified internally not route-gated, GET / — transactions (auth), GET /status/:transactionId (auth), GET /receiving-institutions (auth), POST /:transactionId/refund (auth).
 
-**Kiosk** (`/kiosk`): POST /deposit (auth), POST /claim and POST /return (auth — **always error, see Problems §2.5**), GET /lockers (auth), POST /lockers/:id/release (auth), POST /session/start (auth), POST /upload (kiosk shared-secret), **POST /verify-face (auth + upload — the real phone-side verification endpoint, see §6)**.
+**Kiosk** (`/kiosk`): POST /deposit (auth), POST /claim and POST /return (auth — **always error; repo now returns 410 Gone, but the deployment still answers 400 — see PROGRESS.md D-32**), GET /lockers (auth), POST /lockers/:id/release (auth), POST /session/start (auth), POST /upload (kiosk shared-secret), **POST /verify-face (auth + upload — the real phone-side verification endpoint, see §6)**.
 
 **Notifications** (`/notifications`, all authenticate): GET /, GET/PUT /preferences, PATCH /:id/read, PATCH /read-all, DELETE /:id.
 
@@ -119,7 +119,12 @@ All 14 Prisma models (`User`, `Item`, `Rental`, `Conversation`, `Message`, `Tran
 
 ### 3.5 Tests
 
-`src/controllers/__tests__/{kioskController,paymentController,rentalController}.test.ts` — Jest with a fully mocked Prisma client (`jest-mock-extended`). Real assertions, narrow scope: rental status transition whitelist, payment amount derivation, webhook signature check, locker-release ownership check. No coverage for auth, items, messaging, notifications, reviews, feedback, or any of the ~33 admin endpoints — those are exercised only by the manual `scripts/e2e-*.mjs` scripts (real HTTP calls against a live server + real database, run by hand, not part of any CI in this repo).
+**Corrected 2026-09-06: there are 6 Jest files, not 4** —
+`src/controllers/__tests__/{kioskController,paymentController,rentalController}.test.ts`
+plus `src/services/__tests__/storageService.test.ts`,
+`src/utils/__tests__/crypto.test.ts` and `src/utils/__tests__/kioskEventLog.test.ts`.
+The real-HTTP suites live at **`server/node_server/scripts/e2e-*.mjs`** (10 of
+them), not a repo-root `scripts/`. Jest with a fully mocked Prisma client (`jest-mock-extended`). Real assertions, narrow scope: rental status transition whitelist, payment amount derivation, webhook signature check, locker-release ownership check. No coverage for auth, items, messaging, notifications, reviews, feedback, or any of the ~33 admin endpoints — those are exercised only by the manual `scripts/e2e-*.mjs` scripts (real HTTP calls against a live server + real database, run by hand, not part of any CI in this repo).
 
 ---
 
@@ -188,7 +193,7 @@ React/Vite build, served as static files by a small Flask backend (`kiosk_ui/ser
 
 ## 6. Face Verification Architecture (cross-cutting, moved off the kiosk 2026-09-03)
 
-The real, current flow: the kiosk continuously displays its own QR code (`GET /api/qr-token`, format `KIOSK-001:{token_id}:{timestamp}:{signature}`, 90-second TTL, HMAC-signed). The phone scans it and emits `app:kiosk_scan`; Node relays `kiosk:session_validate` to the kiosk's socket room; **the kiosk itself** checks the token's signature and TTL — that check is the one real moment "a person is standing at this physical kiosk right now" becomes true, and nothing downstream re-derives it from anything the phone claims.
+The real, current flow: the kiosk continuously displays its own QR code (`GET /api/qr-token`, format `KIOSK-001:{token_id}:{timestamp}:{signature}`, 90-second TTL, HMAC-signed). The phone scans it and emits `app:kiosk_scan`; Node relays `kiosk:session_validate` to the kiosk's socket room; **the kiosk itself** checks the token — and the check is an identity match, not a signature recomputation: `validate_qr_token_internal` accepts a token only if it is byte-identical to the single token currently live in that process, only inside the 90-second TTL, and it burns the token on use. (Corrected 2026-09-06 during E1; the sha256 suffix is minted but never re-verified. The identity match is the stricter of the two — a correctly-signed token that was never issued is refused, and every token is single-use. Pinned by `server/kiosk/tests/test_qr_token.py`.) That check is the one real moment "a person is standing at this physical kiosk right now" becomes true, and nothing downstream re-derives it from anything the phone claims.
 
 On success the kiosk emits `kiosk:flow_start`. Node then:
 

@@ -40,9 +40,20 @@ photo of her face and her student ID to an app she installed twenty minutes
 ago. What she needs to see: *why* it's needed (it's what unlocks the physical
 locker later — that's a genuinely good reason and it isn't being told to
 her), where the photo goes, and that it isn't shared.
-**Design consequence:** face registration needs an explanation screen before
-the camera opens, not a camera that just appears. This is a design gap, not
-an implementation gap — the endpoint works.
+> **⚠ CORRECTED 2026-09-06 — this screen already exists, and it is thorough.**
+> Captured from the running app: profile setup opens on **"Verify your identity
+> — STEP 1 OF 3, Before we start"**, which states *why*
+> ("EngiRent lockers open with your face"), **what we collect** (a face template
+> — *"converted into a numeric encoding… does not send your photo anywhere at
+> collection time"* — and a student ID photo), **your rights** ("Not visible to
+> other students", "Withdraw at any time"), an optional guardian contact, and an
+> explicit biometric-consent checkbox that gates a disabled "Agree and
+> continue". Step 2's footer repeats the reason. Evidence:
+> `design/before/flutter-profile-setup-1-consent*.png`. **E5.1 should not build
+> this.**
+
+**Design consequence (SUPERSEDED — see the correction above):** face
+registration needs an explanation screen before the camera opens.
 
 **A3. Browsing — Flutter app, one-handed, walking.**
 `GET /items` with optional auth. She filters, taps an item, sees
@@ -73,8 +84,12 @@ kiosk scanning the phone — is vestigial dead code, `QrScreen`/`ConfirmScreen`,
 because the kiosk's camera was physically removed 2026-09-03.)
 
 Her phone emits `app:kiosk_scan` → Node relays `kiosk:session_validate` → **the
-kiosk itself** verifies the signature and TTL. That check is the one real
-moment "a human is physically standing here right now" becomes true.
+kiosk itself** checks the token against the one it currently has live, inside
+the 90s TTL, and burns it on use. That check is the one real moment "a human
+is physically standing here right now" becomes true. (It does **not**
+recompute the signature — corrected 2026-09-06 in E1; the identity match is
+the stricter check of the two, since a correctly-signed token that was never
+issued is still refused.)
 
 **Design consequence, and it's the biggest one in this document:** for a few
 seconds, Maya is looking at **two screens at once** — her phone and the kiosk

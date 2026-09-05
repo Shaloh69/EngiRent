@@ -23,9 +23,28 @@ loading pattern — a single generic spinner across all three would be the
 wrong answer three times.
 
 ### 1.1 Locker actuation — 5 to 22 seconds, hardware-driven, **known duration**
-Real per-locker calibration from `kiosk_config.json`: locker 1 runs
-15/15/22/22s extend/retract/open/close; locker 2 runs 5/5/21/21s. That's up
-to a **17-second difference between lockers for the same action.**
+> **⚠ CORRECTED 2026-09-06.** The labels below were **reversed** and the
+> headline number compared two different actions. Real `kiosk_config.json` key
+> order is **main_door_open / bottom_door_open / actuator_extend /
+> actuator_retract**:
+>
+> | Locker | door open | door open | extend | retract |
+> |---|---|---|---|---|
+> | 1 | 15s | 15s | 22s | 22s |
+> | 2 | **5s** | **5s** | 21s | 21s |
+> | 3 | 15s | 15s | 17s | 17s |
+> | 4 | 15s | 15s | 23s | 23s |
+>
+> Same-action spread is **10s** on the door (locker 2 vs. the rest) and **6s**
+> on the actuator — not 17s, which subtracted locker 2's *door* time from locker
+> 1's *actuator* time. **Lockers 3 and 4 exist and are never mentioned in these
+> docs.** Because lockers 1/3/4 share an identical 15s door time, E4.4's "two
+> lockers with different timings" must be **locker 2 paired with any other** —
+> any other pair would pass a sync test that proves nothing. Build the
+> determinate progress indicator from the real key order; mapping the doc's
+> labels would budget 22s to a 15s phase and vice versa.
+
+Real per-locker calibration from `kiosk_config.json` (labels corrected above).
 
 - **Never use a fixed-duration animation.** Drive it from socket state
   (`kiosk:command` variants, `kiosk:status`). A canned 3-second "opening"

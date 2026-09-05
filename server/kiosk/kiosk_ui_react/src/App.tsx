@@ -8,8 +8,6 @@ import { MainScreen } from "./components/screens/MainScreen";
 import { HowScreen } from "./components/screens/HowScreen";
 import { CatalogueScreen } from "./components/screens/CatalogueScreen";
 import { LockersScreen } from "./components/screens/LockersScreen";
-import { QrScreen } from "./components/screens/QrScreen";
-import { ConfirmScreen } from "./components/screens/ConfirmScreen";
 import { FaceScreen } from "./components/screens/FaceScreen";
 import { VerifyingScreen } from "./components/screens/VerifyingScreen";
 import { SuccessScreen } from "./components/screens/SuccessScreen";
@@ -74,20 +72,6 @@ export default function App() {
       )}
       {k.screen === "lockers" && (
         <LockersScreen lockers={k.lockers} onBack={k.actions.backToMain} />
-      )}
-      {k.screen === "qr" && (
-        <QrScreen onBack={k.actions.qrBack} status={k.qrStatus} isDemo={k.isDemo} />
-      )}
-      {k.screen === "confirm" && (
-        <ConfirmScreen
-          rentalInfo={k.rentalInfo}
-          rentalId={k.rentalId}
-          confirmAction={k.confirmAction}
-          confirmNotice={k.confirmNotice}
-          onBack={k.actions.confirmBack}
-          onProceed={k.actions.proceed}
-          onCancel={k.actions.cancel}
-        />
       )}
       {k.screen === "face" && (
         <FaceScreen instr={k.faceInstr} onCancel={k.actions.cancel} />

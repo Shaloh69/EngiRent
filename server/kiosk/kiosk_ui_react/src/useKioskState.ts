@@ -1,25 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import type { KioskServerState, Mode, RentalInfo, Screen } from "./types";
-import { PRE_FLOW_SCREENS } from "./types";
+import type { KioskServerState, Mode, Screen } from "./types";
 
 const IDLE_MS = 30_000; // MAIN -> IDLE
 const RETURN_MS = 5 * 60_000; // flow screens -> MAIN
 const OFFLINE_GRACE_MS = 4_000; // avoid flicker on a brief reconnect
-
-const ACTION_MAP: Record<string, string> = {
-  AWAITING_DEPOSIT: "Deposit item into locker",
-  DEPOSITED: "Claim your rented item",
-  ACTIVE: "Return item to locker",
-};
-const NOTICE_MAP: Record<string, string> = {
-  AWAITING_DEPOSIT:
-    "Identity will be verified, then the locker will open for you to deposit the item.",
-  DEPOSITED:
-    "Identity will be verified, then the locker will open for you to collect the item.",
-  ACTIVE:
-    "Identity will be verified, then the locker will open for you to return the item.",
-};
 
 /**
  * Demo mode — for local design work and screenshot verification without a
@@ -31,26 +16,13 @@ const DEMO_SCREEN = new URLSearchParams(window.location.search).get(
   "demo",
 ) as Screen | null;
 
-const DEMO_RENTAL: RentalInfo = {
-  item: { title: "Scientific Calculator FX-991ES" },
-  owner: { firstName: "Allan", lastName: "Mondejar" },
-  status: "AWAITING_DEPOSIT",
-  depositLockerId: 2,
-};
-
 export function useKioskState() {
   const [screen, setScreen] = useState<Screen>(DEMO_SCREEN ?? "idle");
   const [offline, setOffline] = useState(!DEMO_SCREEN);
-  const [rentalId, setRentalId] = useState<string | null>(
-    DEMO_SCREEN ? "demo-rental-id-0000000000" : null,
-  );
-  const [rentalInfo, setRentalInfo] = useState<RentalInfo | null>(
-    DEMO_SCREEN ? DEMO_RENTAL : null,
-  );
   const [mode, setMode] = useState<Mode>(DEMO_SCREEN ? "place" : null);
   const [lockers, setLockers] = useState<Record<string, boolean>>({
     "1": false,
-    "2": DEMO_SCREEN === "confirm",
+    "2": false,
     "3": false,
     "4": false,
   });
@@ -67,9 +39,6 @@ export function useKioskState() {
   );
   const [verifyingSub, setVerifyingSub] = useState(
     "This takes about 15 seconds.",
-  );
-  const [qrStatus, setQrStatus] = useState<"scanning" | "found" | "error">(
-    "scanning",
   );
   const [sessionQrConnected, setSessionQrConnected] = useState(false);
   const [sessionQrUser, setSessionQrUser] = useState<string | null>(null);
@@ -142,27 +111,6 @@ export function useKioskState() {
 
     socket.on("state_update", (s: KioskServerState) => applyServerState(s));
 
-    socket.on(
-      "qr_scanned",
-      (data: { rental_id?: string; rental_info?: RentalInfo }) => {
-        setRentalId(data.rental_id ?? "");
-        setRentalInfo(data.rental_info ?? {});
-        setQrStatus("found");
-        setTimeout(() => {
-          // The QR the phone scans is the one rendered on MainScreen, so the
-          // screen at scan time is almost always "main" — never "qr" (that
-          // screen is only reachable by backing out of "confirm"). Guarding on
-          // "qr" alone deadlocked the whole kiosk: the session banner turned
-          // green, but confirm never opened, so "user_confirm" was never sent
-          // and initiate_rental_flow never ran (found 2026-09-03).
-          //
-          // Allow any pre-flow screen through, but not the in-flow ones —
-          // "face"/"verifying"/"success" must not be yanked back to confirm by
-          // a late or duplicate event.
-          if (PRE_FLOW_SCREENS.includes(screenRef.current)) goTo("confirm");
-        }, 700);
-      },
-    );
 
     socket.on(
       "kiosk_session_started",
@@ -241,12 +189,10 @@ export function useKioskState() {
 
   // ── Screen-enter side effects (camera src, qr-mode emits, timers) ───────
   useEffect(() => {
-    const socket = socketRef.current;
-    if (screen === "qr") {
-      socket?.emit("set_qr_mode", { active: true });
-      setQrStatus("scanning");
-    } else if (screen === "main" || screen === "confirm" || screen === "error") {
-      socket?.emit("set_qr_mode", { active: false });
+    // `set_qr_mode` drove the kiosk's own QR-decode camera loop, deleted with
+    // the face camera on 2026-09-03. Nothing consumes it any more, so the
+    // emits went with the "qr"/"confirm" screens on 2026-09-06.
+    if (screen === "main" || screen === "error") {
       if (screen === "main") {
         setSessionQrConnected(false);
         setSessionQrUser(null);
@@ -280,21 +226,6 @@ export function useKioskState() {
     touchIdle: () => {
       if (screenRef.current === "idle") goTo("main");
     },
-    qrBack: () => {
-      socketRef.current?.emit("set_qr_mode", { active: false });
-      goTo("main");
-    },
-    confirmBack: () => {
-      goTo("qr");
-      socketRef.current?.emit("set_qr_mode", { active: true });
-    },
-    proceed: () => {
-      if (!rentalId) return;
-      socketRef.current?.emit("user_confirm", { rental_id: rentalId, mode });
-      setFaceInstr("Preparing verification…");
-      setFaceLabel("Please wait…");
-      goTo("face");
-    },
     cancel: () => goTo("main"),
     retry: () => goTo("main"),
     errHome: () => goTo("main"),
@@ -308,20 +239,10 @@ export function useKioskState() {
     goIdle: () => goTo("idle"),
   };
 
-  const confirmAction = rentalInfo?.status
-    ? (ACTION_MAP[rentalInfo.status.toUpperCase()] ?? "Proceed with action")
-    : "Proceed with action";
-  const confirmNotice = rentalInfo?.status
-    ? (NOTICE_MAP[rentalInfo.status.toUpperCase()] ??
-      "Identity verification is required before access is granted.")
-    : "Identity verification is required before access is granted.";
-
   return {
     screen,
     goTo,
     offline,
-    rentalId,
-    rentalInfo,
     mode,
     setMode,
     lockers,
@@ -333,11 +254,8 @@ export function useKioskState() {
     countdown,
     errorMsg,
     verifyingSub,
-    qrStatus,
     sessionQrConnected,
     sessionQrUser,
-    confirmAction,
-    confirmNotice,
     actions,
     isDemo: !!DEMO_SCREEN,
   };

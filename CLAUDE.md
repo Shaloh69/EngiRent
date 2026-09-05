@@ -41,7 +41,10 @@ the phase file. Re-reading everything is itself a context-filling mistake.
   4 linear actuators through active-LOW relays. Don't touch the autostart
   supervisor script as part of UI work — it has bitten twice in production.
 - **Do not redesign the face-verification trust architecture**
-  (`Implemented.md` §6): the kiosk validates its own QR signature/TTL,
+  (`Implemented.md` §6): the kiosk validates the scanned QR itself — it
+  accepts only the one token currently live in its own process, inside the
+  90s TTL, single-use (**not** a signature recomputation — corrected
+  2026-09-06 in E1; see `server/kiosk/tests/test_qr_token.py`),
   `resolveFaceSubject` derives identity from rental status not client input,
   the server-side session store is the trust boundary, Node calls the ML
   service so the key never reaches a client, and verification fails closed.
@@ -50,6 +53,17 @@ the phase file. Re-reading everything is itself a context-filling mistake.
   must never be described as a security boundary.
 - **Security findings get fixed immediately and reported**, not filed as
   backlog.
+- **Default to continuing, not reporting.** `docs/PROGRESS.md` is the running
+  record; put findings there and keep working. Interrupt only when the human
+  can *act* on it — blocked, a ruling needed, a security finding, context
+  filling, an irreversible action on a live system, a correction to something
+  already reported, or a phase boundary. Criteria:
+  `docs/redesign/ENDGOAL-AND-TRACKING.md` §2, "When to surface something". The
+  bar is **"does this threaten the implementation as a whole?"** — not "is this
+  interesting". A defect found, fixed, tested and recorded is finished work and
+  belongs in the register, silently.
+- **A green test is not a fix.** Verify on screen before recording anything as
+  fixed — D-1 passed six unit tests while still visibly broken.
 - **Predated docs get moved and bannered, never deleted** (`REPO-HYGIENE.md`).
 - **"Typecheck clean, tests green" is necessary and nowhere near sufficient.**
   This project has been bitten repeatedly by code that compiled, passed, and

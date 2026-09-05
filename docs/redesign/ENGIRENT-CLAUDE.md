@@ -13,23 +13,63 @@ two-screen handoff choreography.
 
 **Not redone, do not touch as part of this track:**
 - The face-verification trust architecture (`Implemented.md` §6). The kiosk
-  validating its own QR signature/TTL, `resolveFaceSubject` deriving identity
+  validating the scanned QR itself — only the token currently live in its own
+  process, inside the 90s TTL, single-use (corrected 2026-09-06 in E1: it is
+  an identity match against the live token, **not** a signature
+  recomputation) — `resolveFaceSubject` deriving identity
   from rental status rather than client input, the server-side session store,
   Node calling the ML service so the API key never reaches a client, and
   **failing closed** when ML is unreachable — all of this is correct and was
   hard-won. Design *around* it, never redesign it.
-- ML thresholds (85 / 60 / retry-10), the comparison pipeline, weightings.
 - GPIO timing values in `kiosk_config.json` — hand-calibrated per physical
   locker, verified twice against real hardware. If an animation and a timing
   value disagree, **the hardware is right.**
 - Prisma schema, auth, payments logic.
 
-**Two exceptions where this track *should* add functionality**, because both
+**IN SCOPE as of 2026-09-06 (scope change, on the user's instruction): the
+item-verification comparison pipeline.**
+
+This was previously listed as untouchable alongside the face-verification trust
+architecture. It is now in scope, because E0's analysis
+(`ITEM-VERIFICATION-PIPELINE-GAPS.md`) found failure modes that are design
+problems rather than tuning problems — chiefly that **every kiosk frame shares
+the same locker interior while the owner's listing photos do not**, so global
+descriptors score background agreement as object agreement, inflating
+similarity between different items *and* suppressing it for the correct one.
+
+**What is in scope:** what evidence feeds the score, and how the score is
+composed. Foreground segmentation against a per-locker background plate;
+stronger geometric/instance verification; treating serial OCR as an identity
+*gate* rather than a flat +10 bonus; requiring agreement across independent
+signal families instead of a single weighted sum; modelling the attempt
+sequence rather than judging only the last try; and presentation-attack
+resistance (a printed photo currently passes).
+
+**What remains out of scope, and the distinction matters:**
+- **The 85 / 60 / retry-10 thresholds stay put** unless A-3's measured
+  confidence distribution says otherwise. They are not the problem; the
+  evidence feeding them is. Moving a threshold to paper over a bad signal makes
+  the system worse and harder to reason about.
+- **The face-verification trust architecture stays untouchable** (above). Item
+  comparison and identity verification are different systems that happen to
+  share an ML service — opening one does not open the other.
+
+**Sequencing requirement:** `CAPABILITY-GAPS.md` A-3 (ML confidence
+distribution — the histogram banded at 85/60, the automated-vs-human fraction,
+the admin override rate, and how often the OCR bonus actually changes a
+verdict) is a **prerequisite, not a companion**. Right now nobody can say which
+of the documented failure modes is real and which is theoretical, and this
+project's own history is a warning about changing things that merely look
+wrong. Measure, then change.
+
+**Three exceptions where this track *should* add functionality**, because all
 are design gaps over working backends, not new features:
 1. A **settle/resolve action in the disputes UI** — `POST /admin/rentals/:id/settle`
    exists and works with no front door (`USER-JOURNEY-SIMULATION.md` Journey C).
 2. **Client-side role gating** in the admin console — the Reviewer/Admin split
    is server-only; the UI shows everyone every button.
+3. **A-3's ML reporting**, promoted from "recommended" to required, because the
+   pipeline work above cannot be justified or verified without it.
 
 ## 2. Playwright cross-reference — MANDATORY, and it's a pass/fail gate
 
@@ -53,7 +93,14 @@ phase.
 - [ ] `design/baselines/` — Playwright's own snapshots (`snapshotDir`), committed
 - [ ] **A screen with no template screenshot on disk is `FAILED`**, recorded
       as such in `docs/PROGRESS.md`, regardless of how it looks or whether
-      tests pass
+      tests pass. **One exception, ruled 2026-09-06:** a `BESPOKE` row whose
+      pattern reference names a *genre* rather than a reachable URL is
+      satisfied instead by an authored structural wireframe at
+      `design/templates/pattern-<genre-slug>.png` **plus** a written structural
+      note. Drawn, not captured — screenshotting a genre is impossible and
+      committing a real product's UI to fake it vendors third-party pixels.
+      Both parts, or still `FAILED`. Full statement: `TEMPLATE-LINKS.md` → THE
+      GATE → AMENDMENT
 
 **Why this is a hard gate and not a guideline:** this project has
 **zero automated tests in the admin console** (no test files, no tooling, no
@@ -125,7 +172,10 @@ before assuming any of it works.
 - [ ] Named template row exists in `TEMPLATE-LINKS.md` (or `BESPOKE` + pattern
       ref + justification — all three, or it's `FAILED`)
 - [ ] All three permanent images exist: TEMPLATE, BEFORE, AFTER — at both
-      viewports — plus the comparison triptych (`VISUAL-EVIDENCE.md` §1-2)
+      viewports — plus the comparison triptych (`VISUAL-EVIDENCE.md` §1-2).
+      **TEMPLATE may be an authored pattern wireframe + structural note where
+      the row is genre-referenced `BESPOKE`** (amended 2026-09-06). **BEFORE
+      and AFTER must be committed, not merely captured**
 - [ ] **Conformance note filled in** across all four dimensions — LAYOUT, UI,
       WIDGETS, SPRITES — plus DEVIATED with reasons (`VISUAL-EVIDENCE.md` §3).
       Images prove a comparison was *possible*; the note proves one *happened*
@@ -179,8 +229,15 @@ and adapted to this project's realities:
 - **Ask for the diff, not the file**, on anything touching several screens
 - **Subagents for genuinely parallel read-only work** (e.g. auditing four
   surfaces' socket consumers) — not for anything writing to the same files
-- **End every session with:** *"Which parts of this did you actually run, and
-  what are you unsure about?"* The honest answer is usually the session's most
-  valuable output
+- **Default to continuing, not reporting.** `docs/PROGRESS.md` is the running
+  record. Interrupt the human only when they can actually *act* on it — blocked,
+  a ruling needed, a security finding, context filling, an irreversible action
+  on a live system, a correction to something already reported, or a phase
+  boundary. Full criteria: `ENDGOAL-AND-TRACKING.md` §2, "When to surface
+  something". Routine progress is noise that hides the line that mattered
+- **When the work stops, answer:** *"Which parts of this did you actually run,
+  and what are you unsure about?"* — at a phase boundary, a blocker or a
+  `/clear`, not after every chunk. The honest answer is usually the session's
+  most valuable output, which is why it shouldn't be diluted into a ritual
 - **The repo wins over the docs.** If a phase file conflicts with what's
   actually in the code, flag it, fix the doc, then proceed

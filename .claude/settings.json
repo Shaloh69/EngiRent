@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:reactbits.dev)"
+      "WebFetch(domain:reactbits.dev)",
+      "Bash(timeout 40 ssh -o ConnectTimeout=10 transfer@desktop-gklhcri 'Add-Content -Path \"D:\\\\ENG\\\\EngiRent\\\\server\\\\node_server\\\\src\\\\utils\\\\errors.ts\" -Value \"\" -Encoding utf8')"
     ]
   }
 }
