@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:reactbits.dev)",
-      "Bash(timeout 40 ssh -o ConnectTimeout=10 transfer@desktop-gklhcri 'Add-Content -Path \"D:\\\\ENG\\\\EngiRent\\\\server\\\\node_server\\\\src\\\\utils\\\\errors.ts\" -Value \"\" -Encoding utf8')"
+      "Bash(timeout 40 ssh -o ConnectTimeout=10 transfer@desktop-gklhcri 'Add-Content -Path \"D:\\\\ENG\\\\EngiRent\\\\server\\\\node_server\\\\src\\\\utils\\\\errors.ts\" -Value \"\" -Encoding utf8')",
+      "Bash(timeout 40 ssh -o ConnectTimeout=10 transfer@desktop-gklhcri 'findstr /N /C:\"class GoneError\" \"D:\\\\ENG\\\\EngiRent\\\\server\\\\node_server\\\\src\\\\utils\\\\errors.ts\"')",
+      "Bash(timeout 60 scp -q transfer@desktop-gklhcri:D:/ENG/EngiRent/server/node_server/src/utils/errors.ts __TRACKED_VAR__/srv/errors.now.ts)",
+      "Bash(echo \"\\(diff exit $? — only the comment wording should differ\\)\")"
     ]
   }
 }
