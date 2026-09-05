@@ -1,3 +1,11 @@
+> **SUPERSEDED — reflects the system as of 2026-08-10.**
+> Replaced by `Implemented.md` (repo root, 2026-09-04).
+> **Kiosk and hardware sections are known stale as of 2026-09-03.**
+> Its open blockers were subsequently addressed (or re-scoped) — see
+> `memory.md`'s 2026-09-03 entries. The PayMongo sandbox item remains open.
+> Still true: the method (live verification over code re-reading) and the
+> blockers-not-papered-over discipline.
+
 # Phase 4 — Live Functional Audit Report
 
 Produced per `docs/planning/03-revamp-master.md` §7. This is meant to be **live verification, not another code read-through** — and where live verification genuinely wasn't possible this session, that's reported as a blocker below, not papered over with a code-level substitute presented as equivalent.

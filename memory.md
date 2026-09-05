@@ -21,9 +21,9 @@ Give one full summary at the end covering all five phases — not a check-in aft
 
 | What | Path |
 |---|---|
-| Ground-truth code audit (18 sections, file:line-cited) | `docs/audit/documentation.md` |
-| Prior (2026-07-20) audit-and-fix pass — prose reliable, status checkboxes not | `docs/audit/history/` |
-| Active revamp planning sequence (start here → audit prompt → design mandate → revamp master) | `docs/planning/00-start-here.md` → `03-revamp-master.md` |
+| Ground-truth code audit (18 sections, file:line-cited) | `docs/predated/audit/documentation.md` |
+| Prior (2026-07-20) audit-and-fix pass — prose reliable, status checkboxes not | `docs/predated/audit/history/` |
+| Active revamp planning sequence (start here → audit prompt → design mandate → revamp master) | `docs/predated/planning/00-start-here.md` (SUPERSEDED) → `docs/planning/01-audit-prompt.md` → `03-revamp-master.md` |
 | Authoritative reference docs (ML pipeline detail, item categories/pricing, independent repo analysis) | `docs/reference/` |
 | Superseded design/analysis docs — thesis-history value only, not current | `docs/superseded/` |
 | Public-facing project overview | `README.md` (repo root) |

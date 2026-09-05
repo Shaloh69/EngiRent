@@ -1,3 +1,7 @@
+> **SUPERSEDED — reflects the plan as of 2026-07-20.**
+> The prompt that produced `AUDIT.md` in this folder. Kept as history.
+> The current equivalent is `docs/redesign/KICKOFF_PROMPT.md`.
+
 # EngiRent Hub — Full Audit & Revamp Prompt
 
 > Read the actual repo (`https://github.com/Shaloh69/EngiRent`) before doing anything else — specifically `client/`, `server/`, `AI_SYSTEM_DOCUMENTATION.md`, `AI_VERIFICATION_GUIDE.md`, `EngiRent_Hub_Analysis.md`, `ITEM_CATEGORIES.md`, and `analyzation.md`. This prompt was written from the README alone; treat everything below as hypotheses to verify against real code, not settled fact.

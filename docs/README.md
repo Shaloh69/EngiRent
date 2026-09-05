@@ -1,37 +1,74 @@
 # EngiRent Hub — Documentation Index
 
-This folder holds every non-code document for the project, organized by why each one is kept. If you're looking for "what does the system actually do," start with `audit/documentation.md` — everything else here is either the plan that document feeds into, background reference it draws on, or history kept for the thesis write-up.
+Every non-code document for the project, organized by why each one is kept.
 
-| Folder | Contents | Read this when... |
+**If you're looking for "what does the system actually do," start with
+[`Implemented.md`](../Implemented.md) at the repo root** — the 2026-09-04
+implementation audit. For *why* something is the way it is, and what happened
+across sessions, read [`memory.md`](../memory.md), the running engineering log.
+
+| Folder / file | Contents | Read this when... |
 |---|---|---|
-| [`audit/`](audit/) | `documentation.md` — the verified, file-cited ground truth of the codebase as it exists today. `history/` — the prior (2026-07-20) audit-and-fix pass. | You need to know what the code actually does, or why a past fix claim doesn't match reality. |
-| [`planning/`](planning/) | The four-document sequence driving the current revamp: `00-start-here.md` → `01-audit-prompt.md` → `02-design-mandate.md` → `03-revamp-master.md`. | You're about to start or resume a revamp phase. |
-| [`reference/`](reference/) | Authoritative background docs still accurate today: the ML pipeline's full technical writeup, the item-category survey data, and a full independent repo analysis. | You need detail beyond what fits in the audit (e.g. the exact math behind a verification stage, or per-category pricing guidance). |
-| [`superseded/`](superseded/) | Older design/analysis docs that predate the real implementation and carry their own "superseded" banners. Kept for thesis-writeup history only — not authoritative. | You're writing the thesis narrative and want to show how the design evolved. Don't use these to answer "what does the code do." |
+| [`../Implemented.md`](../Implemented.md) | The current implementation audit (2026-09-04). Covers all six surfaces. | You need to know what the code actually does today. |
+| [`../memory.md`](../memory.md) | The running engineering log — decisions, discoveries, runbooks, session history. More current than any audit. | You need the *why*, a runbook, or what a past session already ruled out. |
+| [`PROGRESS.md`](PROGRESS.md) | Live state of the active redesign track, plus its three registers (screens, defects, endpoints). | You're resuming work on the redesign track. |
+| [`redesign/`](redesign/) | The active audit / defect-fix / redesign package, including `phases/E0`–`E7`. | You're starting or resuming a redesign phase. |
+| [`redesign/ACCESS-AND-WORKAROUNDS.md`](redesign/ACCESS-AND-WORKAROUNDS.md) | How to reach the API host, the kiosk Pi and the Flutter app when they're offline — plus what each workaround does **not** prove. | A surface you need is unreachable. |
+| [`planning/`](planning/) | The revamp planning sequence: `01-audit-prompt.md` → `02-design-mandate.md` → `03-revamp-master.md` → `04-continue-design-redo.md`, plus the two feature checklists. | You need the design mandate or a build checklist. |
+| [`reference/`](reference/) | Background detail: the ML pipeline writeup, the item-category survey, and an independent repo analysis. | You need depth beyond the audit — e.g. the exact math behind a verification stage. |
+| [`predated/`](predated/) | **Superseded documentation**, moved and bannered. Includes both prior audits and the original kickoff prompt. | You're writing the thesis narrative, or tracing why an old claim doesn't match reality. **Never** to answer "what does the code do." |
+| [`superseded/`](superseded/) | Older design/analysis docs predating the real implementation, with their own banners. | Thesis history only. |
+| [`hardware-verification/`](hardware-verification/), [`design-screenshots/`](design-screenshots/) | Captured evidence from prior verification passes. | You need proof a hardware or design check actually ran. |
 
-## Folder details
+---
 
-### `audit/`
-- **`documentation.md`** — 18-section technical audit (system overview, architecture, API surface, DB schema, ML pipeline, hardware inventory, process flows, auth, config, deployment, drift log, feature matrix, known issues, open threads). Every claim is file:line-cited. This is the single source of truth for "what exists right now."
-- **`history/AUDIT.md`** — a prior, separate audit-and-fix pass (2026-07-20). Its prose findings and severity ratings are reliable; its "applied automatically" status checkboxes are **not** — five of them turned out to be false when re-verified (see `documentation.md` §15.3). Kept as historical record, not as a current checklist.
-- **`history/ENGIRENT_FULL_AUDIT_AND_REVAMP_PROMPT.md`** — the prompt that produced `AUDIT.md`. Same caveat applies.
+## Rules for this folder
 
-### `planning/`
-The active sequence for the ongoing revamp, meant to be read in order:
-1. **`00-start-here.md`** — the kickoff message: read order, the six-phase plan, and three open questions that need the user's answer before certain phases proceed (duplicate admin console, `client/web`'s scope, kiosk React-vs-vanilla-JS).
-2. **`01-audit-prompt.md`** — the original prompt that produced `audit/documentation.md`. Kept for provenance.
-3. **`02-design-mandate.md`** — the full design-system directive (Mantine, "EngiRent Spectrum" palette, per-surface screen lists, the mandatory screenshot-verify loop). Already corrected for the kiosk's real stack (Flask + vanilla JS, not React).
-4. **`03-revamp-master.md`** — the single source of truth for the revamp itself: implementation research (PayMongo Disbursements vs. Platforms, biometric handling, the emergency-stop hardware pattern) and the six phases (0 security/financial fixes → 1 functionality correctness → 2 feature completion → 3 design overhaul → 4 live functional audit → 5 commit/push/final README).
+**1. Hardware facts must be sourced from the kiosk, never written from memory.**
+Camera counts, locker counts, GPIO channel counts and per-locker timings all
+come from `server/kiosk/kiosk_config.json`, `camera_manager.py`'s
+`USB_DEVICE_MAP`, and `server/kiosk/KIOSK_CODE_SETUP.md` — not from an older
+document and not from recollection. This has already gone wrong twice: the
+public site's `about` page claimed five cameras after the face camera was
+removed, and `KIOSK_CODE_SETUP.md` kept a code example calling a deleted
+`capture_face` method plus a "confirm 5 camera nodes" step long after the
+rest of the file had been corrected. **There are four cameras, one per locker.**
 
-### `reference/`
-- **`AI_SYSTEM_DOCUMENTATION.md`** — the authoritative technical writeup of the 8-stage hybrid CV verification pipeline (not YOLOv8) — stage-by-stage algorithms, weights, thresholds, API shapes.
-- **`ITEM_CATEGORIES.md`** — survey-derived item categories, demand rankings, locker-size guidance, and suggested per-category pricing (cited by the revamp's per-category late-fee work).
-- **`analyzation.md`** — an independent full-repository analysis; largely accurate, with one confirmed drift noted in `documentation.md` §15.2 (its API table predates the rental-status transition whitelist).
+**2. Never bake a tunnel hostname into a document.** Cloudflare quick tunnels
+rotate their hostname on every restart, so any URL written into a doc is wrong
+the moment the tunnel restarts. Point at where the current value is actually
+recorded (`startbat-logs/tunnel-*.log` on the host) instead.
 
-### `superseded/`
-- **`AI_VERIFICATION_GUIDE.md`** — describes an early YOLOv8 design that was never shipped. Self-marked "superseded/historical."
-- **`EngiRent_Hub_Analysis.md`** — process-flow diagrams still directionally useful, but names YOLOv8/GCash/AWS S3 and assumes a working escrow-release step that doesn't exist in code. Self-marked "partially superseded."
+**3. Superseded docs get moved to `predated/` and bannered inside the file, in
+the same commit as their replacement lands.** Never deleted, and never left
+looking current alongside the thing that replaced them — that's exactly how
+the two stale audit docs became a hazard. See
+[`redesign/REPO-HYGIENE.md`](redesign/REPO-HYGIENE.md).
 
-## Also see
-- **`/README.md`** (repo root) — the project's public-facing overview, rewritten to match `audit/documentation.md`.
-- **`/memory.md`** (repo root) — the assistant's running cross-session log of what's been done, decided, and is still pending on this revamp. Read this first if you're picking the revamp back up.
+**4. When you move a file, fix its inbound references** — but leave dated
+session-log entries in `memory.md` alone. Those are a historical record; only
+its current-state pointer table gets updated.
+
+---
+
+## What changed, 2026-09-05 (E0.4 of the redesign track)
+
+- `audit/documentation.md`, `audit/phase4-audit-report.md` and `audit/history/`
+  → moved to [`predated/audit/`](predated/audit/), each bannered.
+- `planning/00-start-here.md` → moved to
+  [`predated/planning/`](predated/planning/), bannered. The planning sequence
+  now starts at `01-audit-prompt.md`.
+- `docs/audit/` is now empty; the current audit is `Implemented.md` at the
+  repo root, which is where `redesign/FOLDER-STRUCTURE.md` places it.
+- `reference/analyzation.md` was **bannered in place** rather than moved — it
+  is stale on kiosk/camera/endpoint specifics but its ML and data-model
+  sections are not known to be stale. The banner names exactly which parts to
+  distrust.
+- Corrected in place: `KIOSK_CODE_SETUP.md` (a code example calling the
+  deleted `capture_face`, and a "confirm 5 camera nodes" step),
+  `planning/03-revamp-master.md` (self-test spec still said 5 cameras), and
+  three hardcoded tunnel hostnames in `Implemented.md`.
+
+See [`predated/README.md`](predated/README.md) for the full index of what was
+archived, what date each file reflects, what superseded it, and what in it is
+still true.

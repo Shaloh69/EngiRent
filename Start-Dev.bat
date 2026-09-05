@@ -17,7 +17,7 @@ REM payments/payouts fall back to the mock-checkout path, see
 REM /payments/mock in client/web), or real Pi hardware (solenoids/actuators/
 REM real cameras/touchscreen) and Tailscale reachability. Don't report
 REM Phase 4 as passing based on this dev stack alone — see
-REM docs/audit/phase4-audit-report.md.
+REM docs/predated/audit/phase4-audit-report.md.
 REM ============================================================================
 
 set ROOT=%~dp0

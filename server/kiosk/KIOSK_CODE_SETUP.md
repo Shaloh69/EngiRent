@@ -490,14 +490,9 @@ open('/tmp/test.jpg', 'wb').write(frames[0])
 print('Saved /tmp/test.jpg')
 "
 
-# Test face camera
-python3 -c "
-from hardware.camera_manager import CameraManager
-cam = CameraManager()
-frames = cam.capture_face(num_frames=1)
-open('/tmp/face.jpg', 'wb').write(frames[0])
-print('Saved /tmp/face.jpg')
-"
+# (No face-camera test — the face camera was physically removed 2026-09-03
+# and `capture_face` no longer exists on CameraManager. Face verification now
+# happens on the user's phone; see Implemented.md §6.)
 ```
 
 ### **Logs Location**
@@ -690,7 +685,7 @@ free -h && df -h
 ## Next Steps
 
 1. ✅ Set `camera_auto_detect=0` in `/boot/firmware/config.txt` and reboot
-2. ✅ Run `v4l2-ctl --list-devices` and confirm 5 camera nodes
+2. ✅ Run `v4l2-ctl --list-devices` and confirm 4 camera nodes (one per locker; the face camera was removed 2026-09-03)
 3. ✅ Test each camera with `ffmpeg` and update `USB_DEVICE_MAP` if needed
 4. ✅ Run `python3 diagnose.py` — verify all GPIO and cameras
 5. ✅ Run `python3 main.py` — confirm Pi connects and admin shows kiosk online

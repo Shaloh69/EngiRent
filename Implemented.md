@@ -16,7 +16,7 @@ This is a snapshot. The most recent major change — moving face verification of
 | Admin console | Every listed page hits real endpoints (no page found stub-only). No client-side auth/role guard beyond token presence — the Reviewer/Admin split exists only server-side, unenforced in this UI. Zero automated tests. |
 | Flutter app | Every screen makes real API/socket calls. A debug-only fallback fabricates data on network failure (compiled out of release builds). Localization is a thin veneer — 32 of hundreds of strings are translated; most of the app stays English regardless of language setting. 2 unit tests total, no widget/integration tests. |
 | Public website | Real, mostly accurate. One page (`about`) claimed a hardware fact (camera count) that went stale the same day the hardware changed — found and fixed as part of this audit. |
-| Documentation | Two prior audit docs (`docs/audit/documentation.md`, `phase4-audit-report.md`) predate the face-camera removal and are now stale on kiosk/hardware sections specifically — the README already flags them as historical, so this isn't a surprise, but their kiosk-hardware sections should not be trusted for current facts. |
+| Documentation | Two prior audit docs (`docs/predated/audit/documentation.md`, `phase4-audit-report.md`) predate the face-camera removal and are now stale on kiosk/hardware sections specifically — the README already flags them as historical, so this isn't a surprise, but their kiosk-hardware sections should not be trusted for current facts. |
 | Database (live) | Wiped of all non-admin data same day, on explicit instruction. 1 user (admin), 0 rentals/reviews/items. |
 
 ---
@@ -49,7 +49,7 @@ Ordered roughly by how likely each is to bite a real user or grader first.
 
 12. **Stale documentation, now fixed as part of this audit:** the public site's `about` page claimed "five cameras" (fixed → four), `client/web/config/site.ts`'s GitHub link was a bare placeholder `https://github.com/` (fixed → the real repo URL), and `server/kiosk/KIOSK_CODE_SETUP.md` had five separate lines still describing the removed 5-camera/face-camera setup despite its own opening paragraph correctly noting the removal (all five now corrected). *(docs agent, fixed same session)*
 
-13. **Two prior audit documents are now stale on kiosk/hardware specifics.** `docs/audit/documentation.md` §6, §8, §9, §10, §13 and `docs/audit/phase4-audit-report.md` describe the pre-2026-09-03 kiosk-camera-based face flow and the now-retired `claimItem`/`returnItem` endpoints. The README already frames `documentation.md` as historical, so this isn't a hidden trap, but anyone reading those files for current hardware/API facts should not trust the kiosk-specific sections. *(docs agent)*
+13. **Two prior audit documents are now stale on kiosk/hardware specifics.** `docs/predated/audit/documentation.md` §6, §8, §9, §10, §13 and `docs/predated/audit/phase4-audit-report.md` describe the pre-2026-09-03 kiosk-camera-based face flow and the now-retired `claimItem`/`returnItem` endpoints. The README already frames `documentation.md` as historical, so this isn't a hidden trap, but anyone reading those files for current hardware/API facts should not trust the kiosk-specific sections. *(docs agent)*
 
 14. **Two vestigial, unreachable code paths were left in place rather than removed**, to bound the size of the 2026-09-03 architecture change: the kiosk React UI's `QrScreen`/`ConfirmScreen` and their `"qr"`/`"confirm"` states (the reversed-direction QR flow they supported no longer has a camera to run it), and the Node `kiosk:face` socket handler (nothing emits that event anymore). Both are commented as dead in code, not deleted. *(firsthand, this session)*
 
@@ -254,9 +254,9 @@ Two inaccuracies found and corrected as part of this audit: the `about` page cla
 
 | Service | Local port | Public tunnel |
 |---|---|---|
-| Node API | `desktop-gklhcri:5000` | `https://mpg-clothing-maui-chicago.trycloudflare.com` |
-| Admin console | `desktop-gklhcri:3001` | `https://think-actress-keep-occurs.trycloudflare.com` |
-| Public web | `desktop-gklhcri:3000` | `https://valentine-insured-drivers-present.trycloudflare.com` |
+| Node API | `desktop-gklhcri:5000` | *(rotates on every tunnel restart — read the current value from `startbat-logs/tunnel-*.log` on the host, never from a doc)* |
+| Admin console | `desktop-gklhcri:3001` | *(rotates on every tunnel restart — read the current value from `startbat-logs/tunnel-*.log` on the host, never from a doc)* |
+| Public web | `desktop-gklhcri:3000` | *(rotates on every tunnel restart — read the current value from `startbat-logs/tunnel-*.log` on the host, never from a doc)* |
 | ML service | `desktop-gklhcri:8001` | not tunneled — internal only |
 | Kiosk | Raspberry Pi 5, `engirent-kiosk` | reached via Tailscale, no public tunnel (dials out to Node) |
 

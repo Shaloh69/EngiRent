@@ -1,3 +1,9 @@
+> **SUPERSEDED — reflects the plan as of 2026-08-05.**
+> Explicitly replaced by `docs/planning/04-continue-design-redo.md`.
+> Its "stop after each phase" instruction was also overridden — see
+> `memory.md` § "Execution mode (updated 2026-08-05)".
+> Still true: the framing of the revamp's phase sequence.
+
 # EngiRent Hub — Starting Prompt for Claude Code
 
 Paste this into Claude Code at the repo root once `documentation.md`, `EngiRent_02_DESIGN_MANDATE.md`, and `EngiRent_03_REVAMP_MASTER.md` are all in the repo.

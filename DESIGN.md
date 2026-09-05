@@ -175,7 +175,7 @@ The Profile tab's gradient hero (banned by §1.1) is gone, replaced by a bordere
 
 - **No Spline/R3F 3D element and no Lottie/Rive assets.** The mandate asks for these on the Kiosk idle screen and the Phone App's rental-status transitions. No such asset was available to source in this environment, so both use hand-built substitutes instead: the Kiosk's `AnimatedLock` is an SVG + Framer Motion state machine, and the Phone App's status badge is an `AnimatedSwitcher` with a pulsing indicator. These are genuine animations, but they are **not** the mandated tooling and are documented as substitutions rather than passed off as equivalent.
 - **The Kiosk page in the Admin Console keeps its own Tailwind layout** rather than being rebuilt on Mantine primitives. Its HeroUI components were converted and it is fully re-themed and verified, but its bespoke layout markup was preserved rather than rewritten — it carries real SSE and hardware-control logic where a full structural rewrite would risk regressions for no visual gain.
-- **Kiosk hardware verification remains blocked.** The Pi (`engirent-kiosk`) has been offline in Tailscale throughout this work, so the reboot/autostart test and the hardware self-test are still unverified against real hardware. See `docs/audit/phase4-audit-report.md`.
+- **Kiosk hardware verification remains blocked.** The Pi (`engirent-kiosk`) has been offline in Tailscale throughout this work, so the reboot/autostart test and the hardware self-test are still unverified against real hardware. See `docs/predated/audit/phase4-audit-report.md`.
 
 ### Gaps introduced or left open by the animated-background pass (§6)
 

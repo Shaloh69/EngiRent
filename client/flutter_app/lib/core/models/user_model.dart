@@ -49,6 +49,16 @@ class UserModel {
       idImageUrl: json['idImageUrl'] as String?,
       profileComplete: (json['profileComplete'] as bool?) ?? false,
       isVerified: (json['isVerified'] as bool?) ?? false,
+      // These three were never read, so every user fell through to the
+      // constructor's `UNSUBMITTED` default no matter what the server said —
+      // and the Profile tab's Identity tile treats `UNSUBMITTED` as "not
+      // submitted yet", so it re-prompted verified students to capture their
+      // ID and face again. The server has always sent them (`PROFILE_SELECT`
+      // in authController.ts).
+      verificationStatus:
+          (json['verificationStatus'] as String?) ?? 'UNSUBMITTED',
+      verificationReason: json['verificationReason'] as String?,
+      verificationNote: json['verificationNote'] as String?,
       role: (json['role'] as String?) ?? 'STUDENT',
       payoutConfigured: (json['payoutConfigured'] as bool?) ?? false,
     );
@@ -65,6 +75,11 @@ class UserModel {
         'idImageUrl': idImageUrl,
         'profileComplete': profileComplete,
         'isVerified': isVerified,
+        // Round-tripped too, or a cached user loses its verification state and
+        // reproduces the same bug the moment it's restored from storage.
+        'verificationStatus': verificationStatus,
+        'verificationReason': verificationReason,
+        'verificationNote': verificationNote,
         'role': role,
         'payoutConfigured': payoutConfigured,
       };

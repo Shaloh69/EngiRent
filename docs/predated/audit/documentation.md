@@ -1,3 +1,11 @@
+> **SUPERSEDED — reflects the system as of 2026-08-05.**
+> Replaced by `Implemented.md` (repo root, 2026-09-04).
+> **Kiosk and hardware sections are known stale as of 2026-09-03** — §6, §8,
+> §9, §10 and §13 describe the pre-2026-09-03 kiosk-camera face flow and the
+> now-retired `claimItem`/`returnItem` endpoints. The face camera was
+> physically removed; face verification happens on the user's phone.
+> Still true: the general API/schema description and the severity reasoning.
+
 # EngiRent Hub — Codebase Audit
 
 This document describes the system **as it actually exists in code today**, verified file-by-file against the real repository — not the README's original pitch, and not any prior planning document. Ground rules: every non-trivial claim is traceable to a file path; where a doc's claim couldn't be verified in code, that is stated plainly rather than assumed. This is a descriptive audit only — no recommendations or "should build next" content appears below.

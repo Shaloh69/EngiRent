@@ -43,6 +43,12 @@ export function MainScreen({
 }: Props) {
   const [now, setNow] = useState(new Date());
   const [token, setToken] = useState<string | null>(isDemo ? "demo-session-token" : null);
+  // The real token lifetime, from the server. Previously the caption below
+  // hardcoded "30 seconds", which was the *poll* interval of the effect just
+  // underneath — not the token's TTL, which is 90s (`_QR_TTL` in
+  // kiosk_ui/server.py). The kiosk was telling people their code expired three
+  // times faster than it does.
+  const [ttl, setTtl] = useState<number | null>(isDemo ? 90 : null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -56,7 +62,9 @@ export function MainScreen({
       fetch("/api/qr-token")
         .then((r) => r.json())
         .then((d) => {
-          if (!cancelled && d.token) setToken(d.token);
+          if (cancelled) return;
+          if (d.token) setToken(d.token);
+          if (typeof d.ttl === "number" && d.ttl > 0) setTtl(d.ttl);
         })
         .catch(() => {});
     };
@@ -168,7 +176,11 @@ export function MainScreen({
                 : "Waiting for a phone to scan…"}
             </span>
           </div>
-          <p className="qr-refresh">Code rotates every 30 seconds for security</p>
+          <p className="qr-refresh">
+            {ttl === null
+              ? "This code refreshes automatically for security"
+              : `Code rotates every ${ttl} seconds for security`}
+          </p>
         </motion.section>
 
         <section className="menu-grid">

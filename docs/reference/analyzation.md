@@ -1,3 +1,14 @@
+> **PARTIALLY SUPERSEDED — kiosk, camera and endpoint sections are stale as of 2026-09-03.**
+> Specifically: the "5 cameras" claim (there are **4**, one per locker — the
+> face camera was physically removed), `capture_face` in the `kiosk:command`
+> list (**removed** from the allowlist), and `POST /kiosk/claim` /
+> `POST /kiosk/return` documented as live (**both retired** — they now return
+> a ValidationError; the real endpoint is `POST /kiosk/verify-face`). The
+> `capture_face` socket sequence it describes no longer exists: face
+> verification happens on the user's phone.
+> **Current source of truth: `Implemented.md` §5 and §6.**
+> Other sections (ML pipeline detail, data model) are not known to be stale.
+
 # EngiRent Hub — Full Repository Analysis
 
 **Last Updated:** 2026-04-24  

@@ -1,3 +1,12 @@
+> **SUPERSEDED — reflects the system as of 2026-07-20.**
+> Replaced by `Implemented.md` (repo root, 2026-09-04).
+> **Its status checkboxes are not reliable:** `memory.md` records that 5 of
+> its "applied automatically" fix claims were not actually in the code
+> (mlFeatures cache invalidation, persistMlFeatures removal, the Rental
+> composite index, the actuator_speed_percent cleanup, the per-category late
+> fee). All 5 were genuinely fixed later, in Phase 0.
+> Still true: its prose findings and severity ratings.
+
 # EngiRent Hub Audit — 2026-07-20
 
 > Scope: full repository audit per `ENGIRENT_FULL_AUDIT_AND_REVAMP_PROMPT.md`, sections 0–12.

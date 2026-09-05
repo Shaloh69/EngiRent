@@ -1,0 +1,5 @@
+# Disposable iteration captures and regenerated reports (VISUAL-EVIDENCE.md §1).
+# templates/ before/ after/ comparisons/ baselines/ are COMMITTED — they are
+# the visual contract; losing them means losing the ability to verify anything.
+screenshots/
+qa-report/
