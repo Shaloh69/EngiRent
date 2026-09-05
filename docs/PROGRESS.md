@@ -1309,8 +1309,30 @@ so it needs extracting before it can be tested. **D-23**'s silent-failure half,
 
 ## Next concrete step — RESUME HERE
 
-**Phase: E1 (API + socket suite). E0 is complete except two kiosk-blocked
-sections.** Everything below is current as of 2026-09-06.
+**Phase: E1 is substantially COMPLETE. Next session starts E2.** E0 remains
+complete except two kiosk-blocked sections. Current as of 2026-09-06.
+
+**E1 against its own definition of done** ("full coverage per the plan; suite
+runs clean **or every failure is recorded and attributed**; socket audit
+complete"):
+- Socket audit — done in E0. 5 unconsumed events listed for E2. ✅
+- Suite runs — 14 suites; **2 failures, both attributed** to D-32 (the 410
+  change is in the repo, not on the deployment). They are supposed to be red. ✅
+- Coverage — **73/93 happy path**, and the 21 gaps are each named with a reason
+  in 3c below, not left as an unexplained shortfall. Three of them
+  (`POST /kiosk/upload`, the two locker-release routes, `kiosks/:id/command`)
+  **should never be swept** — they fire real relays. ⚠️ named, not full.
+
+**Start E2 with the payments work**, because the ruling made it the critical
+path and it is no longer blocked on anything external: PAYMENTS RULING items
+1-3 — stop `POST /payments` building a PayMongo URL, fix D-23's silent
+`return` in the same change (it is now a total blocker, not a defect), and add
+the payment-decision socket event. Then the payment-instructions screen, which
+needs a `TEMPLATE-LINKS.md` row first and a schema addition for the
+out-of-band reference number.
+
+**One thing needs the user before it can close: D-32's deploy** — see its
+register row. Half-landed and safe; the remaining change is two lines.
 
 ### Immediately actionable, in order
 
