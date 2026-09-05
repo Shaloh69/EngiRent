@@ -52,11 +52,6 @@ const SCREENS = [
   ["verifying", "?demo=verifying"],
   ["success", "?demo=success"],
   ["error", "?demo=error"],
-  // Vestigial from the pre-2026-09-03 reversed QR flow (the kiosk used to scan
-  // the phone). Captured anyway: a BEFORE image is one-shot, and E0.1 has not
-  // yet ruled on delete-vs-keep-flagged.
-  ["qr-DEAD", "?demo=qr"],
-  ["confirm-DEAD", "?demo=confirm"],
   // Offline overlay forced on top of the main screen.
   ["offline", "?demo=main&offline=1"],
 ];

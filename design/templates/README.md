@@ -1,13 +1,36 @@
 # design/templates/ — TEMPLATE reference images
 
 Per `docs/redesign/VISUAL-EVIDENCE.md` §1, each screen gets a TEMPLATE image
-here, and **a screen with no template screenshot on disk is `FAILED`**.
+here, and **a screen with no template image on disk is `FAILED`**.
 
 **A TEMPLATE image must show the actual template screen being borrowed from,
 rendered.** Not a documentation page about it, not a search-results grid. An
 earlier pass captured website chrome — Material 3 docs landing pages, a Dribbble
 search — and filed it here as "templates". That was wrong. Those are now in
 `design/research/`, reclassified, and satisfy nothing.
+
+## Two kinds of file live here
+
+**`<surface>-<slug>.png` — captured.** A real render of a real template at a
+real URL. This is the normal case and covers every Flutter, admin and website
+row.
+
+**`pattern-<genre-slug>.png` — authored (amended 2026-09-06).** A structural
+wireframe **we drew**, for `BESPOKE` rows whose pattern reference names a
+*genre* rather than a reachable URL — "ATM error screens", "parcel-locker bay
+status boards", "payment-terminal processing screens". A genre cannot be
+screenshotted, and capturing a real product to fake one would commit
+third-party pixels and need a `CREDITS.md` entry without even being a template.
+
+- One image per genre, **shared** by every row referencing it. Seven kiosk rows
+  do not need seven images.
+- **Must be paired with a written structural note** in the register naming the
+  specific composition and affordance rules being borrowed — checkable, not a
+  vibe. Image without note, or note without image, is `FAILED`.
+- Authored, so nothing is vendored and no licence entry is needed.
+
+Full statement of the amendment: `docs/redesign/TEMPLATE-LINKS.md` → THE GATE
+→ AMENDMENT.
 
 Regenerate: `node design/tools/capture-templates.mjs`
 

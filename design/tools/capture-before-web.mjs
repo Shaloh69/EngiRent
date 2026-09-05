@@ -42,18 +42,27 @@ const WEB_PAGES = [
   ["payments-cancel", "/payments/cancel"],
 ];
 
-// Only the unauthenticated pages are listed. The other 15 admin pages sit
-// behind auth and, without credentials, every one of them renders the same
-// login redirect — capturing 30 identical images and filing them as distinct
-// screens would be worse than admitting the gap. Add them back once an admin
-// login is available.
 const ADMIN_PAGES = [
   ["login", "/login"],
-  ["root-redirect", "/"],
+  ["dashboard", "/dashboard"],
+  ["users", "/users"],
+  ["items", "/items"],
+  ["rentals", "/rentals"],
+  ["disputes", "/disputes"],
+  ["payments", "/payments"],
+  ["verifications", "/verifications"],
+  ["id-verifications", "/id-verifications"],
+  ["feedback", "/feedback"],
+  ["reports", "/reports"],
+  ["audit-log", "/audit-log"],
+  ["kiosk", "/kiosk"],
+  ["health", "/health"],
+  ["settings", "/settings"],
 ];
 
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
+let storageState = undefined;
 
 let ok = 0;
 const failed = [];
@@ -64,7 +73,9 @@ async function capture(surface, base, pages) {
     return;
   }
   for (const [vpName, viewport] of VIEWPORTS) {
-    const page = await browser.newPage({ viewport });
+    const page = await browser.newPage(
+      surface === "admin" && storageState ? { viewport, storageState } : { viewport },
+    );
     for (const [slug, path] of pages) {
       const file = join(OUT, `${surface}-${slug}-${vpName}.png`);
       try {
@@ -83,6 +94,21 @@ async function capture(surface, base, pages) {
 }
 
 await capture("web", WEB, WEB_PAGES);
+if (ADMIN && process.env.ADMIN_EMAIL) {
+  // The console gates on a token in localStorage, so log in once per context.
+  // Captured page-by-page afterwards; the login page itself is captured first,
+  // before authenticating, so it is the real unauthenticated screen.
+  const loginPage = await browser.newPage({ viewport: VIEWPORTS[0][1] });
+  await loginPage.goto(ADMIN + "/login", { waitUntil: "domcontentloaded", timeout: 45000 });
+  await loginPage.waitForTimeout(2500);
+  await loginPage.fill('input[type="email"], input[name="email"]', process.env.ADMIN_EMAIL);
+  await loginPage.fill('input[type="password"], input[name="password"]', process.env.ADMIN_PASSWORD);
+  await loginPage.click('button[type="submit"]');
+  await loginPage.waitForTimeout(6000);
+  console.log("  admin login attempted -> " + loginPage.url());
+  storageState = await loginPage.context().storageState();
+  await loginPage.close();
+}
 await capture("admin", ADMIN, ADMIN_PAGES);
 await browser.close();
 
