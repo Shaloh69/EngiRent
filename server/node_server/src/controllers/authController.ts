@@ -187,6 +187,16 @@ export const login = async (
           idImageUrl: user.idImageUrl,
           profileComplete: user.profileComplete,
           isVerified: user.isVerified,
+          // These three were omitted here while `register` and `getProfile`
+          // (via PROFILE_SELECT) both return them, so a client that cached the
+          // login payload had no verification state at all and fell back to
+          // "UNSUBMITTED" — telling a student who had already submitted their
+          // ID to submit it again, and offering a re-capture that reopened the
+          // whole setup flow. That is defect D-1; fixing the client parser was
+          // necessary but not sufficient while this payload stayed incomplete.
+          verificationStatus: user.verificationStatus,
+          verificationReason: user.verificationReason,
+          verificationNote: user.verificationNote,
           role: user.role,
           payoutConfigured: user.payoutAccountNumber != null,
         },

@@ -85,6 +85,31 @@ export const rateLimiter = (
   // every proxied request; prefer it, and only fall back to req.ip for
   // direct-to-localhost traffic (E2E scripts, health checks), which is
   // exactly where a shared/generic bucket is actually fine.
+  // Test-suite bypass (E1). The full five-case matrix over 93 endpoints is
+  // ~465 requests — roughly 4.6x this window — so the suite cannot run end to
+  // end against the deployment without one.
+  //
+  // Deliberately a SHARED SECRET, not an IP allowlist. The bucket key below is
+  // `CF-Connecting-IP`, a *client-supplied* header on any path that does not
+  // actually traverse Cloudflare, so an IP allowlist would be trivially
+  // spoofable by the very requests it is meant to exclude. A secret is not.
+  // Same pattern as KIOSK_SHARED_SECRET elsewhere in this codebase.
+  //
+  // Fails closed: unset env var means no bypass exists at all, and an empty or
+  // mismatched header is ignored. Every use is logged, so it can never quietly
+  // become the normal path.
+  const bypassSecret = env.RATE_LIMIT_BYPASS_SECRET;
+  if (bypassSecret) {
+    const offered = req.headers["x-ratelimit-bypass"] as string | undefined;
+    if (offered && offered === bypassSecret) {
+      logger.warn(
+        `Rate limiter bypassed via shared secret for ${req.method} ${req.originalUrl}`,
+      );
+      next();
+      return;
+    }
+  }
+
   const key = (req.headers["cf-connecting-ip"] as string | undefined) || req.ip || "unknown";
   const now = Date.now();
 

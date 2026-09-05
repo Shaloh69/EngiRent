@@ -131,6 +131,33 @@ export function publicItemUrl(relativePath: string): string {
   return `${env.API_PUBLIC_URL}/media/${relativePath}`;
 }
 
+/**
+ * Normalise any media reference down to the stored relative path.
+ *
+ * Item images used to be persisted as **absolute** URLs built from
+ * `API_PUBLIC_URL` at upload time (`Item.images`, `Item.videoUrl`). Because
+ * this deployment is fronted by Cloudflare quick tunnels, whose hostname
+ * rotates on every restart, that froze a hostname into every row — so after a
+ * rotation every existing listing's photos 404'd forever and no config change
+ * could repair them (defect D-17).
+ *
+ * Worse, `Verification.originalImages` copies `Item.images` verbatim and
+ * `runMlVerification` *downloads* those references before calling the ML
+ * service. With every download failing it returned a perfectly ordinary-looking
+ * `PENDING / confidence 0` without the pipeline ever running (defect D-18).
+ *
+ * Storing the relative path and letting `mediaUrlRewriter` build the URL at
+ * response time — which is what user face/ID media has always done — makes the
+ * data host-independent. This normaliser is applied on write so it does not
+ * matter whether a client echoes back an absolute URL it was previously given.
+ */
+export function toRelativeMediaPath(value: string): string {
+  if (typeof value !== "string") return value;
+  // Absolute: strip scheme://host/media/ ; relative: already correct.
+  const m = value.match(/^https?:\/\/[^/]+\/media\/(.+)$/);
+  return m ? m[1] : value;
+}
+
 /** Authenticated-only (any logged-in user) URL for a user's avatar/selfie —
  * not signed/expiring, but not publicly reachable by an anonymous request
  * either. See userFacePath() doc comment for why this tier, not signed. */

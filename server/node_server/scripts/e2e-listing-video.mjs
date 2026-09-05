@@ -19,6 +19,17 @@ import { PrismaClient } from "@prisma/client";
 import { deflateSync } from "node:zlib";
 
 const API = process.env.API_BASE_URL ?? "http://localhost:5000/api/v1";
+
+/**
+ * Rate-limit bypass. The API allows 100 requests per 15-minute window per IP,
+ * and this suite alone can exceed that — so `scripts/e2e-all.mjs` cannot run
+ * the set end to end without it. Unset means the header is simply absent and
+ * normal limits apply, so the default is unchanged and it fails closed.
+ * Every use is logged at warn server-side (middleware/rateLimiter.ts).
+ */
+const BYPASS = process.env.RATE_LIMIT_BYPASS_SECRET
+  ? { "X-RateLimit-Bypass": process.env.RATE_LIMIT_BYPASS_SECRET }
+  : {};
 const prisma = new PrismaClient();
 
 let pass = 0;
@@ -39,7 +50,7 @@ function section(t) {
 }
 
 async function jreq(path, { method = "GET", token, body } = {}) {
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", ...BYPASS };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API}${path}`, {
     method,
@@ -106,7 +117,7 @@ async function uploadImage(token) {
   fd.append("file", new Blob([makePng()], { type: "image/png" }), "cover.png");
   const res = await fetch(`${API}/upload/image`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...BYPASS },
     body: fd,
   });
   return res.json();
@@ -116,7 +127,7 @@ async function uploadVideo(token) {
   fd.append("file", new Blob([makeFakeMp4()], { type: "video/mp4" }), "clip.mp4");
   const res = await fetch(`${API}/upload/image`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...BYPASS },
     body: fd,
   });
   return res.json();

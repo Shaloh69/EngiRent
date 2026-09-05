@@ -83,6 +83,10 @@ const envSchema = z.object({
   // Rate Limiting
   RATE_LIMIT_WINDOW_MS: z.string().default("900000"),
   RATE_LIMIT_MAX_REQUESTS: z.string().default("100"),
+  // Optional shared secret allowing the E1 test suite to bypass rate limiting.
+  // Unset (the default) means no bypass exists. See middleware/rateLimiter.ts
+  // for why this is a secret rather than an IP allowlist.
+  RATE_LIMIT_BYPASS_SECRET: z.string().optional(),
 
   // File Upload — actually enforced by middleware/upload.ts (previously
   // declared here but silently ignored; that middleware hardcoded its own

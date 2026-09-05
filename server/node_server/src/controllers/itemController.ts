@@ -10,6 +10,21 @@ import {
 import logger from "../utils/logger";
 import axios from "axios";
 import env from "../config/env";
+import { toRelativeMediaPath } from "../services/storageService";
+
+/**
+ * Item photos and the listing clip are persisted as **relative** storage paths
+ * and turned into URLs by `mediaUrlRewriter` on the way out. Clients round-trip
+ * the absolute URL they were handed at upload time, so normalise on write —
+ * otherwise a rotating Cloudflare hostname gets frozen into the row and every
+ * photo dies on the next tunnel restart (D-17), taking the ML verification
+ * pipeline silently with it (D-18).
+ */
+function normaliseItemMedia<T>(value: T): T {
+  if (typeof value === "string") return toRelativeMediaPath(value) as unknown as T;
+  if (Array.isArray(value)) return value.map(normaliseItemMedia) as unknown as T;
+  return value;
+}
 import { findOverlappingRentals } from "../services/itemAvailabilityService";
 
 /**
@@ -71,11 +86,14 @@ export const createItem = async (
       pricePerWeek,
       pricePerMonth,
       securityDeposit,
-      images,
-      video,
+      images: rawImages,
+      video: rawVideo,
       serialNumber,
       campusLocation,
     } = req.body;
+
+    const images = normaliseItemMedia(rawImages);
+    const video = normaliseItemMedia(rawVideo);
 
     const item = await prisma.item.create({
       data: {
@@ -348,9 +366,11 @@ export const updateItem = async (
         ...(securityDeposit && {
           securityDeposit: parseFloat(securityDeposit),
         }),
-        ...(images && { images }),
+        ...(images && { images: normaliseItemMedia(images) }),
         ...(imagesChanged && { mlFeatures: Prisma.JsonNull }),
-        ...(video !== undefined && { videoUrl: video || null }),
+        ...(video !== undefined && {
+          videoUrl: video ? normaliseItemMedia(video) : null,
+        }),
         ...(serialNumber !== undefined && { serialNumber }),
         ...(campusLocation && { campusLocation }),
         ...(isAvailable !== undefined && { isAvailable }),

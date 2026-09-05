@@ -32,6 +32,40 @@ export const errorHandler = (
     }
   }
 
+  // Body-parser errors (D-15).
+  //
+  // express.json() throws a SyntaxError with `status: 400` and
+  // `type: "entity.parse.failed"` when a request body isn't valid JSON. That
+  // error was falling all the way through to the generic 500 below, so **every
+  // JSON endpoint in the API answered a malformed body with "Internal server
+  // error"** — telling the caller the server broke when in fact their request
+  // was bad. `API-TEST-PLAN.md` requires a clean 400 here as one of the five
+  // minimum cases on all 93 endpoints, so this single branch is what makes that
+  // case passable rather than 93 separate fixes.
+  //
+  // Also covers `entity.too.large` (413) from the 10mb limit, which had the
+  // same problem.
+  const bodyParserErr = err as Error & { status?: number; type?: string };
+  if (
+    typeof bodyParserErr.type === "string" &&
+    bodyParserErr.type.startsWith("entity.")
+  ) {
+    const status =
+      typeof bodyParserErr.status === "number" ? bodyParserErr.status : 400;
+    res.status(status).json({
+      success: false,
+      error:
+        bodyParserErr.type === "entity.too.large"
+          ? "Request body too large"
+          : "Malformed request body",
+      message:
+        bodyParserErr.type === "entity.too.large"
+          ? "The request body exceeded the size limit."
+          : "The request body could not be parsed as JSON.",
+    });
+    return;
+  }
+
   // Application errors
   if (err instanceof AppError) {
     res.status(err.statusCode).json({

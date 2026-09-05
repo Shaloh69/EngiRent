@@ -83,6 +83,41 @@ describe("signMediaPath / verifyMediaToken — private media access", () => {
 });
 
 describe("URL builders", () => {
+  // D-17: item media used to be stored as absolute URLs with the then-current
+  // Cloudflare hostname baked in, so every listing photo died on a tunnel
+  // rotation — and with it, silently, the whole ML verification path (D-18).
+  describe("toRelativeMediaPath", () => {
+    it("strips an absolute media URL back to its stored relative path", () => {
+      expect(
+        storageService.toRelativeMediaPath(
+          "https://some-dead-tunnel.trycloudflare.com/media/items/b1/listing-1.jpg",
+        ),
+      ).toBe("items/b1/listing-1.jpg");
+    });
+
+    it("is idempotent — a relative path is returned unchanged", () => {
+      expect(storageService.toRelativeMediaPath("items/b1/listing-1.jpg")).toBe(
+        "items/b1/listing-1.jpg",
+      );
+    });
+
+    it("normalises regardless of which host baked the URL", () => {
+      const a = storageService.toRelativeMediaPath(
+        "https://host-one.example/media/items/b1/listing-1.jpg",
+      );
+      const b = storageService.toRelativeMediaPath(
+        "http://host-two.example/media/items/b1/listing-1.jpg",
+      );
+      expect(a).toBe(b);
+    });
+
+    it("leaves a non-media URL alone", () => {
+      expect(
+        storageService.toRelativeMediaPath("https://example.com/not-media/x.jpg"),
+      ).toBe("https://example.com/not-media/x.jpg");
+    });
+  });
+
   it("publicItemUrl refuses a non-item path", () => {
     expect(() => storageService.publicItemUrl("users/u1/face.jpg")).toThrow();
   });

@@ -1,5 +1,10 @@
 import { Request, Response, NextFunction } from "express";
-import { avatarUrl, signedMediaUrl } from "../services/storageService";
+import {
+  avatarUrl,
+  publicItemUrl,
+  signedMediaUrl,
+  toRelativeMediaPath,
+} from "../services/storageService";
 
 // Rather than manually converting every controller's `profileImage`/
 // `idImageUrl`/`Verification.originalImages`/`kioskImages` field at each of
@@ -20,12 +25,25 @@ import { avatarUrl, signedMediaUrl } from "../services/storageService";
 
 const FACE_PATH_RE = /^users\/([^/]+)\/face\.jpg$/;
 const PRIVATE_PATH_RE = /^(users\/[^/]+\/id\.jpg|verifications\/.+)$/;
+// Item photos and listing clips are public and unsigned, but they must still
+// be stored relative and built here — see toRelativeMediaPath()'s comment and
+// defects D-17/D-18. Previously these were persisted as absolute URLs with the
+// then-current Cloudflare hostname baked in, which broke every listing photo
+// (and, silently, the whole ML verification path) on each tunnel rotation.
+const ITEM_PATH_RE = /^items\/[^/]+\/[^/]+$/;
 
 function rewriteValue(value: unknown): unknown {
   if (typeof value === "string") {
-    const faceMatch = value.match(FACE_PATH_RE);
+    // Normalise first: a value may be a stored relative path (the correct,
+    // current form) OR a legacy absolute URL with a long-dead Cloudflare
+    // hostname baked into it. Matching on the normalised path means both are
+    // rebuilt against the CURRENT host, so historical rows heal on read instead
+    // of staying broken until someone runs a migration (D-17).
+    const rel = toRelativeMediaPath(value);
+    const faceMatch = rel.match(FACE_PATH_RE);
     if (faceMatch) return avatarUrl(faceMatch[1]);
-    if (PRIVATE_PATH_RE.test(value)) return signedMediaUrl(value);
+    if (PRIVATE_PATH_RE.test(rel)) return signedMediaUrl(rel);
+    if (ITEM_PATH_RE.test(rel)) return publicItemUrl(rel);
     return value;
   }
   if (Array.isArray(value)) return value.map(rewriteValue);

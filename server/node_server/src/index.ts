@@ -4,7 +4,6 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { createServer } from "http";
 import { Server as SocketServer, Socket } from "socket.io";
-import axios from "axios";
 import cron from "node-cron";
 import env from "./config/env";
 import { connectDatabase } from "./config/database";
@@ -24,6 +23,7 @@ import { verifyAccessToken } from "./utils/jwt";
 // became unnecessary on 2026-09-03: the comparison now runs server-side, so
 // the biometric never leaves this process. See faceVerificationService.
 import { resolveFaceSubject } from "./services/faceVerificationService";
+import { runMlVerification } from "./services/mlVerificationService";
 import { openKioskSession } from "./services/kioskSessionStore";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
@@ -156,68 +156,9 @@ app.use("/media", mediaRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-// ── ML verification helper (shared by deposit/return socket flows) ──────────
-async function downloadBlob(url: string): Promise<Blob | null> {
-  try {
-    const r = await axios.get(url, { responseType: "arraybuffer" });
-    return new Blob([r.data as ArrayBuffer], { type: "image/jpeg" });
-  } catch {
-    logger.warn(`Could not download image: ${url}`);
-    return null;
-  }
-}
-
-async function runMlVerification(
-  originalUrls: string[],
-  kioskUrls: string[],
-  attemptNumber: number,
-  mlFeatures: unknown,
-): Promise<{
-  decision: string;
-  confidence: number;
-  method_scores: Record<string, number>;
-  ocr: unknown;
-}> {
-  const [origBlobs, kioskBlobs] = await Promise.all([
-    Promise.all(originalUrls.map(downloadBlob)),
-    Promise.all(kioskUrls.map(downloadBlob)),
-  ]);
-
-  const validOrig = origBlobs.filter((b): b is Blob => b !== null);
-  const validKiosk = kioskBlobs.filter((b): b is Blob => b !== null);
-
-  if (validOrig.length === 0 || validKiosk.length === 0) {
-    return { decision: "PENDING", confidence: 0, method_scores: {}, ocr: null };
-  }
-
-  const formData = new FormData();
-  validOrig.forEach((b, i) =>
-    formData.append("original_images", b, `original_${i}.jpg`),
-  );
-  validKiosk.forEach((b, i) =>
-    formData.append("kiosk_images", b, `kiosk_${i}.jpg`),
-  );
-  formData.append("attempt_number", String(attemptNumber));
-  if (mlFeatures)
-    formData.append("reference_features", JSON.stringify(mlFeatures));
-
-  const resp = await axios.post(
-    `${env.ML_SERVICE_URL}/api/v1/verify`,
-    formData,
-    {
-      headers: {
-        ...(env.ML_SERVICE_API_KEY && { "X-API-Key": env.ML_SERVICE_API_KEY }),
-      },
-    },
-  );
-
-  return resp.data as {
-    decision: string;
-    confidence: number;
-    method_scores: Record<string, number>;
-    ocr: unknown;
-  };
-}
+// ML verification helpers moved to services/mlVerificationService.ts on
+// 2026-09-06 so D-18 could be regression-tested — importing them from here
+// booted the HTTP and socket servers. Behaviour unchanged; it is a move.
 
 // ── Auto-complete a rental after successful verifications ────────────────────
 async function completeRental(rentalId: string): Promise<void> {

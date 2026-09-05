@@ -40,6 +40,19 @@ export class ConflictError extends AppError {
   }
 }
 
+/**
+ * 410 Gone — the route existed, still resolves, and has been permanently
+ * retired. Distinct from 400 (your request was malformed) and 404 (no such
+ * route), both of which mislead a caller here: the retired kiosk endpoints
+ * previously returned 400, which reads as "you sent something wrong" when the
+ * truth is "this capability no longer exists and there is a replacement".
+ */
+export class GoneError extends AppError {
+  constructor(message: string) {
+    super(410, message);
+  }
+}
+
 export class InternalServerError extends AppError {
   constructor(message = "Internal server error") {
     super(500, message, false);

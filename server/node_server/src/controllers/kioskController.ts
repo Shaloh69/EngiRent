@@ -2,8 +2,9 @@ import { Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
 import {
-  NotFoundError,
   ForbiddenError,
+  GoneError,
+  NotFoundError,
   ValidationError,
 } from "../utils/errors";
 import logger from "../utils/logger";
@@ -148,7 +149,7 @@ export const claimItem = async (
   next: NextFunction,
 ): Promise<void> => {
   next(
-    new ValidationError(
+    new GoneError(
       "POST /kiosk/claim no longer works — the kiosk's face camera was removed. " +
         "Claiming an item now happens by scanning the kiosk's QR code in the app, " +
         "which opens a verification page on the phone.",
@@ -162,7 +163,7 @@ export const returnItem = async (
   next: NextFunction,
 ): Promise<void> => {
   next(
-    new ValidationError(
+    new GoneError(
       "POST /kiosk/return no longer works — the kiosk's face camera was removed. " +
         "Returning an item now happens by scanning the kiosk's QR code in the app, " +
         "which opens a verification page on the phone.",

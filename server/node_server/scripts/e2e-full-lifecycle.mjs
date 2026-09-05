@@ -23,6 +23,17 @@ import { deflateSync } from "node:zlib";
 import { PrismaClient } from "@prisma/client";
 
 const API = process.env.API_BASE_URL ?? "http://localhost:5000/api/v1";
+
+/**
+ * Rate-limit bypass. The API allows 100 requests per 15-minute window per IP,
+ * and this suite alone can exceed that — so `scripts/e2e-all.mjs` cannot run
+ * the set end to end without it. Unset means the header is simply absent and
+ * normal limits apply, so the default is unchanged and it fails closed.
+ * Every use is logged at warn server-side (middleware/rateLimiter.ts).
+ */
+const BYPASS = process.env.RATE_LIMIT_BYPASS_SECRET
+  ? { "X-RateLimit-Bypass": process.env.RATE_LIMIT_BYPASS_SECRET }
+  : {};
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@engirent.edu.ph";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
 const OUT_DIR = process.env.E2E_OUT_DIR ?? ".";
@@ -50,7 +61,7 @@ function sleep(ms) {
 }
 
 async function jreq(path, { method = "GET", token, body, isForm } = {}) {
-  const headers = {};
+  const headers = { ...BYPASS };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (!isForm) headers["Content-Type"] = "application/json";
   const res = await fetch(`${API}${path}`, {
@@ -96,7 +107,7 @@ async function uploadImage(token) {
   fd.append("file", new Blob([makePng()], { type: "image/png" }), "cover.png");
   const res = await fetch(`${API}/upload/image`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...BYPASS },
     body: fd,
   });
   return res.json();
@@ -113,7 +124,7 @@ async function registerAndVerify(person, facePath) {
   faceFd.append("file", new Blob([faceBytes], { type: "image/jpeg" }), "face.jpg");
   const faceRes = await fetch(`${API}/auth/register-face`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...BYPASS },
     body: faceFd,
   });
   const faceJson = await faceRes.json();
@@ -123,7 +134,7 @@ async function registerAndVerify(person, facePath) {
   idFd.append("file", new Blob([makePng()], { type: "image/png" }), "id.png");
   const idRes = await fetch(`${API}/auth/id-photo`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...BYPASS },
     body: idFd,
   });
   check(`${person.label}: id-photo stored`, idRes.status === 200 || idRes.status === 201, `status ${idRes.status}`);
