@@ -101,6 +101,123 @@ context-management strategy** — everything else is just noticing when to use i
 
 ---
 
+## 2c. Incident log — this has now happened TWICE
+
+**§2b was advisory and it did not work.** Two occurrences. The rules below in
+§2d are the response, and they are gates rather than reminders because
+reminders are what already failed.
+
+| # | When | How it was caught | What was lost |
+|---|---|---|---|
+| **1** | Before 2026-09-06 (exact session not recorded) | The human noticed | **Unknown — nothing was written down.** That is the whole lesson of this row: an unrecorded incident cannot be learned from, and its absence is why occurrence 2 repeated the pattern rather than avoiding it |
+| **2** | 2026-09-06, E2 | **The human had to ask.** Not self-reported, despite §2b explicitly saying to say it out loud | Three consecutive work chunks (payments, E2.1, E2.2) built and committed with **zero** on-screen verification; the phase-start ritual skipped, which hid three unfinished E2 bullets until they were dug out four commits later; the status line dropped from 8 of 12 responses |
+
+**Occurrence 2, symptom by symptom against §2b's own list:**
+
+- **Symptom 3 (losing the rules) — confirmed.** Hard rule 6 says *every*
+  response opens with the status line. Only the four report-shaped responses
+  carried it; the eight working responses did not. The rule was silently
+  reinterpreted as "reports need a status line", which is not what it says.
+- **Symptom 6 (skipping verification) — confirmed, with a caveat that does not
+  excuse it.** Verification was externally blocked by a classifier refusal, not
+  skipped by choice, and was declared each time. **But the decision to keep
+  building while blocked was a choice**, and it stacked three unverified
+  changes where the rule permits one.
+- **Symptom 5 (batching) — mild.** Two large multi-file commits.
+- **Symptom 1 (re-deriving) — mechanical only.** Three patch-script anchors
+  missed. Not comprehension loss.
+- **Symptom 4 (drifting toward agreement) — absent.** Four doc corrections were
+  made against the repo in the same session, which is the opposite failure
+  mode. **Note this carefully: strength on one axis masked weakness on
+  another.** "I am catching doc errors, so I must be sharp" is not evidence
+  about verification debt.
+- **Symptom 2 (vaguer summaries) — absent.**
+
+**The generalisable finding:** degradation here did **not** look like confusion.
+It looked like productive, accurate, well-tested work with a growing unverified
+tail. Every individual change was defensible. The failure was cumulative and
+invisible from inside, which is exactly why §2d's rules count things instead of
+asking how you feel.
+
+---
+
+## 2d. Hard gates — these are not reminders
+
+Each one is checkable by someone else, from the repo, without asking how the
+session felt.
+
+### G1 — The verification-debt ceiling: **at most ONE unverified chunk**
+
+A "chunk" is one logical change that could be looked at on screen. **Before
+starting a second chunk while the first is unverified, STOP and surface it.**
+Not "note it and continue" — stop building.
+
+If verification is blocked (a permission refusal, hardware offline, a missing
+credential), that is precisely when the ceiling binds, because a blocked
+verification is unverified work. Say what is blocked, hand the human the
+specific unblock, and **pick work whose verification is not blocked** — or stop.
+
+*Check:* count changes recorded as built-but-not-seen in PROGRESS.md. More than
+one is a violation, and it is visible in the register.
+
+*Occurrence 2 reached three.*
+
+### G2 — The phase-start ritual is a gate, not a template
+
+**No implementation edit in a phase** until PROGRESS.md contains a dated
+section-by-section table of that phase's state, derived from the phase file
+**and the repo**, naming which bullets are already done, which are not, and
+which register rows should move.
+
+A direct instruction to "start with X" does not waive this. It reorders the
+work; it does not remove the need to know what the phase contains. Occurrence 2
+followed such an instruction faithfully and consequently did not notice that
+E2.2 and E2.4 each had an unbuilt half.
+
+*Check:* the table exists in PROGRESS.md, dated, before the phase's first
+implementation commit.
+
+### G3 — Phase state is never asserted from memory
+
+Any claim that a phase, section or defect is done must be re-derived from the
+phase file and the repo **in the same response that claims it**. `grep` for the
+thing and show it, or do not say it.
+
+*Check:* the claim cites a file, a line, or a command that was actually run.
+
+### G4 — The status line is unconditional
+
+Every response. Working messages, one-line answers, tool-heavy turns, all of
+them. There is no "report" carve-out. If the numbers cannot be filled in,
+PROGRESS.md is stale and fixing that is the next action.
+
+*Check:* read the transcript. Any response without it is a violation.
+
+### G5 — Self-report degradation without being asked
+
+Run §2b's six-symptom check **at every phase-section boundary** and write the
+result into PROGRESS.md's degradation log — including "no symptoms", which is
+the result that makes the log trustworthy. The human should never be the
+detector. In both recorded occurrences they were.
+
+### G6 — Secret sweep before the first commit of any session
+
+`git ls-files -z | xargs -0 grep -lEI` for credential patterns, and confirm the
+remote's visibility with an anonymous
+`git -c credential.helper= ls-remote <url> HEAD` before pushing anything, ever.
+
+Occurrence 2 ran this sweep late and found **two live published credentials**
+(S-3, S-4) that had been in a public repo for the whole track. Running it first
+would have cost thirty seconds.
+
+### G7 — Ending a session
+
+Do not end or clear until: PROGRESS.md's registers are current, the degradation
+log has this session's entry, and the continuation prompt for the next session
+is written and committed. Then answer §5's question 8 honestly.
+
+---
+
 ## 3. Task handling
 
 **Subagents** — use for genuinely parallel *read-only* work: auditing socket
@@ -237,3 +354,6 @@ the doc without showing me the conflict first.
    `/clear`, not after every chunk
 9. **A green test is not a fix.** Verify on screen before recording anything as
    fixed — D-1 passed six unit tests while still visibly broken
+10. **The §2d gates G1-G7 bind.** Especially **G1**: at most one unverified
+    chunk at a time. Context degradation has happened twice on this track and
+    both times the human had to be the one who noticed

@@ -217,6 +217,15 @@ and adapted to this project's realities:
 - **`CLAUDE.md` + this file are auto-loaded context.** If you notice yourself
   re-deriving decisions already made, context is full — update
   `docs/PROGRESS.md`, `/clear`, and reload rather than pushing through
+- **Context degradation has happened TWICE on this track, and both times the
+  human noticed before the model did** (`docs/PROGRESS.md` → CONTEXT
+  DEGRADATION LOG). Noticing it is therefore not a skill this track can rely
+  on, so `CLAUDE-CODE-PLAYBOOK.md` §2d replaces the advice with **seven
+  checkable gates, G1-G7**. Read them before starting a phase. The one that
+  binds most often: **G1, at most one unverified chunk at a time** — and
+  verification blocked by a permission refusal or offline hardware still
+  counts as unverified. The second occurrence looked like productive,
+  well-tested work, not like confusion
 - **Explore → plan → implement → verify.** For anything touching more than one
   file, state the plan before editing. This project has already been bitten
   three times by code that compiled, passed tests, and was broken on screen

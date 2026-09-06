@@ -7,5 +7,19 @@
       "Bash(timeout 60 scp -q transfer@desktop-gklhcri:D:/ENG/EngiRent/server/node_server/src/utils/errors.ts __TRACKED_VAR__/srv/errors.now.ts)",
       "Bash(echo \"\\(diff exit $? — only the comment wording should differ\\)\")"
     ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/engirent-gates.sh\"",
+            "timeout": 10,
+            "suppressOutput": true
+          }
+        ]
+      }
+    ]
   }
 }

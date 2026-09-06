@@ -1,5 +1,11 @@
 # CONTINUE-E2.md — paste into a fresh Claude Code session
 
+> **⚠ SUPERSEDED 2026-09-06 by `CONTINUE-E2-SESSION-4.md`.** This handed off at
+> the E1/E2 boundary and is now wrong on every count: the status line, the
+> commit count, the claim that item 5 needs a schema addition (it does not —
+> `Transaction.paymentReferenceNo` already exists), and the absence of S-3/S-4.
+> Kept, not deleted, per `REPO-HYGIENE.md`. **Use the session-4 file.**
+
 > Supersedes `KICKOFF_PROMPT.md`, which starts the track from E0. E0 and E1 are
 > done. Written 2026-09-06 at the E1/E2 boundary.
 
