@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E2 · S-3 ROTATED · S-4 ROTATED+PROVEN · S-5 LIVE (kiosk sudo pw public, Pi offline) · payments + E2.2 server half DEPLOYED & LIVE, still 0/3 seen on screen · unit 113 Jest/35 Flutter · defects 11/35 · screens 0/69 PASS]
+[E2 · S-3/S-4 ROTATED · S-5 LIVE (kiosk sudo pw public, Pi offline) · all 6 E2 sections BUILT · verification debt 5 (G1 override, user ruling) · adminController NOT deployed, scp refused · unit 117 Jest/39 Flutter · defects 12/39 · screens 0/69 PASS]
 ```
 
 **Current phase: E2.** E1 closed with named gaps. E0 is complete except two
