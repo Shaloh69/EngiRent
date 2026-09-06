@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ColorSchemeToggle } from "@/components/ui/ColorSchemeToggle";
+import { ConnectionIndicator } from "@/components/ui/ConnectionIndicator";
+import { useAdminSocket } from "@/lib/useAdminSocket";
 
 const menuItems = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
@@ -73,6 +75,9 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  // One socket for the whole console, opened here because the shell is the
+  // one component every authenticated page renders inside.
+  const connectionState = useAdminSocket();
   const router = useRouter();
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
 
@@ -128,6 +133,10 @@ export default function AdminLayout({
             </Group>
 
             <Group gap="xs">
+              {/* E2.2 / D-4. In the shell header rather than per-page,
+                  because "am I actually receiving updates?" is a property of
+                  the console, not of whichever queue happens to be open. */}
+              <ConnectionIndicator state={connectionState} />
               <ActionIcon
                 variant="light"
                 color="gray"

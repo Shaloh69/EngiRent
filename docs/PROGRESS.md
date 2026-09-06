@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E2 · S-3 + S-4 LIVE: admin password AND ML key public on GitHub, both rotations OUTSTANDING · payments 1-3 built, NOT deployed · unit 103 Jest/35 Flutter · defects 9/34 · screens 0/69 PASS]
+[E2 · S-3 + S-4 LIVE: admin password AND ML key public on GitHub, both rotations OUTSTANDING · payments 1-3 + E2.1 + E2.2 built, NOTHING DEPLOYED · unit 113 Jest/35 Flutter · defects 11/35 · screens 0/69 PASS]
 ```
 
 **Current phase: E2.** E1 closed with named gaps. E0 is complete except two
@@ -760,7 +760,7 @@ SSE-bus events, not socket.io — a distinction `Implemented.md` §3.2 blurs).
 | `admin:kiosk_error` | same |
 | `kiosk:rental_info` | **Its consumer was deliberately deleted** on 2026-09-03 — `socket_client.py:551` records "register_qr_callback / emit_rental_lookup / kiosk:rental_info removed". Node still emits it at `index.ts:1049` and `:1066`. A sibling of the already-known-dead `kiosk:face` that nobody spotted |
 
-**D-14 — the four `admin:*` events are broadcast to every connected client.**
+**D-14 — ✅ FIXED 2026-09-06 (E2.2). Was: the four `admin:*` events are broadcast to every connected client.**
 They use `io.emit(...)`, not a room emit — `index.ts:356, 398, 427, 1212`. No
 `admin` room is ever joined; nothing joins one. So kiosk operational telemetry
 (kiosk id, socket id, status payloads, **error payloads**) is pushed to *every*
@@ -769,6 +769,21 @@ it's operational data, not PII — but it is unnecessary, unconsumed, and the
 wrong default for a system where the phone is an untrusted client. Fixing the
 dead-consumer problem and the broadcast problem is the same one-line change per
 site: emit to an admin room, and have the console join it.
+
+> **FIXED 2026-09-06 (E2.2), exactly that way.** The four `io.emit` calls now
+> go through `notifyAdmins()` in `src/services/adminRoom.ts`, which is the
+> single door for `admin:*` — an `io.emit` at a call site is a
+> one-character-looking difference that silently restores the broadcast and no
+> test would fail, so there is now a test that does. Extracted into a service
+> rather than tested through `index.ts`, which boots the HTTP and socket
+> servers on import (the same constraint that made D-18's fix extract
+> `runMlVerification`). **10 tests, mutation-checked**: reverting
+> `notifyAdmins` to a broadcast turns 2 red. The room join is gated on the
+> JWT-derived role via `canJoinAdminRoom`, which requires `kind === "user"` —
+> set by `io.use()` only after a token verifies — so a role the client merely
+> claims is rejected, as is a kiosk (authenticated, but roleless).
+> **Line numbers in this row were stale**: the sites are 297, 339, 368, 1153,
+> not 356/398/427/1212.
 
 **Implication for D-4.** The reported "nothing is real-time" is *not* explained
 by unconsumed events on the phone — the Flutter app consumes all 13 events
@@ -928,6 +943,8 @@ ode_server\src`, or the user applies the two-line change by hand.** The change i
 |---|---|---|
 | **D-35** ✅ | **`POST /payments` created a new PENDING transaction on every call, and never checked whether the rental was already paid.** No dedupe, no already-paid guard — `prisma.transaction.create` ran unconditionally. Harmless under the old flow (a duplicate was an abandoned PayMongo checkout session nobody could act on) and **not harmless under the payments ruling**: the admin console lists every PENDING transaction with its own approve button, so a renter tapping Pay Now three times hands an admin three separately approvable charges against one debt, each of which independently advances the rental. **FIXED 2026-09-06** in the same change as the manual-mode switch: reuses the live PENDING/PROCESSING row of that type, and throws `ConflictError` (409) once one is COMPLETED. Two tests, both red first | `paymentController.ts` createPayment |
 | **D-36** ✅ | **`RentalModel.fromJson` threw away the `transactions` array the API has always sent.** `GET /rentals/:id` includes it (`rentalController.ts:257`, `include: { transactions: true }`) and the Flutter model never read it — the same defect shape as D-1 and D-7: a field the server sends, a parser that ignores it, and a screen that then renders a confident lie. Survivable while a checkout URL carried the whole payment flow; **under manual payments this array is the flow**, because the rental sits in `PENDING` both when nothing has been sent and when money has been sent and an admin has yet to confirm it. Without it the phone cannot tell those apart and offers "Pay Now" to someone who has already paid. **FIXED 2026-09-06** — `RentalTransaction` model plus `awaitingPaymentConfirmation` / `pendingPaymentOfType`. 8 tests, red first. FAILED is deliberately *not* awaiting-confirmation: a rejected payment must put the renter back in front of the Pay button | `rental_model.dart`, `rentalController.ts:257` |
+
+| **D-37** | **The admin console now has two independent live channels for the same kiosk telemetry, and neither knows about the other.** E2.2 added a socket.io client carrying `admin:kiosk_online/ack/status/error`, while `health/page.tsx:121` and `kiosk/page.tsx:237` keep their raw SSE `fetch` to `/admin/kiosks/events`. Both work; nothing is broken; but two transports for one data stream is exactly the duplicated-implementation shape `ENGIRENT-CLAUDE.md` §7 says to grep for at the end of a phase, and I am recording it rather than quietly ripping out working code mid-phase. **Decide in E2 or E3, do not let it drift:** either the two hardware pages move onto the socket and the SSE endpoint keeps only its non-console consumers, or the socket drops the four `admin:kiosk_*` events and stays the queue channel. The second is smaller and arguably right — SSE already works for hardware pages and the socket's real job was the queues | `adminSocket.ts` vs `health/page.tsx:121`, `kiosk/page.tsx:237` |
 
 ---
 

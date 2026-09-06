@@ -21,6 +21,7 @@ import {
 } from "@mantine/core";
 import { AlertCircle, BadgeCheck, IdCard, ScanFace, XCircle } from "lucide-react";
 import api from "@/lib/api";
+import { useAdminRefetch } from "@/lib/useAdminSocket";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -77,8 +78,8 @@ export default function IdVerificationsPage() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       const res = await api.get(`/admin/id-verifications?status=${status}`);
@@ -94,6 +95,12 @@ export default function IdVerificationsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // E2.2 / D-4 — this queue used to update only on a manual reload. The
+  // refetch is quiet (no loading flash): a socket event should make the list
+  // correct, not make the page look like it is starting over while an admin
+  // is reading it.
+  useAdminRefetch(["admin:verification_submitted"], () => void load(true));
 
   const decide = async (row: Row, decision: "APPROVE" | "REJECT") => {
     // Rejecting without a reason leaves the student with nothing to act on,

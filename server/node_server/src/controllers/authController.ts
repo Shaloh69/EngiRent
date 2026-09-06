@@ -15,6 +15,7 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import logger from "../utils/logger";
+import { notifyAdmins } from "../services/adminRoom";
 import { encryptJson } from "../utils/crypto";
 import axios from "axios";
 import env from "../config/env";
@@ -546,6 +547,14 @@ export const completeProfile = async (
         verifiedAt: null,
       },
       select: PROFILE_SELECT,
+    });
+
+    // E2.2 — the console's verification queue had no way to learn this
+    // short of a manual reload. Emitted to the admin room only (D-14): a
+    // student's name and id do not belong in a broadcast.
+    notifyAdmins(req.app.get("io"), "admin:verification_submitted", {
+      userId: req.user.userId,
+      submittedAt: new Date().toISOString(),
     });
 
     logger.info(`Profile completed: ${req.user.email}`);

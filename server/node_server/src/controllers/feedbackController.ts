@@ -5,6 +5,7 @@ import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
 import { UnauthorizedError, ValidationError } from "../utils/errors";
 import logger from "../utils/logger";
+import { notifyAdmins } from "../services/adminRoom";
 import { saveBuffer, feedbackScreenshotPath, signedMediaUrl } from "../services/storageService";
 import { getRecentKioskEvents } from "../utils/kioskEventLog";
 
@@ -123,6 +124,15 @@ export const submitFeedback = async (
           : Prisma.JsonNull,
       },
       select: { id: true, category: true, createdAt: true },
+    });
+
+    // E2.2 — live triage queue. Carries the category and nothing the user
+    // wrote: the body is free text a student typed and the console fetches
+    // it over an authenticated route anyway.
+    notifyAdmins(req.app.get("io"), "admin:feedback_new", {
+      feedbackId: feedback.id,
+      category: feedback.category,
+      createdAt: feedback.createdAt,
     });
 
     logger.info(

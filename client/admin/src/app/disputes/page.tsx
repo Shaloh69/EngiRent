@@ -26,6 +26,7 @@ import {
   Siren,
 } from "lucide-react";
 import api from "@/lib/api";
+import { useAdminRefetch } from "@/lib/useAdminSocket";
 import type { Rental } from "@/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { DataTableCard } from "@/components/ui/DataTableCard";
@@ -72,8 +73,14 @@ export default function DisputesPage() {
     void fetchQueue();
   }, []);
 
-  const fetchQueue = async () => {
-    setLoading(true);
+  // E2.2 / D-4 — this queue used to update only on a manual reload. The
+  // refetch is quiet (no loading flash): a socket event should make the list
+  // correct, not make the page look like it is starting over while an admin
+  // is reading it.
+  useAdminRefetch(["admin:dispute_opened"], () => void fetchQueue(true));
+
+  const fetchQueue = async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError("");
     try {
       const [rentalsRes, verifsRes] = await Promise.all([

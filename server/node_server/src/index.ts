@@ -17,6 +17,11 @@ import prisma from "./config/database";
 import kioskEventBus from "./utils/kioskEventBus";
 import { installKioskEventLog } from "./utils/kioskEventLog";
 import { recomputeItemAvailability } from "./services/itemAvailabilityService";
+import {
+  ADMIN_ROOM,
+  canJoinAdminRoom,
+  notifyAdmins,
+} from "./services/adminRoom";
 import { verifyAccessToken } from "./utils/jwt";
 // decryptFaceEncoding/signedMediaUrl were used here to ship a user's face
 // encoding and reference photo down to the kiosk for local comparison. Both
@@ -252,6 +257,34 @@ io.on("connection", (socket: Socket) => {
     logger.info(`User ${uid} joined their notification room`);
   });
 
+  // ── Admin room join (admin console) — E2.2 / D-14.
+  // The console had no socket client at all, which is the real reason its
+  // queues never live-updated (D-4). Gated on the JWT-derived role, never on
+  // anything the client sends: canJoinAdminRoom requires kind === "user",
+  // which io.use() sets only after verifying the token.
+  socket.on("admin:join", () => {
+    if (!canJoinAdminRoom(socket.data)) {
+      logger.warn(
+        `Rejected 'admin:join' from socket ${socket.id} (kind=${socket.data.kind}, role=${socket.data.role})`,
+      );
+      // Say so, rather than leaving the caller to infer a refusal from
+      // silence. A console that cannot tell "refused" from "no kiosk
+      // activity yet" shows a live-looking indicator over a dead
+      // subscription, which is the exact failure this work exists to remove.
+      // Tells the socket nothing it does not already know about itself.
+      socket.emit("admin:join_refused", { reason: "staff access required" });
+      return;
+    }
+    socket.join(ADMIN_ROOM);
+    logger.info(
+      `${socket.data.role} ${socket.data.userId} joined the admin room`,
+    );
+    // Let the console distinguish "connected" from "connected and
+    // subscribed" — without it, a silent authorization failure looks exactly
+    // like a quiet period with no kiosk activity.
+    socket.emit("admin:joined", { room: ADMIN_ROOM });
+  });
+
   // ── Kiosk registration — Pi announces itself on connect (kiosk-only)
   socket.on(
     "kiosk:register",
@@ -294,7 +327,7 @@ io.on("connection", (socket: Socket) => {
       }
 
       // Broadcast online status to admin
-      io.emit("admin:kiosk_online", { kiosk_id, socket_id: socket.id });
+      notifyAdmins(io, "admin:kiosk_online", { kiosk_id, socket_id: socket.id });
       kioskEventBus.emit("kiosk_online", {
         kiosk_id,
         socket_id: socket.id,
@@ -336,7 +369,7 @@ io.on("connection", (socket: Socket) => {
             `└─────────────────────────────────────────────`,
         );
       }
-      io.emit("admin:kiosk_ack", data);
+      notifyAdmins(io, "admin:kiosk_ack", data);
       kioskEventBus.emit("kiosk_ack", { ...data, ts: Date.now() });
     },
   );
@@ -365,7 +398,7 @@ io.on("connection", (socket: Socket) => {
         `│  Lockers : ${lockerSummary}\n` +
         `└─────────────────────────────────────────────`,
     );
-    io.emit("admin:kiosk_status", data);
+    notifyAdmins(io, "admin:kiosk_status", data);
     kioskEventBus.emit("kiosk_status", { ...d, ts: Date.now() });
   });
 
@@ -738,6 +771,15 @@ io.on("connection", (socket: Socket) => {
             });
             io.to(`user:${rental.ownerId}`).emit("return:disputed", {
               rentalId: rental_id,
+            });
+            // E2.2 — the disputes queue is the one an admin is expected to
+            // work promptly (a student's deposit is held until it settles),
+            // and it was the queue with no live signal at all.
+            notifyAdmins(io, "admin:dispute_opened", {
+              rentalId: rental_id,
+              itemTitle: rental.item.title,
+              confidence,
+              openedAt: new Date().toISOString(),
             });
             return;
           }
@@ -1150,7 +1192,7 @@ io.on("connection", (socket: Socket) => {
         `│  Error  : ${d?.message ?? JSON.stringify(data)}\n` +
         `└─────────────────────────────────────────────`,
     );
-    io.emit("admin:kiosk_error", data);
+    notifyAdmins(io, "admin:kiosk_error", data);
     kioskEventBus.emit("kiosk_error", { ...d, ts: Date.now() });
   });
 

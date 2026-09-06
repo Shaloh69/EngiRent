@@ -32,6 +32,7 @@ import {
   User,
 } from "lucide-react";
 import api from "@/lib/api";
+import { useAdminRefetch } from "@/lib/useAdminSocket";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -95,8 +96,8 @@ export default function FeedbackPage() {
   // Update Required screen reads this to credit the real reporter by name.
   const [fixedInVersion, setFixedInVersion] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       const qs = new URLSearchParams({ status, limit: "100" });
@@ -114,6 +115,12 @@ export default function FeedbackPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // E2.2 / D-4 — this queue used to update only on a manual reload. The
+  // refetch is quiet (no loading flash): a socket event should make the list
+  // correct, not make the page look like it is starting over while an admin
+  // is reading it.
+  useAdminRefetch(["admin:feedback_new"], () => void load(true));
 
   const acknowledge = async (row: Row) => {
     setSaving(true);
