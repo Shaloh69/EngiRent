@@ -3,6 +3,12 @@
 > Read in full at the start of any session, after `CLAUDE.md` and
 > `docs/redesign/ENGIRENT-CLAUDE.md`. Update before any `/clear` or session end.
 
+> **BRANCH: `e0-e1-audit-tests-and-evidence`, not `main`.** All E0/E1 work is
+> committed there (6 commits as of 2026-09-06). `main` does not have the BEFORE
+> images, the test suite, or any of the registers. Merge when you're happy with
+> it; until then a session that checks out `main` will look like none of this
+> happened.
+
 ## STATUS LINE (paste at the top of every response)
 ```
 [E1 · endpoints 73/93 happy path · 14 suites, 405 assertions (2 RED = D-32) · unit 89 Jest/15 kiosk/58 ML · defects 7 fixed + 4 new · screens 0/69 PASS]
