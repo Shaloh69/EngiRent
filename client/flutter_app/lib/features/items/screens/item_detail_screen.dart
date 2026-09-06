@@ -472,10 +472,25 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: ElevatedButton(
-                onPressed: item.isAvailable ? _rentNow : null,
-                child: Text(item.isAvailable ? l10n.requestRental : l10n.unavailable),
-              ),
+              // D-3's client half. The server has rejected self-rental since
+              // the first backend commit (rentalController.ts:40), so an owner
+              // tapping "Request rental" on their own listing only ever got a
+              // 400 — the guard was never missing, the honesty was. Line ~370
+              // already checks ownership for the message button; this is the
+              // same check on the primary action, which is the one that
+              // mattered.
+              child: item.owner.id == SocketService.instance.currentUserId
+                  ? OutlinedButton.icon(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/items/mine'),
+                      icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                      label: const Text('Manage your listing'),
+                    )
+                  : ElevatedButton(
+                      onPressed: item.isAvailable ? _rentNow : null,
+                      child: Text(
+                          item.isAvailable ? l10n.requestRental : l10n.unavailable),
+                    ),
             ),
           ],
         ),
