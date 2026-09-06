@@ -101,6 +101,33 @@ than by reasoning:
   is no route from the accounts available to me to the screens that need
   verifying.
 
+**CHUNK 3 (E2.2) PARTIALLY VERIFIED ON SCREEN — the `unauthorized` path.**
+Done without the admin password, by driving the production-built console at
+`localhost:3002` with the **student** probe's token injected as `admin_token`.
+The badge rendered **"NOT SUBSCRIBED"** (screenshot:
+`scratchpad/shots/admin-indicator-student-token.png`). Four things this proves,
+and one it does not:
+
+- the console's socket client — new in E2.2, the console previously had none —
+  **connects to the deployed server**. Had it not connected, the badge would
+  read *"Not live"*; the two states are deliberately distinct and this is the
+  connected-but-refused one.
+- the server's **`admin:join` handler exists and answered**, which
+  independently confirms the E2.2 server-half deploy landed — a second,
+  behavioural check on top of the `dist` symbol count.
+- it answered **`admin:join_refused`**, so the **room's role gate holds
+  server-side** against a real non-staff token. That is the security-relevant
+  half and it was tested with the actual failure case rather than assumed.
+- the indicator **settles on an honest terminal state** instead of sticking on
+  "Connecting…" forever, which was the specific failure the component exists
+  to prevent.
+
+**Not proven, and not to be recorded as proven:** the `live` state, the
+`admin:joined` acceptance path, and the three queue events
+(`admin:verification_submitted`, `admin:feedback_new`, `admin:dispute_opened`)
+actually updating a queue. Those need an ADMIN token. **Chunk 3 is partially
+verified; it is not a PASS.**
+
 **What WAS verified on screen this session:** the app builds against the live
 tunnel, launches, renders onboarding, renders login, authenticates against the
 live API, and correctly gates an incomplete profile. Real, and honestly *not*
@@ -1205,6 +1232,7 @@ rather than deleted, or the room's fan-out loses its only unit coverage.
 | **D-35** ✅ | **`POST /payments` created a new PENDING transaction on every call, and never checked whether the rental was already paid.** No dedupe, no already-paid guard — `prisma.transaction.create` ran unconditionally. Harmless under the old flow (a duplicate was an abandoned PayMongo checkout session nobody could act on) and **not harmless under the payments ruling**: the admin console lists every PENDING transaction with its own approve button, so a renter tapping Pay Now three times hands an admin three separately approvable charges against one debt, each of which independently advances the rental. **FIXED 2026-09-06** in the same change as the manual-mode switch: reuses the live PENDING/PROCESSING row of that type, and throws `ConflictError` (409) once one is COMPLETED. Two tests, both red first | `paymentController.ts` createPayment |
 | **D-36** ✅ | **`RentalModel.fromJson` threw away the `transactions` array the API has always sent.** `GET /rentals/:id` includes it (`rentalController.ts:257`, `include: { transactions: true }`) and the Flutter model never read it — the same defect shape as D-1 and D-7: a field the server sends, a parser that ignores it, and a screen that then renders a confident lie. Survivable while a checkout URL carried the whole payment flow; **under manual payments this array is the flow**, because the rental sits in `PENDING` both when nothing has been sent and when money has been sent and an admin has yet to confirm it. Without it the phone cannot tell those apart and offers "Pay Now" to someone who has already paid. **FIXED 2026-09-06** — `RentalTransaction` model plus `awaitingPaymentConfirmation` / `pendingPaymentOfType`. 8 tests, red first. FAILED is deliberately *not* awaiting-confirmation: a rejected payment must put the renter back in front of the Pay button | `rental_model.dart`, `rentalController.ts:257` |
 
+| **D-38** | **The admin dashboard renders confident zeros when it fails to load.** `dashboard/page.tsx:87-94` initialises `stats` to `{totalUsers:0, totalItems:0, activeRentals:0, pendingVerifications:0, totalRevenue:0}` and the catch at `:127` sets an error message **without blanking them**. So a failed fetch shows *"Unable to load dashboard data."* directly above **TOTAL USERS 0 · TOTAL ITEMS 0 · ACTIVE RENTALS 0 · REVENUE ₱0**, and "Recent Rentals → No rentals found" — which is not "no rentals", it is "we could not ask". Same family as D-34 (`totalUsers` counting soft-deleted students): the console states a number it does not have. Worse here, because the number is **plausible** — a quiet pilot really might have low counts, so an admin has no way to tell a dead API from a slow week. **Found by accident**, while driving the console with a deliberately under-privileged token to test E2.2's `unauthorized` path; the 403 produced exactly this render. The error banner is present and correct, so this is not a missing-error-state bug — it is two contradictory claims shown at once. **Fix shape:** the KPI cards and the rentals table need a null/unknown state distinct from zero (em-dash or skeleton), not a defaulted `0`. Belongs with E3's shared components, since every list page in the console likely shares this pattern — **grep before fixing; do not assume this page is the only one** | `client/admin/src/app/dashboard/page.tsx:87-94, 127` |
 | **D-37** | **The admin console now has two independent live channels for the same kiosk telemetry, and neither knows about the other.** E2.2 added a socket.io client carrying `admin:kiosk_online/ack/status/error`, while `health/page.tsx:121` and `kiosk/page.tsx:237` keep their raw SSE `fetch` to `/admin/kiosks/events`. Both work; nothing is broken; but two transports for one data stream is exactly the duplicated-implementation shape `ENGIRENT-CLAUDE.md` §7 says to grep for at the end of a phase, and I am recording it rather than quietly ripping out working code mid-phase. **Decide in E2 or E3, do not let it drift:** either the two hardware pages move onto the socket and the SSE endpoint keeps only its non-console consumers, or the socket drops the four `admin:kiosk_*` events and stays the queue channel. The second is smaller and arguably right — SSE already works for hardware pages and the socket's real job was the queues | `adminSocket.ts` vs `health/page.tsx:121`, `kiosk/page.tsx:237` |
 
 ---
