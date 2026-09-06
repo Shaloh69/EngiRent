@@ -1965,6 +1965,39 @@ no deploy** and is being verified on the emulator.
 with zero third-party packages, i.e. the AVD's partition is simply small.
 Release build (~89 MB) is the workaround and is the better artifact anyway.
 
+### VERIFIED ON SCREEN 2026-09-07 — E2.2's refetch-on-reconnect, and D-40's fix
+
+**The first chunk of this session's work to actually clear G1.** Debug build on
+the wiped emulator, logged in as the probe, network dropped and restored with
+`svc wifi disable` / `svc data disable`. Logcat, in order:
+
+```
+17:04:46  [Socket] Connected — joining user room: 1f09f53e-…
+17:05:18  [Socket] Connect error: Failed host lookup: surveys-enable-…   (x8, every 5s)
+17:05:59.802  [Socket] Connected — joining user room: 1f09f53e-…
+17:05:59.803  [Socket] Reconnected — signalling resync
+```
+
+Four things this proves, each of which was previously only a unit test:
+
+1. **The socket connects at all.** That line had never appeared in any build,
+   in any run — see D-40.
+2. **Reconnection retries happen.** The eight `Connect error` lines at a 5s
+   cadence are `enableReconnection()` working. Before D-40's fix there was no
+   socket object, so there was nothing to reconnect.
+3. **The resync fires on reconnect** — the whole point of E2.2's other half.
+4. **The first connect did NOT fire it.** 17:04:46 produced no "Reconnected"
+   line. That is the edge the unit tests pin (firing there would double every
+   screen's initial load) confirmed in the real app rather than in a harness.
+
+**Status: E2.2's Flutter half is VERIFIED, not merely built.** D-40's fix is
+verified in the same pass, by the same evidence — the connect line is the fix.
+
+**Verification debt after this: 4, one of them partial.** Payments (needs the
+`adminController` deploy + an admin), E2.1's owner CTA (needs `isVerified`),
+E2.4's ID-verification event (needs the deploy + an admin), and E2.2's admin
+console half (partially verified — the `unauthorized` path only).
+
 **So E2 is not done.** Remaining, in order:
 1. **Flutter refetch-on-reconnect** (E2.2's other half).
 2. **The ID-verification decision event** (E2.4) — mirror `payment:approved`.
