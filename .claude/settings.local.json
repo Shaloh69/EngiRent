@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(sed -i 's#https://zezsxfyoufqqxaffsvng.supabase.co#https://hosyeqkzkhewtadicgba.supabase.co#' server/kiosk/.env.example)",
+      "Bash(scp -q server/node_server/src/controllers/adminController.ts transfer@desktop-gklhcri:*)",
       "Bash(xargs wc:*)",
       "Bash(find /d/Projects-Shem/Thesis/2026/EngiRent -type f -name *.py)",
       "Bash(npx prisma:*)",

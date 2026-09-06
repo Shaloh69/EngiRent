@@ -173,6 +173,29 @@ E2.1's owner CTA, E2.4's ID-verification event, and chunk 3's `live` state —
 is gated on those two. All are built and unit-tested; none is a PASS. **G1
 debt stands at 4 (1 partial), unchanged, and both unblocks are the user's.**
 
+### 2026-09-07 (later) — deploy UNBLOCKED and done; password still wrong
+
+**The user added `Bash(scp -q server/node_server/src/controllers/adminController.ts
+transfer@desktop-gklhcri:*)` to `settings.local.json`.** That is the mechanism
+the web search predicted: a static `allow` rule is matched before the auto-mode
+classifier runs, so the copy the classifier had refused ~5× went through on the
+first try. **`adminController.ts` deployed** — server hash matches local
+(`eb9a5e36…`), `tsc --noEmit` exit 0 on the server tree, Node restarted by PID
+(35524 → 30880), and the running `dist/controllers/adminController.js` carries
+`verification:approved` ×1. **E2.4's server half is now live.** It still needs
+an on-screen end-to-end check (admin approves an ID → phone updates with no
+refresh), which needs the admin login.
+
+**The admin password still does not authenticate.** The re-saved file is a
+clean single line, 8 chars, ASCII, no BOM, no whitespace — and
+`POST /auth/login` with `admin@engirent.edu.ph` returns "Invalid email or
+password". Confirmed **not** a lockout: `authController` has no failed-attempt
+lockout (only an IP rate limiter at 100/15min, nowhere near hit). So the value
+is simply not the current admin credential, or the email differs. Both the
+20-char and 8-char lines from the original two-line file also failed earlier.
+**Handed back to the user to double-check the actual rotated password / email.**
+Not retried further — no lockout risk, but no point guessing.
+
 **What WAS verified on screen this session:** the app builds against the live
 tunnel, launches, renders onboarding, renders login, authenticates against the
 live API, and correctly gates an incomplete profile. Real, and honestly *not*
