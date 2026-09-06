@@ -758,6 +758,34 @@ blocks `adb install` until uninstalled; and `adb shell screencap /sdcard/...`
 fails with a bogus usage error under git-bash unless **`MSYS_NO_PATHCONV=1`**
 is set. Helper: `design/tools/cap.sh`.
 
+**Three more, found 2026-09-06 (session 4), same category:**
+
+4. **`adb` is not on `PATH` on this machine.** Three `adb devices` calls
+   returned an empty list that read exactly like "no emulator attached" — the
+   binary simply did not exist. The emulator had been booted and healthy the
+   whole time. Full path:
+   `C:\Users\Shaloh\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
+   This is the **fifth** instance of this project's "check your own harness
+   before believing the result" rule, and the first where the harness failed
+   *silently* rather than with an assertion.
+5. **`adb shell input keyevent 111` opens Gboard's clipboard panel**, it does
+   not dismiss the keyboard. The panel then covers the lower half of the screen
+   and swallows the next tap, which lands somewhere unintended. Use
+   `input keyevent 4` (back) instead.
+   Related: `input text 'pw\!'` inside single quotes sends a **literal
+   backslash**, so the password arrives one character wrong while the field
+   still looks plausibly full. Count the dots.
+6. **`next dev` for the admin console spins at 100% CPU.** Left ~50 minutes it
+   accumulated **17,092 seconds of CPU** and stopped answering on :3001
+   entirely, while still emitting `PackFileCacheStrategy` warnings so it looked
+   alive. Next.js also warns at startup that it inferred the workspace root as
+   the **repo root** (two lockfiles), which puts `design/`, Flutter `build/`
+   and a 226 MB APK inside its watch scope. **Use `npm run build && npm start`
+   instead** — no watcher, and it is closer to the deployed console anyway. Do
+   not "fix" it with a `next.config.ts` edit without measuring:
+   `outputFileTracingRoot` governs build tracing, not dev watching, so it is
+   not obviously the cause.
+
 No screen has a triptych, conformance note, or states line yet, and none has an
 AFTER image. **All 91 remain `FAILED`** — a BEFORE image alone is not a PASS.
 
