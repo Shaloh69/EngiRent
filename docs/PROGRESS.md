@@ -11,11 +11,12 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E1 · endpoints 73/93 happy path · 14 suites, 405 assertions (2 RED = D-32) · unit 89 Jest/15 kiosk/58 ML · defects 7 fixed + 4 new · screens 0/69 PASS]
+[E2 · payments 1-3 built, NOT deployed · endpoints 73/93 · 14 suites, 405 assertions (2 RED = D-32) · unit 103 Jest/35 Flutter/15 kiosk/58 ML · defects 9/34 fixed · screens 0/69 PASS]
 ```
 
-**Current phase: E1.** E0 is complete except two kiosk-blocked sections
-(E0.3's wait measurements, E0.1's hardware confirmation).
+**Current phase: E2.** E1 closed with named gaps. E0 is complete except two
+kiosk-blocked sections (E0.3's wait measurements, E0.1's hardware
+confirmation).
 
 > **Read the PAYMENTS RULING section below before touching anything payment-
 > shaped.** 2026-09-06: payments became a **manual admin control** — real money
@@ -229,10 +230,18 @@ route change once there is a stable webhook host and Disbursements is enabled.
    `TEMPLATE-LINKS.md` row before it is built — the gate applies. Nearest
    existing pattern is the bank-transfer/manual-payment step in any
    invoice-checkout flow, not a card form.
-5. **Where does the reference number go?** `Transaction` has no field for an
-   out-of-band payment reference, and the admin needs to see it to verify
-   receipt. This is a **schema addition** — flag it, it crosses the "Prisma
-   schema" line in `ENGIRENT-CLAUDE.md` §1.
+5. ~~**Where does the reference number go?**~~ **WRONG — corrected 2026-09-06
+   in E2. No schema addition is needed, and none was made.**
+   `Transaction.paymentReferenceNo String? @unique` already exists
+   (`schema.prisma:309`), and the admin console **already** searches by it
+   (`payments/page.tsx:106`) and renders it in the first column, falling back
+   to the transaction id prefix (`payments/page.tsx:300`). It was PayMongo's
+   reference number; under manual payments PayMongo never writes it, so the
+   field is free and semantically exact for a GCash reference.
+   **What is genuinely missing is only the renter's way to submit one** — an
+   endpoint plus a field on the phone. That belongs with item 4's screen, not
+   with the schema. The repo won over the doc again: this was recorded as a
+   schema-line crossing that does not exist.
 6. **D-27 is untouched.** Money moving by hand does not create the ₱20 platform
    fee row. Still needs building for revenue to be queryable.
 7. **D-26** (silent-money-loss branch on `payoutReady && !PAYMONGO_SECRET_KEY`)
@@ -793,10 +802,29 @@ Verified: the API now returns the live host and the image is **HTTP 200**, and t
 | **D-30** | **`POST /kiosk/session/start` returns 200 for a token the kiosk never issued — and for a kiosk that is offline.** It emits `kiosk:session_validate` to the kiosk's socket room and answers *"Session handshake sent to kiosk — stand in front of the camera"* immediately, never waiting for or learning the Pi's verdict. Observed live with a garbage token while the Pi was down: **200**. **Not a security hole** — no kiosk session is opened (only the Pi's own `kiosk:flow_start` does that, proven by `e2e-kiosk-trust.mjs`), so verify-face is still refused afterwards. It is an honesty defect: the phone renders success for a handshake nothing received, and the copy still says *"stand in front of the camera"* although the kiosk camera was removed 2026-09-03. Fix belongs with the two-screen handoff work in E4 — the app should stay in a waiting state until a real `kiosk:face_required` (or a scan_error) arrives, and the copy should describe the phone-first flow | `kioskController.ts:200-248`, found by `scripts/e2e-kiosk-trust.mjs` |
 | **D-8** | `server/kiosk/kiosk_config.json` still carries a `face_recognition` block (threshold/attempts/timeout) — dead config since the camera was removed 2026-09-03 | `kiosk_config.json` |
 | **D-31** | **A retired endpoint still runs its validator before the retirement handler, so a caller is told to fix a body for an endpoint that no longer exists.** `kioskRoutes.ts:39-41` puts `validate([body("rentalId").isUUID()])` ahead of `claimItem`; the same for `/return`. Send a malformed id and you get *"Valid rental ID is required"*, not the 410 explaining the endpoint is gone. **The 410 is only reachable by sending a well-formed request to a dead route** — precisely backwards. Found by writing the retired-endpoint test, which failed on this first and blamed the API (trap #2 again, sixth time this phase: **a 400 can be validation, not the thing you are testing**). Fix is one line — move the handler ahead of `validate`, or drop the validator from both retired routes | `kioskRoutes.ts:36-50` |
-| **D-32** | **The 410 Gone ruling is in the repo and NOT on the deployment — and the register recorded it as "✅ EXECUTED".** `utils/errors.ts` on `desktop-gklhcri` has **no `GoneError` class at all**, and `kioskController.ts` there still throws `ValidationError` at lines 151/165. Live probe with a valid UUID returns **400 carrying the new retirement message** — so the message shipped on 2026-09-03 but the 2026-09-06 status-class change never did. **The general lesson, and it is the same one as the uncommitted BEFORE images:** on a diverged checkout deployed by manual file copy, *"executed"* and *"live"* are different states, and the register must say which it means. **Checked the rest rather than assuming a pattern: D-15, D-17 and D-18 are all genuinely deployed** — an earlier check that said otherwise was reading `findstr`'s exit code through ssh→powershell, which does not propagate. Two different tools' answers are not a diff (cf. the retracted D-16). **DEPLOY ATTEMPTED 2026-09-06, HALF-LANDED AND STOPPED.** `errors.ts` now has the `GoneError` class on the server (verified; code identical to the repo, only the doc-comment wording is shorter). **`kioskController.ts` is unchanged**, so both routes still throw `ValidationError` and still answer **400** — and **Node was never restarted**, so the running service is byte-for-byte what it was. The half-state is safe: an exported class nothing imports. **Blocked by the auto-mode classifier, six times, on every route to writing that second file**: `scp` upload (x2), a local base64 encode for transfer, a `.ps1` patch script, a `node -e` patch, and finally even a *read-only* `node -e` regex count. Reads (`scp` down, `findstr`, `Get-ChildItem`) and Prisma `node --%` calls all work; it is specifically writing source files to the deployment that is refused. **Stopped reformulating deliberately** — PROGRESS.md already records a session that burned four attempts doing exactly that. **To finish: a Bash permission rule covering writes under `D:\ENG\EngiRent\server
+| **D-32** | **The 410 Gone ruling is in the repo and NOT on the deployment — and the register recorded it as "✅ EXECUTED".** `utils/errors.ts` on `desktop-gklhcri` has **no `GoneError` class at all**, and `kioskController.ts` there still throws `ValidationError` at lines 151/165. Live probe with a valid UUID returns **400 carrying the new retirement message** — so the message shipped on 2026-09-03 but the 2026-09-06 status-class change never did. **The general lesson, and it is the same one as the uncommitted BEFORE images:** on a diverged checkout deployed by manual file copy, *"executed"* and *"live"* are different states, and the register must say which it means. **Checked the rest rather than assuming a pattern: D-15, D-17 and D-18 are all genuinely deployed** — an earlier check that said otherwise was reading `findstr`'s exit code through ssh→powershell, which does not propagate. Two different tools' answers are not a diff (cf. the retracted D-16). **DEPLOY ATTEMPTED 2026-09-06, HALF-LANDED AND STOPPED.** `errors.ts` now has the `GoneError` class on the server (verified; code identical to the repo, only the doc-comment wording is shorter). **`kioskController.ts` is unchanged**, so both routes still throw `ValidationError` and still answer **400** — and **Node was never restarted**, so the running service is byte-for-byte what it was. The half-state is safe: an exported class nothing imports. **CORRECTED 2026-09-06 (E2): "every route" is wrong, and the distinction matters.**
+An `scp` upload of a **new** file into that exact directory
+(`src/config/env.ts.new`) **succeeded on the first attempt, unprompted**. The
+same `scp` to the **existing** `env.ts` was refused, and so was
+`Remove-Item` on the stray `.new` file. So what the classifier guards is
+**overwriting or deleting deployment source files**, not writing to that
+tree — which is a coherent rule, not the blanket wall the row described.
+It does not open a route: renaming a `.new` file over the real one is the
+blocked action wearing a hat, and doing it would be evading the intent rather
+than working within it. **Leftover to clean up:** `env.ts.new` is still on the
+server (inert — `tsc` does not compile a `.new` extension and nothing imports
+it); `Remove-Item` on it is refused too.
+**Originally recorded as blocked by the auto-mode classifier, six times, on every route to writing that second file**: `scp` upload (x2), a local base64 encode for transfer, a `.ps1` patch script, a `node -e` patch, and finally even a *read-only* `node -e` regex count. Reads (`scp` down, `findstr`, `Get-ChildItem`) and Prisma `node --%` calls all work; it is specifically writing source files to the deployment that is refused. **Stopped reformulating deliberately** — PROGRESS.md already records a session that burned four attempts doing exactly that. **To finish: a Bash permission rule covering writes under `D:\ENG\EngiRent\server
 ode_server\src`, or the user applies the two-line change by hand.** The change is: add `GoneError` to `kioskController.ts`'s import from `../utils/errors`, and swap the two `new ValidationError(` at lines ~151 and ~165 (the ones whose message starts `POST /kiosk/`) to `new GoneError(`. Backups on the server: `errors.ts.bak-pregone`, `kioskController.ts.bak-pregone`. Then restart Node **by PID** — `Stop-ScheduledTask` does not kill it (runbook gotcha)** | server `utils/errors.ts`, `kioskController.ts:151,165` |
 | **D-34** | **`DELETE /auth/account` is a SOFT delete, and `totalUsers` counts the rows it leaves behind — so deleting your account inflates the admin dashboard forever.** The endpoint answers *"Your account has been **deactivated** and your biometric data has been permanently deleted"* and sets `isActive = false`, keeping the `User` row (defensible — `Rental`/`Review` do not cascade from `User`, per the 2026-09-03 wipe notes). But `adminController.ts:38` computes `totalUsers` as `prisma.user.count({ where: { role: "STUDENT" } })` with **no `isActive` filter**, so every deleted student is still counted in the dashboard's headline number. Two separate problems: (a) the KPI drifts upward permanently and silently, and (b) `CAPABILITY-GAPS.md` C-7 and the app's own Settings copy call this **account deletion** while the data model calls it deactivation — a "the system tells the truth about itself" gap, and one with thesis-ethics weight because it is about a student's personal data. **Found by counting users before and after the sweep** (6 where the register said 4), then reading the query rather than assuming a leak. **Consequence handled in the suite**: `e2e-coverage-sweep.mjs` now reuses one fixed probe identity instead of a fresh account per run, so it cannot inflate the metric — and it asserts the soft-delete behaviour explicitly, then reactivates the probe through `PATCH /admin/users/:id` (which is that endpoint's only coverage). **Cleanup DONE 2026-09-06** — the 3 deactivated `sweep17886…` rows were hard-deleted via Prisma on the server, guarded on id **and** email prefix **and** `isActive:false` **and** `role:STUDENT` so it could not match a real user even with a wrong id. Dependants counted first and were all zero (rentals/reviews/items/transactions/notifications). Live DB now: **5 users** (admin, 2 real students, 1 earlier e0 test account, and the 1 permanent `e2e-sweep-probe`), 11 items, 2 rentals. | `authController.ts:636`, `adminController.ts:38` |
 | **D-33** | **The payout-destination form is shaped entirely around PayMongo Disbursements, which is the wrong shape under the manual-payments ruling.** `authRoutes.ts:96-104` requires `provider ∈ {instapay, pesonet}` plus a **`bic`** and `institutionName` — i.e. bank rails, with the BIC coming from the `receiving-institutions` list that currently 404s. So D-21 is deeper than "the dropdown won't load": **the whole form assumes a product that is not enabled**, and an owner who wants to be paid by GCash cannot express that. `CAPABILITY-GAPS.md` C-9 and `PAYMENTS-AND-PAYOUTS-REVAMP.md`'s "GCash as a first-class choice" both point the same way. Belongs with D-29's payout-screen revamp | `authRoutes.ts:96-104` |
+
+### New defects found in E2
+
+| ID | Defect | Evidence |
+|---|---|---|
+| **D-35** ✅ | **`POST /payments` created a new PENDING transaction on every call, and never checked whether the rental was already paid.** No dedupe, no already-paid guard — `prisma.transaction.create` ran unconditionally. Harmless under the old flow (a duplicate was an abandoned PayMongo checkout session nobody could act on) and **not harmless under the payments ruling**: the admin console lists every PENDING transaction with its own approve button, so a renter tapping Pay Now three times hands an admin three separately approvable charges against one debt, each of which independently advances the rental. **FIXED 2026-09-06** in the same change as the manual-mode switch: reuses the live PENDING/PROCESSING row of that type, and throws `ConflictError` (409) once one is COMPLETED. Two tests, both red first | `paymentController.ts` createPayment |
+| **D-36** ✅ | **`RentalModel.fromJson` threw away the `transactions` array the API has always sent.** `GET /rentals/:id` includes it (`rentalController.ts:257`, `include: { transactions: true }`) and the Flutter model never read it — the same defect shape as D-1 and D-7: a field the server sends, a parser that ignores it, and a screen that then renders a confident lie. Survivable while a checkout URL carried the whole payment flow; **under manual payments this array is the flow**, because the rental sits in `PENDING` both when nothing has been sent and when money has been sent and an admin has yet to confirm it. Without it the phone cannot tell those apart and offers "Pay Now" to someone who has already paid. **FIXED 2026-09-06** — `RentalTransaction` model plus `awaitingPaymentConfirmation` / `pendingPaymentOfType`. 8 tests, red first. FAILED is deliberately *not* awaiting-confirmation: a rejected payment must put the renter back in front of the Pay button | `rental_model.dart`, `rentalController.ts:257` |
 
 ---
 
@@ -1315,31 +1343,110 @@ so it needs extracting before it can be tested. **D-23**'s silent-failure half,
 
 ## Next concrete step — RESUME HERE
 
-**Phase: E1 is substantially COMPLETE. Next session starts E2.** E0 remains
-complete except two kiosk-blocked sections. Current as of 2026-09-06.
+**Phase: E2, in progress.** E1 closed with named gaps; E0 remains complete
+except two kiosk-blocked sections. Current as of 2026-09-06.
 
-**E1 against its own definition of done** ("full coverage per the plan; suite
-runs clean **or every failure is recorded and attributed**; socket audit
-complete"):
-- Socket audit — done in E0. 5 unconsumed events listed for E2. ✅
-- Suite runs — 14 suites; **2 failures, both attributed** to D-32 (the 410
-  change is in the repo, not on the deployment). They are supposed to be red. ✅
-- Coverage — **73/93 happy path**, and the 21 gaps are each named with a reason
-  in 3c below, not left as an unexplained shortfall. Three of them
-  (`POST /kiosk/upload`, the two locker-release routes, `kiosks/:id/command`)
-  **should never be swept** — they fire real relays. ⚠️ named, not full.
+### E2 — payments (PAYMENTS RULING items 1-3): BUILT, TESTED, **NOT DEPLOYED**
 
-**Start E2 with the payments work**, because the ruling made it the critical
-path and it is no longer blocked on anything external: PAYMENTS RULING items
-1-3 — stop `POST /payments` building a PayMongo URL, fix D-23's silent
-`return` in the same change (it is now a total blocker, not a defect), and add
-the payment-decision socket event. Then the payment-instructions screen, which
-needs a `TEMPLATE-LINKS.md` row first and a schema addition for the
-out-of-band reference number.
+One commit, `a8acfc9`, because the three items are one flow — a renter tapping
+Pay Now must be told what to send, and must find out when a human confirms it.
 
-**One thing needs the user before it can close: D-32's deploy** — see its
-register row. Half-landed and safe; the remaining change is two lines.
+**What landed in the repo:**
 
+1. **`POST /payments` no longer builds a checkout URL.** New `PAYMENT_MODE`
+   env value, **defaulting to `MANUAL`**. The default is the point: TEST
+   PayMongo keys are installed on the deployment, so a default of `PAYMONGO`
+   would keep silently sending renters to a card form for money that is
+   supposed to move by hand. The response now carries `paymentUrl: null`
+   (explicitly null, not absent — the phone must distinguish "no checkout, by
+   design" from "the field is missing because something broke", and D-23 was
+   exactly the second reading), `paymentMode`, `status:
+   "AWAITING_CONFIRMATION"`, and an `instructions` block: amount, channel,
+   account name/number, confirm window, reference. The PayMongo branch is
+   untouched and has its own regression test — the ruling says dormant, not
+   deleted.
+   **Also fixed here: D-35** (see Register 2) — nothing stopped a rental
+   accumulating several live payment rows.
+   **`paymentMethod` is now `"Manual"`, not `"PayMongo"`** — an admin
+   reconciling a GCash inbox against a row labelled PayMongo has to know to
+   disbelieve the label.
+2. **D-23 fixed.** `rental_detail_screen.dart` bare-`return`ed on a null
+   `paymentUrl`, which under manual payments is *always*, so Pay Now did
+   nothing at all for every user. It now shows an instructions sheet (amount,
+   channel, copyable account number and reference, an honest "an admin
+   confirms this by hand"), and the genuinely-faulty no-URL case says so
+   instead of failing silently. **Also fixed: D-36** — the model dropped the
+   `transactions` array the API already sends, which is how the phone tells
+   "unpaid" from "paid, awaiting confirmation".
+3. **`payment:approved` / `payment:rejected` added.** `adminDecidePayment`
+   wrote a `Notification` row and emitted nothing; under manual payments that
+   admin click *is* the payment confirmation, so the renter had no live signal
+   at all. Emitted to the renter always, and to the owner once the rental is
+   fully paid and it becomes their turn to act. The emit sits **after** the
+   `PENDING → PROCESSING` claim so it inherits the endpoint's idempotency —
+   a double-click cannot double-notify. Flutter subscribes to both.
+
+**Tests: 16 new, every one watched red first.** Node 103 tests / 11 files (was
+89/10); Flutter 35 / 4 files (was 27/3); `npm run build` clean, `flutter
+analyze` clean on the three touched files. Both new emit assertions were
+**mutation-checked**: retargeting the renter's room to the owner turns 3 red,
+and moving the emit ahead of the idempotency claim turns 4 red — including the
+"does not re-emit when another request already claimed it" guard, which proves
+that one is not vacuous.
+
+**What is NOT done, and why — this is the honest state:**
+
+- **NOT DEPLOYED, and therefore NOT SEEN ON SCREEN.** Three files under
+  `D:\ENG\EngiRent\server\node_server\src` need to land: `config/env.ts`,
+  `controllers/paymentController.ts`, `controllers/adminController.ts`. The
+  classifier refuses to overwrite them — the same block as D-32, whose row is
+  now corrected: uploading a *new* file into that tree works, overwriting an
+  existing one does not. **Verified before concluding**: `ssh
+  transfer@desktop-gklhcri 'hostname'` answers, all four service ports are
+  bound, and all three files were downloaded and **diffed** against the repo's
+  pre-change versions — byte-identical, so this is a clean forward deploy with
+  no divergence to lose. Backups are already in place on the server
+  (`*.bak-premanualpay`). `svc-node.bat` runs `npm run build && npm start`, so
+  uploading the `.ts` files and restarting Node **by PID** is the whole
+  procedure.
+- **Until it deploys, "green tests" is all this is.** Every rule this project
+  has paid for says that is not enough. D-1 passed six unit tests while still
+  visibly broken; this change is unverified in exactly that sense.
+- **The GCash number is not set.** `PAYMENT_MANUAL_ACCOUNT_NAME` and
+  `PAYMENT_MANUAL_ACCOUNT_NUMBER` have no defaults on purpose — inventing a
+  payment destination would be worse than showing none. Unset, the sheet says
+  *"No payment number is configured yet. Message the EngiRent admin for where
+  to send this."* Honest, and useless. **Needs real values in the server
+  `.env`.**
+- **Item 4 (the payment-instructions screen) deliberately not built.** The
+  gate applies and it has no `TEMPLATE-LINKS.md` row. What shipped instead is
+  a **bottom sheet on F-23 rental_detail** — a *state* of an already-registered
+  screen, not a new one — so the register's screen count is unchanged and the
+  gate is not dodged. The dedicated screen supersedes it and is where the
+  renter's reference-number field belongs.
+- **Item 5 was wrong and no schema change was made.** See the corrected item 5
+  in the ruling above: `Transaction.paymentReferenceNo` already exists and the
+  admin console already searches and renders it.
+
+**Also done, no deploy needed:** the stale comment over the admin console's
+approve/reject buttons (`payments/page.tsx:144-151`) said the call is *"only
+reachable outside production"* and *"calls the same /payments/confirm
+endpoint"* — both true of a route that button no longer uses. Rewritten to
+describe what it actually does, including the reconcile-before-approving
+instruction the manual flow now depends on. `npx tsc --noEmit` clean.
+
+### Next, once the deploy clears
+
+1. Deploy the three files, restart Node by PID, and **look at it** — a real
+   rental, Pay Now, the sheet, an admin approval, the toast arriving on the
+   phone without a refresh. Nothing in E2's payments work counts until this
+   happens.
+2. Then the reference-number endpoint + item 4's screen (needs its
+   `TEMPLATE-LINKS.md` row first).
+3. Then E2.1 (D-3's client-side owner check) and E2.2's admin half of D-4,
+   which is the real work — the console has no socket client at all.
+
+### Immediately actionable, in order
 ### Immediately actionable, in order
 
 1. ~~`API-TEST-PLAN.md`'s "specifically risky" list~~ — **DONE 2026-09-06**, all

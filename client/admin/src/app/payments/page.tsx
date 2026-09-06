@@ -141,14 +141,25 @@ export default function PaymentsPage() {
     open();
   };
 
-  // Manual PayMongo bypass, testing only — calls the same /payments/confirm
-  // endpoint the real webhook and the dev mock-checkout page use. Only
-  // reachable outside production (server-enforced, see confirmPayment).
-  // Approving genuinely advances the rental (marks the transaction
-  // COMPLETED and, once both payment + deposit are in, flips the rental to
-  // AWAITING_DEPOSIT with a real notification) — this is not a fake shortcut,
-  // it's the real confirmation path with the PayMongo signature requirement
-  // skipped.
+  // The payment confirmation. Not a testing shortcut and not a PayMongo
+  // bypass — under the 2026-09-06 payments ruling the renter pays the
+  // platform out of band (GCash/cash) and this button is how the system
+  // learns the money arrived. Match the amount and the renter against the
+  // reference shown in the first column before approving; nothing upstream
+  // has verified anything.
+  //
+  // It calls POST /admin/transactions/:id/decide-payment, which is
+  // requireAdmin and production-reachable by design, NOT /payments/confirm.
+  // Approving marks the transaction COMPLETED and, once both the rental
+  // payment and the deposit are in, flips the rental to AWAITING_DEPOSIT,
+  // writes the notification, and emits payment:approved to the renter (and
+  // to the owner once fully paid) so the phone updates without a refresh.
+  // The endpoint is idempotent — it claims PENDING -> PROCESSING through
+  // updateMany — so a double-click cannot double-complete or double-notify.
+  //
+  // (The previous comment here described the old mock path: "only reachable
+  // outside production", "calls the same /payments/confirm endpoint". Both
+  // were true of a route this button no longer uses.)
   const decidePendingPayment = async (tx: Transaction, approve: boolean) => {
     setDecidingId(tx.id);
     try {
