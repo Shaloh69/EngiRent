@@ -11,6 +11,12 @@ class RentalModel {
   // GET /rentals' list view may not) — nullable rather than required so
   // this model still parses either shape.
   final RentalParty? renter;
+  // `GET /rentals/:id` includes these (`rentalController.ts`, `include:
+  // { transactions: true }`); the list view does not, so this defaults to
+  // empty rather than being required. Under the manual-payments ruling this
+  // array is how the phone tells "not paid yet" apart from "paid, waiting on
+  // an admin to confirm receipt" — the rental sits in PENDING for both.
+  final List<RentalTransaction> transactions;
 
   RentalModel({
     required this.id,
@@ -22,6 +28,7 @@ class RentalModel {
     required this.item,
     required this.createdAt,
     this.renter,
+    this.transactions = const [],
   });
 
   factory RentalModel.fromJson(Map<String, dynamic> json) {
@@ -37,6 +44,9 @@ class RentalModel {
       renter: json['renter'] != null
           ? RentalParty.fromJson(json['renter'] as Map<String, dynamic>)
           : null,
+      transactions: (json['transactions'] as List<dynamic>? ?? const [])
+          .map((t) => RentalTransaction.fromJson(t as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -45,6 +55,25 @@ class RentalModel {
     if (now.isAfter(endDate)) return 0;
     return endDate.difference(now).inDays;
   }
+
+  /// The live (not yet settled, not yet rejected) payment of a given type, if
+  /// there is one. PROCESSING counts: `adminDecidePayment` claims
+  /// PENDING -> PROCESSING before completing, so a renter refreshing during an
+  /// approval must not be told they are unpaid.
+  RentalTransaction? pendingPaymentOfType(String type) {
+    for (final t in transactions) {
+      if (t.type == type && (t.status == 'PENDING' || t.status == 'PROCESSING')) {
+        return t;
+      }
+    }
+    return null;
+  }
+
+  /// True when money has been requested and a human has yet to confirm it
+  /// arrived. Deliberately false for FAILED: a rejected payment must put the
+  /// renter back in front of the Pay button, not leave them waiting forever.
+  bool get awaitingPaymentConfirmation =>
+      transactions.any((t) => t.status == 'PENDING' || t.status == 'PROCESSING');
 
   bool get isActive => status == 'ACTIVE';
   bool get isCompleted => status == 'COMPLETED';
@@ -108,4 +137,47 @@ class RentalItem {
   }
 
   String get firstImage => images.isNotEmpty ? images.first : '';
+}
+
+/// One row of the rental's payment ledger. A summary, not the full
+/// `Transaction` record — the phone only needs enough to say what is owed,
+/// what has been sent, and whether anyone has confirmed it.
+class RentalTransaction {
+  final String id;
+  final String type; // RENTAL_PAYMENT | SECURITY_DEPOSIT | LATE_FEE | ...
+  final String status; // PENDING | PROCESSING | COMPLETED | FAILED | REFUNDED
+  final double amount;
+  final String paymentMethod; // "Manual" under the payments ruling
+  /// The out-of-band reference the renter quotes (e.g. a GCash reference
+  /// number) and the admin reconciles against. Null until one is recorded.
+  final String? paymentReferenceNo;
+  final DateTime? createdAt;
+
+  RentalTransaction({
+    required this.id,
+    required this.type,
+    required this.status,
+    required this.amount,
+    required this.paymentMethod,
+    this.paymentReferenceNo,
+    this.createdAt,
+  });
+
+  factory RentalTransaction.fromJson(Map<String, dynamic> json) {
+    return RentalTransaction(
+      id: json['id'] as String,
+      type: json['type'] as String? ?? '',
+      status: json['status'] as String? ?? 'PENDING',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      paymentMethod: json['paymentMethod'] as String? ?? '',
+      paymentReferenceNo: json['paymentReferenceNo'] as String?,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'] as String)
+          : null,
+    );
+  }
+
+  bool get isSettled => status == 'COMPLETED';
+  bool get isAwaitingConfirmation =>
+      status == 'PENDING' || status == 'PROCESSING';
 }

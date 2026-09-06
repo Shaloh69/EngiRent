@@ -777,10 +777,23 @@ export const adminDecidePayment = async (
       return;
     }
 
+    // Socket.io lives on the express app (see index.ts). Every emit below is
+    // optional-chained: a missing socket server must degrade to "the phone
+    // finds out on next refresh", never to a failed payment decision.
+    const io = req.app.get("io");
+
     if (!approve) {
       const failedTransaction = await prisma.transaction.update({
         where: { id: transactionId },
         data: { status: "FAILED" },
+      });
+      io?.to(`user:${transaction.userId}`).emit("payment:rejected", {
+        transactionId,
+        rentalId: transaction.rentalId,
+        type: transaction.type,
+        amount: transaction.amount,
+        status: "FAILED",
+        itemTitle: transaction.rental.item.title,
       });
       logger.info(
         `Payment marked FAILED (admin bypass, testing): ${transactionId} by ${req.user.email}`,
@@ -807,6 +820,13 @@ export const adminDecidePayment = async (
       data: { status: "COMPLETED", paidAt: new Date() },
     });
 
+    // Captured for the socket payload below. `null` means "not applicable to
+    // this transaction type" — a LATE_FEE has no sibling payment to be waiting
+    // on, and reporting it as `fullyPaid: false` would be a different lie.
+    let fullyPaid: boolean | null = null;
+    let remainingType: string | null = null;
+    let rentalStatus: string | null = null;
+
     if (
       transaction.type === "RENTAL_PAYMENT" ||
       transaction.type === "SECURITY_DEPOSIT"
@@ -823,7 +843,11 @@ export const adminDecidePayment = async (
         },
       });
 
+      fullyPaid = Boolean(otherCompleted);
+      remainingType = otherCompleted ? null : otherType;
+
       if (otherCompleted) {
+        rentalStatus = "AWAITING_DEPOSIT";
         await prisma.rental.update({
           where: { id: transaction.rentalId },
           data: { status: "AWAITING_DEPOSIT" },
@@ -850,6 +874,35 @@ export const adminDecidePayment = async (
           },
         });
       }
+    }
+
+    // PAYMENTS RULING item 3. Under manual payments this admin click IS the
+    // payment confirmation — there is no webhook and no checkout redirect to
+    // tell the renter anything, so without this emit the only signal that
+    // their money arrived is a Notification row they have to go looking for.
+    const decisionPayload = {
+      transactionId,
+      rentalId: transaction.rentalId,
+      type: transaction.type,
+      amount: transaction.amount,
+      status: "COMPLETED",
+      itemTitle: transaction.rental.item.title,
+      fullyPaid,
+      remainingType,
+      rentalStatus,
+    };
+    io?.to(`user:${transaction.userId}`).emit(
+      "payment:approved",
+      decisionPayload,
+    );
+    // The owner is only told once the rental is fully paid, because that is
+    // when it becomes their turn to act (deposit the item at the kiosk). A
+    // half-paid rental is not yet the owner's business.
+    if (fullyPaid) {
+      io?.to(`user:${transaction.rental.ownerId}`).emit(
+        "payment:approved",
+        decisionPayload,
+      );
     }
 
     logger.info(

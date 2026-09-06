@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
@@ -35,6 +37,12 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   // problem" link can appear right where it happened (checklist 3.2)
   // instead of only being reachable from Profile after the fact.
   bool _paymentIssue = false;
+  // Guards a double-tap on Pay Now. The server now de-duplicates PENDING
+  // transactions too, but a second in-flight request would still open a
+  // second instructions sheet over the first.
+  bool _startingPayment = false;
+  StreamSubscription<Map<String, dynamic>>? _paymentApprovedSub;
+  StreamSubscription<Map<String, dynamic>>? _paymentRejectedSub;
 
   // Checklist Stage 8 — the renter's on-time rate, shown only to the owner
   // (the party who actually benefits from knowing it) and only once there's
@@ -92,6 +100,43 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   void initState() {
     super.initState();
     _load();
+
+    // PAYMENTS RULING item 3. Under manual payments the admin's approval is
+    // the only confirmation that exists — no webhook, no checkout redirect —
+    // so without these the renter watches an "awaiting confirmation" panel
+    // that never changes until they think to pull-to-refresh.
+    _paymentApprovedSub =
+        SocketService.instance.onPaymentApproved.listen((event) {
+      if (!mounted || event['rentalId'] != widget.rentalId) return;
+      setState(() => _paymentIssue = false);
+      AppToast.success(
+        context,
+        'Payment Confirmed',
+        event['fullyPaid'] == true
+            ? 'An admin confirmed your payment. Your rental is confirmed.'
+            : 'An admin confirmed your payment. One more payment to go.',
+      );
+      _load();
+    });
+
+    _paymentRejectedSub =
+        SocketService.instance.onPaymentRejected.listen((event) {
+      if (!mounted || event['rentalId'] != widget.rentalId) return;
+      setState(() => _paymentIssue = true);
+      AppToast.error(
+        context,
+        'Payment Not Confirmed',
+        'An admin could not match your payment. Check the reference you sent, then try again.',
+      );
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _paymentApprovedSub?.cancel();
+    _paymentRejectedSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -114,8 +159,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   }
 
   Future<void> _initiatePayment() async {
-    if (_rental == null) return;
-    AppToast.info(context, 'Opening Checkout…');
+    if (_rental == null || _startingPayment) return;
+    setState(() => _startingPayment = true);
+    AppToast.info(context, 'Preparing payment…');
     try {
       // Matches paymentController.ts's real route/response shape: POST
       // /payments (not /payments/create-checkout, which doesn't exist), and
@@ -127,9 +173,39 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       });
       if (resp.statusCode == 201 || resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
-        final checkoutUrl = data['data']['paymentUrl'] as String?;
-        final sessionId = data['data']['transaction']?['id'] as String?;
-        if (checkoutUrl == null || sessionId == null) return;
+        final payload = (data['data'] as Map<String, dynamic>?) ?? const {};
+        final checkoutUrl = payload['paymentUrl'] as String?;
+        final sessionId = payload['transaction']?['id'] as String?;
+        final instructions = payload['instructions'] as Map<String, dynamic>?;
+
+        // Manual payments — the live configuration since the 2026-09-06
+        // ruling. There is no checkout page to open: the server answers with
+        // what to send and where, the renter pays out of band, and an admin
+        // confirms receipt. Reload first so the panel below picks up the new
+        // PENDING transaction even if the sheet is dismissed immediately.
+        if (payload['paymentMode'] == 'MANUAL' || instructions != null) {
+          await _load();
+          if (!mounted) return;
+          setState(() => _paymentIssue = false);
+          await _showPaymentInstructions(instructions ?? const {});
+          return;
+        }
+
+        // D-23. This used to be a bare `return`, which meant that any
+        // response without a payment URL made Pay Now do nothing at all —
+        // no error, no toast, no state change. The user reported it as
+        // "the button is dead", and it was invisible from the server side.
+        if (checkoutUrl == null || sessionId == null) {
+          if (!mounted) return;
+          setState(() => _paymentIssue = true);
+          AppToast.error(
+            context,
+            'Could not start payment',
+            'The server accepted the request but sent no way to pay. '
+                'Nothing has been charged — please try again or report a problem.',
+          );
+          return;
+        }
         if (!mounted) return;
         final result = await Navigator.push<PaymentResult>(
           context,
@@ -158,7 +234,148 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       }
     } catch (e) {
       if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _startingPayment = false);
     }
+  }
+
+  /// What the renter has to do with their own money, shown the moment they
+  /// ask to pay. Deliberately a sheet over the rental rather than a route:
+  /// the dedicated payment-instructions screen is a separate, gated
+  /// deliverable (PAYMENTS RULING item 4 — it needs a TEMPLATE-LINKS.md row
+  /// before it can be built) and this is the honest minimum until then.
+  Future<void> _showPaymentInstructions(Map<String, dynamic> ins) async {
+    final p = AppPalette.of(context);
+    final amount = (ins['amount'] as num?)?.toDouble();
+    final channel = ins['channel'] as String? ?? 'GCash';
+    final accountName = ins['accountName'] as String?;
+    final accountNumber = ins['accountNumber'] as String?;
+    final reference = ins['reference'] as String?;
+    final window = ins['confirmWindow'] as String? ?? 'within 24 hours';
+    final isDeposit = ins['type'] == 'SECURITY_DEPOSIT';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: p.border,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isDeposit ? 'Send your security deposit' : 'Send your payment',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  color: p.ink,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'EngiRent confirms payments by hand — an admin checks the '
+                'money arrived, then confirms your rental $window.',
+                style: TextStyle(fontSize: 13, height: 1.4, color: p.muted),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: p.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: p.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Amount to send',
+                        style: TextStyle(fontSize: 12, color: p.muted)),
+                    const SizedBox(height: 2),
+                    Text(
+                      amount == null ? '—' : 'PHP ${amount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: p.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PayLine(label: 'Send via', value: channel),
+              if (accountName != null && accountName.isNotEmpty)
+                _PayLine(label: 'Account name', value: accountName),
+              if (accountNumber != null && accountNumber.isNotEmpty)
+                _PayLine(
+                  label: '$channel number',
+                  value: accountNumber,
+                  copyable: true,
+                ),
+              if (reference != null && reference.isNotEmpty)
+                _PayLine(
+                  label: 'Quote this reference',
+                  value: reference,
+                  copyable: true,
+                ),
+              // Nothing above is a promise that the money moved. Saying so is
+              // the whole point: the previous flow implied a completed payment
+              // the moment a checkout page opened.
+              if (accountNumber == null || accountNumber.isEmpty) ...[
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        size: 16, color: AppColors.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'No payment number is configured yet. Message the '
+                        'EngiRent admin for where to send this.',
+                        style: TextStyle(fontSize: 12.5, color: p.muted),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('I have sent it'),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  'Your rental stays pending until an admin confirms.',
+                  style: TextStyle(fontSize: 11.5, color: p.muted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openKioskScan(String mode) async {
@@ -529,13 +746,28 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                       _InfoCard(children: [
                         const _SectionLabel('Actions'),
                         const SizedBox(height: 12),
-                        if (_rental!.status == 'PENDING')
-                          _ActionButton(
-                            icon: Icons.payment_rounded,
-                            label: 'Pay Now to Confirm',
-                            gradient: AppColors.accentGradient,
-                            onTap: _initiatePayment,
-                          ),
+                        // A PENDING rental means two different things under
+                        // manual payments: nothing sent yet, or sent and
+                        // waiting on a human. Offering "Pay Now" in the second
+                        // case invites paying twice.
+                        if (_rental!.status == 'PENDING') ...[
+                          if (_rental!.awaitingPaymentConfirmation) ...[
+                            _AwaitingPaymentPanel(rental: _rental!),
+                            const SizedBox(height: 12),
+                            _ActionButton(
+                              icon: Icons.receipt_long_rounded,
+                              label: 'View payment details',
+                              gradient: AppColors.accentGradient,
+                              onTap: _initiatePayment,
+                            ),
+                          ] else
+                            _ActionButton(
+                              icon: Icons.payment_rounded,
+                              label: 'Pay Now to Confirm',
+                              gradient: AppColors.accentGradient,
+                              onTap: _initiatePayment,
+                            ),
+                        ],
                         if (_rental!.status == 'AWAITING_DEPOSIT')
                           _ActionButton(
                             icon: Icons.lock_open_rounded,
@@ -921,6 +1153,131 @@ class _ErrorView extends StatelessWidget {
             ElevatedButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// One label/value row in the payment-instructions sheet. `copyable` exists
+/// because the two values that matter most — the number to send to and the
+/// reference to quote — are things a renter has to retype into another app,
+/// and mistyping either is what makes a payment unmatchable later.
+class _PayLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool copyable;
+  const _PayLine({
+    required this.label,
+    required this.value,
+    this.copyable = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 12, color: p.muted)),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: p.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (copyable)
+            IconButton(
+              tooltip: 'Copy',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.copy_rounded, size: 18, color: p.muted),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: value));
+                AppToast.info(context, 'Copied', label);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown while a payment has been requested and a human has yet to confirm
+/// it arrived. This state did not exist before the manual-payments ruling —
+/// PayMongo either confirmed or did not, within seconds. Now the honest
+/// answer is "someone is checking", and saying nothing reads as a failure.
+class _AwaitingPaymentPanel extends StatelessWidget {
+  final RentalModel rental;
+  const _AwaitingPaymentPanel({required this.rental});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final pending = rental.transactions
+        .where((t) => t.isAwaitingConfirmation)
+        .toList();
+    final total = pending.fold<double>(0, (sum, t) => sum + t.amount);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.hourglass_top_rounded,
+              size: 18, color: AppColors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Waiting for confirmation',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: p.ink,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'PHP ${total.toStringAsFixed(2)} is recorded as sent. An '
+                  'admin checks the money arrived before your rental is '
+                  'confirmed — you do not need to pay again.',
+                  style: TextStyle(fontSize: 12.5, height: 1.4, color: p.muted),
+                ),
+                if (pending.any((t) => t.paymentReferenceNo != null)) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Reference: '
+                    '${pending.firstWhere((t) => t.paymentReferenceNo != null).paymentReferenceNo}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: p.ink,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

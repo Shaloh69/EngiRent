@@ -26,6 +26,30 @@ const envSchema = z.object({
   ML_SERVICE_URL: z.string().url().default("http://localhost:8001"),
   ML_SERVICE_API_KEY: z.string().optional(),
 
+  // Payments — PAYMENTS RULING, 2026-09-06.
+  //
+  // MANUAL is the live mode and the default: the renter pays the platform out
+  // of band (GCash/cash), an admin verifies receipt and approves the
+  // transaction in the console. `POST /payments` must not build a checkout
+  // URL in this mode. PAYMONGO is dormant, not deleted — the integration below
+  // is left intact so switching back is this one value plus a stable webhook
+  // host, not a rebuild.
+  //
+  // The default matters: TEST PayMongo keys are installed on the deployment,
+  // so a mode that defaulted to PAYMONGO would silently keep sending renters
+  // to a card form for money that moves by hand.
+  PAYMENT_MODE: z.enum(["MANUAL", "PAYMONGO"]).default("MANUAL"),
+
+  // Where the renter actually sends the money under PAYMENT_MODE=MANUAL, and
+  // how long they should expect to wait for a human to confirm it. Shown
+  // verbatim on the phone, so these are copy, not identifiers — an honest
+  // "typically within X" belongs here rather than hardcoded in the app, where
+  // changing it would need a store release.
+  PAYMENT_MANUAL_CHANNEL: z.string().default("GCash"),
+  PAYMENT_MANUAL_ACCOUNT_NAME: z.string().optional(),
+  PAYMENT_MANUAL_ACCOUNT_NUMBER: z.string().optional(),
+  PAYMENT_MANUAL_CONFIRM_WINDOW: z.string().default("within 24 hours"),
+
   // PayMongo
   PAYMONGO_SECRET_KEY: z.string().optional(),
   PAYMONGO_PUBLIC_KEY: z.string().optional(),

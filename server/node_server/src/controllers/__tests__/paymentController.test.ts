@@ -19,6 +19,7 @@ import { createPayment, confirmPayment } from "../paymentController";
 import { AuthRequest } from "../../middleware/auth";
 import env from "../../config/env";
 import crypto from "crypto";
+import axios from "axios";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -356,5 +357,228 @@ describe("confirmPayment — both RENTAL_PAYMENT and SECURITY_DEPOSIT required (
     expect(prismaMock.rental.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "AWAITING_DEPOSIT" } }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PAYMENTS RULING, 2026-09-06 — payments are a manual admin control.
+//
+// The renter pays the platform out of band (GCash/cash); an admin verifies
+// receipt and approves in the console. PayMongo is dormant, not deleted, so
+// the PAYMONGO branch must keep working — this is a route change, not a
+// removal. What must NOT happen under MANUAL is a checkout URL: TEST keys are
+// installed on the deployment, so without this gate `POST /payments` returns a
+// real checkout.paymongo.com URL and the renter is sent to a card form for
+// money that is supposed to move by hand.
+// ---------------------------------------------------------------------------
+describe("createPayment — manual payment mode (PAYMENTS RULING)", () => {
+  const realMode = (env as any).PAYMENT_MODE;
+  const realKey = env.PAYMONGO_SECRET_KEY;
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    (axios.post as jest.Mock).mockReset();
+    // The deployment really does have a live TEST key installed. Setting it
+    // here is the point: MANUAL must win over a present key, otherwise this
+    // test passes for the wrong reason on a machine with no key configured.
+    (env as any).PAYMONGO_SECRET_KEY = "sk_test_pretend";
+    (env as any).PAYMENT_MODE = "MANUAL";
+  });
+
+  afterEach(() => {
+    (env as any).PAYMENT_MODE = realMode;
+    (env as any).PAYMONGO_SECRET_KEY = realKey;
+  });
+
+  function mockRental(over: Record<string, unknown> = {}) {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: "rental-1",
+      renterId: "renter-1",
+      totalPrice: 5000,
+      securityDeposit: 500,
+      item: { title: "Laptop" },
+      ...over,
+    } as never);
+  }
+
+  function mockNoExistingTransaction() {
+    prismaMock.transaction.findFirst.mockResolvedValue(null as never);
+  }
+
+  function mockCreateEchoes() {
+    prismaMock.transaction.create.mockImplementation(
+      ({ data }: any) => Promise.resolve({ id: "txn-1", ...data }) as never,
+    );
+  }
+
+  it("never calls PayMongo, even with a secret key configured", async () => {
+    mockRental();
+    mockNoExistingTransaction();
+    mockCreateEchoes();
+
+    const res = makeRes();
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
+      res,
+      jest.fn(),
+    );
+
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it("returns paymentUrl null and an awaiting-confirmation state, not a checkout URL", async () => {
+    mockRental();
+    mockNoExistingTransaction();
+    mockCreateEchoes();
+
+    const res = makeRes();
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
+      res,
+      jest.fn(),
+    );
+
+    const payload = (res.json as jest.Mock).mock.calls[0][0];
+    expect(payload.data.paymentUrl).toBeNull();
+    expect(payload.data.paymentMode).toBe("MANUAL");
+    expect(payload.data.status).toBe("AWAITING_CONFIRMATION");
+    // The phone cannot render "send ₱5,000 to this number" unless the server
+    // says the amount and the channel. D-23's fix depends on this block.
+    expect(payload.data.instructions.amount).toBe(5000);
+    expect(typeof payload.data.instructions.channel).toBe("string");
+  });
+
+  it("records the transaction as Manual, not as PayMongo, in the ledger", async () => {
+    mockRental();
+    mockNoExistingTransaction();
+    mockCreateEchoes();
+
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
+      makeRes(),
+      jest.fn(),
+    );
+
+    const createCall = prismaMock.transaction.create.mock.calls[0][0] as any;
+    expect(createCall.data.status).toBe("PENDING");
+    expect(createCall.data.paymentMethod).not.toBe("PayMongo");
+  });
+
+  it("still derives the amount server-side under manual mode", async () => {
+    mockRental();
+    mockNoExistingTransaction();
+    mockCreateEchoes();
+
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT", amount: 1 }),
+      makeRes(),
+      jest.fn(),
+    );
+
+    const createCall = prismaMock.transaction.create.mock.calls[0][0] as any;
+    expect(createCall.data.amount).toBe(5000);
+  });
+
+  // Under the old flow a duplicate PENDING row was harmless — an abandoned
+  // PayMongo checkout session. Under manual payments the admin console lists
+  // every PENDING transaction and each carries its own approve button, so two
+  // rows for one rental are two approvable charges.
+  it("reuses an existing PENDING transaction instead of creating a second one", async () => {
+    mockRental();
+    prismaMock.transaction.findFirst.mockResolvedValue({
+      id: "txn-existing",
+      rentalId: "rental-1",
+      userId: "renter-1",
+      type: "RENTAL_PAYMENT",
+      amount: 5000,
+      status: "PENDING",
+    } as never);
+
+    const res = makeRes();
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
+      res,
+      jest.fn(),
+    );
+
+    expect(prismaMock.transaction.create).not.toHaveBeenCalled();
+    const payload = (res.json as jest.Mock).mock.calls[0][0];
+    expect(payload.data.transaction.id).toBe("txn-existing");
+    expect(payload.data.status).toBe("AWAITING_CONFIRMATION");
+  });
+
+  it("refuses a second payment once one is already COMPLETED", async () => {
+    mockRental();
+    prismaMock.transaction.findFirst.mockResolvedValue({
+      id: "txn-paid",
+      status: "COMPLETED",
+      type: "RENTAL_PAYMENT",
+      amount: 5000,
+    } as never);
+
+    const next = jest.fn();
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
+      makeRes(),
+      next,
+    );
+
+    expect(prismaMock.transaction.create).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCode: 409 }),
+    );
+  });
+});
+
+// The dormant path must stay intact — the ruling says PayMongo is switched
+// off, not deleted, and switching back should be a config change.
+describe("createPayment — PAYMONGO mode still builds a checkout (dormant, not deleted)", () => {
+  const realMode = (env as any).PAYMENT_MODE;
+  const realKey = env.PAYMONGO_SECRET_KEY;
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    (axios.post as jest.Mock).mockReset();
+    (env as any).PAYMENT_MODE = "PAYMONGO";
+    (env as any).PAYMONGO_SECRET_KEY = "sk_test_pretend";
+  });
+
+  afterEach(() => {
+    (env as any).PAYMENT_MODE = realMode;
+    (env as any).PAYMONGO_SECRET_KEY = realKey;
+  });
+
+  it("calls PayMongo and returns its checkout URL", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: "rental-1",
+      renterId: "renter-1",
+      totalPrice: 5000,
+      securityDeposit: 500,
+      item: { title: "Laptop" },
+    } as never);
+    prismaMock.transaction.findFirst.mockResolvedValue(null as never);
+    prismaMock.transaction.create.mockImplementation(
+      ({ data }: any) => Promise.resolve({ id: "txn-1", ...data }) as never,
+    );
+    prismaMock.transaction.update.mockResolvedValue({ id: "txn-1" } as never);
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: {
+        data: {
+          id: "cs_1",
+          attributes: { checkout_url: "https://checkout.paymongo.com/cs_1" },
+        },
+      },
+    });
+
+    const res = makeRes();
+    await createPayment(
+      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
+      res,
+      jest.fn(),
+    );
+
+    expect(axios.post).toHaveBeenCalled();
+    const payload = (res.json as jest.Mock).mock.calls[0][0];
+    expect(payload.data.paymentUrl).toBe("https://checkout.paymongo.com/cs_1");
   });
 });

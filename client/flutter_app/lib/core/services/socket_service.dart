@@ -35,6 +35,12 @@ class SocketService {
   final _kioskFaceRequired = StreamController<Map<String, dynamic>>.broadcast();
   // Checklist Stage 5 — real-time message delivery.
   final _newMessage = StreamController<Map<String, dynamic>>.broadcast();
+  // PAYMENTS RULING 2026-09-06 — under manual payments an admin approving
+  // receipt IS the payment confirmation. There is no webhook and no checkout
+  // redirect to tell the renter anything, so without these two events the
+  // rental sits on "awaiting confirmation" until the user thinks to refresh.
+  final _paymentApproved = StreamController<Map<String, dynamic>>.broadcast();
+  final _paymentRejected = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onRentalCompleted => _rentalCompleted.stream;
   Stream<Map<String, dynamic>> get onDepositApproved => _depositApproved.stream;
@@ -49,6 +55,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onKioskScanError => _kioskScanError.stream;
   Stream<Map<String, dynamic>> get onKioskFaceRequired => _kioskFaceRequired.stream;
   Stream<Map<String, dynamic>> get onNewMessage => _newMessage.stream;
+  Stream<Map<String, dynamic>> get onPaymentApproved => _paymentApproved.stream;
+  Stream<Map<String, dynamic>> get onPaymentRejected => _paymentRejected.stream;
 
   String? get currentUserId => _userId;
 
@@ -102,6 +110,11 @@ class SocketService {
       ..on('return:retry', _handle(_returnRetry))
       ..on('kiosk:scan_error', _handle(_kioskScanError))
       ..on('kiosk:face_required', _handle(_kioskFaceRequired))
+      // Routed through _handle() deliberately: an approved payment advances
+      // the rental (PENDING -> AWAITING_DEPOSIT once both sides are paid), so
+      // every rentals list showing a status is now stale.
+      ..on('payment:approved', _handle(_paymentApproved))
+      ..on('payment:rejected', _handle(_paymentRejected))
       // Not routed through _handle()/_anyRentalChange — a new message isn't
       // a rental status change, and piggybacking it there would make every
       // rentals-list screen refetch on every incoming chat message.
@@ -144,6 +157,8 @@ class SocketService {
     _kioskScanError.close();
     _kioskFaceRequired.close();
     _newMessage.close();
+    _paymentApproved.close();
+    _paymentRejected.close();
     _anyRentalChange.close();
   }
 }

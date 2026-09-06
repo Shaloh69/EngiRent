@@ -5,6 +5,7 @@ import {
   NotFoundError,
   ForbiddenError,
   ValidationError,
+  ConflictError,
 } from "../utils/errors";
 import logger from "../utils/logger";
 import env from "../config/env";
@@ -227,17 +228,81 @@ export const createPayment = async (
       );
     }
 
-    const transaction = await prisma.transaction.create({
-      data: {
+    // A rental has at most one live payment of each type. Before the payments
+    // ruling a duplicate row was an abandoned PayMongo checkout session and
+    // therefore harmless; under manual payments the admin console lists every
+    // PENDING transaction with its own approve button, so two rows for one
+    // rental are two separately approvable charges against one debt.
+    const existing = await prisma.transaction.findFirst({
+      where: {
         rentalId,
-        userId: req.user.userId,
         type,
-        amount: parsedAmount,
-        status: "PENDING",
-        paymentMethod: "PayMongo",
+        status: { in: ["PENDING", "PROCESSING", "COMPLETED"] },
       },
+      orderBy: { createdAt: "desc" },
     });
 
+    if (existing?.status === "COMPLETED") {
+      throw new ConflictError(
+        `This rental's ${type === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} has already been paid`,
+      );
+    }
+
+    const manualMode = env.PAYMENT_MODE === "MANUAL";
+
+    const transaction =
+      existing ??
+      (await prisma.transaction.create({
+        data: {
+          rentalId,
+          userId: req.user.userId,
+          type,
+          amount: parsedAmount,
+          status: "PENDING",
+          // Naming the real rail matters in the ledger: an admin reconciling
+          // a GCash inbox against a row labelled "PayMongo" has to know to
+          // disbelieve the label.
+          paymentMethod: manualMode ? "Manual" : "PayMongo",
+        },
+      }));
+
+    // ── Manual mode (the live configuration) ──────────────────────────────
+    // No checkout session, no redirect, no WebView. The renter is told what
+    // to send and where; an admin confirms receipt through
+    // POST /admin/transactions/:transactionId/decide-payment.
+    if (manualMode) {
+      logger.info(
+        `Payment awaiting manual confirmation: ${transaction.id} for rental ${rentalId}`,
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Payment recorded — awaiting confirmation",
+        data: {
+          transaction,
+          // Explicitly null rather than absent. The phone distinguishes
+          // "no checkout, by design" from "the field is missing because
+          // something went wrong", and D-23 was exactly the second reading.
+          paymentUrl: null,
+          paymentMode: "MANUAL",
+          status: "AWAITING_CONFIRMATION",
+          instructions: {
+            amount: parsedAmount,
+            currency: "PHP",
+            type,
+            itemTitle: rental.item.title,
+            channel: env.PAYMENT_MANUAL_CHANNEL,
+            accountName: env.PAYMENT_MANUAL_ACCOUNT_NAME ?? null,
+            accountNumber: env.PAYMENT_MANUAL_ACCOUNT_NUMBER ?? null,
+            confirmWindow: env.PAYMENT_MANUAL_CONFIRM_WINDOW,
+            reference: transaction.id,
+          },
+        },
+      });
+      return;
+    }
+
+    // ── PayMongo mode (dormant — kept working, not deleted) ───────────────
     const successUrl = `${env.CLIENT_WEB_URL}/payments/success?tid=${transaction.id}`;
     const cancelUrl = `${env.CLIENT_WEB_URL}/payments/cancel?tid=${transaction.id}`;
 
@@ -273,7 +338,12 @@ export const createPayment = async (
     res.status(201).json({
       success: true,
       message: "Payment initiated",
-      data: { transaction, paymentUrl: checkoutUrl },
+      data: {
+        transaction,
+        paymentUrl: checkoutUrl,
+        paymentMode: "PAYMONGO",
+        status: "AWAITING_CHECKOUT",
+      },
     });
   } catch (error) {
     next(error);
