@@ -1122,6 +1122,54 @@ ode_server\src`, or the user applies the two-line change by hand.** The change i
 | **D-34** | **`DELETE /auth/account` is a SOFT delete, and `totalUsers` counts the rows it leaves behind — so deleting your account inflates the admin dashboard forever.** The endpoint answers *"Your account has been **deactivated** and your biometric data has been permanently deleted"* and sets `isActive = false`, keeping the `User` row (defensible — `Rental`/`Review` do not cascade from `User`, per the 2026-09-03 wipe notes). But `adminController.ts:38` computes `totalUsers` as `prisma.user.count({ where: { role: "STUDENT" } })` with **no `isActive` filter**, so every deleted student is still counted in the dashboard's headline number. Two separate problems: (a) the KPI drifts upward permanently and silently, and (b) `CAPABILITY-GAPS.md` C-7 and the app's own Settings copy call this **account deletion** while the data model calls it deactivation — a "the system tells the truth about itself" gap, and one with thesis-ethics weight because it is about a student's personal data. **Found by counting users before and after the sweep** (6 where the register said 4), then reading the query rather than assuming a leak. **Consequence handled in the suite**: `e2e-coverage-sweep.mjs` now reuses one fixed probe identity instead of a fresh account per run, so it cannot inflate the metric — and it asserts the soft-delete behaviour explicitly, then reactivates the probe through `PATCH /admin/users/:id` (which is that endpoint's only coverage). **Cleanup DONE 2026-09-06** — the 3 deactivated `sweep17886…` rows were hard-deleted via Prisma on the server, guarded on id **and** email prefix **and** `isActive:false` **and** `role:STUDENT` so it could not match a real user even with a wrong id. Dependants counted first and were all zero (rentals/reviews/items/transactions/notifications). Live DB now: **5 users** (admin, 2 real students, 1 earlier e0 test account, and the 1 permanent `e2e-sweep-probe`), 11 items, 2 rentals. | `authController.ts:636`, `adminController.ts:38` |
 | **D-33** | **The payout-destination form is shaped entirely around PayMongo Disbursements, which is the wrong shape under the manual-payments ruling.** `authRoutes.ts:96-104` requires `provider ∈ {instapay, pesonet}` plus a **`bic`** and `institutionName` — i.e. bank rails, with the BIC coming from the `receiving-institutions` list that currently 404s. So D-21 is deeper than "the dropdown won't load": **the whole form assumes a product that is not enabled**, and an owner who wants to be paid by GCash cannot express that. `CAPABILITY-GAPS.md` C-9 and `PAYMENTS-AND-PAYOUTS-REVAMP.md`'s "GCash as a first-class choice" both point the same way. Belongs with D-29's payout-screen revamp | `authRoutes.ts:96-104` |
 
+## D-37 RULED 2026-09-06 (E2 session 4) — the socket drops its four kiosk events; SSE stays
+
+**Ruling: option (b).** `adminSocket.ts` stops carrying
+`admin:kiosk_online/ack/status/error` and remains the *queue* channel
+(disputes, verifications, feedback), which was its actual job. The two
+hardware pages keep their SSE stream unchanged.
+
+**PROGRESS.md's own framing of D-37 was wrong on one point and weak on
+another, and the repo settled both.**
+
+*Wrong:* the row says option (a) would let "the SSE endpoint keep only its
+non-console consumers." **There are no non-console consumers.** `ripgrep`
+across every tracked file finds exactly two references to
+`/admin/kiosks/events`, and both are the admin console
+(`health/page.tsx:121`, `kiosk/page.tsx:237`). Nothing in the Flutter app, the
+kiosk, or the ML service touches it. So option (a) would not "keep" the
+endpoint for anyone — it would leave it with zero consumers, i.e. dead code.
+
+*Weak:* the row preferred option (b) because it is "smaller and arguably
+right." The real reason is stronger and is a fact rather than a preference.
+**The socket carries a strict subset of what SSE carries.** SSE emits nine
+event types (`kioskEventStream`, `adminController.ts:1245`) — `kiosk_status`,
+`kiosk_online`, `kiosk_offline`, `kiosk_ack`, `kiosk_error`, `kiosk_log`,
+`kiosk_admin_snapshot`, `kiosk_self_test`, `kiosk_emergency`. The socket
+carries four (`index.ts:330, 372, 401, 1195`). Moving the hardware pages onto
+the socket would therefore **lose five event types, including emergency stop
+and hardware self-test results** — that is a regression dressed as a cleanup,
+and it would first require building five more socket events to break even.
+
+Both channels are fed from the same `kioskEventBus`, so they cannot disagree
+about content — only about coverage. Removing the socket's four costs nothing:
+**no page in the console listens for them.** `ADMIN_EVENTS` declares them and
+the three queue pages that use `useAdminSocket` consume only the queue events.
+
+**Not executed this session, deliberately.** The change is a deletion of four
+`notifyAdmins` calls plus four entries in `ADMIN_EVENTS`, with no consumer and
+so no visible behaviour — but it touches deployed server code, and this session
+already carries three chunks that have not been seen on screen. G1's ceiling is
+one. The ruling is the deliverable for E2's third remaining bullet; the edit
+belongs in the same pass that verifies the console, so its non-regression can
+be confirmed on the same screen.
+
+**One thing the executor must not miss:** `ADMIN_EVENTS` is also what the
+`admin:joined` handshake is tested against. Removing entries from it must not
+alter the room-join contract — `adminRoom.test.ts` covers `notifyAdmins`
+directly and will need its two `admin:kiosk_*` cases repointed at a queue event
+rather than deleted, or the room's fan-out loses its only unit coverage.
+
 ### New defects found in E2
 
 | ID | Defect | Evidence |
@@ -1804,7 +1852,10 @@ other chunks were built on top.
 **So E2 is not done.** Remaining, in order:
 1. **Flutter refetch-on-reconnect** (E2.2's other half).
 2. **The ID-verification decision event** (E2.4) — mirror `payment:approved`.
-3. **D-37's ruling** — two live channels for kiosk telemetry.
+3. ~~**D-37's ruling** — two live channels for kiosk telemetry.~~ **RULED
+   2026-09-06**, see the D-37 section above: option (b), the socket drops its
+   four kiosk events. Execution deferred to the pass that verifies the console,
+   so the non-regression is seen rather than assumed.
 4. **Verification of everything already built**, which is the real blocker.
 
 ### Next, once the deploy clears
