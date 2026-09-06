@@ -359,6 +359,12 @@ the live pair before it is ever used.
 anonymous `git ls-remote` with the credential helper explicitly disabled, which
 returned `origin/main` without authenticating. It is not an assumption.
 
+It is published in **two** tracked files, both already on public `main`:
+`prisma/seed.ts` (the fallback default) and `memory.md:433`, which helpfully
+wrote it out in prose so it would not be "re-guessed next time". Both are now
+redacted in this branch — but redaction is hygiene, **not** the fix: the value
+is already in the public history, so only rotating the live password helps.
+
 `prisma/seed.ts:27-28` on that public `main` reads
 `process.env.ADMIN_PASSWORD ?? "<a hardcoded literal>"`, and no `ADMIN_PASSWORD`
 override is set. **Confirmed live, not inferred:** `POST /auth/login` against
