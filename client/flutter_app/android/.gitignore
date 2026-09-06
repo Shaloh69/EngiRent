@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Kotlin build-tool session/error cache, regenerated on every Gradle run.
+# Untracked noise in `git status` since at least 2026-09-06.
+.kotlin/
