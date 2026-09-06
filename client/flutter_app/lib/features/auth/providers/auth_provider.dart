@@ -14,6 +14,7 @@ class AuthProvider with ChangeNotifier {
   String? _error;
   StreamSubscription<Map<String, dynamic>>? _verifyApprovedSub;
   StreamSubscription<Map<String, dynamic>>? _verifyRejectedSub;
+  StreamSubscription<Map<String, dynamic>>? _reconnectSub;
 
   UserModel? get user => _user;
   bool get isLoading => _isLoading;
@@ -90,8 +91,10 @@ class AuthProvider with ChangeNotifier {
   Future<void> logout() async {
     _verifyApprovedSub?.cancel();
     _verifyRejectedSub?.cancel();
+    _reconnectSub?.cancel();
     _verifyApprovedSub = null;
     _verifyRejectedSub = null;
+    _reconnectSub = null;
     SocketService.instance.disconnect();
     await _authService.logout();
     _user = null;
@@ -126,12 +129,26 @@ class AuthProvider with ChangeNotifier {
         SocketService.instance.onVerificationApproved.listen((_) => loadUser());
     _verifyRejectedSub =
         SocketService.instance.onVerificationRejected.listen((_) => loadUser());
+
+    // The two subscriptions above only help if the socket was UP when the
+    // admin decided. A decision made while the phone was disconnected emits
+    // to nobody — the event is fire-and-forget — so on reconnect this user's
+    // verification state may have moved with no signal that it did. That is
+    // the exact case E2.2's reconnect resync exists to cover, and the user
+    // object is as much "state a missed event changed" as any rental is.
+    //
+    // Without this, the most likely real sequence — a student closes the app,
+    // an admin approves them, the student reopens it — leaves the Identity
+    // tile reading "Under review" until something else happens to refetch.
+    _reconnectSub =
+        SocketService.instance.onReconnected.listen((_) => loadUser());
   }
 
   @override
   void dispose() {
     _verifyApprovedSub?.cancel();
     _verifyRejectedSub?.cancel();
+    _reconnectSub?.cancel();
     super.dispose();
   }
 
