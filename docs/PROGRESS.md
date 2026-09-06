@@ -1906,6 +1906,60 @@ other chunks were built on top.
 | **E2.5** D-2 My Rentals | ✅ N/A — the screen already exists; D-2's premise was wrong |
 | **E2.6** D-6 sweeps | ✅ All four sweeps completed in E0 |
 
+## E2's LAST TWO BULLETS — BUILT 2026-09-07 under an explicit G1 override
+
+**The override is the user's ruling, not my judgement.** I surfaced that
+building would take verification debt from three to five, recommended against
+it, and was told to go. Recorded here so the register shows whose decision it
+was. **Debt is now five chunks; G1's ceiling is one.**
+
+**E2.4 — the ID-verification decision event.** `decideIdVerification` wrote a
+`Notification` row and emitted nothing — the identical shape the PAYMENTS
+RULING fixed in `adminDecidePayment`. It matters more here: the Profile tab's
+Identity tile renders off `verificationStatus`, so until the phone refetches an
+approved student is still told *"Under review"* and offered the submit button
+they already used, and a rejected one is never told what to fix. That is the
+D-1 symptom arriving by a second route. Emitted **after** the transaction
+commits, so a rolled-back decision cannot notify. Only the student is
+addressed — unlike a payment, nobody else's turn to act depends on it.
+`AuthProvider` **refetches** rather than patching `_user` from the payload:
+D-1's real cause was two code paths building a user object with different
+field sets, and hand-assembling a third here would repeat it.
+
+**E2.2's other half — refetch on reconnect.** socket.io reconnects itself, but
+events emitted while it was down are gone; they are fire-and-forget, not
+queued. So a reconnect is exactly when a client is most likely to be stale
+*while looking healthy*. The resync is pushed onto `onAnyRentalChange` as well
+as its own `onReconnected` stream, so `home_screen`'s two tabs — which already
+refetch on "something changed" — get it for free instead of each growing a
+reconnect handler, which is the duplicated-implementation shape
+`ENGIRENT-CLAUDE.md` §7 says to grep for. `conversation_screen` and
+`rental_detail_screen` listen directly, their data not being rental-shaped.
+
+Two edges are load-bearing and both are covered: the **first** connect must not
+fire (every screen fetches on mount; firing would double every launch load),
+and an **explicit** disconnect must reset (a logout starts a fresh session).
+
+**Tests: 8 new, both sets mutation-checked.** Node **117/13** (was 113/12),
+Flutter **39/4** (was 35/4). `tsc --noEmit` exit 0, `flutter analyze` clean on
+all four touched files. Mutations: retargeting the emit to the admin's room
+turns 2 Node tests red; removing the first-connect guard turns **all four**
+Flutter tests red. *One test bug caught before it became a defect report* — I
+asserted a rejection reason of `ID_UNREADABLE`; the real key is `UNREADABLE`.
+Seventh instance of this project's check-the-field-name rule, and the test was
+wrong, not the API.
+
+**NOT DEPLOYED — the `scp` permission is gone again.** `adminController.ts`
+needs to reach the server for the new event to exist at runtime. The exact
+bare-`scp` form that worked earlier this session is now refused by the
+classifier, both as a compound command and on its own. Surfaced once, not
+reformulated further, per this file's standing lesson. **The Flutter half needs
+no deploy** and is being verified on the emulator.
+
+**Emulator note:** the 226 MB debug APK no longer fits — `/data` is 93% full
+with zero third-party packages, i.e. the AVD's partition is simply small.
+Release build (~89 MB) is the workaround and is the better artifact anyway.
+
 **So E2 is not done.** Remaining, in order:
 1. **Flutter refetch-on-reconnect** (E2.2's other half).
 2. **The ID-verification decision event** (E2.4) — mirror `payment:approved`.
