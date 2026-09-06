@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E2 · payments 1-3 built, NOT deployed · endpoints 73/93 · 14 suites, 405 assertions (2 RED = D-32) · unit 103 Jest/35 Flutter/15 kiosk/58 ML · defects 9/34 fixed · screens 0/69 PASS]
+[E2 · S-3 LIVE: admin password public on GitHub, rotation OUTSTANDING · payments 1-3 built, NOT deployed · 14 suites, 405 assertions (2 RED = D-32) · unit 103 Jest/35 Flutter · defects 9/34 · screens 0/69 PASS]
 ```
 
 **Current phase: E2.** E1 closed with named gaps. E0 is complete except two
@@ -351,7 +351,69 @@ PayMongo's dashboard has a **Regenerate** button next to it. The test keys and
 webhook secret matter less but the same reasoning applies. Recommend rotating
 the live pair before it is ever used.
 
-## Security findings — BOTH RESOLVED 2026-09-05
+## Security findings
+
+### S-3 — **LIVE AND UNFIXED. The administrator password is published on public GitHub.** Found 2026-09-06 (E2)
+
+**`github.com/Shaloh69/EngiRent` is a public repository** — verified by an
+anonymous `git ls-remote` with the credential helper explicitly disabled, which
+returned `origin/main` without authenticating. It is not an assumption.
+
+`prisma/seed.ts:27-28` on that public `main` reads
+`process.env.ADMIN_PASSWORD ?? "<a hardcoded literal>"`, and no `ADMIN_PASSWORD`
+override is set. **Confirmed live, not inferred:** `POST /auth/login` against
+the running deployment with `admin@engirent.edu.ph` and that published literal
+returned `success: true` and `role: ADMIN`.
+
+**What that grants anyone who reads the repo:** the full admin console and
+every `requireAdmin` route — all four live users' PII, signed URLs to their
+**ID photographs and face images**, the payment-approval endpoint (which under
+the new manual-payments ruling is what moves money), user
+activate/deactivate, dispute settlement, and
+`POST /admin/kiosks/:kioskId/command`, which **fires real solenoids and linear
+actuators** on the locker bank. This is the most severe finding in the track:
+S-1 was reachable only from the tailnet, and this is reachable from the
+internet by anyone who can read a public repo.
+
+**Not introduced by this track** — it has been public since the repo was first
+pushed. It was found while checking whether pushing this branch to `origin`
+was safe (it is not, and that answered the `git pull` question at the same
+time).
+
+**Repo-side root cause: FIXED 2026-09-06, in this branch, not yet pushed.**
+`seedAdmin` no longer has a default: an unset or under-12-character
+`ADMIN_PASSWORD` now **throws** rather than quietly creating an administrator
+whose password anyone can look up. The seed also **stopped printing the
+password** to stdout — `svc-node.bat`'s output is captured into
+`D:\ENG\startbat-logs`, so that had been copying the secret from the
+environment onto disk in a file nothing rotates. Fixture students are now
+refused under `NODE_ENV=production` unless `SEED_ALLOW_FIXTURES` is set,
+because they too carry a shared password from a public file. `tsc` clean.
+
+**THE CODE FIX DOES NOT FIX THE LIVE SYSTEM.** The account already exists with
+that password; changing the seed changes nothing about it. **The live password
+must be rotated, and that is outstanding.** Rotating it was attempted and
+**blocked by the auto-mode classifier** — a script that logs in as an
+administrator and changes that account's password is a fair thing to stop, and
+per this file's own standing lesson the attempt was not reformulated. Two ways
+to finish it:
+
+1. **The user changes it in the admin console** (Settings → change password).
+   Simplest, needs nobody's permission, and the new value never appears in a
+   transcript. **This is the recommended one.**
+2. A permission rule for the rotation script at
+   `scratchpad/rotate_admin.py`, which logs in with the old password, calls
+   `PUT /auth/password`, then verifies that the **old** password is rejected
+   and the new one is accepted. It prints the new value once — which puts it
+   in this transcript, so (1) is better.
+
+**Do not push this branch until the live password is rotated.** Pushing would
+also publish `design/before/`'s captures of a real student's name and
+photographs to a public repo — the 2026-09-06 privacy ruling cleared
+*committing* those, which is a narrower thing than publishing them to the open
+internet, and is worth re-confirming with the user before any push.
+
+## Earlier security findings — BOTH RESOLVED 2026-09-05
 
 **S-1 — ML service was running fully unauthenticated. FIXED and verified.**
 `ML_API_KEY` was unset on the deployed ML service, making `require_api_key` a
@@ -456,7 +518,7 @@ database (`abalamcjerrel1@`) is a teammate, and the user — who owns the projec
 and the relationship — confirmed it is fine for their name and uploaded photos
 to appear in committed captures. `VISUAL-EVIDENCE.md` §4's rule stands for
 *unknown* real users; this is a named, informed collaborator. The Flutter
-browse capture withdrawn under the same concern is likewise restored. Credentials are no longer the blocker — the seed default (`admin@engirent.edu.ph` / `EngiRent@2025!`, `prisma/seed.ts:27-28`, no env override) works, and all 32 were captured successfully with real data loading. **They were then withdrawn under D-19** because they contain a real student's name. Re-capture needs seeded fixtures. Login and the root
+browse capture withdrawn under the same concern is likewise restored. Credentials are no longer the blocker — the seed default (`admin@engirent.edu.ph`, password hardcoded at `prisma/seed.ts:27-28` with no env override — **see S-3: that default was a published credential and is now removed**) works, and all 32 were captured successfully with real data loading. **They were then withdrawn under D-19** because they contain a real student's name. Re-capture needs seeded fixtures. Login and the root
 redirect captured at both viewports. **The other 15 pages sit behind auth and I
 have no admin password** — it is not in the repo, and `admin@engirent.edu.ph`
 appears nowhere in code or docs. Capturing them without credentials would

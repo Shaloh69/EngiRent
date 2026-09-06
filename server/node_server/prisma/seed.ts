@@ -25,8 +25,27 @@ async function hashPassword(plain: string): Promise<string> {
 
 async function seedAdmin() {
   const email = process.env.ADMIN_EMAIL ?? "admin@engirent.edu.ph";
-  const password = process.env.ADMIN_PASSWORD ?? "EngiRent@2025!";
   const studentId = process.env.ADMIN_STUDENT_ID ?? "ADMIN-001";
+
+  // SECURITY, 2026-09-06. This used to be
+  //   process.env.ADMIN_PASSWORD ?? "<a hardcoded literal>"
+  // and this repository is PUBLIC on GitHub, so that default was a published
+  // administrator password. It was confirmed live against the deployment:
+  // it authenticated as ADMIN, which is read/write access to every student's
+  // ID and face media, the payment-approval endpoint, and the kiosk relay
+  // commands that drive real solenoids.
+  //
+  // There is no safe default for this value, so there is no default. An
+  // unset ADMIN_PASSWORD stops the seed rather than quietly creating an
+  // account whose password anybody can look up.
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password || password.length < 12) {
+    throw new Error(
+      "ADMIN_PASSWORD must be set (12+ characters) before seeding. " +
+        "Refusing to create an administrator with a default password: this " +
+        "repository is public, so any hardcoded value is a published credential.",
+    );
+  }
 
   const hashed = await hashPassword(password);
 
@@ -50,13 +69,20 @@ async function seedAdmin() {
     },
   });
 
-  log(`  ✓ Admin       ${admin.email}  (pw: ${password})`);
+  // Never log the password. The seed runs from svc-node.bat, whose stdout is
+  // captured into D:\ENG\startbat-logs — printing it here moved the secret
+  // from the environment into a file on disk that nothing rotates.
+  log(`  ✓ Admin       ${admin.email}`);
   return admin;
 }
 
 // ── Sample students ───────────────────────────────────────────────────────────
 
-const STUDENT_PASSWORD = "Student@2025!";
+// Sample-data password. Same reasoning as the admin above, with one
+// difference: these accounts are fixtures, so a known password is the point.
+// The guard is that they must never be seeded into a real deployment — see
+// main(), which refuses under NODE_ENV=production.
+const STUDENT_PASSWORD = process.env.SEED_STUDENT_PASSWORD ?? "Student@2025!";
 
 const STUDENTS = [
   {
@@ -361,6 +387,17 @@ async function main() {
 
   log("👤 Users");
   await seedAdmin();
+
+  // Fixture students carry a known shared password. Creating them on a
+  // deployment that has real users would add real login-capable accounts
+  // whose credentials are in a public repo.
+  if (process.env.NODE_ENV === "production" && !process.env.SEED_ALLOW_FIXTURES) {
+    throw new Error(
+      "Refusing to seed fixture students under NODE_ENV=production. " +
+        "Set SEED_ALLOW_FIXTURES=1 if this really is a throwaway environment.",
+    );
+  }
+
   const students = await seedStudents();
 
   log("\n🔒 Lockers");
@@ -378,8 +415,9 @@ async function main() {
   log("\n✅ Seed complete!\n");
   log("─────────────────────────────────────────────");
   log(`Admin email:    ${process.env.ADMIN_EMAIL ?? "admin@engirent.edu.ph"}`);
-  log(`Admin password: ${process.env.ADMIN_PASSWORD ?? "EngiRent@2025!"}`);
-  log(`Student password (all): ${STUDENT_PASSWORD}`);
+  log("Admin password: (the ADMIN_PASSWORD you supplied - not printed)");
+  log("Student password (all): the SEED_STUDENT_PASSWORD you supplied, or");
+  log("  the fixture default in this file. Fixtures only - never production.");
   log("─────────────────────────────────────────────\n");
 }
 
