@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E2 · S-3 LIVE: admin password public on GitHub, rotation OUTSTANDING · payments 1-3 built, NOT deployed · 14 suites, 405 assertions (2 RED = D-32) · unit 103 Jest/35 Flutter · defects 9/34 · screens 0/69 PASS]
+[E2 · S-3 + S-4 LIVE: admin password AND ML key public on GitHub, both rotations OUTSTANDING · payments 1-3 built, NOT deployed · unit 103 Jest/35 Flutter · defects 9/34 · screens 0/69 PASS]
 ```
 
 **Current phase: E2.** E1 closed with named gaps. E0 is complete except two
@@ -381,6 +381,12 @@ actuators** on the locker bank. This is the most severe finding in the track:
 S-1 was reachable only from the tailnet, and this is reachable from the
 internet by anyone who can read a public repo.
 
+**The path is open from the internet, confirmed not assumed.** The admin
+console has its own public Cloudflare tunnel — `startbat-logs` holds exactly
+three, `tunnel-admin.log`, `tunnel-api.log` and `tunnel-web.log` — so the
+console and the API are both reachable without tailnet access, and the
+password to them is in a public repo.
+
 **Not introduced by this track** — it has been public since the repo was first
 pushed. It was found while checking whether pushing this branch to `origin`
 was safe (it is not, and that answered the `git pull` question at the same
@@ -418,6 +424,35 @@ also publish `design/before/`'s captures of a real student's name and
 photographs to a public repo — the 2026-09-06 privacy ruling cleared
 *committing* those, which is a narrower thing than publishing them to the open
 internet, and is worth re-confirming with the user before any push.
+
+### S-4 — **The live ML service API key is published in the same public repo.** Found 2026-09-06 (E2)
+
+`memory.md:449` wrote the key out in full, in prose, as part of recording
+S-1's fix. **Confirmed live, not assumed:** `Select-String` on the server
+matches that exact literal in **both** `D:\ENG\svc-ml.bat` (the ML service's
+own `ML_API_KEY`) and Node's `.env` (`ML_SERVICE_API_KEY`). So the key S-1
+installed to close the ML auth gate has been readable on public GitHub the
+whole time. Verified with `Select-String` and a match **count**, deliberately
+not with `findstr`'s exit code — that does not propagate through
+ssh → PowerShell and has already produced one confident wrong conclusion in
+this track.
+
+**Severity is bounded, and the bound is real rather than hopeful:** there is
+no ML tunnel. `startbat-logs` contains three tunnel logs — admin, api, web —
+and port 8001 appears in none of them, so reaching the ML service still
+requires tailnet access first. That makes this materially less severe than
+S-3, which is reachable from the open internet. It is still a published live
+credential guarding `/verify`, `/register-face` and `/verify-face`.
+
+**Redacted from `memory.md` in this branch — which does not fix it.** The key
+is in the public history either way. **Rotation is the fix**, and it is a
+*two-sided* change: `ML_API_KEY` in `svc-ml.bat` and `ML_SERVICE_API_KEY` in
+Node's `.env` must move together, then both services restart — ML by PID, per
+S-1's note that `Stop-ScheduledTask` alone kept the old empty key. Changing
+one side alone breaks item and face verification, which fails closed, which
+means every deposit and return silently routes to a human (the D-18 failure
+mode). Not attempted from here: both files are the kind the classifier gates,
+and a half-applied rotation is worse than the exposure.
 
 ## Earlier security findings — BOTH RESOLVED 2026-09-05
 
