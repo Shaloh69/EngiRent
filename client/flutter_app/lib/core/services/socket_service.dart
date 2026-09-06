@@ -113,8 +113,18 @@ class SocketService {
         .setTransports(['websocket'])
         .setExtraHeaders(accessToken != null ? {'Authorization': 'Bearer $accessToken'} : {})
         .enableReconnection()
-        .setReconnectionDelay(3000)
-        .setReconnectionAttempts(double.infinity.toInt());
+        .setReconnectionDelay(3000);
+    // D-40. There was a `.setReconnectionAttempts(double.infinity.toInt())`
+    // here. `double.infinity.toInt()` THROWS `Unsupported operation: Infinity
+    // or NaN toInt` in Dart — so this whole method threw before `io.io(...)`
+    // was ever reached, and the socket was never created. The line existed to
+    // ask for unlimited reconnection attempts and, by trying to express
+    // "infinite", produced zero connections instead.
+    //
+    // Nothing needs to replace it: socket_io_client already defaults to
+    // unlimited. `manager.dart:84` reads
+    //   `reconnectionAttempts = options['reconnectionAttempts'] ?? double.infinity`
+    // and the field is `num?`, so even the intended value never needed an int.
 
     // The backend authenticates the socket from this auth payload (preferred
     // over extraHeaders, which some websocket transports drop). Without a valid
