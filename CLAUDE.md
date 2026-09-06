@@ -80,6 +80,16 @@ rests on a clean build as unverified.
 
 ## Deployment
 
+**Connecting: `ssh transfer@desktop-gklhcri`** (Tailscale MagicDNS; or
+`transfer@100.122.239.125`). Key-based, no password, plain `ssh` — there is no
+`tailscale ssh` step. **The remote shell is PowerShell, not cmd**, so `dir /b`
+fails, `&`/`&&` are reserved, and `$`/`$_` get eaten crossing bash → ssh →
+PowerShell. For Node/Prisma one-liners use PowerShell's stop-parsing token —
+`node --% -e "…"` — and write the JS with single quotes only. Full detail,
+including which command *shapes* the auto-mode classifier refuses (it does
+**not** block SSH itself — verify with `ssh … 'hostname'` before concluding
+otherwise): `docs/redesign/ACCESS-AND-WORKAROUNDS.md` §1a-1b.
+
 Services run on `desktop-gklhcri` (Tailscale) as Scheduled Tasks with an
 **Interactive** logon type, so they do not survive a reboot — see `memory.md`'s
 runbook for the restart procedure and its three known gotchas. Cloudflare quick
@@ -87,3 +97,5 @@ tunnels rotate hostname on every restart, which silently breaks any client with
 a baked-in URL (the Flutter app specifically). The server's working tree
 (`D:\ENG\EngiRent`) is a **diverged checkout**; deployment there is a manual
 file copy, not a `git pull`. This repository is the source of truth for code.
+**A change committed here is not deployed** — `docs/PROGRESS.md` D-32 is a live
+example of a ruling recorded as "executed" that never reached the server.
