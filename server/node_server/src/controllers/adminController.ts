@@ -1786,6 +1786,34 @@ export const decideIdVerification = async (
       metadata: { note: note?.trim() || null },
     });
 
+    // E2.4 / D-1's last open bullet. This function wrote a Notification row
+    // and emitted nothing — the same shape the PAYMENTS RULING fixed in
+    // `adminDecidePayment`: an admin action that reaches the database and
+    // stops there.
+    //
+    // It matters more here than a missed notification usually would, because
+    // the Profile tab's Identity tile renders off `verificationStatus`. Until
+    // the phone refetches, an approved student is still told "Under review"
+    // and offered the submit-your-ID button they have already used, and a
+    // rejected one is never told what to fix. That is precisely the D-1
+    // symptom, arriving by a different route.
+    //
+    // Emitted AFTER the transaction commits, so a rolled-back decision cannot
+    // notify anyone. Only the student is addressed: unlike a payment, nobody
+    // else's turn to act depends on this.
+    const io = req.app.get("io");
+    io?.to(`user:${id}`).emit(
+      approved ? "verification:approved" : "verification:rejected",
+      {
+        userId: id,
+        isVerified: updated.isVerified,
+        verificationStatus: updated.verificationStatus,
+        verificationReason: updated.verificationReason,
+        verificationNote: updated.verificationNote,
+        verifiedAt: updated.verifiedAt,
+      },
+    );
+
     res.json({ success: true, data: { user: updated } });
   } catch (error) {
     next(error);

@@ -17,6 +17,22 @@ class SocketService {
   io.Socket? _socket;
   String? _userId;
 
+  // E2.2's other half. socket.io reconnects on its own, but the events that
+  // fired while it was down are gone — they are emitted, not queued. So a
+  // reconnect is not a return to a known-good state: it is the moment at
+  // which this client is *most* likely to be showing something stale, with
+  // no indication that it is.
+  //
+  // `ConnectivityController` and `OfflineBanner` already cover HTTP
+  // reachability, and `offline_write_queue` replays writes made while
+  // offline. Neither re-syncs *reads*, which is the gap E0's stale-state
+  // sweep named as "the one genuine remainder".
+  //
+  // Tracked so the first connect of a session does NOT fire a resync: every
+  // screen already fetches on mount, and firing here would double every
+  // initial load.
+  bool _hasConnectedOnce = false;
+
   // Stream controllers for each event the server can emit to this user
   final _rentalCompleted = StreamController<Map<String, dynamic>>.broadcast();
   final _depositApproved = StreamController<Map<String, dynamic>>.broadcast();
@@ -41,6 +57,12 @@ class SocketService {
   // rental sits on "awaiting confirmation" until the user thinks to refresh.
   final _paymentApproved = StreamController<Map<String, dynamic>>.broadcast();
   final _paymentRejected = StreamController<Map<String, dynamic>>.broadcast();
+  // E2.4 / D-1's last open bullet. An admin deciding an ID verification used
+  // to reach the database and stop there, so the Profile tab's Identity tile
+  // kept rendering the pre-decision state — an approved student was still
+  // told "Under review" and offered the submit button they had already used.
+  final _verificationApproved = StreamController<Map<String, dynamic>>.broadcast();
+  final _verificationRejected = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onRentalCompleted => _rentalCompleted.stream;
   Stream<Map<String, dynamic>> get onDepositApproved => _depositApproved.stream;
@@ -57,6 +79,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNewMessage => _newMessage.stream;
   Stream<Map<String, dynamic>> get onPaymentApproved => _paymentApproved.stream;
   Stream<Map<String, dynamic>> get onPaymentRejected => _paymentRejected.stream;
+  Stream<Map<String, dynamic>> get onVerificationApproved => _verificationApproved.stream;
+  Stream<Map<String, dynamic>> get onVerificationRejected => _verificationRejected.stream;
 
   String? get currentUserId => _userId;
 
@@ -64,6 +88,16 @@ class SocketService {
   /// Widgets that only need to know "something changed" can listen here.
   final _anyRentalChange = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get onAnyRentalChange => _anyRentalChange.stream;
+
+  /// Fires when the socket comes back after having been connected before.
+  ///
+  /// Deliberately also pushed onto [onAnyRentalChange], so the screens that
+  /// already refetch on "something changed" get reconnect-resync for free
+  /// rather than each growing its own reconnect handler — the duplicated-
+  /// implementation shape `ENGIRENT-CLAUDE.md` §7 says to avoid. Screens
+  /// whose data is not rental-shaped (chat, profile) listen here instead.
+  final _reconnected = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get onReconnected => _reconnected.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -95,6 +129,11 @@ class SocketService {
       ..onConnect((_) {
         debugPrint('[Socket] Connected — joining user room: $userId');
         _socket!.emit('join', userId);
+
+        // Rejoining is not enough. Anything emitted to this room while the
+        // socket was down was delivered to nobody, so every screen driven by
+        // those events is now silently out of date. Tell them to refetch.
+        noteConnected();
       })
       ..onDisconnect((_) => debugPrint('[Socket] Disconnected'))
       ..onConnectError((err) => debugPrint('[Socket] Connect error: $err'))
@@ -115,12 +154,50 @@ class SocketService {
       // every rentals list showing a status is now stale.
       ..on('payment:approved', _handle(_paymentApproved))
       ..on('payment:rejected', _handle(_paymentRejected))
+      // Deliberately NOT routed through _handle()/_anyRentalChange, for the
+      // same reason message:new is not: an ID decision is a change to the
+      // *user*, not to any rental, and pushing it onto the rental-change
+      // stream would make every rentals list refetch for an event that
+      // cannot alter a single row it displays. AuthProvider listens instead
+      // and refreshes the profile, which is the state that actually moved.
+      ..on('verification:approved', (data) {
+        _verificationApproved.add(
+            data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      })
+      ..on('verification:rejected', (data) {
+        _verificationRejected.add(
+            data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      })
       // Not routed through _handle()/_anyRentalChange — a new message isn't
       // a rental status change, and piggybacking it there would make every
       // rentals-list screen refetch on every incoming chat message.
       ..on('message:new', (data) {
         _newMessage.add(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
       });
+  }
+
+  /// Records that the socket is connected, and signals a resync if this is a
+  /// *re*connect rather than the first connect of the session.
+  ///
+  /// Extracted from the `onConnect` callback so the rule can be tested
+  /// without a live socket. The rule has two edges that are easy to get
+  /// wrong and both are load-bearing: the first connect must NOT fire
+  /// (every screen already fetches on mount, so firing would double every
+  /// initial load), and an explicit [disconnect] must reset it (a logout
+  /// starts a fresh session, and the next login's first connect is not a
+  /// reconnect).
+  @visibleForTesting
+  void noteConnected() {
+    if (_hasConnectedOnce) {
+      debugPrint('[Socket] Reconnected — signalling resync');
+      final event = <String, dynamic>{
+        'reason': 'reconnected',
+        'at': DateTime.now().toIso8601String(),
+      };
+      _reconnected.add(event);
+      _anyRentalChange.add(event);
+    }
+    _hasConnectedOnce = true;
   }
 
   void emit(String event, Map<String, dynamic> data) {
@@ -140,6 +217,11 @@ class SocketService {
     _socket?.dispose();
     _socket = null;
     _userId = null;
+    // An explicit disconnect is a logout or a teardown, not a dropped
+    // connection. The next connect is a genuinely fresh session and must not
+    // be treated as a reconnect, or the first load of the next login fires
+    // twice.
+    _hasConnectedOnce = false;
   }
 
   void dispose() {
@@ -159,6 +241,9 @@ class SocketService {
     _newMessage.close();
     _paymentApproved.close();
     _paymentRejected.close();
+    _verificationApproved.close();
+    _verificationRejected.close();
     _anyRentalChange.close();
+    _reconnected.close();
   }
 }

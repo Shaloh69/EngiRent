@@ -41,6 +41,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final _bodyCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   StreamSubscription<Map<String, dynamic>>? _sub;
+  StreamSubscription<Map<String, dynamic>>? _reconnectSub;
 
   bool _loading = true;
   String? _error;
@@ -54,11 +55,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _myId = widget.currentUserId ?? SocketService.instance.currentUserId;
     _load();
     _sub = SocketService.instance.onNewMessage.listen(_onSocketMessage);
+    // E2.2's other half. `message:new` is emitted, not queued, so every
+    // message sent while this socket was down is simply absent from the
+    // thread — and a chat that is quietly missing messages looks exactly
+    // like a chat where nobody replied. Refetching the thread on reconnect
+    // is the only way to tell those apart. This screen is the phase file's
+    // named reference implementation for the real-time layer precisely
+    // because the failure is so visible here.
+    _reconnectSub = SocketService.instance.onReconnected.listen((_) => _load());
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _reconnectSub?.cancel();
     _bodyCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();

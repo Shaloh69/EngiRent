@@ -43,6 +43,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   bool _startingPayment = false;
   StreamSubscription<Map<String, dynamic>>? _paymentApprovedSub;
   StreamSubscription<Map<String, dynamic>>? _paymentRejectedSub;
+  StreamSubscription<Map<String, dynamic>>? _reconnectSub;
 
   // Checklist Stage 8 — the renter's on-time rate, shown only to the owner
   // (the party who actually benefits from knowing it) and only once there's
@@ -130,12 +131,23 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       );
       _load();
     });
+
+    // E2.2's other half. This screen's whole state — payment status, rental
+    // status, the transactions array that decides whether "Pay Now" or
+    // "awaiting confirmation" is shown — arrives by socket. An admin
+    // approving a payment while this socket was down leaves the renter
+    // looking at a Pay Now button for money they have already sent.
+    _reconnectSub = SocketService.instance.onReconnected.listen((_) {
+      if (!mounted) return;
+      _load();
+    });
   }
 
   @override
   void dispose() {
     _paymentApprovedSub?.cancel();
     _paymentRejectedSub?.cancel();
+    _reconnectSub?.cancel();
     super.dispose();
   }
 
