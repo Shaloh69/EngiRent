@@ -1555,6 +1555,28 @@ endpoint"* — both true of a route that button no longer uses. Rewritten to
 describe what it actually does, including the reconcile-before-approving
 instruction the manual flow now depends on. `npx tsc --noEmit` clean.
 
+### E2 against its own phase file, section by section — checked 2026-09-06
+
+Done late rather than at the phase start, which was a mistake: the playbook's
+"Starting any phase N" template asks for exactly this up front, and doing it
+first would have surfaced the three unfinished bullets below before three
+other chunks were built on top.
+
+| Section | State |
+|---|---|
+| **E2.1** D-3 self-rental | ✅ Server guard already existed since the first backend commit; client CTA fixed (`ef69619`). E0.2's sweep already proved the "other instances" bullet has no instances — every adjacent path derives its counterparty rather than trusting client input |
+| **E2.2** D-4 real-time | ⚠️ **Admin half done** (`9690f40`) — socket client, admin room, three queue events, connection indicator. **Flutter half NOT done:** `refetch-on-reconnect` is still missing, which E0's stale-state sweep already named as "the one genuine remainder". `ConnectivityController` + `OfflineBanner` cover HTTP reachability and `offline_write_queue` replays queued *writes*, but nothing re-syncs *reads* a socket missed while disconnected |
+| **E2.3** D-5 feedback/push | ✅ by prior ruling — the toast layer already exists (E0's coverage audit found 57 call sites across 13 files and judged it architecturally sound); push notifications ruled **defer to backlog** |
+| **E2.4** D-1 verification status | ⚠️ **Mostly done in E1** — both root causes fixed and verified end to end on screen. **One bullet NOT done:** "new socket event when an admin approves/rejects an ID verification". Confirmed absent by grep, not assumed. The payment-decision events built this session are the same class of fix and should share its shape |
+| **E2.5** D-2 My Rentals | ✅ N/A — the screen already exists; D-2's premise was wrong |
+| **E2.6** D-6 sweeps | ✅ All four sweeps completed in E0 |
+
+**So E2 is not done.** Remaining, in order:
+1. **Flutter refetch-on-reconnect** (E2.2's other half).
+2. **The ID-verification decision event** (E2.4) — mirror `payment:approved`.
+3. **D-37's ruling** — two live channels for kiosk telemetry.
+4. **Verification of everything already built**, which is the real blocker.
+
 ### Next, once the deploy clears
 
 1. Deploy the three files, restart Node by PID, and **look at it** — a real
