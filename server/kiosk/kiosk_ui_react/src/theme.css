@@ -29,43 +29,16 @@
 @import "@fontsource/manrope/500.css";
 @import "@fontsource/manrope/600.css";
 
+/* E3.1 — colour, radius, motion and the touch minimum now come from the single
+   token source (design/tokens/tokens.json) via the generator, so this surface
+   can no longer drift from the app, the admin console and the website by hand.
+   What stays below is what is genuinely kiosk-specific and NOT token-derivable:
+   the self-hosted font stack and the viewport-derived type/space scales, which
+   are clamp() expressions against a 1080x1920 portrait panel rather than
+   values. */
+@import "./design-tokens.g.css";
+
 :root {
-  --bg: #050f1a;
-  --surf: #0b1a2a;
-  --surf2: #122740;
-  --border: #1e3a54;
-
-  --brand: #4da3e8;
-  --brand-glow: rgba(77, 163, 232, 0.35);
-  /* Retained as aliases: ~20 call sites still reference them and renaming
-     every one adds risk without changing a rendered pixel. Use --teal. */
-  --teal: var(--brand);
-  --violet: var(--brand);
-  --teal-glow: var(--brand-glow);
-  --violet-glow: var(--brand-glow);
-  --gold: #f5b85c;
-  --gold-glow: rgba(245, 184, 92, 0.35);
-  --amber: var(--gold);
-  --amber-glow: var(--gold-glow);
-  --coral: #ff8a95;
-  --coral-glow: rgba(255, 138, 149, 0.35);
-  --emerald: #22c55e;
-  --emerald-glow: rgba(34, 197, 94, 0.35);
-  --warn: #f59e0b;
-  --danger: #ef4444;
-  --danger-glow: rgba(239, 68, 68, 0.35);
-
-  --ink: #eef6ff;
-  --ink2: #93aec9;
-  --ink3: #5b7a96;
-
-  /* §1.4 — radius is capped at 6px on every surface. The kiosk previously
-     ran 8/16/24/32px, which is the "large radius" tell §1.1 bans. */
-  --r-sm: 2px;
-  --r-md: 4px;
-  --r-lg: 6px;
-  --r-xl: 6px;
-
   --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-body: "Manrope", system-ui, sans-serif;
@@ -86,11 +59,6 @@
   --sp-4: clamp(18px, 2.4vmin, 32px);
   --sp-5: clamp(26px, 3.4vmin, 46px);
   --sp-6: clamp(36px, 4.8vmin, 64px);
-
-  /* Kiosk-industry minimum is 9-12mm of physical finger target. On a 1080px
-     -wide ~15in portrait panel that is ~70px; nothing tappable goes below
-     this. (kioskindustry.org UX checklist) */
-  --touch-min: clamp(64px, 7vmin, 96px);
 }
 
 * {
