@@ -48,7 +48,26 @@ function rgba(hex, alpha) {
 }
 
 function dartColor(hex) {
-  return `Color(0xFF${String(hex).replace(/^#/, "").toUpperCase()})`;
+  const h = String(hex).replace(/^#/, "").toUpperCase();
+  // Guard, not decoration. The first version of this generator emitted 278
+  // constants named $note0..$note278 with bodies like Color(0xFFT), because
+  // `tokens.palette` carries a top-level `$note` STRING and Object.entries on a
+  // string yields one entry per character. It compiled to nothing but it was
+  // committed, and it stayed invisible for two commits because no Dart file
+  // imported the generated file yet. Anything that can be emitted wrong should
+  // fail here rather than in `flutter analyze` a day later.
+  if (!/^[0-9A-F]{6}$/.test(h)) {
+    throw new Error(`Not a 6-digit hex colour: ${JSON.stringify(hex)}`);
+  }
+  return `Color(0xFF${h})`;
+}
+
+/** Palette ramps only — drops the top-level `$note` string and any other
+ *  human-facing key that is not a colour ramp. */
+function paletteRamps() {
+  return Object.entries(tokens.palette).filter(
+    ([k, v]) => !k.startsWith("$") && v && typeof v === "object",
+  );
 }
 
 /** Composite `hex` at `alpha` over `ground`, returning a solid hex. Used for
@@ -132,7 +151,7 @@ function emit(relPath, contents) {
 // delegates to these so its ~100 existing `AppColors.x` call sites keep
 // working unchanged.
 function buildFlutter() {
-  const rampConsts = Object.entries(tokens.palette)
+  const rampConsts = paletteRamps()
     .flatMap(([name, ramp]) =>
       Object.entries(rampSteps(ramp)).map(([step, hex]) => {
         const ident =

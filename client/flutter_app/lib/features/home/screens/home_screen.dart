@@ -1776,13 +1776,13 @@ String _verifyLabel(String? status, bool verified) {
   };
 }
 
+// E3.1: was a third private status table, and the one that put PENDING on
+// warning-yellow — the exact mapping the phase forbids ("PENDING is never red
+// or warning-yellow": an ID sitting in a review queue is not a fault). Now the
+// shared definition, so "pending" here means what it means everywhere else.
 Color _verifyColor(String? status, bool verified) {
   if (verified) return AppColors.success;
-  return switch (status) {
-    'REJECTED' => AppColors.error,
-    'PENDING' => AppColors.warning,
-    _ => AppColors.grey,
-  };
+  return rentalStatusColor(status ?? 'NOT_SUBMITTED');
 }
 
 IconData _verifyIcon(String? status, bool verified) {

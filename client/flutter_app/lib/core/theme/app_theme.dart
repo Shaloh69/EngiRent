@@ -39,8 +39,12 @@ class AppTheme {
 
     final bg = isDark ? AppColors.backgroundDarkMode : AppColors.background;
     final surface = isDark ? AppColors.surfaceDarkMode : AppColors.surface;
+    // E3.1: the light value was a literal #F3F8F7 here while the admin console,
+    // the website and this app's own app_widgets.dart all rendered #EEF4FB —
+    // a 1-vs-3 split, and the odd one out was green-tinted left over from the
+    // pre-mandate palette. Now the token.
     final surfaceAlt =
-        isDark ? AppColors.surfaceAltDarkMode : const Color(0xFFF3F8F7);
+        isDark ? AppColors.surfaceAltDarkMode : AppColors.surfaceAlt;
     final border = isDark ? AppColors.borderDarkMode : AppColors.border;
     final ink = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
     final muted = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;

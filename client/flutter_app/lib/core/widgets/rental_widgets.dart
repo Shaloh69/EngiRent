@@ -5,20 +5,30 @@ import 'package:shimmer/shimmer.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 import '../models/rental_model.dart';
+import '../theme/design_tokens.g.dart';
 import '../theme/tokens.dart';
 import 'app_widgets.dart';
 
-/// Rental status → semantic colour. One definition, so a status can't be
-/// amber on one screen and grey on another.
-Color rentalStatusColor(String status) => switch (status) {
-      'ACTIVE' => AppColors.success,
-      'COMPLETED' => AppColors.info,
-      'CANCELLED' || 'DISPUTED' => AppColors.error,
-      'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
-      'VERIFICATION' => AppColors.warning,
-      'PENDING' => AppColors.secondary,
-      _ => AppColors.grey,
-    };
+/// Rental status → semantic colour.
+///
+/// The comment that used to sit here said "One definition, so a status can't be
+/// amber on one screen and grey on another." It was not true: E3.1 found three
+/// hand-written switches in this app that disagreed with each other and with
+/// the admin console. PENDING was gold here, fell through to grey in
+/// `rental_detail_screen.dart`, and was warning-yellow in `home_screen.dart` —
+/// three colours for one state, in one product.
+///
+/// It is true now, because there is no table here to disagree with: this
+/// delegates to the generated status map, which every surface shares.
+/// Pass [brightness] to resolve for the active theme; it defaults to light.
+Color rentalStatusColor(String status, {Brightness? brightness}) =>
+    statusColor(status, DesignTokens.of(brightness ?? Brightness.light));
+
+/// The on-surface text/icon colour for a status. Never draw status text in
+/// [rentalStatusColor] on a light ground — those are fill hues and most sit
+/// under 3:1 as text.
+Color rentalStatusInk(String status, {Brightness? brightness}) =>
+    statusInk(status, DesignTokens.of(brightness ?? Brightness.light));
 
 /// The lifecycle, in order. Used by [OrderTimeline] to work out which steps
 /// are done, current, and still ahead.

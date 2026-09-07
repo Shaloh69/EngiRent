@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toastification/toastification.dart';
 import 'core/localization/ceb_framework_localizations.dart';
+import 'core/theme/design_reference_screen.dart';
 import 'core/localization/locale_controller.dart';
 import 'core/observability/crash_reporting.dart';
 import 'core/services/api_service.dart';
@@ -126,7 +128,19 @@ class MyApp extends StatelessWidget {
           ],
           supportedLocales: AppLocalizations.supportedLocales,
           navigatorKey: _rootNavigatorKey,
-          initialRoute: showOnboarding ? '/onboarding' : '/login',
+          // E3's definition of done asks for a reference screen per surface
+          // that renders every token and every status state. Reaching a real
+          // status chip in this app needs a live tunnel, a verified account and
+          // a rental in the right state, so the reference screen is opened
+          // directly instead:
+          //
+          //   flutter run --dart-define=DESIGN_REFERENCE=1
+          //
+          // Debug builds only, linked from nowhere, shipped to nobody.
+          initialRoute:
+              kDebugMode && const bool.fromEnvironment('DESIGN_REFERENCE')
+                  ? '/design-reference'
+                  : (showOnboarding ? '/onboarding' : '/login'),
           onGenerateRoute: _onGenerateRoute,
           builder: (context, child) {
             // Mandate §1.7. Android's display "Font size" setting goes up to
@@ -175,6 +189,10 @@ class MyApp extends StatelessWidget {
 
   Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
+      // E3 token reference. Debug-only and unreachable from the UI — see the
+      // initialRoute comment above.
+      case '/design-reference':
+        return MaterialPageRoute(builder: (_) => const DesignReferenceScreen());
       case '/onboarding':
         return MaterialPageRoute(builder: (_) => const OnboardingScreen());
       case '/login':

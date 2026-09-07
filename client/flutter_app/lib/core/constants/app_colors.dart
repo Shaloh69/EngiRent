@@ -1,95 +1,112 @@
 import 'package:flutter/material.dart';
 
+import '../theme/design_tokens.g.dart';
+
+/// The app's colour names, kept as a stable façade over the generated tokens.
+///
+/// E3.1: the hex values are no longer written here. They come from
+/// `design/tokens/tokens.json` via `design/tokens/build.mjs`, which also
+/// generates the admin console's Mantine tuples, the kiosk's CSS variables and
+/// the website's — so the four surfaces cannot drift apart by hand any more.
+///
+/// This class stays because roughly a hundred call sites say `AppColors.x`, and
+/// rewriting them all would be a large, risky diff that changes no pixel. New
+/// code should prefer [DesignTokens] (via `DesignTokens.of(Theme.of(context)
+/// .brightness)`), because that resolves per theme; the constants here are the
+/// LIGHT resolution and cannot know which theme is active.
+///
+/// WHAT WAS REMOVED, and why it is not coming back: `grey` (#9CA3AF),
+/// `greyLight` (#F3F4F6), `greyDark` (#4B5563), `borderDark` (#D1D5DB) and
+/// `surfaceDark` (#1F2937). All five are the generic Tailwind-slate family the
+/// design mandate bans outright, and four of the five had **zero** call sites —
+/// they existed only as a bad example to copy. The fifth, `grey`, had four, all
+/// of them the fallback arm of a status switch; those now resolve through the
+/// shared status table instead.
 class AppColors {
-  // Primary/brand — "EngiRent Vault" deep teal (design mandate
-  // docs/planning/02-design-mandate.md §1), same hex as client/admin's
-  // Mantine theme and the Kiosk's theme.css. Replaces the prior violet,
-  // which shipped reading as a generic SaaS blue/violet.
-  static const Color primary = Color(0xFF0B5FA5);
-  static const Color primaryDark = Color(0xFF08497F);
-  static const Color primaryLight = Color(0xFF4DA3E8);
+  AppColors._();
 
-  // Secondary — the mandate's literal "key" accent (gold). Previously this
-  // slot held green, which duplicated `success` exactly; the two roles are
-  // now distinct, so a gold element and a green "available" badge can't be
-  // confused for each other.
-  static const Color secondary = Color(0xFFE9A13B);
-  static const Color secondaryDark = Color(0xFFC07F22);
-  static const Color secondaryLight = Color(0xFFF5B85C);
+  // ── Brand ────────────────────────────────────────────────────────────────
+  static const Color primary = DesignPalette.teal500;
+  static const Color primaryDark = DesignPalette.teal700;
+  static const Color primaryLight = DesignPalette.tealOnDark;
 
-  // Accent / CTA — mandate's coral "CTA energy" tertiary, replacing the
-  // prior warm-orange scheme (accent is already used app-wide for
-  // "Rent Now"/"Confirm"-style buttons, which maps directly onto this role).
-  static const Color accent = Color(0xFFEF6E7B);
-  static const Color accentDark = Color(0xFFD14F5D);
-  static const Color accentLight = Color(0xFFFF8A95);
+  /// The mandate's "key" accent (gold) — a distinct role from [success], so a
+  /// gold element and a green "available" badge can't be confused.
+  static const Color secondary = DesignPalette.gold500;
+  static const Color secondaryDark = DesignPalette.gold700;
+  static const Color secondaryLight = DesignPalette.goldOnDark;
 
-  // Status Colors. `success` is a distinct shade from the teal brand
-  // primary (mandate §1) so "available/success" never reads as just another
-  // brand-colored element. Dark/light variants exist because availability
-  // badges need a readable foreground on a tinted background.
-  static const Color success = Color(0xFF22C55E);
-  static const Color successDark = Color(0xFF199748);
-  static const Color successLight = Color(0xFF45DC80);
-  static const Color warning = Color(0xFFF59E0B);
-  static const Color error = Color(0xFFEF4444);
-  static const Color info = Color(0xFF0E9BB8);
+  /// Coral "CTA energy" tertiary — used app-wide for Rent Now / Confirm.
+  static const Color accent = DesignPalette.coral500;
+  static const Color accentDark = DesignPalette.coral700;
+  static const Color accentLight = DesignPalette.coralOnDark;
 
-  // Neutral Colors
-  static const Color white = Color(0xFFFFFFFF);
+  // ── Status ───────────────────────────────────────────────────────────────
+  // These are FILL hues. On a light surface they are not legible as text —
+  // success is 2.28:1 on white — so use `statusInk()` for text and icons.
+  static const Color success = DesignPalette.emerald500;
+  static const Color successDark = DesignPalette.emerald700;
+  static const Color successLight = DesignPalette.emerald400;
+  static const Color warning = DesignPalette.warn500;
+  static const Color error = DesignPalette.danger500;
+
+  /// Was `info`. Now the cross-surface `review` role: the cyan-teal that the
+  /// whole pending / under-review family resolves to. Kept under the old name
+  /// as well so existing call sites compile.
+  static const Color review = DesignPalette.review500;
+  static const Color info = review;
+
+  // ── Neutrals ─────────────────────────────────────────────────────────────
+  static const Color white = DesignPalette.ink0;
   static const Color black = Color(0xFF000000);
-  static const Color grey = Color(0xFF9CA3AF);
-  static const Color greyLight = Color(0xFFF3F4F6);
-  static const Color greyDark = Color(0xFF4B5563);
 
-  // Background Colors — "Campus Day" mode (warm off-white, not stark white
-  // or cool grey), same base tone as client/admin's Mantine theme.
-  static const Color background = Color(0xFFF7F9FC);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceDark = Color(0xFF1F2937);
+  static const Color background = DesignPalette.inkLightBg;
+  static const Color surface = DesignPalette.ink0;
+  static const Color surfaceAlt = DesignPalette.inkSurfaceAlt;
 
-  // Text Colors
-  static const Color textPrimary = Color(0xFF0C1F33);
-  static const Color textSecondary = Color(0xFF51677F);
-  static const Color textDisabled = Color(0xFF9CA3AF);
+  static const Color textPrimary = DesignPalette.inkText1;
+  static const Color textSecondary = DesignPalette.inkText2;
 
-  // Border Colors — tinted toward the teal primary so borders read as part
-  // of the palette rather than a neutral grey box.
-  static const Color border = Color(0xFFD5E3F2);
-  static const Color borderDark = Color(0xFFD1D5DB);
+  /// Teal-tinted, replacing the banned #9CA3AF. Disabled text is exempt from
+  /// the WCAG contrast floor (1.4.3, "incidental"), which is why this sits at
+  /// 2.49:1 deliberately rather than by neglect.
+  static const Color textDisabled = Color(0xFF8CA2BC);
 
-  // Teal gradient — used for hero banners and AppBars
+  /// The decorative hairline. For anything that is the visible *boundary of a
+  /// control* — a text field's outline, an unchecked box — use [borderStrong],
+  /// which clears the 3:1 that WCAG 1.4.11 requires and this one does not.
+  static const Color border = DesignPalette.inkBorder;
+  static const Color borderStrong = DesignPalette.inkBorderStrong;
+
+  // ── Gradients ────────────────────────────────────────────────────────────
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF08497F), Color(0xFF0B5FA5)],
+    colors: [DesignPalette.teal700, DesignPalette.teal500],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  // Coral CTA gradient — used for "Rent Now" / "Confirm" buttons
   static const LinearGradient accentGradient = LinearGradient(
-    colors: [Color(0xFFEF6E7B), Color(0xFFD14F5D)],
+    colors: [DesignPalette.coral500, DesignPalette.coral700],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
-  // ── Dark scheme ("Vault") — mandate §1.3/§1.6 ───────────────────────────
-  // Dark is a first-class theme, not the light one with inverted greys: it
-  // gets its own surface/border/muted values, and they're tinted toward the
-  // teal primary so dark mode doesn't read as a generic slate library
-  // default. Values are identical to client/admin's Mantine `dark` tuple and
-  // globals.css, so all three surfaces render the same dark.
-  static const Color backgroundDarkMode = Color(0xFF050F1A);
-  static const Color surfaceDarkMode = Color(0xFF0B1A2A);
-  static const Color surfaceAltDarkMode = Color(0xFF122740);
-  static const Color borderDarkMode = Color(0xFF1E3A54);
-  static const Color textPrimaryDark = Color(0xFFEEF6FF);
-  static const Color textSecondaryDark = Color(0xFF93AEC9);
+  // ── Dark scheme ("Vault") ────────────────────────────────────────────────
+  // Dark is a first-class theme, not light with inverted greys: its surfaces,
+  // borders and muted values are its own, tinted toward the brand so dark mode
+  // doesn't read as a generic slate library default.
+  static const Color backgroundDarkMode = DesignPalette.inkDarkBg;
+  static const Color surfaceDarkMode = DesignPalette.inkDarkSurface;
+  static const Color surfaceAltDarkMode = DesignPalette.inkDarkSurfaceAlt;
+  static const Color borderDarkMode = DesignPalette.inkDarkBorder;
+  static const Color borderStrongDarkMode = DesignPalette.inkDarkBorderStrong;
+  static const Color textPrimaryDark = DesignPalette.inkDarkText1;
+  static const Color textSecondaryDark = DesignPalette.inkDarkText2;
   static const Color textDisabledDark = Color(0xFF5B7A96);
 
-  // Brand hues lifted for dark backgrounds — the light-mode teal (#0D9488)
-  // sits at roughly 3.1:1 on #071310, under the 4.5:1 body-text floor, so
-  // dark mode uses the lighter tints for anything that carries meaning.
-  static const Color primaryOnDark = Color(0xFF4DA3E8);
-  static const Color secondaryOnDark = Color(0xFFF5B85C);
-  static const Color accentOnDark = Color(0xFFFF8A95);
+  /// Brand hues lifted for dark grounds — the light-mode brand sits under the
+  /// 4.5:1 body-text floor on #050F1A, so anything carrying meaning uses these.
+  static const Color primaryOnDark = DesignPalette.tealOnDark;
+  static const Color secondaryOnDark = DesignPalette.goldOnDark;
+  static const Color accentOnDark = DesignPalette.coralOnDark;
 }

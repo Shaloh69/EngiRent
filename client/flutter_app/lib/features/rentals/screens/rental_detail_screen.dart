@@ -581,14 +581,12 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     }
   }
 
-  Color _statusColor(String status) => switch (status) {
-    'ACTIVE' => AppColors.success,
-    'COMPLETED' => AppColors.info,
-    'CANCELLED' || 'DISPUTED' => AppColors.error,
-    'VERIFICATION' => AppColors.warning,
-    'AWAITING_DEPOSIT' || 'DEPOSITED' => AppColors.accent,
-    _ => AppColors.grey,
-  };
+  // E3.1: was a second, private copy of the status table that disagreed with
+  // rental_widgets.dart's — it had no PENDING arm at all, so the app's most
+  // common rental state rendered as a banned generic grey here and as gold two
+  // files away. Now the one shared definition.
+  Color _statusColor(String status) =>
+      rentalStatusColor(status, brightness: Theme.of(context).brightness);
 
   bool get _canCancel =>
       _rental != null &&
@@ -642,7 +640,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                               errorWidget: (_, __, ___) => Container(
                                 height: 200,
                                 color: p.surfaceAlt,
-                                child: const Icon(Icons.image_not_supported, size: 48, color: AppColors.grey),
+                                child: const Icon(Icons.image_not_supported, size: 48, color: AppColors.textDisabled),
                               ),
                             ),
                           ),
