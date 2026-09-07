@@ -457,6 +457,20 @@ banned-grey removal, interaction-state tokens, kiosk 64px scale. See the
 session-length note in the continuation prompt — E3 is large and the prior run
 was very long.
 
+**G5 six-symptom check at the E3.1 source-built sub-boundary — NO SYMPTOMS.**
+1 re-deriving: absent (tokens derived fresh from the repo). 2 vaguer: absent.
+3 losing rules: absent — G2 table written before any E3 edit; status line held;
+**corrected my own just-written doc error** (kiosk light-only → dark-only) on
+repo evidence. 4 drift-to-agreement: absent, notably — flagged the PENDING=yellow
+violation instead of copying the current state into the source. 5 batching:
+absent. 6 skipping verification: absent — cross-checked the source against the
+repo (10/10 anchors) and caught my own harness bug (Flutter `0xFF` vs `#`).
+**Caveat honestly stated:** the source is inspection-verified, but the *real*
+E3.1 verification (tokens rendering on screen) is deferred to the generator
+chunk. G1 debt is 0 only because the source drives nothing yet — the moment a
+generator applies it, that changes, and the emulator/surfaces are needed. This
+is a deliberate stop before that, not a claim that E3.1 is done.
+
 ---
 
 ## BLOCKERS (nothing below moves until these clear)
