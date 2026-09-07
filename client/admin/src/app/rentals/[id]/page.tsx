@@ -148,7 +148,7 @@ export default function RentalDetailPage() {
                     {rental.id}
                   </Text>
                 </Stack>
-                <StatusBadge status={rental.status} variant="filled" />
+                <StatusBadge status={rental.status} />
               </Group>
 
               <Divider my="md" />

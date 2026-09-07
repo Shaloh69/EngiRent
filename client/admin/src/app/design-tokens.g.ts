@@ -108,20 +108,108 @@ export const statusRole = {
   COMPLETED: "success",
   ACTIVE: "success",
   PAID: "success",
+  ONLINE: "success",
+  ACTIVE_USER: "success",
   PENDING: "review",
   UNDER_REVIEW: "review",
+  MANUAL_REVIEW: "review",
   PROCESSING: "review",
   AWAITING_DEPOSIT: "review",
   AWAITING_CONFIRMATION: "review",
+  VERIFICATION: "review",
+  SUBMITTED: "review",
   RETRY: "warning",
   REJECTED: "critical",
   FAILED: "critical",
   DISPUTED: "critical",
   CANCELLED: "critical",
+  OVERDUE: "critical",
+  OFFLINE: "critical",
+  DEPOSITED: "accent",
+  REFUNDED: "accent",
   UNSUBMITTED: "textSecondary",
+  NOT_SUBMITTED: "textSecondary",
 } as const;
 
 export type StatusKey = keyof typeof statusRole;
+
+/** Status chip fill/ink/border per theme. Stated, not derived from a library's
+ *  soft-variant rule — see the generator's note: that rule puts 25 of 28 chips
+ *  under the 4.5:1 text floor on this palette. */
+export const statusChip = {
+  "light": {
+    "success": {
+      "fill": "#e9fbef",
+      "ink": "#147e3c",
+      "border": "#9aecb8"
+    },
+    "warning": {
+      "fill": "#fef5e6",
+      "ink": "#925903",
+      "border": "#fad090"
+    },
+    "critical": {
+      "fill": "#fdecec",
+      "ink": "#bf3232",
+      "border": "#f8afaf"
+    },
+    "review": {
+      "fill": "#e6f7fb",
+      "ink": "#0a6f86",
+      "border": "#93dcea"
+    },
+    "accent": {
+      "fill": "#fef6e7",
+      "ink": "#8a5813",
+      "border": "#fad89a"
+    },
+    "textSecondary": {
+      "fill": "#EEF4FB",
+      "ink": "#51677F",
+      "border": "#D5E3F2"
+    }
+  },
+  "dark": {
+    "success": {
+      "fill": "#0E3231",
+      "ink": "#22C55E",
+      "border": "#13543C"
+    },
+    "warning": {
+      "fill": "#2C2C26",
+      "ink": "#F59E0B",
+      "border": "#5B471F"
+    },
+    "critical": {
+      "fill": "#2B2634",
+      "ink": "#F37373",
+      "border": "#5A3843"
+    },
+    "review": {
+      "fill": "#113041",
+      "ink": "#33B6D1",
+      "border": "#194F63"
+    },
+    "accent": {
+      "fill": "#2C3031",
+      "ink": "#F5B85C",
+      "border": "#5B503B"
+    },
+    "textSecondary": {
+      "fill": "#122740",
+      "ink": "#93AEC9",
+      "border": "#1E3A54"
+    }
+  }
+} as const;
+
+/** The chip colours for a status in the active scheme. Unknown statuses get the
+ *  muted pair rather than a colour that would imply a recognised state. */
+export function statusChipStyle(status: string, scheme: "light" | "dark") {
+  const role = statusRole[status.toUpperCase() as StatusKey] ?? "textSecondary";
+  const table = statusChip[scheme] as Record<string, { fill: string; ink: string; border: string }>;
+  return table[role] ?? table.textSecondary;
+}
 
 /** Mantine colour key for a domain status; unknown statuses get no colour
  *  assertion, they render as muted text. */

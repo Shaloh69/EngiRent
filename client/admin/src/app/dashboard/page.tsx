@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import type { DashboardStats, Rental } from "@/types";
-import { roleColor } from "../theme";
+import { roleColor, statusColorKey } from "../theme";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -49,16 +49,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  ACTIVE: roleColor.success,
-  PENDING: roleColor.warning,
-  AWAITING_DEPOSIT: roleColor.warning,
-  DEPOSITED: roleColor.accent,
-  COMPLETED: roleColor.brand,
-  VERIFICATION: roleColor.cta,
-  CANCELLED: roleColor.critical,
-  DISPUTED: roleColor.critical,
-};
+// E3.1: this was a second, hand-written copy of the status→colour table that
+// disagreed with StatusBadge's (PENDING yellow here, and COMPLETED brand-blue)
+// — the exact duplication ENGIRENT-CLAUDE.md §7 says to grep for. Both now
+// resolve through the generated map, so a status cannot mean one thing in a
+// chart and another in a badge on the same page.
+const statusColor = (status: string) => statusColorKey(status) ?? "gray";
 
 // Colors are the theme's own role aliases — "blue"/"violet"/"amber" were
 // left here after the palette pivot and no longer exist in theme.ts, so
@@ -70,7 +66,7 @@ const KPI_CARDS = [
   { key: "totalUsers", label: "Total Users", icon: Users, color: roleColor.brand },
   { key: "totalItems", label: "Total Items", icon: Package, color: roleColor.success },
   { key: "activeRentals", label: "Active Rentals", icon: Receipt, color: roleColor.cta },
-  { key: "pendingVerifications", label: "Pending Verification", icon: CheckCircle2, color: roleColor.warning },
+  { key: "pendingVerifications", label: "Pending Verification", icon: CheckCircle2, color: roleColor.review },
   { key: "totalRevenue", label: "Revenue", icon: DollarSign, color: roleColor.accent },
 ] as const;
 
@@ -280,7 +276,7 @@ export default function DashboardPage() {
                             {rental.renter?.firstName || "N/A"} {rental.renter?.lastName || ""}
                           </Table.Td>
                           <Table.Td>
-                            <Badge color={STATUS_COLOR[rental.status] ?? "gray"} variant="light">
+                            <Badge color={statusColor(rental.status)} variant="light">
                               {rental.status}
                             </Badge>
                           </Table.Td>

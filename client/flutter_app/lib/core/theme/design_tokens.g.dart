@@ -521,17 +521,27 @@ const Map<String, String> kStatusRole = {
   'COMPLETED': 'success',
   'ACTIVE': 'success',
   'PAID': 'success',
+  'ONLINE': 'success',
+  'ACTIVE_USER': 'success',
   'PENDING': 'review',
   'UNDER_REVIEW': 'review',
+  'MANUAL_REVIEW': 'review',
   'PROCESSING': 'review',
   'AWAITING_DEPOSIT': 'review',
   'AWAITING_CONFIRMATION': 'review',
+  'VERIFICATION': 'review',
+  'SUBMITTED': 'review',
   'RETRY': 'warning',
   'REJECTED': 'critical',
   'FAILED': 'critical',
   'DISPUTED': 'critical',
   'CANCELLED': 'critical',
+  'OVERDUE': 'critical',
+  'OFFLINE': 'critical',
+  'DEPOSITED': 'accent',
+  'REFUNDED': 'accent',
   'UNSUBMITTED': 'textSecondary',
+  'NOT_SUBMITTED': 'textSecondary',
 };
 
 /// Resolve a domain status string to its colour in the active theme.
@@ -547,6 +557,28 @@ Color statusColor(String status, DesignTokens t) {
       return t.critical;
     case 'review':
       return t.review;
+    case 'accent':
+      return t.accent;
+    default:
+      return t.textSecondary;
+  }
+}
+
+/// The on-light text/icon colour for a status. Never use [statusColor] as text
+/// on a light surface: a status 500 is a fill hue and most of them sit under
+/// 3:1 on white.
+Color statusInk(String status, DesignTokens t) {
+  switch (kStatusRole[status.toUpperCase()]) {
+    case 'success':
+      return t.successInk;
+    case 'warning':
+      return t.warningInk;
+    case 'critical':
+      return t.criticalInk;
+    case 'review':
+      return t.reviewInk;
+    case 'accent':
+      return t.accentInk;
     default:
       return t.textSecondary;
   }
