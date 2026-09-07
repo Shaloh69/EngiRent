@@ -379,15 +379,48 @@ and return it — without confusion, without reloading, and without an admin
 intervening in anything the system could handle itself.
 
 ## Current phase
-**E2 — defect fixes and the real-time layer.** In progress and **not** done —
-see the section-by-section table under "Next concrete step". Three bullets
-remain unbuilt and three built chunks remain unverified.
+**E3 — design foundation.** Just entered (2026-09-08). No implementation yet —
+see the dated E3 section-by-section table below (G2). E2 closed the prior
+session-run; its verification is complete and its debt is zero.
 
 ## Completed phases
 - **E0 — discovery and hygiene.** Complete except two kiosk-blocked sections
   (E0.3's three wait measurements, E0.1's hardware confirmation).
 - **E1 — API + socket test suite.** Complete with named gaps: 73/93 endpoints
   on the happy path, each of the 21 uncovered rows named with a reason.
+- **E2 — defect fixes and the real-time layer. COMPLETE 2026-09-07.** All six
+  sections built and **verified on screen** (E2.1 owner CTA both sides, E2.2
+  reconnect-resync + admin console LIVE, E2.4 ID-verification event delivery,
+  the full manual-payment flow, E2.3 toast + E2.5 My Rentals already existing).
+  **G1 debt closed at 0.** Headline: **D-40** — the Flutter real-time layer had
+  been crashing on connect since April (`double.infinity.toInt()` throws);
+  fixed and verified connecting. Carried forward, explicitly deferred with
+  reasons (satisfies the phase DoD): **D-37** execution (ruled option (b),
+  belongs in E3's shared-component pass), **D-38** (admin dashboard confident
+  zeros), **D-39** (profile completes without a real face). Admin login was
+  reset non-destructively (no DB wipe); real data preserved.
+
+## E3 — section-by-section state, derived from the repo 2026-09-08 (G2 gate)
+
+**No E3 implementation edit until this table exists — it now does.** Derived by
+reading the four surfaces' theme files, not from memory.
+
+| Section | Repo state today | What E3 must do |
+|---|---|---|
+| **E3.1** tokens across 4 stacks | **Four separate, hand-authored token sets exist and DO NOT share a source:** Flutter `core/theme/tokens.dart` (spacing/radius scales, 85 lines) + `app_theme.dart` + `theme_controller.dart` (light/dark); admin `app/theme.ts` (Mantine, has `roleColor`); kiosk `theme.css` (light-only, ruled); website (its own). **No single JSON/source-of-truth that generates all four — this is E3.1's core and it is UNBUILT.** | Define once, generate per surface. Unify status semantics (incl. E2.4's verification states) so a chip means the same thing everywhere; **PENDING never red/warning**. Both themes computed independently (kiosk + web are light-only by ruling). WCAG AA per theme. Interaction states token'd once. Kiosk 64px targets + larger scale. |
+| **E3.2** shared components | **Toast EXISTS** (`flutter_app/.../core/utils/toast_utils.dart`, E2.3, 57 call sites — working, not tokenized). **Connection indicator EXISTS** (admin `components/ui/ConnectionIndicator.tsx` from E2.2, verified LIVE; Flutter side via `ConnectivityController`/`OfflineBanner`). Status chips exist ad-hoc per surface. **Locker representation, 3 loading primitives — not surveyed/built as shared.** | Restyle toast + connection indicator onto tokens and PROMOTE to shared — **do not rebuild behaviour**. One status chip per state ×4 surfaces, one meaning. Shared locker model. Three loading primitives (determinate/staged/indeterminate). **D-37's execution lands here** (drop the socket's 4 kiosk events). |
+| **E3.3** motion | Not surveyed. Reduced-motion: Flutter respects it in places; per-surface audit needed. | Durations/easing as shared tokens; reduced-motion per surface. |
+| **DoD** | — | Tokens generate into all four stacks; a reference screen per surface renders every token + status state; contrast verified computationally, kiosk physically (**kiosk is offline — the physical check is B-2-blocked, same as E4**). |
+
+**Sequencing note for E3:** the toast and connection indicator are the two
+places E2 and E3 explicitly overlap — E2 built them to *work*, E3 restyles them
+onto tokens. Grep for duplicated status-chip implementations at the end of E3
+(`ENGIRENT-CLAUDE.md` §7). And the Playwright template gate still applies to any
+reference screen built here.
+
+**Not started. The token source-of-truth is the first concrete step.** But see
+the session-length note in the continuation prompt — E3 is a large phase and
+the prior run was very long.
 
 ---
 
