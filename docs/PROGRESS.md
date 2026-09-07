@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E3.1 · generators built, fidelity 0 unexplained diffs · surfaces converted 2/4 (kiosk + website, both VERIFIED on screen) · Flutter + admin NOT yet wired · G1 debt 0 · S-3 open, S-5 live, S-6 new/low · unit 117 Jest/41 Flutter · defects 13/40 · screens 0/69 PASS]
+[E3.1 · all 4 surfaces converted · kiosk/website/admin VERIFIED on screen · FLUTTER BUILT BUT UNVERIFIED → G1 debt 1 · B-4 NEW: Flutter cannot build (Gradle+AGP under minimum, C: 0 GB free) · S-3 open, S-5 live, S-6 low · defects 13/43 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,24 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-08 (E3.1, surfaces 3-4) — G5 check at the E3.1 close boundary.
+NO NEW SYMPTOMS; the symptom-3 lapse logged below stayed fixed.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent.** The status vocabulary was derived from `prisma/schema.prisma` rather than from the pages, which is what surfaced that COMPLETED lives in three enums |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | **Fixed and held.** Status line on every response since the lapse, and rewritten twice as the numbers moved |
+| 4 drifting to agreement | **Absent.** Two places I pushed back on my own prior work: reverted my own Gradle bump rather than commit an unvalidated half-upgrade, and labelled the Flutter commit NOT VERIFIED instead of letting `analyze` clean stand in for looking |
+| 5 batching | Absent — one commit per surface |
+| 6 skipping verification | **Absent, and it paid twice.** Measuring the admin chips instead of trusting them found 25 failing contrasts; importing the generated Dart found 278 garbage constants that two prior commits had carried. Neither would have been found by reading |
+
+**The honest weak point of this stretch:** I nearly recorded the admin login's
+"any credentials will pass" as a security finding. `Start.bat:24-28` already
+documented the risk and mitigated it. Checking the repo before writing it up is
+the rule that saved it — the same rule that has now caught nine harness
+mistakes and one imaginary defect.
 
 **2026-09-08 (E3.1 generators + 2 surfaces) — G5 six-symptom check at the
 2-of-4-surfaces boundary. ONE SYMPTOM, self-caught, and it is symptom 3.**
@@ -422,11 +440,12 @@ website) consume them and both were verified on screen.** Flutter and admin are
 **not** wired — which means the PENDING yellow→cyan change the human ruled on
 has **not yet appeared anywhere a user would see it**. G1 debt 0.
 
-**Next concrete step: wire the admin console** (`src/app/theme.ts` imports the
-generated tuples, `globals.css` imports the generated CSS), verify on screen,
-then Flutter. Admin needs the login password — it is in the user's session
-scratchpad, not the repo; ask for it. The Flutter conversion is the largest and
-carries the banned-grey removal.
+**All four surfaces now consume the generated tokens.** Three are verified on
+screen. **Next concrete step: clear B-4 (C: is at 0 GB free), then build the
+Flutter app with `--dart-define=DESIGN_REFERENCE=1` and look at the reference
+screen in both themes.** That clears the session's one G1 debt. After that, in
+order: wire `borderStrong` into inputs (the live WCAG 1.4.11 failure),
+interaction-state tokens, kiosk type scale — then E3.2.
 
 ## Completed phases
 - **E0 — discovery and hygiene.** Complete except two kiosk-blocked sections
@@ -586,18 +605,82 @@ emitted in the first commit, but only the kiosk and website *consume* theirs —
 `grep` for `design-tokens.g` confirms two importers. An emitted file nothing
 imports renders no pixel and carries no debt.
 
+### SURFACES 3 AND 4 — admin VERIFIED, Flutter BLOCKED (`b6c4b1c`, `27009a2`)
+
+**SURFACE 3 — ADMIN: CONVERTED AND VERIFIED ON SCREEN, both themes.** `theme.ts`
+imports the generated Mantine tuples; `globals.css` imports the generated CSS
+variables; `StatusBadge` and the dashboard both resolve status through the
+generated map. **This is the first surface where the human's PENDING ruling is
+actually visible: pending chips render cyan-teal, not warning-yellow.**
+
+- New `/design-reference` (E3 DoD): all 23 roles with live contrast ratios and
+  all 26 status states, both themes. Deliberately outside `AdminLayout` so it
+  renders without the auth gate — which is what made this surface verifiable at
+  all, since the admin password is not in the repo.
+- Verified: reference screen both themes, plus the **login page** (a real
+  product page) in light. **Not verified: the authenticated list pages in
+  situ**, which need the admin password. The tokens and the component are
+  proven; the pages consuming them have not been looked at.
+
+**A CHIP CONTRAST DEFECT, found by measuring rather than by reading — D-41.**
+Mantine's `variant="light"` paints shade 6 over a 10% wash of itself. Measured
+in the browser on the reference screen: success **2.45:1**, warning **2.27:1**,
+accent **2.34:1**, review **3.59:1**, critical **3.72:1** — **25 of 28 status
+chips under the 4.5:1 text floor.** Pre-existing, not an E3.1 regression, but
+E3.1's `statusChip` tokens exist precisely for it, so `StatusBadge` now states
+fill/ink explicitly instead of letting the library derive them. **Re-measured
+after the fix: 25 failures → 0** (light worst 4.78:1, dark worst 5.25:1). The
+reference screen keeps one raw soft-variant badge beside a real one, labelled,
+because that side-by-side is the whole justification.
+
+**Two more duplicate status tables removed** (`ENGIRENT-CLAUDE.md` §7's
+end-of-phase grep, done during rather than after): `dashboard/page.tsx` had its
+own copy disagreeing with `StatusBadge` on two entries, so a status could read
+one colour in a chart and another in a badge **on the same page**.
+
+**SURFACE 4 — FLUTTER: BUILT, `flutter analyze` CLEAN, NOT SEEN ON SCREEN.**
+Blocked by **B-4** (above). This is the session's **one** G1 debt and it is
+blocked, not skipped. What landed:
+
+- `app_colors.dart` is a façade over the generated tokens; the ~100 call sites
+  are untouched deliberately.
+- **The banned greys are gone** — and **four of the five had ZERO call sites**.
+  They existed only as a bad example to copy.
+- **THREE hand-written status tables found and collapsed into one.** The
+  finding, not the chore:
+
+| Where | PENDING rendered as |
+|---|---|
+| `core/widgets/rental_widgets.dart` | **gold** (`AppColors.secondary`) |
+| `rentals/screens/rental_detail_screen.dart` | **grey** — that switch had *no* PENDING arm, so it hit the banned-grey fallback |
+| `home/screens/home_screen.dart` | **warning-yellow** |
+
+Three colours for one state inside one app — while `rental_widgets.dart`'s own
+comment read *"One definition, so a status can't be amber on one screen and grey
+on another."* It was untrue when written. It is true now.
+
+- **A generator bug this surface exposed:** `buildFlutter` iterated
+  `tokens.palette` without skipping `$`-prefixed keys, and the top-level `$note`
+  is a **string**, so `Object.entries` yielded one entry per character — 278
+  constants named `$note0..$note278` with bodies like `Color(0xFFT)`. **It was
+  committed twice and stayed invisible because no Dart file imported the
+  generated file yet.** That is exactly what "emitted but consumed by nothing"
+  bought: no risk, and no validation either. `dartColor()` now throws on
+  anything that is not a 6-digit hex. **11th instance of the check-your-own-
+  harness trap**, and the first one caught by a consumer rather than by a test.
+
 **NOT yet done in E3.1** (do not record these as done):
-- **Flutter and admin are NOT wired** — the two surfaces where the visible
-  PENDING yellow→cyan change actually lands. Nothing on screen has changed
-  colour for a user yet.
-- The **banned greys** are still in `app_colors.dart` (`#9CA3AF` ×2, `#4B5563`,
-  `#F3F4F6`, `#D1D5DB`, plus the generic slate `#1F2937`).
-- `borderStrong` is defined but wired nowhere, so the 1.4.11 input-outline
-  failure is **still live**.
+- **Flutter is unverified** (B-4). Its PENDING cyan, its banned-grey removal and
+  its reference screen have not been seen.
+- **Admin's authenticated pages are unverified in situ** — needs the password.
+- `borderStrong` is defined and exposed on every surface but **wired into no
+  input**, so the WCAG 1.4.11 control-outline failure is **still live**. This is
+  the largest known-and-unfixed item in E3.1.
 - Interaction states (default/hover/focus/active/disabled/selected) are not
   token'd yet — E3.1's bullet 5.
 - Kiosk 64px targets / larger type scale — `--touch-min` is generated, the
   type-scale multiplier is not applied.
+- E3.2 and E3.3 are **untouched**. D-37's execution still belongs to E3.2.
 
 **Doc error corrected while here:** the B-2 note below said the kiosk BEFORE
 images were "captured at 1920×1200". They are **1080×1920** — read from the PNG
@@ -655,6 +738,32 @@ Also blocks building the Flutter templates.
 build — but it requires a registered account to reach most screens, and the DB
 is wiped to one admin. That ties into the instruction to reuse a real `face.jpg`
 from the orphaned old-account storage for profile setup.
+
+**B-4 — NEW 2026-09-08. The Flutter app cannot be built on this machine. Three
+stacked causes, found in this order, each one revealed by fixing the last.**
+
+This is bigger than E3: it blocks **any** Flutter build, including a release
+APK for real users. It is not caused by the E3.1 changes — `flutter analyze` is
+clean; the failure is entirely toolchain and environment.
+
+| # | Cause | Evidence |
+|---|---|---|
+| 1 | **Gradle 8.12 < Flutter's minimum 8.14** | `Your project's Gradle version (8.12.0) is lower than Flutter's minimum supported version of 8.14.0`. `gradle-wrapper.properties` has said `gradle-8.12-all.zip` since the **first commit** and is unmodified — so the SDK moved, not the repo. Flutter is **3.47.1** (framework 2026-08-19) |
+| 2 | **AGP 8.9.1 < Flutter's minimum 8.11.1** | Revealed only after bumping Gradle: `Android Gradle Plugin version 8.9.1 is lower than Flutter's minimum supported version 8.11.1`. Pinned in `android/settings.gradle.kts:22` |
+| 3 | **C: has 0 GB free** | With `--android-skip-build-dependency-validation` the build gets further and dies in the Gradle artifact transform: `java.io.IOException: There is not enough space on the disk`. `Get-PSDrive`: **C: 455.2 GB used, 0 GB free**; D: 28.46 GB free |
+
+**(3) is the one the human has to clear** — nothing else can proceed past it,
+and a full system disk will be breaking other things silently too.
+
+**The Gradle bump I made to diagnose this is deliberately REVERTED.** Bumping
+Gradle alone still does not build, and committing an unvalidated half of a
+two-part toolchain upgrade would be worse than a documented blocker. The full
+fix, when there is disk to test it on, is *both* `gradle-wrapper.properties` →
+8.14 *and* `settings.gradle.kts` AGP → 8.11.1, then a real build.
+
+*Impact:* **E3.1's Flutter surface is built but has not been looked at** — the
+one G1 debt this session carries, and it is blocked rather than skipped. Also
+blocks any re-verification of D-40 and the E2 screens, and any new APK.
 
 **B-2 — The kiosk is offline. RULED 2026-09-05: worked around, partially
 resolved.** The Pi stays unreachable, but the kiosk UI now runs locally in Vite
@@ -1680,6 +1789,35 @@ be confirmed on the same screen.
 alter the room-join contract — `adminRoom.test.ts` covers `notifyAdmins`
 directly and will need its two `admin:kiosk_*` cases repointed at a queue event
 rather than deleted, or the room's fan-out loses its only unit coverage.
+
+### New defects found in E3
+
+**D-41 — status chips failed the text-contrast floor across the admin console.
+FOUND AND FIXED 2026-09-08 (E3.1). Verified by measurement, both directions.**
+Mantine's `variant="light"` renders shade 6 over a 10% wash of itself: success
+2.45:1, warning 2.27:1, accent 2.34:1, review 3.59:1, critical 3.72:1 — **25 of
+28 chips under 4.5:1**. Pre-existing, not an E3.1 regression. Fixed by having
+`StatusBadge` state the token source's computed fill/ink pair rather than let
+the library derive it. **Re-measured in the browser: 0 of 28 failing** (light
+worst 4.78:1, dark worst 5.25:1). *Not a green-test claim — the numbers were
+read off the rendered DOM before and after.*
+
+**D-42 — one status meant three different colours inside the Flutter app.
+FOUND AND FIXED 2026-09-08 (E3.1). FIX NOT YET SEEN ON SCREEN (B-4).**
+PENDING rendered **gold** in `rental_widgets.dart`, **grey** in
+`rental_detail_screen.dart` (no PENDING arm — it hit the banned-grey fallback),
+and **warning-yellow** in `home_screen.dart`. All three now delegate to the
+generated map. The file carrying the first table had a comment claiming exactly
+this could not happen.
+
+**D-43 — the generated Flutter token file was garbage for two commits.
+FOUND AND FIXED 2026-09-08 (E3.1).** `buildFlutter` iterated `tokens.palette`
+without skipping `$`-prefixed keys; the top-level `$note` is a string, so
+`Object.entries` produced one entry per character — 278 constants like
+`Color(0xFFT)`. Invisible because nothing imported the file yet. `dartColor()`
+now throws on a non-hex value. **The generalisable lesson:** "emitted but
+consumed by nothing" correctly means *no risk*, and also means *no validation* —
+those are not the same claim and this session made both at once.
 
 ### New defects found in E2
 
