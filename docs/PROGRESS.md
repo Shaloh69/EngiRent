@@ -14,6 +14,36 @@
 [E2 · S-3/S-4 ROTATED · S-5 LIVE · D-40 FIXED+VERIFIED · E2.4 server DEPLOYED · admin login WORKING (reset, no wipe) · debt 4 (1 partial) · unit 117 Jest/41 Flutter · defects 13/40 · screens 0/69 PASS]
 ```
 
+### 2026-09-07 — E2.4 and chunk 3 VERIFIED end-to-end; debt 4 → 2
+
+**E2.4 (ID-verification event) — VERIFIED end-to-end against the live server.**
+A `socket.io-client` connected as the probe and joined its user room; the admin
+(real token) then approved the probe's ID via `POST /admin/id-verifications/:id`
+(**POST, not PATCH — 8th instance of the check-the-route trap**), and the
+probe's socket **received `verification:approved`** with the exact payload
+(`isVerified:true, verificationStatus:APPROVED, verifiedAt:…`). That proves the
+*deployed* server emits to the right room on a real admin decision and a
+connected client receives it. With D-40 (Flutter socket connect, verified on
+screen) and the mutation-checked Flutter refetch, the delivery path is proven.
+The one piece not watched in the Flutter UI itself is the tile flipping live —
+covered by the socket-level proof plus unit tests, not by a screenshot.
+
+**Side effect: the probe is now `isVerified:true`** (APPROVED). That unblocks
+E2.1's owner CTA (probe can now list) and the payment flow (probe can now rent).
+
+**Chunk 3 (E2.2 admin console) — FULLY VERIFIED on screen.** Driving the
+production console with the **admin** token, the connection badge rendered
+**LIVE** (`scratchpad/shots/60-admin-live.png`), where the student token gave
+**NOT SUBSCRIBED**. Both role paths proven: socket connects → `admin:join` →
+server accepts the role-gated join → `live`. The console's "Unable to load
+dashboard data" + zeros is a **local** artifact — the console on `localhost:3002`
+hitting the tunnel API whose CORS allowlist is the admin *tunnel*, not
+localhost — **not** a production bug. It is, however, a clean live repro of
+**D-38** (confident zeros shown next to the error).
+
+**G1 debt now 2**, both needing the (flaky) emulator: E2.1's owner CTA and the
+payment flow. E2.2 (both halves), E2.4, D-40, chunk 3 are cleared.
+
 ### 2026-09-07 — admin login RESET (non-destructive), DB NOT wiped
 The user's requested wipe+reseed was replaced with a targeted password reset,
 because (a) the server's `seed.ts` is the pre-S-3 version with the published
