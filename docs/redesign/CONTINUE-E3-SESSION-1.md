@@ -1,12 +1,14 @@
 # CONTINUE-E3-SESSION-1.md — paste into a fresh Claude Code session
 
 > Supersedes CONTINUE-E2-SESSION-4.md. Written 2026-09-08 at the E2→E3
-> boundary. **E0, E1, E2 are all COMPLETE.** E3 has not started.
+> boundary. **E0, E1, E2 are all COMPLETE.** E3 is underway: **E3.1's token
+> source-of-truth is built and verified; the generators are the next step.**
 
 ---
 
-**You are resuming the EngiRent redesign track at the start of E3 (design
-foundation). E0, E1, and E2 are complete.**
+**You are resuming the EngiRent redesign track inside E3 (design foundation).
+E0, E1, E2 are complete. E3.1's `design/tokens/tokens.json` is built and
+verified; nothing consumes it yet, so no screen has changed and G1 debt is 0.**
 
 **First: `git branch --show-current` must say `e0-e1-audit-tests-and-evidence`.**
 All work lives there (36 commits as of this writing). **`main` has none of
@@ -41,13 +43,23 @@ Open every response with the status line from PROGRESS.md.
 
 ## E3, in order (full detail in PROGRESS.md's E3 table)
 
-1. **E3.1 first — the token source-of-truth.** Four surfaces each have their
-   own hand-authored tokens (`flutter_app/lib/core/theme/tokens.dart`, admin
-   `app/theme.ts`, kiosk `theme.css`, website). **There is no single source
-   that generates all four — building it is the first concrete step.** Unify
-   status semantics including E2.4's verification states; PENDING is never
-   red/warning. Kiosk + website are **light-only by ruling**; Flutter + admin
-   are both themes.
+1. **E3.1 — the token source-of-truth is already BUILT and verified**:
+   `design/tokens/tokens.json`, every value derived from the four surfaces
+   (10/10 anchors cross-checked against the real files). **Themes: Flutter +
+   admin render both light and dark; the KIOSK is dark-only; the website is
+   light-only** (the kiosk is NOT light-only — an earlier note said so and was
+   wrong). **PENDING colour is DECIDED: cyan-teal `#0E9BB8`** (not yellow, not
+   brand blue).
+   **Your first concrete task: build the generator(s) that emit each surface's
+   theme FROM `tokens.json`** — Flutter Dart (`app_colors.dart`/`tokens.dart`),
+   Mantine theme object (`app/theme.ts`), kiosk CSS vars (`theme.css`), website
+   CSS vars. Prove fidelity first (generating with today's values should
+   reproduce the current files), THEN flip PENDING yellow→cyan and remove the
+   mandate-banned generic greys Flutter still carries (`#9CA3AF`/`#4B5563`/
+   `#D1D5DB`). **Apply to ONE surface, VERIFY IT ON SCREEN, then the next — G1
+   binds here, at most one unverified surface at a time.** This is the
+   "verify the layouts across all four" work: it is real only AFTER the
+   generators change something; before that there is nothing new to see.
 2. **E3.2** restyles the EXISTING toast (`core/utils/toast_utils.dart`) and
    connection indicator (admin `ConnectionIndicator.tsx`) onto tokens and
    promotes them to shared — **do not rebuild their behaviour**. **D-37's

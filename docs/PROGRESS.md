@@ -167,6 +167,26 @@ each:**
 
 ### Session entries
 
+**2026-09-06→08 (the long run: E2 close-out → E3.1) — CLOSE-OUT ENTRY.**
+A single very long run spanning three in-fiction days. What it accomplished:
+cleared the inherited 3-chunk G1 debt to **0**; deployed the E2 server code
+(scp unblocked via a user allow rule); **found and fixed D-40** (the Flutter
+socket layer had thrown on connect since April — the whole real-time layer was
+dead); verified E2.1/E2.2/E2.4 and the full manual-payment flow **on screen**;
+rotated S-4 and found S-5; reset the admin login non-destructively; closed E2;
+opened E3 with its G2 table; built and verified the E3.1 token source-of-truth.
+**Honest self-assessment of degradation over such a long run:** the six-symptom
+check was run at every boundary and came back clean each time, BUT the length
+itself is the risk this log exists to name — occurrence 2 "looked like
+productive, accurate work with a growing tail," and a three-day run is exactly
+that shape. Mitigations that actually held: G1 debt was driven to 0 and
+verified on screen (not left as a tail); every doc claim was re-derived from
+the repo, and two of my OWN just-written errors were caught and corrected
+(kiosk light-only→dark-only; a harness bug in the token cross-check).
+**The correct response to the length is this `/clear`.** Ended at a clean
+sub-boundary: E3.1 source built + verified, generators not started, G1 debt 0,
+PENDING decision made, continuation prompt current.
+
 **2026-09-06 (E2, session 4) — G5 six-symptom check: NO SYMPTOMS. G1 debt NOT
 yet cleared, and the reason is external.**
 
@@ -442,14 +462,14 @@ binds.
   no other surface has — the source replaces the greys with teal-tinted ink and
   promotes `info` to the cross-surface `review` role.
 
-**OPEN DECISION for the human — PENDING colour.** Today both Flutter and admin
-render PENDING/under-review as **warning-yellow**, which the E3.1 spec forbids
-("PENDING is never red or warning-yellow"). The source moves all pending-family
-statuses to a **`review` cyan-teal (`#0E9BB8`)**, distinct from brand blue.
-**This changes what every "Pending"/"Under review" chip looks like across the
-app**, so it should be confirmed before the generators apply it. Alternative if
-rejected: map `review` to brand blue instead of cyan. Either way it leaves
-yellow, per the spec.
+**PENDING colour — DECIDED 2026-09-08 by the human: cyan-teal `#0E9BB8`.**
+Today both Flutter and admin render PENDING/under-review as **warning-yellow**,
+which the E3.1 spec forbids ("PENDING is never red or warning-yellow"). The
+source moves all pending-family statuses to the **`review` cyan-teal
+(`#0E9BB8`)**, distinct from brand blue. The generators apply it when they run
+(next session) — at which point **every "Pending"/"Under review" chip changes
+from yellow to cyan across all four surfaces, and each must be re-checked on
+screen.** (Rejected alternative: brand blue.)
 
 **Next E3.1 steps:** build the generator(s) (emit Flutter Dart / Mantine theme
 / CSS vars from the JSON), apply to one surface, verify on screen; then the
