@@ -407,7 +407,7 @@ reading the four surfaces' theme files, not from memory.
 
 | Section | Repo state today | What E3 must do |
 |---|---|---|
-| **E3.1** tokens across 4 stacks | **Four separate, hand-authored token sets exist and DO NOT share a source:** Flutter `core/theme/tokens.dart` (spacing/radius scales, 85 lines) + `app_theme.dart` + `theme_controller.dart` (light/dark); admin `app/theme.ts` (Mantine, has `roleColor`); kiosk `theme.css` (light-only, ruled); website (its own). **No single JSON/source-of-truth that generates all four — this is E3.1's core and it is UNBUILT.** | Define once, generate per surface. Unify status semantics (incl. E2.4's verification states) so a chip means the same thing everywhere; **PENDING never red/warning**. Both themes computed independently (kiosk + web are light-only by ruling). WCAG AA per theme. Interaction states token'd once. Kiosk 64px targets + larger scale. |
+| **E3.1** tokens across 4 stacks | **Four separate, hand-authored token sets exist and DO NOT share a source — but their VALUES are already hand-synced** (audited 2026-09-08). Flutter `constants/app_colors.dart` + `core/theme/{tokens,app_theme,theme_controller}.dart`; admin `app/theme.ts` (Mantine `roleColor` + tuples); kiosk `theme.css`; website (its own). **The core palette matches across Flutter and admin to the hex** — primary `#0B5FA5`, success `#22C55E`, warn `#F59E0B`, error `#EF4444`, appBg `#F7F9FC`, dark bg `#050F1A`. **The kiosk renders the DARK resolution** (`--bg:#050f1a`, `--brand:#4da3e8` = Flutter `primaryOnDark`), it is **NOT light-only** — earlier note here was wrong; the website is the light-only single-theme surface. **No single source generates them, so drift is only prevented by hand — E3.1's core is that source, and it is UNBUILT.** Known deviations to reconcile: Flutter still carries the mandate-banned generic greys (`#9CA3AF`, `#4B5563`, `#D1D5DB`) where admin uses teal-tinted; Flutter has an `info #0E9BB8` no other surface declares. | Define once (palette + light/dark resolutions), generate per surface — Flutter & admin both themes, **kiosk dark-only, website light-only**. Unify status semantics (incl. E2.4 verification states) so a chip means the same everywhere; **PENDING never red/warning**. Kill the banned greys. WCAG AA per theme. Interaction states token'd once. Kiosk 64px targets + larger scale. |
 | **E3.2** shared components | **Toast EXISTS** (`flutter_app/.../core/utils/toast_utils.dart`, E2.3, 57 call sites — working, not tokenized). **Connection indicator EXISTS** (admin `components/ui/ConnectionIndicator.tsx` from E2.2, verified LIVE; Flutter side via `ConnectivityController`/`OfflineBanner`). Status chips exist ad-hoc per surface. **Locker representation, 3 loading primitives — not surveyed/built as shared.** | Restyle toast + connection indicator onto tokens and PROMOTE to shared — **do not rebuild behaviour**. One status chip per state ×4 surfaces, one meaning. Shared locker model. Three loading primitives (determinate/staged/indeterminate). **D-37's execution lands here** (drop the socket's 4 kiosk events). |
 | **E3.3** motion | Not surveyed. Reduced-motion: Flutter respects it in places; per-surface audit needed. | Durations/easing as shared tokens; reduced-motion per surface. |
 | **DoD** | — | Tokens generate into all four stacks; a reference screen per surface renders every token + status state; contrast verified computationally, kiosk physically (**kiosk is offline — the physical check is B-2-blocked, same as E4**). |
@@ -418,9 +418,44 @@ onto tokens. Grep for duplicated status-chip implementations at the end of E3
 (`ENGIRENT-CLAUDE.md` §7). And the Playwright template gate still applies to any
 reference screen built here.
 
-**Not started. The token source-of-truth is the first concrete step.** But see
-the session-length note in the continuation prompt — E3 is a large phase and
-the prior run was very long.
+### E3.1 — token source-of-truth: BUILT 2026-09-08 (`design/tokens/tokens.json`)
+
+The single source now exists. **Every value was derived from the four surfaces
+and the derivation is verified**: a cross-check confirmed all 10 core anchors
+(brand `#0B5FA5`, success/warn/critical/accent, light appBg, border, dark
+bg/surface, the review seed) appear in the actual surface files — matching both
+CSS `#RRGGBB` and Flutter `0xFFRRGGBB` forms (the first check missed the Flutter
+form; harness fixed — 10th check-your-harness instance). Structure: 8 palette
+ramps, semantic light+dark resolutions, 16 status tokens, space/radius/motion/
+elevation scales, kiosk config, surface→theme matrix.
+
+**It drives nothing yet** — no generator consumes it, so no screen changed and
+there is no G1 debt. The next chunk (a generator that rewrites one surface's
+theme from the JSON, seen on that surface) is where on-screen verification
+binds.
+
+**Findings baked into the source, from the audit:**
+- Flutter and admin were already hex-identical (hand-synced); the source locks
+  that so it can't drift.
+- The **kiosk is dark-only**, not light-only (doc corrected above).
+- Flutter still carries the mandate-banned generic greys and an `info` colour
+  no other surface has — the source replaces the greys with teal-tinted ink and
+  promotes `info` to the cross-surface `review` role.
+
+**OPEN DECISION for the human — PENDING colour.** Today both Flutter and admin
+render PENDING/under-review as **warning-yellow**, which the E3.1 spec forbids
+("PENDING is never red or warning-yellow"). The source moves all pending-family
+statuses to a **`review` cyan-teal (`#0E9BB8`)**, distinct from brand blue.
+**This changes what every "Pending"/"Under review" chip looks like across the
+app**, so it should be confirmed before the generators apply it. Alternative if
+rejected: map `review` to brand blue instead of cyan. Either way it leaves
+yellow, per the spec.
+
+**Next E3.1 steps:** build the generator(s) (emit Flutter Dart / Mantine theme
+/ CSS vars from the JSON), apply to one surface, verify on screen; then the
+banned-grey removal, interaction-state tokens, kiosk 64px scale. See the
+session-length note in the continuation prompt — E3 is large and the prior run
+was very long.
 
 ---
 
