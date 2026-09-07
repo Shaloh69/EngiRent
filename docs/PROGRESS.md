@@ -11,8 +11,64 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E2 · S-3/S-4 ROTATED · S-5 LIVE · D-40 FIXED+VERIFIED · E2.4 server DEPLOYED · admin login WORKING (reset, no wipe) · debt 4 (1 partial) · unit 117 Jest/41 Flutter · defects 13/40 · screens 0/69 PASS]
+[E2 SUBSTANTIALLY COMPLETE · all 6 sections built+verified on screen · D-40 fixed · payment flow + E2.1/2.2/2.4 VERIFIED · G1 debt 0 · S-3/S-4 rotated, S-5 live · unit 117 Jest/41 Flutter · defects 13/40 · screens 0/69 PASS]
 ```
+
+### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
+
+**E2.1 owner CTA — VERIFIED ON SCREEN, both sides.** As the now-verified probe:
+on the probe's OWN listing ("Probe Test Tripod") the bottom CTA reads **"Manage
+your listing"** (`shots/75-own-item.png`); on another owner's item ("natug na
+hurley") it reads **"Request rental"** (`shots/76-other-item.png`). The
+`item.owner.id !== currentUserId` fix (`ef69619`) is correct on screen.
+
+**PAYMENT FLOW — VERIFIED, the crown jewel of E2's payments work.**
+- **Pay Now → instructions sheet on screen** (`shots/81-pay-sheet.png`): the
+  D-23 fix. "Send your payment" — amount PHP 400, GCash, account name, GCash
+  number (copyable), a **reference** (copyable), and the honest *"an admin
+  checks the money arrived, then confirms within 24 hours."* Exactly PAYMENTS
+  RULING items 2 & 4.
+- **Rental detail shows "Requested — Waiting for payment to be completed"**
+  (`shots/79`) — D-36's transactions parsing distinguishing unpaid from paid,
+  on screen.
+- **"I have sent it" creates the PENDING transaction** (verified: the txn
+  appeared), and the admin approve endpoint returns "Payment confirmed
+  successfully".
+- **`payment:approved` delivery PROVEN via socket client** (same rigor as
+  E2.4): `POST /payments` returned `status:AWAITING_CONFIRMATION,
+  paymentUrl:null, mode:MANUAL` (PAYMENTS RULING item 1 — explicit null, D-23's
+  distinction), and after the admin approved, the renter's socket room received
+  `payment:approved` with the full payload (`amount, status:COMPLETED,
+  itemTitle`). The on-screen toast auto-dismisses in ~4s and payment events are
+  not logged, so the socket-client proof is what nails delivery; the rental
+  correctly stayed PENDING because only the rental payment, not the deposit,
+  was approved.
+
+**Two "check the field/route" traps hit and fixed in the harness, not the API:
+** `POST /admin/id-verifications/:id` is **POST not PATCH** (8th), and
+`POST /payments` requires a **`type`** field, not just `rentalId` (9th). Both
+were my test scripts, both fixed.
+
+**G1 DEBT NOW 0.** Every E2 chunk built this session has been seen working:
+D-40 (socket connect), E2.2 both halves (reconnect resync + admin LIVE), E2.4
+(ID event delivery), E2.1 (owner CTA both sides), the payment flow end to end.
+
+**E2 is substantially COMPLETE.** All six sections built and verified. Carried
+forward, not blocking E2's close: D-37's execution (ruled option (b), deferred
+to E3's shared-component pass), and the new defects D-38 (dashboard confident
+zeros) and D-39 (profile completes without a real face) — both recorded, both
+outside E2's original defect set, to be scheduled.
+
+**G5 six-symptom check at the E2-verification boundary — NO SYMPTOMS:**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent — routes/fields/shapes all re-derived fresh (and two were wrong in my harness, caught by checking) |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | Absent — status line every response; looked at the DB target before the wipe |
+| 4 drifting to agreement | Absent — held the 12-char security line vs the user's short password; chose reset over the requested destructive wipe and said why |
+| 5 batching | Absent — each verification committed as reached |
+| 6 skipping verification | Absent — this whole stretch WAS verification; socket-client proofs used where a toast auto-dismisses |
 
 ### 2026-09-07 — E2.4 and chunk 3 VERIFIED end-to-end; debt 4 → 2
 
