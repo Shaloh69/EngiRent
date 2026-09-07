@@ -753,7 +753,19 @@ clean; the failure is entirely toolchain and environment.
 | 3 | **C: has 0 GB free** | With `--android-skip-build-dependency-validation` the build gets further and dies in the Gradle artifact transform: `java.io.IOException: There is not enough space on the disk`. `Get-PSDrive`: **C: 455.2 GB used, 0 GB free**; D: 28.46 GB free |
 
 **(3) is the one the human has to clear** — nothing else can proceed past it,
-and a full system disk will be breaking other things silently too.
+and a full system disk will be breaking other things silently too. It already
+did once in this session: a `git log` failed with `fatal: unknown write failure
+on standard output` immediately after a successful commit.
+
+**Measured, so the unblock is concrete rather than "free up some space":**
+`df` reports **C: 456G of 456G, 100%, 0 available** (D: has 29G). The single
+largest obviously-reclaimable item found is
+**`C:\Users\Shaloh\.gradle\caches` — 13 GB**. Gradle caches are regenerated on
+the next build, so deleting that directory is recoverable; the cost is
+re-download time, not data. **Not deleted — it is outside the repo and on the
+user's machine, so it is their call.** Other likely candidates worth a look
+before deleting anything: `~/.pub-cache`, old Flutter SDK copies, and
+`client/*/node_modules` + `.next` build output on C: if any exist.
 
 **The Gradle bump I made to diagnose this is deliberately REVERTED.** Bumping
 Gradle alone still does not build, and committing an unvalidated half of a
