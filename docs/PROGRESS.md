@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E2 SUBSTANTIALLY COMPLETE · all 6 sections built+verified on screen · D-40 fixed · payment flow + E2.1/2.2/2.4 VERIFIED · G1 debt 0 · S-3/S-4 rotated, S-5 live · unit 117 Jest/41 Flutter · defects 13/40 · screens 0/69 PASS]
+[E3.1 · generators built, fidelity 0 unexplained diffs · surfaces converted 2/4 (kiosk + website, both VERIFIED on screen) · Flutter + admin NOT yet wired · G1 debt 0 · S-3 open, S-5 live, S-6 new/low · unit 117 Jest/41 Flutter · defects 13/40 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,23 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-08 (E3.1 generators + 2 surfaces) — G5 six-symptom check at the
+2-of-4-surfaces boundary. ONE SYMPTOM, self-caught, and it is symptom 3.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent.** Every surface's theme file was read fresh, and doing so overturned **four** values in rev 1 of the token source plus two doc claims (website light-only; kiosk BEFORE at 1920×1200) |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | **PRESENT — the status line was dropped from every response until the user's "continue".** Not a report/working split this time: it was simply absent throughout. Self-caught on the next turn and reinstated, and the line itself was stale (still said "E2 SUBSTANTIALLY COMPLETE" while E3.1 was mid-flight), so it was rewritten. **This is the same symptom as occurrence 2, and the same rule.** The mitigating fact is that it was found without the human asking; the un-mitigating fact is that G4 exists *because* this already happened once |
+| 4 drifting to agreement | **Absent, notably.** The handoff said the website is light-only and the token source encoded it; the repo said otherwise and the repo won. Rev 1's dark accent/cta were also contradicted rather than carried forward |
+| 5 batching | Absent — two commits, one per surface, each verified before the next |
+| 6 skipping verification | **Absent, and this is the session's strongest axis.** Both surfaces were verified with a *control experiment* rather than a single capture: the kiosk's 4 "changed" screens were shown to change identically on the same build, and `/downloading` was shown to differ 91.82% **from itself**. Two hypotheses that would have been comfortable to assume were tested instead |
+
+**The G4 lapse is the honest headline of this session.** Everything else went
+well — which is precisely the shape §2c warns about, "productive, accurate work"
+masking a dropped rule. Recording it here rather than only fixing it, because
+occurrence 1's whole lesson is that an unrecorded lapse cannot be learned from.
 
 **2026-09-06→08 (the long run: E2 close-out → E3.1) — CLOSE-OUT ENTRY.**
 A single very long run spanning three in-fiction days. What it accomplished:
@@ -399,9 +416,17 @@ and return it — without confusion, without reloading, and without an admin
 intervening in anything the system could handle itself.
 
 ## Current phase
-**E3 — design foundation.** Just entered (2026-09-08). No implementation yet —
-see the dated E3 section-by-section table below (G2). E2 closed the prior
-session-run; its verification is complete and its debt is zero.
+**E3 — design foundation. E3.1 in progress.** The G2 table below is written and
+dated. The generators exist and are fidelity-proven; **2 of 4 surfaces (kiosk,
+website) consume them and both were verified on screen.** Flutter and admin are
+**not** wired — which means the PENDING yellow→cyan change the human ruled on
+has **not yet appeared anywhere a user would see it**. G1 debt 0.
+
+**Next concrete step: wire the admin console** (`src/app/theme.ts` imports the
+generated tuples, `globals.css` imports the generated CSS), verify on screen,
+then Flutter. Admin needs the login password — it is in the user's session
+scratchpad, not the repo; ask for it. The Flutter conversion is the largest and
+carries the banned-grey removal.
 
 ## Completed phases
 - **E0 — discovery and hygiene.** Complete except two kiosk-blocked sections
@@ -477,6 +502,108 @@ banned-grey removal, interaction-state tokens, kiosk 64px scale. See the
 session-length note in the continuation prompt — E3 is large and the prior run
 was very long.
 
+### E3.1 — GENERATORS BUILT + 2 OF 4 SURFACES CONVERTED, 2026-09-08 (`6a64811`, `953e2aa`)
+
+**The toolchain** (`design/tokens/`): `lib.mjs` (reference resolution + WCAG
+contrast), `build.mjs` (emits all four surfaces; `--check` fails if stale),
+`snapshot.mjs` → `baseline.json` (what every surface rendered at `31f9e74`),
+`verify.mjs` (fidelity + contrast). Plus `design/tools/diff-shots.mjs`, a
+pixel-differ that reports *which colour* changed, not just how many pixels.
+
+**Fidelity was proven BEFORE anything was applied — 0 unexplained diffs across
+all four surfaces.** Every difference is on an itemised deliberate list. The
+check compares against `baseline.json`, **not** the live files, because a
+converted surface no longer contains the values — comparing against live files
+would break the check exactly when it starts mattering.
+
+**Four corrections where the repo disagreed with rev 1 of the token source
+(repo wins, all four re-derived and cited):**
+
+| Rev 1 said | The repo renders | Where |
+|---|---|---|
+| website is **light-only** | website renders **both themes** | `client/web/styles/globals.css:50` `.dark` block, `app/providers.tsx:3` next-themes, `components/theme-switch.tsx:22` toggle. **Only the kiosk is single-theme.** |
+| light `surfaceAlt` = `#F3F8F7` | `#EEF4FB` | 3 live consumers (`admin/globals.css:28`, `web/globals.css:37`, Flutter `app_widgets.dart:25`) vs 1 holdout (`app_theme.dart:43`). Rev 1's source was admin `theme.ts`'s `surfaceTokens`, which has **zero consumers** |
+| dark `accent` = gold.300 `#f8c86f` | `#F5B85C` | all four surfaces; nothing renders `#f8c86f` |
+| dark `cta` = coral.300 `#fd8797` | `#FF8A95` | all four surfaces; nothing renders `#fd8797` |
+
+**Contrast (E3 DoD, computed per theme) found three real, pre-existing
+problems.** These are not introduced by E3.1 — they are what the audit was for:
+
+1. **A status 500 is a FILL, not text.** `success` is 2.28:1 on white,
+   `warning` 2.15:1, `accent` 2.18:1 — under even the 3:1 graphic floor. Added
+   a per-family **Ink** role at the lowest ramp step clearing 4.5:1 on both
+   white and its own chip fill. Steps **computed, not chosen**: emerald 800,
+   warn 900, danger 700, review 700, gold 900, coral 800.
+2. **The PENDING cyan `#0E9BB8` is 3.11:1 on light** — fine as a chip fill or a
+   3:1 boundary, **below the 4.5:1 floor as body text**. The 50-fill + 700-ink
+   chip pairing lands at 5.25:1. This qualifies the human's PENDING ruling
+   rather than reversing it: the colour stands, the *usage* is constrained.
+3. **`#D5E3F2` is 1.30:1 and serves as both card hairline and text-input
+   outline**, so **every text input in the product currently fails WCAG
+   1.4.11.** Split into `border` (decorative, no floor) and `borderStrong`
+   (3:1): light `#6E8FB3`, dark `#43708F`. **Token added; wiring it into
+   inputs is not yet done** — it lands with the Flutter/admin conversions.
+
+**A `$darkStatusRule` now states when a dark hue lifts:** one ramp step only
+where the 500 misses 6:1 on `#050F1A`. Measured — success 8.46 (stays),
+warning 8.97 (stays), critical 5.12 → `#F37373` 6.89, review 5.87 → `#33B6D1`
+8.03. Not invented: admin `globals.css:50` already rendered the lifted red on
+dark; the rule generalises what the repo had done by hand for one colour.
+
+**SURFACE 1 — KIOSK: CONVERTED AND VERIFIED ON SCREEN.** `theme.css` imports
+`design-tokens.g.css` and keeps only what is genuinely kiosk-specific (the
+self-hosted font stack, the `clamp()` type/space scales against a 1080×1920
+portrait panel). Verified at the real portrait viewport:
+
+- 5 of 10 screens differed vs the BEFORE images. **A control run of the SAME
+  build re-diffed identically on 4 of them** → animation phase, not tokens.
+- **`kiosk-error.png` is deterministic across runs**, so its 52 px change is
+  real and reproducible: `--danger #ef4444 → #f37373`, the one intended delta.
+  Every other deterministic screen is **pixel-identical**.
+- Production build clean; the **compiled** CSS carries `--danger:#f37373`,
+  `--review:#33b6d1`, `--bg:#050f1a`. A file on disk is not running code.
+
+**SURFACE 2 — WEBSITE: CONVERTED AND VERIFIED ON SCREEN.** Expected a pure
+no-op (verify.mjs reports 0 deltas for this surface) and it is:
+
+- **20 of 22 captures pixel-identical** (11 pages × 1440×900 and 390×844).
+- The 2 that differ are `/downloading`, which differs **91.82% from itself**
+  when captured twice off one build — the Velora aurora runs 14s/18s/22s
+  infinite alternate. Tested, not assumed.
+- Dark confirmed **resolving from the generated file**: computed
+  `--brand-bg #050F1A`, `--brand-primary #4DA3E8`, `--brand-secondary #F5B85C`,
+  `--brand-accent #FF8A95`, plus the new `--brand-review #33B6D1` the
+  hand-written file never had. Looked at on screen in dark.
+
+**METHOD TRAP, recorded so it is not rediscovered:** do **not** diff a local
+dev server against `design/before/`. Those were captured from the production
+tunnel; Next's dev-mode issue badge alone lights ~1500 px on every page and
+looks exactly like a regression. The meaningful control is the same local
+server, pre-change vs post-change.
+
+**G1 debt 0.** The generated Flutter, admin and website *artifacts* were all
+emitted in the first commit, but only the kiosk and website *consume* theirs —
+`grep` for `design-tokens.g` confirms two importers. An emitted file nothing
+imports renders no pixel and carries no debt.
+
+**NOT yet done in E3.1** (do not record these as done):
+- **Flutter and admin are NOT wired** — the two surfaces where the visible
+  PENDING yellow→cyan change actually lands. Nothing on screen has changed
+  colour for a user yet.
+- The **banned greys** are still in `app_colors.dart` (`#9CA3AF` ×2, `#4B5563`,
+  `#F3F4F6`, `#D1D5DB`, plus the generic slate `#1F2937`).
+- `borderStrong` is defined but wired nowhere, so the 1.4.11 input-outline
+  failure is **still live**.
+- Interaction states (default/hover/focus/active/disabled/selected) are not
+  token'd yet — E3.1's bullet 5.
+- Kiosk 64px targets / larger type scale — `--touch-min` is generated, the
+  type-scale multiplier is not applied.
+
+**Doc error corrected while here:** the B-2 note below said the kiosk BEFORE
+images were "captured at 1920×1200". They are **1080×1920** — read from the PNG
+headers of `design/before/kiosk-{idle,main,lockers}.png`. The portrait figure
+was right everywhere else; that one line was wrong.
+
 **G5 six-symptom check at the E3.1 source-built sub-boundary — NO SYMPTOMS.**
 1 re-deriving: absent (tokens derived fresh from the repo). 2 vaguer: absent.
 3 losing rules: absent — G2 table written before any E3 edit; status line held;
@@ -532,7 +659,9 @@ from the orphaned old-account storage for profile setup.
 **B-2 — The kiosk is offline. RULED 2026-09-05: worked around, partially
 resolved.** The Pi stays unreachable, but the kiosk UI now runs locally in Vite
 dev mode and its built-in `?demo=<screen>` parameter drives every screen with
-no backend. **All 12 kiosk BEFORE images captured at 1920×1200.**
+no backend. **All 12 kiosk BEFORE images captured at 1080×1920 PORTRAIT**
+(corrected 2026-09-08 — this line previously said 1920×1200, which is wrong;
+read from the PNG headers).
 
 - **Kiosk screen resolution: 1920×1200** (user-supplied). Confirm exactly from
   the Pi when it next comes online.
@@ -970,6 +1099,28 @@ semi-public. What changed is that it is now known to be *published*.
 reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
+
+### S-6 — LOW. A fixture password published in a demo-seed script. Found 2026-09-08 (E3.1, G6 sweep)
+
+`server/node_server/scripts/seed-feedback-demo.mjs:70` carries
+`password: "Demo@2026!"`. **Deliberately rated low, and the reasoning matters
+more than the rating**, because over-rating this would dilute S-3/S-5:
+
+- It is not a credential for an existing privileged account. The script
+  **creates** a throwaway student with a timestamped email
+  (`demo.feedback.<epoch>@uclm.edu.ph`) and uses this password for it.
+- The blast radius is therefore "any demo account this script created on a live
+  DB is loginable by anyone reading the public repo" — a **student-role**
+  account with no more access than any student.
+- It is still real: the script's own header says it "leaves them (unlike the
+  e2e script, which cleans up after itself)", so if it was ever run against the
+  live database, such an account exists and is not cleaned up.
+
+**Action, not yet taken:** when the admin console is next open, search users for
+`demo.feedback.` and delete any that exist. The script itself should take the
+password from an env var like the main seed does. **Not fixed in this session
+because doing it properly needs the live DB, and the session's G1 budget was
+spent on the two surface conversions.** Recorded rather than silently deferred.
 
 ## Earlier security findings — BOTH RESOLVED 2026-09-05
 
