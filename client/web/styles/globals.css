@@ -1,4 +1,18 @@
 @import "tailwindcss";
+/* EngiRent Vault (docs/planning/02-design-mandate.md §1) — "Campus Day" mode in
+   light, the shared "Vault" dark in dark. E3.1: both palettes now come from the
+   single token source (design/tokens/tokens.json) via design/tokens/build.mjs,
+   rather than being hand-kept in step with the app, the admin console and the
+   kiosk. The comment that used to sit over the palette promised "same hex
+   values as client/admin's Mantine theme and the Kiosk's theme.css"; that
+   promise is now enforced by a generator and a fidelity check instead of by
+   hand. Imported here rather than lower down because @import must precede
+   every other rule.
+
+   The .dark class is driven by next-themes (app/providers.tsx) and toggled by
+   components/theme-switch.tsx. This surface renders BOTH themes; it was
+   documented as light-only and that was wrong. */
+@import "./design-tokens.g.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -23,44 +37,6 @@
   --animate-aurora-1: aurora-1 14s ease-in-out infinite alternate;
   --animate-aurora-2: aurora-2 18s ease-in-out infinite alternate;
   --animate-aurora-3: aurora-3 22s ease-in-out infinite alternate;
-}
-
-/* EngiRent Vault (docs/planning/02-design-mandate.md §1) — "Campus Day"
-   mode (warm off-white, not stark white). Teal primary, gold secondary,
-   coral tertiary; same hex values as client/admin's Mantine theme and the
-   Kiosk's theme.css. --brand-from/via/to drive Velora's aurora blobs and
-   deliberately use all three brand colors so the hero carries the full
-   palette rather than a single tint. */
-:root {
-  --brand-bg: #f7f9fc;
-  --brand-surface: #ffffff;
-  --brand-soft: #eef4fb;
-  --brand-border: #d5e3f2;
-  --brand-ink: #0c1f33;
-  --brand-muted: #51677f;
-  --brand-primary: #0b5fa5;
-  --brand-secondary: #e9a13b;
-  --brand-accent: #ef6e7b;
-
-  --brand-from: #0b5fa5;
-  --brand-via: #e9a13b;
-  --brand-to: #ef6e7b;
-}
-
-.dark {
-  --brand-bg: #050f1a;
-  --brand-surface: #0b1a2a;
-  --brand-soft: #122740;
-  --brand-border: #1e3a54;
-  --brand-ink: #eef6ff;
-  --brand-muted: #93aec9;
-  --brand-primary: #4da3e8;
-  --brand-secondary: #f5b85c;
-  --brand-accent: #ff8a95;
-
-  --brand-from: #4da3e8;
-  --brand-via: #f5b85c;
-  --brand-to: #ff8a95;
 }
 
 /* Velora's aurora drift — keyframes ship with the registry component. */
