@@ -196,6 +196,42 @@ is simply not the current admin credential, or the email differs. Both the
 **Handed back to the user to double-check the actual rotated password / email.**
 Not retried further — no lockout risk, but no point guessing.
 
+### 2026-09-07 — user asked to WIPE + RESEED the DB; BLOCKED by the seed's own 12-char rule
+
+The user asked: *"clean the database and reseed the password i used in the
+scratchpad as admin."* **Not executed — stopped before touching the live DB,
+because the reseed would throw and leave the database empty.**
+
+- **`seed.ts:42` throws on any `ADMIN_PASSWORD` under 12 characters.** That is
+  the S-3 fix from earlier this session, and it exists because the repo is
+  public. The scratchpad password is **8 characters**, so the reseed cannot
+  use it. **Refused to weaken the check** — that would re-open S-3.
+- Had I cleaned first (`prisma db push --force-reset`) and *then* hit the
+  throw, the live DB — real students, the teammate `abalamcjerrel1@`, ~11 items,
+  2 rentals — would be gone with nothing seeded back. Looking at the target
+  before overwriting is the rule that prevented this.
+- The 8-char length is also the likely reason the admin **login** keeps
+  failing: a value that short was probably never the real credential.
+
+**To proceed the user must supply a 12+ character admin password.** Then the
+plan is: back up the live DB first (makes it reversible), `prisma db
+push --force-reset`, then `ADMIN_PASSWORD=<12+> SEED_ALLOW_FIXTURES=1
+SEED_STUDENT_PASSWORD=<known> npm run db:seed`. The `SEED_ALLOW_FIXTURES` flag
+is the seed's own "yes this is throwaway" guard (`seed.ts:394`) — appropriate,
+since this wipes real users. Running destructive Prisma on the server will also
+need an `allow` rule or the user running it, same as the scp deploy.
+
+### Degradation check (G5) — 2026-09-07 boundary — NO SYMPTOMS
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent — seed constraints, phase table, DB plan all read fresh from the repo |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | Absent — status line every response; **stopped before a destructive wipe and looked at the target first**, which is the rule working |
+| 4 drifting to agreement | Absent, and notably so — the user asked to reseed with an 8-char password and I **held the security line** (refused to weaken the 12-char rule) rather than comply |
+| 5 batching | Absent — small commits |
+| 6 skipping verification | Absent this stretch — deploy checked by hash + `dist`, D-40 verified on screen. (The earlier "release strips debugPrint" lapse is already logged.) |
+
 **What WAS verified on screen this session:** the app builds against the live
 tunnel, launches, renders onboarding, renders login, authenticates against the
 live API, and correctly gates an incomplete profile. Real, and honestly *not*
@@ -1973,9 +2009,9 @@ other chunks were built on top.
 | Section | State |
 |---|---|
 | **E2.1** D-3 self-rental | ✅ Server guard already existed since the first backend commit; client CTA fixed (`ef69619`). E0.2's sweep already proved the "other instances" bullet has no instances — every adjacent path derives its counterparty rather than trusting client input |
-| **E2.2** D-4 real-time | ⚠️ **Admin half done** (`9690f40`) — socket client, admin room, three queue events, connection indicator. **Flutter half NOT done:** `refetch-on-reconnect` is still missing, which E0's stale-state sweep already named as "the one genuine remainder". `ConnectivityController` + `OfflineBanner` cover HTTP reachability and `offline_write_queue` replays queued *writes*, but nothing re-syncs *reads* a socket missed while disconnected |
+| **E2.2** D-4 real-time | ✅/⚠️ **UPDATED 2026-09-07.** Flutter `refetch-on-reconnect` **BUILT + VERIFIED ON SCREEN** (`03dd68d`) — logcat showed connect → 8× reconnect-retry → reconnect → resync, first-connect correctly silent. Admin console half **built** (`9690f40`); its `unauthorized` path verified on screen, its `live` state still needs an admin token. **Prerequisite found and fixed: D-40** — the whole Flutter socket layer threw on connect since April, so NONE of this could ever have worked before this session |
 | **E2.3** D-5 feedback/push | ✅ by prior ruling — the toast layer already exists (E0's coverage audit found 57 call sites across 13 files and judged it architecturally sound); push notifications ruled **defer to backlog** |
-| **E2.4** D-1 verification status | ⚠️ **Mostly done in E1** — both root causes fixed and verified end to end on screen. **One bullet NOT done:** "new socket event when an admin approves/rejects an ID verification". Confirmed absent by grep, not assumed. The payment-decision events built this session are the same class of fix and should share its shape |
+| **E2.4** D-1 verification status | ⚠️ **UPDATED 2026-09-07.** Both root causes fixed + verified in E1. The missing bullet — "socket event when an admin decides an ID verification" — is now **BUILT and its server half DEPLOYED** (`475e448`, `16be9d2`): `decideIdVerification` emits `verification:approved`/`verification:rejected`, Flutter subscribes and refetches, 4 Node tests mutation-checked. **End-to-end NOT verified on screen** — needs an admin login to approve an ID and watch the phone update |
 | **E2.5** D-2 My Rentals | ✅ N/A — the screen already exists; D-2's premise was wrong |
 | **E2.6** D-6 sweeps | ✅ All four sweeps completed in E0 |
 
