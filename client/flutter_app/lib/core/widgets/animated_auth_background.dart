@@ -27,12 +27,20 @@ class AnimatedAuthBackground extends StatelessWidget {
     // Dark mode uses the lifted brand tints and a near-black ground; light
     // mode stays pale so dark ink over it keeps its contrast (§1.5: a
     // background that costs legibility is a fail).
+    //
+    // D-45: this comment was true and the code was not. The dark branch used
+    // AppColors.primary (teal500) and AppColors.secondary (gold500) -- the
+    // LIGHT-mode values -- not the lifted OnDark tints it claims. gold500 at
+    // 55% alpha over #050F1A composites to a warm brown: sampled #463F2F and
+    // #4B402B off the device at the top of the sign-in screen, which is not a
+    // brand colour and reads as a rendering fault. Now the lifted tints, so
+    // the code does what the line above says.
     final colors = isDark
         ? [
             const Color(0xFF050F1A),
-            AppColors.primary,
+            AppColors.primaryOnDark,
             const Color(0xFF0E2E4A),
-            AppColors.secondary.withValues(alpha: 0.55),
+            AppColors.secondaryOnDark.withValues(alpha: 0.55),
           ]
         : [
             const Color(0xFFF7F9FC),

@@ -46,6 +46,14 @@ class AppTheme {
     final surfaceAlt =
         isDark ? AppColors.surfaceAltDarkMode : AppColors.surfaceAlt;
     final border = isDark ? AppColors.borderDarkMode : AppColors.border;
+    // WCAG 1.4.11 (non-text contrast, 3:1). `border` is the DECORATIVE
+    // hairline -- 1.24:1 light, 1.64:1 dark, measured on device -- and is
+    // correct for cards and dividers, which convey nothing. Anything that
+    // marks the BOUNDARY OF A CONTROL must use borderStrong instead:
+    // 3.19:1 light, 3.63:1 dark. Until E3.1 every text input in the app
+    // used the decorative value, so every input failed 1.4.11.
+    final borderStrong =
+        isDark ? AppColors.borderStrongDarkMode : AppColors.borderStrong;
     final ink = isDark ? AppColors.textPrimaryDark : AppColors.textPrimary;
     final muted = isDark ? AppColors.textSecondaryDark : AppColors.textSecondary;
     final primary = isDark ? AppColors.primaryOnDark : AppColors.primary;
@@ -65,7 +73,9 @@ class AppTheme {
       surface: surface,
       onSurface: ink,
       surfaceContainerHighest: surfaceAlt,
-      outline: border,
+      // Material draws control outlines from `outline` and decorative
+      // separators from `outlineVariant`; that is exactly the 1.4.11 split.
+      outline: borderStrong,
       outlineVariant: border,
     );
 
@@ -131,9 +141,13 @@ class AppTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: AppRadius.input,
-          borderSide: BorderSide(color: border),
+          borderSide: BorderSide(color: borderStrong),
         ),
         enabledBorder: OutlineInputBorder(
+          borderRadius: AppRadius.input,
+          borderSide: BorderSide(color: borderStrong),
+        ),
+        disabledBorder: OutlineInputBorder(
           borderRadius: AppRadius.input,
           borderSide: BorderSide(color: border),
         ),
@@ -171,7 +185,8 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: ink,
           minimumSize: const Size.fromHeight(52),
-          side: BorderSide(color: border),
+          // The outline is the whole affordance here -- there is no fill.
+          side: BorderSide(color: borderStrong),
           shape: const RoundedRectangleBorder(borderRadius: AppRadius.button),
           textStyle: GoogleFonts.manrope(
             fontSize: 15,
