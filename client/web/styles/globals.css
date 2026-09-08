@@ -217,7 +217,12 @@ body {
   height: 34px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--brand-border);
+  /* WCAG 1.4.11 — the outline is this button's only boundary, so it is a
+     control edge and takes --brand-border-strong, not the decorative hairline.
+     Missed on the first pass because it is a CSS class rather than one of the
+     inline Tailwind border utilities; found by measuring computed styles in
+     the browser instead of grepping for the utility string. */
+  border: 1px solid var(--brand-border-strong);
   border-radius: 4px;
   color: inherit;
 }

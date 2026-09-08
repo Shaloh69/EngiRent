@@ -121,7 +121,7 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/about"
-                className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-border)] bg-[var(--brand-surface)] px-5 py-3 text-sm font-semibold transition-colors hover:border-[var(--brand-primary)]"
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--brand-border-strong)] bg-[var(--brand-surface)] px-5 py-3 text-sm font-semibold transition-colors hover:border-[var(--brand-primary)]"
               >
                 About the team
               </Link>

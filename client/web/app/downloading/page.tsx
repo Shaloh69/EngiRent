@@ -208,7 +208,7 @@ export default function DownloadingPage() {
                   </button>
                   <NextLink
                     href="/"
-                    className="flex-1 rounded-md border border-[var(--brand-border)] px-4 py-2.5 text-sm font-bold transition-colors hover:bg-[var(--brand-soft)]"
+                    className="flex-1 rounded-md border border-[var(--brand-border-strong)] px-4 py-2.5 text-sm font-bold transition-colors hover:bg-[var(--brand-soft)]"
                   >
                     Back to site
                   </NextLink>
@@ -248,7 +248,7 @@ export default function DownloadingPage() {
                   <a
                     href={androidDownloadPath}
                     download
-                    className="flex-1 rounded-md border border-[var(--brand-border)] px-4 py-2.5 text-center text-sm font-bold transition-colors hover:bg-[var(--brand-soft)]"
+                    className="flex-1 rounded-md border border-[var(--brand-border-strong)] px-4 py-2.5 text-center text-sm font-bold transition-colors hover:bg-[var(--brand-soft)]"
                   >
                     Direct link instead
                   </a>

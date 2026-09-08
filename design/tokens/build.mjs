@@ -529,6 +529,11 @@ function buildWebCss() {
       `  --brand-surface: ${set.surface};`,
       `  --brand-soft: ${set.surfaceAlt};`,
       `  --brand-border: ${set.border};`,
+      // WCAG 1.4.11: --brand-border is the decorative hairline and has no
+      // contrast floor; anything that outlines a CONTROL (input, select,
+      // textarea, ghost button) must use --brand-border-strong, which is
+      // authored to clear 3:1 in both themes.
+      `  --brand-border-strong: ${set.borderStrong};`,
       `  --brand-ink: ${set.textPrimary};`,
       `  --brand-muted: ${set.textSecondary};`,
       `  --brand-primary: ${set.brand};`,
