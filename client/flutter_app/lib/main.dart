@@ -32,6 +32,16 @@ import 'features/rentals/screens/create_rental_screen.dart';
 import 'features/rentals/screens/rental_detail_screen.dart';
 import 'features/reviews/screens/reviews_screen.dart';
 
+
+/// Whether this build was asked to boot straight into the E3 design reference
+/// screen. Accepts "1" or "true" -- see the note at [MaterialApp.initialRoute].
+/// A plain `bool.fromEnvironment` accepts only "true"/"false" and silently
+/// defaults to false for "1", which made the documented command a no-op.
+const String _designReferenceFlag =
+    String.fromEnvironment('DESIGN_REFERENCE');
+const bool _designReferenceRequested =
+    _designReferenceFlag == '1' || _designReferenceFlag == 'true';
+
 void main() async {
   // Mandate §2.10.1 — crash reporting wraps everything, including startup.
   // A crash while resolving the first-run flag or restoring the theme is
@@ -135,12 +145,18 @@ class MyApp extends StatelessWidget {
           // directly instead:
           //
           //   flutter run --dart-define=DESIGN_REFERENCE=1
+          //   flutter run --dart-define=DESIGN_REFERENCE=true
           //
+          // Both spellings work. This is deliberate: the line above said "=1"
+          // for two commits while the gate was a bool.fromEnvironment, which
+          // accepts ONLY the exact strings "true"/"false" and silently returns
+          // its default for anything else. Following the documented command
+          // therefore booted straight past this screen to /login with no error
+          // -- found 2026-09-09, the first time the screen was actually opened.
           // Debug builds only, linked from nowhere, shipped to nobody.
-          initialRoute:
-              kDebugMode && const bool.fromEnvironment('DESIGN_REFERENCE')
-                  ? '/design-reference'
-                  : (showOnboarding ? '/onboarding' : '/login'),
+          initialRoute: kDebugMode && _designReferenceRequested
+              ? '/design-reference'
+              : (showOnboarding ? '/onboarding' : '/login'),
           onGenerateRoute: _onGenerateRoute,
           builder: (context, child) {
             // Mandate §1.7. Android's display "Font size" setting goes up to

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E3.1 · all 4 surfaces converted · kiosk/website/admin VERIFIED on screen · FLUTTER BUILT BUT UNVERIFIED → G1 debt 1 · B-4 NEW: Flutter cannot build (Gradle+AGP under minimum, C: 0 GB free) · S-3 open, S-5 live, S-6 low · defects 13/43 · screens 0/69 PASS]
+[E3.1 COMPLETE · all 4 surfaces converted and ALL 4 VERIFIED on screen · G1 debt 0 · B-4 worked around (Flutter builds only via --android-skip-build-dependency-validation; real fix = sentry_flutter 8→9, NEEDS RULING) · S-3 open, S-5 live, S-6 low · defects 13/44 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,35 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-09 (E3.1 close, Flutter verified) — G5 six-symptom check at the
+E3.1→E3.2 boundary. ONE SYMPTOM, and it is the same one twice.**
+
+1. *Re-deriving facts already established?* No.
+2. *Asserting done from memory?* **YES — twice, and this is the finding.**
+   I reported "**The build succeeded**" to the user on the strength of
+   `exit code 0`, when that was the exit status of the `tail` in my pipeline
+   and Flutter had printed `Gradle task assembleDebug failed with exit code 1`
+   four lines above. Corrected in the next message. The identical shape had
+   already produced **D-43** (a generated file asserted good because it was
+   emitted) and **D-44** (a screen asserted openable because it compiled).
+   **Root cause: three times in two days I accepted a proxy for the thing
+   instead of the thing.** Mitigation now in use: grep the output for
+   `FAILURE|failed with exit code` and check the artifact's mtime, never the
+   pipeline's exit code.
+3. *Scope drift?* No — and one deliberate refusal to drift: the real B-4 fix is
+   a `sentry_flutter` major bump, left undone and escalated rather than
+   absorbed into a design-token phase.
+4. *Losing the thread of the task?* No. G1 debt tracked and cleared.
+5. *Gate skipping?* One G4 lapse: a response mid-session opened without the
+   status line. Self-caught, resumed.
+6. *Documentation drifting from the repo?* Found and fixed two instances:
+   `CONTINUE-E3-SESSION-1.md` was describing the E2→E3 boundary as current
+   (bannered in place), and **B-3's file path in this very document had been
+   corrupted by an earlier session's Python edit** — `bin\cache\flutter_web_sdk`
+   had its `\b` and `\f` interpreted as backspace and formfeed, leaving literal
+   control characters in the file. Repaired, and the same trap bit me once more
+   in this session before I switched to forward slashes.
 
 **2026-09-08 (E3.1, surfaces 3-4) — G5 check at the E3.1 close boundary.
 NO NEW SYMPTOMS; the symptom-3 lapse logged below stayed fixed.**
@@ -440,11 +469,18 @@ website) consume them and both were verified on screen.** Flutter and admin are
 **not** wired — which means the PENDING yellow→cyan change the human ruled on
 has **not yet appeared anywhere a user would see it**. G1 debt 0.
 
-**All four surfaces now consume the generated tokens.** Three are verified on
-screen. **Next concrete step: clear B-4 (C: is at 0 GB free), then build the
-Flutter app with `--dart-define=DESIGN_REFERENCE=1` and look at the reference
-screen in both themes.** That clears the session's one G1 debt. After that, in
-order: wire `borderStrong` into inputs (the live WCAG 1.4.11 failure),
+**E3.1 IS COMPLETE. All four surfaces consume the generated tokens and all
+four have been verified on screen** (Flutter last, 2026-09-09 00:24, on the
+`MediumPhone` AVD in both light and dark). **G1 debt 0.** Confirmed visually on
+the Flutter reference screen: 23 semantic roles with on-device contrast, 26
+status states, `review`/PENDING rendering cyan-teal `#0E9BB8` light /
+`#33B6D1` dark, all seven ink pairs ≥ 4.88:1, and an unmapped status falling
+through to neutral rather than to a brand colour.
+
+**Next concrete step: wire `borderStrong` into inputs** — the live WCAG 1.4.11
+failure, and now measured on device rather than asserted: `border` is
+**1.24:1** light / **1.64:1** dark (below the 3:1 non-text floor), while
+`borderStrong` is **3.19:1** light / **3.63:1** dark (passes). Then
 interaction-state tokens, kiosk type scale — then E3.2.
 
 ## Completed phases
@@ -714,7 +750,7 @@ traps: `docs/redesign/ACCESS-AND-WORKAROUNDS.md` §1.
 
 **B-3 — Flutter cannot build for web: the web SDK cache is locked by the IDE.**
 `flutter build web` fails with *"Flutter failed to delete a directory at
-…in\cachelutter_web_sdk"* — **for the real EngiRent app, not just for
+…/bin/cache/flutter_web_sdk"* — **for the real EngiRent app, not just for
 template repos.** Root cause identified, not guessed:
 `flutter_web_sdk.stamp` is dated **Sep 2025** while the SDK was updated **Aug
 2026**, so Flutter wants to re-extract the web SDK; the delete fails because
@@ -739,43 +775,63 @@ build — but it requires a registered account to reach most screens, and the DB
 is wiped to one admin. That ties into the instruction to reuse a real `face.jpg`
 from the orphaned old-account storage for profile setup.
 
-**B-4 — NEW 2026-09-08. The Flutter app cannot be built on this machine. Three
-stacked causes, found in this order, each one revealed by fixing the last.**
+**B-4 — RAISED 2026-09-08, RESOLVED-WITH-A-WORKAROUND 2026-09-09. The Flutter
+app could not be built at all. FOUR stacked causes, each revealed only by
+clearing the one before it.**
 
-This is bigger than E3: it blocks **any** Flutter build, including a release
-APK for real users. It is not caused by the E3.1 changes — `flutter analyze` is
-clean; the failure is entirely toolchain and environment.
+Bigger than E3: it blocked **any** Flutter build, including a release APK for
+real users. Not caused by the E3.1 changes — `flutter analyze` was clean
+throughout; the failure was entirely toolchain and environment.
 
-| # | Cause | Evidence |
-|---|---|---|
-| 1 | **Gradle 8.12 < Flutter's minimum 8.14** | `Your project's Gradle version (8.12.0) is lower than Flutter's minimum supported version of 8.14.0`. `gradle-wrapper.properties` has said `gradle-8.12-all.zip` since the **first commit** and is unmodified — so the SDK moved, not the repo. Flutter is **3.47.1** (framework 2026-08-19) |
-| 2 | **AGP 8.9.1 < Flutter's minimum 8.11.1** | Revealed only after bumping Gradle: `Android Gradle Plugin version 8.9.1 is lower than Flutter's minimum supported version 8.11.1`. Pinned in `android/settings.gradle.kts:22` |
-| 3 | **C: has 0 GB free** | With `--android-skip-build-dependency-validation` the build gets further and dies in the Gradle artifact transform: `java.io.IOException: There is not enough space on the disk`. `Get-PSDrive`: **C: 455.2 GB used, 0 GB free**; D: 28.46 GB free |
+| # | Gate | Found | Flutter 3.47.1 requires | Outcome |
+|---|---|---|---|---|
+| 1 | Gradle | 8.12 | ≥ 8.14 | bump clears it |
+| 2 | AGP | 8.9.1 | ≥ 8.11.1 | bump clears it |
+| 3 | Kotlin | 2.1.0 | ≥ 2.2.20 | bump clears the *check*, then breaks the *build* → (4) |
+| 4 | `sentry_flutter` **8.14.2** | hardcodes `languageVersion = "1.6"` (`android/build.gradle:58`) | Kotlin 2.2.20 **removed** language version 1.6 | `e: Language version 1.6 is no longer supported; please, use version 1.8 or greater.` → `:sentry_flutter:compileDebugKotlin` FAILED |
 
-**(3) is the one the human has to clear** — nothing else can proceed past it,
-and a full system disk will be breaking other things silently too. It already
-did once in this session: a `git log` failed with `fatal: unknown write failure
-on standard output` immediately after a successful commit.
+**(4) is the finding.** The toolchain upgrade Flutter demands and the Sentry
+version in `pubspec.yaml` are **mutually exclusive**. Satisfying Flutter's
+Kotlin minimum is what breaks the build. Bumping only 1+2 and leaving Kotlin
+alone also fails Flutter's own validation. There is no combination of the
+three pins that both passes validation and compiles.
 
-**Measured, so the unblock is concrete rather than "free up some space":**
-`df` reports **C: 456G of 456G, 100%, 0 available** (D: has 29G). The single
-largest obviously-reclaimable item found is
-**`C:\Users\Shaloh\.gradle\caches` — 13 GB**. Gradle caches are regenerated on
-the next build, so deleting that directory is recoverable; the cost is
-re-download time, not data. **Not deleted — it is outside the repo and on the
-user's machine, so it is their call.** Other likely candidates worth a look
-before deleting anything: `~/.pub-cache`, old Flutter SDK copies, and
-`client/*/node_modules` + `.next` build output on C: if any exist.
+**Disk was a separate, real, and now-cleared cause.** On 2026-09-08 C: was at
+**0 GB free** and the build died in the Gradle artifact transform with
+`java.io.IOException: There is not enough space on the disk`. It also produced
+a `git log` failure — `fatal: unknown write failure on standard output` — right
+after a *successful* commit, a symptom that looks like a git fault and is not.
+On 2026-09-09 C: measured **18.55 GB free** without my intervention; I do not
+know what reclaimed it, so this can recur. **A single debug build consumes
+~8 GB** (18.55 → 10.27 GB measured across one build), so the headroom is real
+but not generous.
 
-**The Gradle bump I made to diagnose this is deliberately REVERTED.** Bumping
-Gradle alone still does not build, and committing an unvalidated half of a
-two-part toolchain upgrade would be worse than a documented blocker. The full
-fix, when there is disk to test it on, is *both* `gradle-wrapper.properties` →
-8.14 *and* `settings.gradle.kts` AGP → 8.11.1, then a real build.
+**CURRENT STATE — the app builds, via a bypass:**
 
-*Impact:* **E3.1's Flutter surface is built but has not been looked at** — the
-one G1 debt this session carries, and it is blocked rather than skipped. Also
-blocks any re-verification of D-40 and the E2 screens, and any new APK.
+```
+flutter build apk --debug --android-skip-build-dependency-validation
+```
+
+Verified 2026-09-09 00:23: `√ Built build/app/outputs/flutter-apk/app-debug.apk`,
+194 MB, installed and run on the `MediumPhone` AVD. **All three of my
+toolchain edits are REVERTED — the repo's pins are untouched at Gradle 8.12 /
+AGP 8.9.1 / Kotlin 2.1.0.** Committing half a toolchain upgrade that cannot
+compile would be worse than a documented blocker.
+
+**THE REAL FIX, NOT DONE, NEEDS A RULING:** upgrade `sentry_flutter`
+**8.14.2 → 9.29.0** (`flutter pub outdated` confirms 9.29.0 is latest; the repo
+pins `^8.9.0` at `pubspec.yaml:93`), *then* bump Gradle→8.14, AGP→8.11.1,
+Kotlin→2.2.20 together and build for real. That is a **major-version bump of
+the crash-reporting SDK** with its own API surface and behaviour changes — well
+outside E3's design-token scope, so it is deliberately NOT done here.
+
+*Residual risk:* the bypass flag skips Flutter's dependency validation
+wholesale, so it will also mask the *next* incompatibility. It is a workaround,
+not a resolution.
+
+*Impact now:* **none on E3.1** — the Flutter surface was built and verified on
+screen 2026-09-09, G1 debt back to 0. Still blocks nothing else known, but any
+release APK is being cut through the same bypass.
 
 **B-2 — The kiosk is offline. RULED 2026-09-05: worked around, partially
 resolved.** The Pi stays unreachable, but the kiosk UI now runs locally in Vite
@@ -1830,6 +1886,22 @@ without skipping `$`-prefixed keys; the top-level `$note` is a string, so
 now throws on a non-hex value. **The generalisable lesson:** "emitted but
 consumed by nothing" correctly means *no risk*, and also means *no validation* —
 those are not the same claim and this session made both at once.
+**D-44 — the E3 design reference screen's own documented invocation was a
+no-op. FOUND AND FIXED 2026-09-09 (E3.1).** `main.dart`'s committed comment
+said to open it with `flutter run --dart-define=DESIGN_REFERENCE=1`, and the
+gate was `const bool.fromEnvironment('DESIGN_REFERENCE')`. **`bool.fromEnvironment`
+accepts only the exact strings `"true"` and `"false"`** and silently returns its
+default for anything else — so `=1`, the one spelling the repo told you to use,
+evaluated to `false`. Following the instructions booted straight past the
+reference screen to `/login` with no error, no warning and no log line.
+**Found the first time the screen was ever opened**, one commit after it was
+written. Fixed by matching `"1"` or `"true"` explicitly via
+`String.fromEnvironment`, with the reason recorded inline so the next reader
+does not re-derive it. **Same family as D-43** — a debug-only affordance that
+nothing had yet exercised, asserted as working because it compiled. Two of
+these in two days is the pattern worth naming: *this session repeatedly treated
+"it builds" as "it runs".*
+
 
 ### New defects found in E2
 

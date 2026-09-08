@@ -1,5 +1,29 @@
 # CONTINUE-E3-SESSION-1.md — paste into a fresh Claude Code session
 
+> ## ⚠ SUPERSEDED IN PLACE — 2026-09-08, later the same day
+>
+> **This doc describes the E2→E3 boundary. E3.1 has since been done.** Read
+> `docs/PROGRESS.md` instead; where the two disagree, PROGRESS.md is right.
+> Specifically, the sections below are now WRONG:
+>
+> - *"the generators are the next step"* — the generators exist, are
+>   fidelity-proven, and **all four surfaces consume them**.
+> - *"G1 debt is 0"* — debt is **1**: the Flutter surface is built and
+>   `analyze`-clean but has not been looked at.
+> - *"36 commits"* — there are more; check `git log`.
+> - The E3.1 task list under "E3, in order" is **done**, including the
+>   PENDING yellow→cyan flip and the banned-grey removal.
+>
+> **New since it was written:** D-41 (25/28 admin chips under the 4.5:1 text
+> floor — fixed), D-42 (PENDING was three different colours across three
+> Flutter files), D-43 (the generated Dart file was 278 garbage constants for
+> two commits), S-6, and **B-4 — the Flutter app could not be built at all**
+> (Gradle and AGP under Flutter 3.47.1's minimums; a full C: drive on top).
+>
+> Still true and worth carrying: the branch rule, the do-not-push rule, the
+> reading list, the carried-forward defects (D-38, D-39), the kiosk block
+> (B-2/S-5), and the whole "habits this project has paid for" section.
+
 > Supersedes CONTINUE-E2-SESSION-4.md. Written 2026-09-08 at the E2→E3
 > boundary. **E0, E1, E2 are all COMPLETE.** E3 is underway: **E3.1's token
 > source-of-truth is built and verified; the generators are the next step.**
