@@ -428,6 +428,8 @@ function buildAdminCss() {
       `  --color-warning: ${set.warning};`,
       `  --color-danger: ${set.critical};`,
       `  --color-review: ${set.review};`,
+      ``,
+      interactionVars("--color-", set.brand),
     ].join("\n");
 
   return `${CSS_BANNER(

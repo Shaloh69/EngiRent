@@ -63,6 +63,43 @@ body {
   border-color: var(--color-border-strong);
 }
 
+/* ── Focus ─────────────────────────────────────────────────────────────────
+   D-48. WCAG 2.4.7 (Focus Visible, AA). MEASURED, not inferred: on the login
+   form, a focused text input was byte-identical to an unfocused one --
+   border-color, outline-style and box-shadow all unchanged. A keyboard user
+   tabbing into this console had NO indication of where they were.
+
+   Confirmed PRE-EXISTING, not caused by D-46's border rule above: temporarily
+   disabling that rule made the inputs revert to Mantine's #CED4DA and they
+   still showed no focus change at all.
+
+   Mantine's own ring reaches its Buttons (solid 2px) but not its Inputs here,
+   so this is stated once for every focusable thing rather than per component.
+   Longhands and a plain selector list, matching the website's rule; the ring
+   is brand, which clears 3:1 in both schemes (6.23:1 / 7.08:1). */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible,
+.mantine-Input-input:focus-visible,
+/* Mantine puts its own ring on .mantine-focus-auto at class specificity
+   (0,2,0), which beats a bare `button:focus-visible` (0,1,1) -- the same trap
+   as D-46. Matching it here, and globals.css loads after Mantine's sheet, so
+   later-wins applies. This is NOT cosmetic: Mantine's ring is #073D6B in dark,
+   measuring 1.73:1 against the page ground and 1.58:1 against a surface, both
+   far below the 3:1 that 1.4.11 requires of a focus indicator. The token ring
+   is 7.08:1 dark and 6.23:1 light. */
+.mantine-focus-auto:focus-visible,
+.mantine-focus-always:focus-visible {
+  outline-style: solid;
+  outline-width: var(--color-focus-ring-width);
+  outline-color: var(--color-focus-ring-color);
+  outline-offset: var(--color-focus-ring-offset);
+}
+
 .app-shell {
   background: var(--color-bg);
 }
