@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 (design foundation), section E3.1 · B-4 RESOLVED: sentry_flutter 9.29.0 + Gradle 8.14/AGP 8.11.1/Kotlin 2.2.20, builds with NO bypass, run on device · WCAG 1.4.11 clear on all 4 surfaces · G1 debt 0 · D-45, D-46 fixed · defects 13/46 · screens 0/69 PASS · NEXT: interaction states on kiosk+admin+Flutter (website done), then E3.2]
+[PHASE E3 (design foundation), section E3.1 · B-4 RESOLVED (sentry 9.29.0, no bypass) · ADMIN VERIFIED IN SITU against the live API — password reset, stored gitignored · WCAG 1.4.11 clear on all 4 surfaces · NEW GATE G8 (name the distinguishing signal first) · G1 debt 0 · D-45, D-46, D-47 fixed · defects 13/47 · screens 0/69 PASS · NEXT: interaction states on kiosk+admin+Flutter, then E3.2]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -812,7 +812,7 @@ of its six items had been done and it still said otherwise):
 | Interaction states token'd | **PARTIAL** — tokens defined + applied/verified on the WEBSITE only. Kiosk, admin, Flutter still to do |
 | Kiosk 64px targets | **DONE and VERIFIED** — 0 targets under 64px across 8 screens |
 | Kiosk type scale | **DONE** — multiplier now consumed; smallest step 13.5→16.8px |
-| Admin authenticated pages verified in situ | **STILL NOT DONE** — needs the password; only the login page has been seen |
+| Admin authenticated pages verified in situ | **DONE 2026-09-09** — password reset on the live server, console run against the real API. Real data confirmed (no demo fixtures), 0 controls below 3:1 in both schemes, PENDING chip renders cyan-teal on production rentals. Found **D-47** |
 | E3.2 / E3.3 | **UNTOUCHED.** D-37's execution still belongs to E3.2 |
 
 **Doc error corrected while here:** the B-2 note below said the kiosk BEFORE
@@ -2019,6 +2019,16 @@ implement. Not the same as the *website's* dark hero, which also looks warm but
 is correct — that one resolves `--brand-via` to the dark set's lifted
 `#F5B85C` on purpose, per the generator's own banner. Same symptom, opposite
 cause; only one was a bug.
+**D-47 — the dashboard's PENDING VERIFICATION card broke the KPI row.
+FOUND AND FIXED 2026-09-09**, in the first minute of the first authenticated
+admin page anyone has looked at. Mantine's `Group` wraps by default; on the one
+card whose label is long enough, the 40px `ThemeIcon` was pushed onto a second
+line, making that card taller than the other four. Both schemes. Fixed with
+`wrap="nowrap"` + `minWidth: 0`, so the label wraps inside its own box instead
+of forcing the row to grow. **Verified by measurement per G8**: five cards,
+distinct heights **1** (all 108px, same top) — not by eye. Sibling of D-38,
+which is about the same dashboard rendering confident zeros and is still open.
+
 **D-46 — the admin console's inputs were never on the design token system at
 all. FOUND AND FIXED 2026-09-09 (E3.1, WCAG 1.4.11 sweep).** Every text input
 in the console rendered `#CED4DA` — Mantine's `--mantine-color-gray-4` — not
