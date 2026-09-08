@@ -90,7 +90,7 @@ dependencies:
   # was completely invisible. The DSN is supplied at build time via
   # --dart-define=SENTRY_DSN=…; with none supplied the app still runs and
   # installs its global handlers, it just reports locally.
-  sentry_flutter: ^8.9.0
+  sentry_flutter: ^9.0.0
 
   # Real version+build for crash tagging. AppConstants.appVersion was a
   # hardcoded '1.0.0' that had drifted five minor versions from pubspec.
