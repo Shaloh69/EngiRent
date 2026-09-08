@@ -286,6 +286,24 @@ class DesignMotion {
   static const Duration slow = Duration(milliseconds: ${motion.slow});
   static const Curve ease = Cubic(0.16, 1, 0.3, 1);
 }
+
+/// Interaction states, shared with the three CSS surfaces so a press means the
+/// same depth everywhere. Material supplies its own overlays; these are the
+/// values app_theme.dart feeds it, so the ripple and the kiosk's press
+/// feedback come from ONE number rather than two that merely look alike.
+class DesignInteraction {
+  DesignInteraction._();
+
+  static const double hoverOverlay = ${tokens.interaction.hoverOverlay};
+  static const double activeOverlay = ${tokens.interaction.activeOverlay};
+  static const double selectedOverlay = ${tokens.interaction.selectedOverlay};
+  static const double disabledOpacity = ${tokens.interaction.disabledOpacity};
+
+  /// Focus indicator. WCAG 1.4.11 governs a focus ring exactly as it governs a
+  /// control border, which is why this is the brand role and not a hairline.
+  static const double focusRingWidth = ${tokens.interaction.focusRing.widthPx};
+  static const double focusRingOffset = ${tokens.interaction.focusRing.offsetPx};
+}
 `;
 }
 

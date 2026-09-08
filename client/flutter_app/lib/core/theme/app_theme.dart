@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 import 'tokens.dart';
+import 'design_tokens.g.dart';
 
 /// The app's two themes — mandate §1.6 requires both as first-class, so this
 /// builds each from its own surface tokens rather than deriving dark by
@@ -131,6 +132,23 @@ class AppTheme {
       ),
 
       dividerTheme: DividerThemeData(color: border, thickness: 1, space: 1),
+
+      // E3.1 bullet 5 — interaction states from the shared tokens rather than
+      // Material's defaults, so a press on this app is the same depth as a
+      // press on the kiosk. Material still draws the overlays; these are the
+      // values it draws them WITH.
+      //
+      // hoverColor and focusColor matter less on a phone than on the other
+      // three surfaces (no pointer, rarely a keyboard) and are set anyway
+      // because the same widgets render on desktop and web builds, where they
+      // are the only interaction feedback a user gets.
+      hoverColor: primary.withValues(alpha: DesignInteraction.hoverOverlay),
+      focusColor: primary.withValues(alpha: DesignInteraction.activeOverlay),
+      splashColor: primary.withValues(alpha: DesignInteraction.activeOverlay),
+      highlightColor:
+          primary.withValues(alpha: DesignInteraction.selectedOverlay),
+      disabledColor:
+          ink.withValues(alpha: DesignInteraction.disabledOpacity),
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
