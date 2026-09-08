@@ -210,6 +210,38 @@ Occurrence 2 ran this sweep late and found **two live published credentials**
 (S-3, S-4) that had been in a public repo for the whole track. Running it first
 would have cost thirty seconds.
 
+### G8 — Name the distinguishing signal BEFORE you look
+
+**Added 2026-09-09 after this failed three times in two days.** The recurring
+degradation on this track is not memory and not losing the thread — it is
+**accepting evidence that is adjacent to proof**:
+
+| # | What I accepted | What it actually showed | Caught by |
+|---|---|---|---|
+| 1 | `exit code 0` → "the build succeeded" | the exit status of the `tail` in my pipeline; Flutter had printed `failed with exit code 1` four lines up | re-reading the output |
+| 2 | a source edit → "the surface is fixed" | the website's `.tb-menu` and the admin's inputs still rendered the old colour | `getComputedStyle` in a browser |
+| 3 | app launched, no crash → "Sentry 9 verified" | the log said `no SENTRY_DSN supplied`; **`SentryFlutter.init` was never called** — only the fallback path ran | reading the log instead of the outcome |
+
+**The gate.** Before running any verification, write down — in the response,
+not just in your head — **the specific observation that would distinguish
+success from failure**, and what the failure would look like. Then go and look
+for *that*. If what comes back is not that observation, the thing is
+**unverified**, no matter how green it is.
+
+Concretely, on this repo:
+- A build is verified by `Built build/...` in the output **and** an artifact
+  mtime newer than the build start. Never by a shell exit code.
+- A style change is verified by the **computed** value in the running product,
+  compared against the value it must no longer be. Never by the diff.
+- An integration is verified by evidence the integration **executed** — a log
+  line from inside it. "It didn't crash" is compatible with it never running.
+- A token is verified by a **consumer** rendering it. `design/tokens/` has now
+  produced two orphans (D-43's garbage constants, `typeScaleMultiplier`), both
+  invisible precisely because nothing consumed them.
+
+**This gate is cheap and it has caught something every single time it was
+applied.** The three rows above were all found *after* a confident first read.
+
 ### G7 — Ending a session
 
 Do not end or clear until: PROGRESS.md's registers are current, the degradation
@@ -354,6 +386,6 @@ the doc without showing me the conflict first.
    `/clear`, not after every chunk
 9. **A green test is not a fix.** Verify on screen before recording anything as
    fixed — D-1 passed six unit tests while still visibly broken
-10. **The §2d gates G1-G7 bind.** Especially **G1**: at most one unverified
+10. **The §2d gates G1-G8 bind.** Especially **G1**: at most one unverified
     chunk at a time. Context degradation has happened twice on this track and
     both times the human had to be the one who noticed

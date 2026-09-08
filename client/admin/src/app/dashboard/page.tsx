@@ -176,8 +176,16 @@ export default function DashboardPage() {
               transition={{ duration: 0.25, delay: i * 0.05, ease: "easeOut" }}
             >
               <Card withBorder radius="md" padding="lg">
-                <Group justify="space-between" align="flex-start">
-                  <div>
+                {/* D-47: wrap="nowrap" and the minWidth:0 below are load
+                    bearing. Mantine's Group wraps by default, so on the one
+                    card whose label is long enough -- "Pending Verification"
+                    -- the 40px ThemeIcon was pushed onto a second line,
+                    making that card taller than the other four and breaking
+                    the row. Seen on the live dashboard in both themes.
+                    minWidth:0 lets the label wrap INSIDE its own box instead
+                    of forcing the flex row to grow. */}
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
+                  <div style={{ minWidth: 0 }}>
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">
                       {card.label}
                     </Text>
