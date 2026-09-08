@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 (design foundation), section E3.1 · B-4 RESOLVED (sentry 9.29.0, no bypass) · ADMIN VERIFIED IN SITU against the live API — password reset, stored gitignored · WCAG 1.4.11 clear on all 4 surfaces · NEW GATE G8 (name the distinguishing signal first) · G1 debt 0 · D-45, D-46, D-47 fixed · defects 13/47 · screens 0/69 PASS · NEXT: interaction states on kiosk+admin+Flutter, then E3.2]
+[PHASE E3 (design foundation) · E3.1 COMPLETE — tokens generate into all 4 surfaces, WCAG 1.4.11 clear on all 4, interaction states on all 4, admin verified in situ · B-4 RESOLVED (sentry 9.29.0, no bypass) · G1 debt 0 · gates now G1-G8 · D-45..D-49 fixed · defects 13/49 · screens 0/69 PASS · NEXT: E3.2 (toast + connection indicator onto tokens, D-37 execution)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,34 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-09 (E3.1 CLOSE, all sections done) — G5 six-symptom check at the
+E3.1→E3.2 boundary. ONE SYMPTOM, self-caught by the new G8.**
+
+1. *Re-deriving established facts?* No.
+2. *Accepting a proxy for proof?* **Attempted once, caught by G8 before it
+   reached the user.** Verifying Flutter's press feedback, my first
+   measurement reported a mean channel delta of 48.85 over the Sign in button
+   and I was about to call it confirmed. Opening the screenshot showed the
+   "press" had actually **submitted the form** — validation errors appeared,
+   the layout shifted, and my fixed crop was measuring *that*, not a ripple.
+   Redone with `input motionevent DOWN` (a hold that never releases):
+   fill `#4DA3E8` → `#4595D3`, identical pixel count. **This is the first time
+   in the session the pattern was caught before reporting rather than after.**
+3. *Overclaiming provenance?* Avoided and recorded: a filled `ElevatedButton`
+   draws its pressed overlay from its own `ButtonStyle`, not from
+   `ThemeData.splashColor`, so the darkening above is Material's, and
+   `DesignInteraction` governs InkWell/hover/focus/disabled. Stated as a
+   caveat rather than folded into "Flutter uses the tokens".
+4. *Scope drift?* No. Four surfaces, each verified before the next.
+5. *Gate skipping?* No G4 lapse. G6 before every commit.
+6. *Docs drifting?* The E3.1 table was updated at each surface this round
+   rather than at the end — the corrective from the last two checks, applied.
+
+**Assessment: the countermeasure works.** G8 was added this session after the
+pattern had fired three times undetected; on its first real test it caught the
+fourth *before* it became a false claim. Keep naming the distinguishing signal
+in writing before looking.
 
 **2026-09-09 (B-4 resolved, user-requested check) — G5 six-symptom check.
 TWO SYMPTOMS, one of them the third repeat of the same root cause.**
@@ -809,7 +837,7 @@ of its six items had been done and it still said otherwise):
 |---|---|
 | Flutter verified on screen | **DONE** 2026-09-09 — reference screen, both themes |
 | `borderStrong` wired into controls | **DONE** — all 4 surfaces, 0 controls below 3:1 |
-| Interaction states token'd | **PARTIAL** — tokens defined + applied/verified on the WEBSITE only. Kiosk, admin, Flutter still to do |
+| Interaction states token'd | **DONE, all 4 surfaces** — website (focus ring), admin (**D-48**: inputs had NO focus indicator at all; Mantine’s button ring measured 1.73:1 in dark), kiosk (**D-49**: zero `:active`/`:focus`/`:hover` rules — a tap did nothing visible), Flutter (`DesignInteraction` consumed by `app_theme.dart`). One caveat recorded below |
 | Kiosk 64px targets | **DONE and VERIFIED** — 0 targets under 64px across 8 screens |
 | Kiosk type scale | **DONE** — multiplier now consumed; smallest step 13.5→16.8px |
 | Admin authenticated pages verified in situ | **DONE 2026-09-09** — password reset on the live server, console run against the real API. Real data confirmed (no demo fixtures), 0 controls below 3:1 in both schemes, PENDING chip renders cyan-teal on production rentals. Found **D-47** |
