@@ -29,6 +29,40 @@ body {
   border-color: var(--color-border);
 }
 
+/* WCAG 1.4.11 (non-text contrast, 3:1).
+   The rule above sets the DECORATIVE hairline on everything, which is right
+   for cards, dividers and table rules. It never reached the inputs: Mantine
+   styles those itself and its default is #CED4DA, a generic grey that is
+   (a) 1.42:1 against this console's white, well under the 3:1 control floor,
+   and (b) outside the token system altogether -- the same class of stray grey
+   the mandate banned from the Flutter app in E3.1.
+   --mantine-color-default-border is the single variable Mantine resolves for
+   default-variant inputs and buttons, so pointing it at our control token
+   fixes every TextInput, PasswordInput, Select, Textarea and default Button
+   at once, in both schemes, without per-component style overrides.
+   THE SELECTOR MATTERS. Mantine declares this variable on
+   :root[data-mantine-color-scheme="..."] -- specificity (0,2,0). A bare
+   [data-mantine-color-scheme="..."] is (0,1,0) and LOSES, even though
+   globals.css is imported after Mantine's stylesheet. Matching :root exactly
+   makes the two equal, and later-wins then applies. Measured, not reasoned:
+   the (0,1,0) version left light on #CED4DA and dark on Mantine's #5B7A96. */
+:root[data-mantine-color-scheme="light"],
+:root[data-mantine-color-scheme="dark"] {
+  --mantine-color-default-border: var(--color-border-strong);
+}
+
+/* ...and the inputs need saying separately, which measurement caught and
+   reading the source would not have. Mantine's default-variant INPUT does not
+   read --mantine-color-default-border at all: its border resolves to
+   --mantine-color-gray-4 (#CED4DA) in light and the dark-4 equivalent
+   (#5B7A96) in dark. Overriding the grey ramp itself would repaint unrelated
+   UI, so the input class is the correct, narrow target. This one rule covers
+   TextInput, PasswordInput, Select, Textarea and NumberInput, because they all
+   render the same .mantine-Input-input element. */
+.mantine-Input-input {
+  border-color: var(--color-border-strong);
+}
+
 .app-shell {
   background: var(--color-bg);
 }
