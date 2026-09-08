@@ -1528,3 +1528,58 @@ h3 {
     max-width: 70ch;
   }
 }
+
+
+/* ── Interaction states ────────────────────────────────────────────────────
+   D-49. Until 2026-09-09 this file contained ZERO :active, :focus and :hover
+   rules -- the only transition in it was a progress bar's width. Tapping any
+   button on this kiosk produced no visual response whatsoever.
+
+   That matters more here than on a phone or a desktop. This is an unattended
+   public panel that drives real solenoids: a user who gets no feedback taps
+   again, and a double-tap on a door action is not a cosmetic problem.
+
+   NO :hover rule, deliberately and permanently. tokens.json records
+   kiosk.hover=false and the generator does not emit a hover overlay for this
+   surface, because a touch panel has no pointer to hover with. Do not add one.
+
+   Values come from the generated tokens so the press depth and the focus ring
+   match the other three surfaces. */
+button:active,
+[role="button"]:active {
+  transform: scale(0.97);
+  filter: brightness(calc(1 - var(--active-overlay)));
+}
+
+button,
+[role="button"] {
+  transition: transform 90ms ease-out, filter 90ms ease-out;
+}
+
+/* The panel has no keyboard in normal use, but it is attended for maintenance
+   and a ring costs nothing. Brand at 7.08:1 on this ground, well past the 3:1
+   that 1.4.11 asks of a focus indicator. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline-style: solid;
+  outline-width: var(--focus-ring-width);
+  outline-color: var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  opacity: var(--disabled-opacity);
+  filter: none;
+  transform: none;
+}
+
+/* Mandate: motion is a courtesy, never a requirement. */
+@media (prefers-reduced-motion: reduce) {
+  button,
+  [role="button"] { transition: none; }
+  button:active,
+  [role="button"]:active { transform: none; }
+}

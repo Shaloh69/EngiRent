@@ -531,6 +531,12 @@ function buildKioskCss() {
   /* Kiosk-industry minimum physical finger target; nothing tappable is smaller. */
   --touch-min: clamp(${tokens.kiosk.minTouchTargetPx}px, 7vmin, 96px);
 
+  /* Interaction states. withHover=false: tokens.json records
+     kiosk.hover=false because this is a touch panel with no pointer, and
+     screens.css contains zero :hover rules. Emitting a hover overlay here
+     would only invite one onto a screen nobody hovers. */
+${interactionVars("--", dark.brand, false)}
+
   /* Type scale = kiosk.typeBase x kiosk.typeScaleMultiplier.
      This block used to live hand-authored in theme.css, where the multiplier
      could not reach it -- so a 1.25 sitting in tokens.json did nothing for
