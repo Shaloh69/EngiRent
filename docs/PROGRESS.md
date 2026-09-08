@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E3.1 COMPLETE · all 4 surfaces converted and ALL 4 VERIFIED on screen · G1 debt 0 · B-4 worked around (Flutter builds only via --android-skip-build-dependency-validation; real fix = sentry_flutter 8→9, NEEDS RULING) · S-3 open, S-5 live, S-6 low · defects 13/44 · screens 0/69 PASS]
+[E3.1 COMPLETE · borderStrong/WCAG 1.4.11: 3 of 4 surfaces DONE + VERIFIED (Flutter, website, kiosk) · admin blocked on a very slow dev compile, NOT edited yet · G1 debt 0 · D-45 fixed · B-4 worked around (sentry_flutter 8→9 NEEDS RULING) · C: 8.4GB and falling · S-3 open, S-5 live, S-6 low · defects 13/45 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -477,11 +477,38 @@ status states, `review`/PENDING rendering cyan-teal `#0E9BB8` light /
 `#33B6D1` dark, all seven ink pairs ≥ 4.88:1, and an unmapped status falling
 through to neutral rather than to a brand colour.
 
-**Next concrete step: wire `borderStrong` into inputs** — the live WCAG 1.4.11
-failure, and now measured on device rather than asserted: `border` is
-**1.24:1** light / **1.64:1** dark (below the 3:1 non-text floor), while
-`borderStrong` is **3.19:1** light / **3.63:1** dark (passes). Then
-interaction-state tokens, kiosk type scale — then E3.2.
+**WCAG 1.4.11 — 3 of 4 surfaces done and verified in the browser/on device,
+2026-09-09.** The `border` (decorative, no floor) vs `borderStrong` (3:1
+control boundary) split is now real, not just declared:
+
+| Surface | Controls fixed | Verified | Measured result |
+|---|---|---|---|
+| Flutter | inputs, outlined buttons, `ColorScheme.outline` | emulator, both themes | outline `#D5E3F2`→`#6E8FB3` light, `#43708F` dark |
+| Website | 3 button-links, theme switch, **navbar menu button** | Playwright, both themes, 2 pages | 0 controls left on the hairline |
+| Kiosk | `.info-back`, `.flow-back`, `.flow-cancel`, `.btn-err-home` | Playwright @1080×1920, 8 demo screens | 6 → 0 on the hairline |
+| **Admin** | **not started** | — | generator now emits `--color-border-strong`; nothing wired |
+
+**The generator did not emit the token for the website OR the admin** — both
+`buildWebCss` and `buildAdminCss` wrote only the decorative `border`. Both now
+emit the strong variant. Each regeneration touched exactly one file, which
+doubles as a fidelity check that the other generators are current.
+
+**The method that mattered:** grepping for the border token found four website
+controls and missed a fifth, `.tb-menu`, because it is a CSS class rather than
+an inline utility. A Playwright probe reading `getComputedStyle` off every
+`a/button/input/select/textarea` and comparing to the decorative value found
+it. Every surface since has been checked that way rather than by grep.
+
+**Next concrete step: the admin console, the last surface.** Its dev server
+(`npm run dev`, port 3001) was still on its first `Compiling /` after ~15
+minutes — progressing (CPU 660s→1394s), not wedged, but slow enough to block
+verification. **Do not wire admin controls until a browser can measure them**:
+`globals.css:29` sets `border-color` on the UNIVERSAL selector, so which
+Mantine elements actually take `--color-border-strong` cannot be predicted from
+the source. After admin: interaction-state tokens, kiosk type scale — then E3.2.
+
+**Watch the disk.** C: went 18.55 → 10.27 → **8.4 GB** across this session's
+builds and dev servers. B-4's disk half is not safely behind us.
 
 ## Completed phases
 - **E0 — discovery and hygiene.** Complete except two kiosk-blocked sections
@@ -1901,6 +1928,27 @@ does not re-derive it. **Same family as D-43** — a debug-only affordance that
 nothing had yet exercised, asserted as working because it compiled. Two of
 these in two days is the pattern worth naming: *this session repeatedly treated
 "it builds" as "it runs".*
+
+**D-45 — the Flutter sign-in screen rendered its dark background BROWN, using
+light-mode tokens inside its own dark branch. FOUND AND FIXED 2026-09-09
+(E3.1).** `animated_auth_background.dart` carries the comment *"Dark mode uses
+the lifted brand tints and a near-black ground"*, and the dark branch directly
+beneath it passed `AppColors.primary` (`teal500`) and `AppColors.secondary`
+(`gold500`) — the **light**-mode values — rather than `primaryOnDark` /
+`secondaryOnDark`. `gold500` at 55% alpha over `#050F1A` composites to mud:
+sampled `#463F2F`, `#4B402B`, `#5C4626` off the device.
+**How it was found, because the route matters:** it appeared in a screenshot I
+took to verify something else, and my first instinct was "capture artifact".
+What ruled that out was that it survived a force-stop and cold relaunch. **The
+measurement had to be redesigned too** — the background *animates*, so
+single-point pixel sampling is not stable across frames and my first comparison
+was nonsense. Sampling the whole hero region and classifying by hue gave a
+stable answer: **warm pixels 39.1% → 0.0%**, most-orange `#5C4626` → `#3D3D36`.
+**Same family as D-42:** a comment asserting a guarantee the code did not
+implement. Not the same as the *website's* dark hero, which also looks warm but
+is correct — that one resolves `--brand-via` to the dark set's lifted
+`#F5B85C` on purpose, per the generator's own banner. Same symptom, opposite
+cause; only one was a bug.
 
 
 ### New defects found in E2

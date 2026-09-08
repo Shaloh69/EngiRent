@@ -412,6 +412,11 @@ function buildAdminCss() {
       `  --color-surface: ${set.surface};`,
       `  --color-surface-soft: ${set.surfaceAlt};`,
       `  --color-border: ${set.border};`,
+      // WCAG 1.4.11. globals.css sets border-color on the universal
+      // selector from --color-border, which is right for the cards and
+      // dividers that make up most of this console; controls override it
+      // with --color-border-strong, which clears 3:1 in both schemes.
+      `  --color-border-strong: ${set.borderStrong};`,
       `  --color-ink: ${set.textPrimary};`,
       `  --color-muted: ${set.textSecondary};`,
       `  --color-disabled: ${set.textDisabled};`,

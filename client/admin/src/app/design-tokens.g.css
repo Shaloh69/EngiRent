@@ -13,6 +13,7 @@
   --color-surface: #FFFFFF;
   --color-surface-soft: #EEF4FB;
   --color-border: #D5E3F2;
+  --color-border-strong: #6E8FB3;
   --color-ink: #0C1F33;
   --color-muted: #51677F;
   --color-disabled: #8CA2BC;
@@ -33,6 +34,7 @@
   --color-surface: #0B1A2A;
   --color-surface-soft: #122740;
   --color-border: #1E3A54;
+  --color-border-strong: #43708F;
   --color-ink: #EEF6FF;
   --color-muted: #93AEC9;
   --color-disabled: #5B7A96;
