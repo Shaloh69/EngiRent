@@ -549,6 +549,26 @@ ${kioskType()}
 // ── Website ────────────────────────────────────────────────────────────────
 // Both themes. The `.dark` class is driven by next-themes (app/providers.tsx)
 // and toggled by components/theme-switch.tsx — the website is NOT light-only.
+// Interaction-state variables, shared shape across the CSS surfaces.
+// `prefix` keeps each surface's existing naming convention (--brand-* on the
+// website, --color-* on the admin, bare names on the kiosk).
+// `withHover` is false for the kiosk: tokens.json records kiosk.hover=false
+// because it is a touch panel, and emitting a hover overlay there would invite
+// a :hover rule onto a screen that has no pointer.
+function interactionVars(prefix, brandColor, withHover = true) {
+  const i = tokens.interaction;
+  const lines = [
+    `  ${prefix}focus-ring-width: ${i.focusRing.widthPx}px;`,
+    `  ${prefix}focus-ring-offset: ${i.focusRing.offsetPx}px;`,
+    `  ${prefix}focus-ring-color: ${brandColor};`,
+    `  ${prefix}active-overlay: ${i.activeOverlay};`,
+    `  ${prefix}selected-overlay: ${i.selectedOverlay};`,
+    `  ${prefix}disabled-opacity: ${i.disabledOpacity};`,
+  ];
+  if (withHover) lines.splice(3, 0, `  ${prefix}hover-overlay: ${i.hoverOverlay};`);
+  return lines.join("\n");
+}
+
 function buildWebCss() {
   const vars = (set) =>
     [
@@ -574,6 +594,8 @@ function buildWebCss() {
       `  --brand-from: ${set.brand};`,
       `  --brand-via: ${set.accent};`,
       `  --brand-to: ${set.cta};`,
+      ``,
+      interactionVars("--brand-", set.brand),
     ].join("\n");
 
   return `${CSS_BANNER(

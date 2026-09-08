@@ -25,6 +25,14 @@
   --brand-from: #0B5FA5;
   --brand-via: #E9A13B;
   --brand-to: #EF6E7B;
+
+  --brand-focus-ring-width: 3px;
+  --brand-focus-ring-offset: 2px;
+  --brand-focus-ring-color: #0B5FA5;
+  --brand-hover-overlay: 0.08;
+  --brand-active-overlay: 0.14;
+  --brand-selected-overlay: 0.12;
+  --brand-disabled-opacity: 0.45;
 }
 
 .dark {
@@ -46,4 +54,12 @@
   --brand-from: #4DA3E8;
   --brand-via: #F5B85C;
   --brand-to: #FF8A95;
+
+  --brand-focus-ring-width: 3px;
+  --brand-focus-ring-offset: 2px;
+  --brand-focus-ring-color: #4DA3E8;
+  --brand-hover-overlay: 0.08;
+  --brand-active-overlay: 0.14;
+  --brand-selected-overlay: 0.12;
+  --brand-disabled-opacity: 0.45;
 }

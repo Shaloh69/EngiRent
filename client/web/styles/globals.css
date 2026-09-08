@@ -419,3 +419,55 @@ body {
   }
 }
 
+/* ── Focus ─────────────────────────────────────────────────────────────────
+   E3.1 bullet 5, 2026-09-09. Before this there was not one :focus-visible
+   rule anywhere in the repo. Measured by tabbing the real page rather than
+   assumed: every control fell through to the browser default
+   `outline: auto 1px`, whose computed colour in DARK mode is rgb(16,16,16)
+   -- near-black, on a near-black ground.
+
+   :focus-visible, not :focus, so a mouse click does not leave a ring behind;
+   keyboard and programmatic focus still get one. The ring is brand-coloured
+   because WCAG 1.4.11 governs focus indicators exactly as it governs control
+   borders, and brand clears 3:1 against the page in both resolutions with
+   room to spare (6.23:1 light, 7.08:1 dark). The offset keeps it clear of the
+   control's own border, which is now --brand-border-strong and a similar
+   value.
+
+   NOT written with :where(). :where() contributes zero specificity, and with
+   it the theme-switch button took its outline colour from somewhere else
+   entirely (#51677F, the muted text role) while every <a> honoured the token.
+   That still PASSED 1.4.11 at 5.54:1, which is exactly why it would have gone
+   unnoticed -- "mostly tokenised" looks identical to tokenised until someone
+   changes the token. A plain selector list makes the ring actually uniform. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  /* Longhands rather than the `outline` shorthand. KNOWN DEVIATION, measured
+     and left in place deliberately: on the theme-switch button the width,
+     style and offset below all apply, but outline-color resolves to
+     currentColor (#51677F light / #93AEC9 dark) instead of the brand token.
+     The custom property itself resolves correctly to #0B5FA5 ON THAT ELEMENT,
+     and no enumerable stylesheet rule matching the button sets outline -- so
+     something in a sheet this probe cannot read is winning. Neither raising
+     specificity off :where() nor switching from the shorthand to these
+     longhands changed it; both hypotheses were tested and both were wrong.
+     NOT a WCAG failure: that ring measures 5.54:1 light and 8.39:1 dark
+     against the page, well past the 3:1 that 1.4.11 asks of a focus
+     indicator. It is a consistency gap, not an accessibility one, and it is
+     recorded rather than papered over with !important. */
+  outline-style: solid;
+  outline-width: var(--brand-focus-ring-width);
+  outline-color: var(--brand-focus-ring-color);
+  outline-offset: var(--brand-focus-ring-offset);
+}
+
+/* Disabled controls read as inert rather than merely dimmer text. */
+:where(button, input, select, textarea)[disabled] {
+  opacity: var(--brand-disabled-opacity);
+  cursor: not-allowed;
+}
