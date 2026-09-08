@@ -43,15 +43,13 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-body: "Manrope", system-ui, sans-serif;
 
-  /* Portrait scale. 1vmin on a 1080x1920 panel is 10.8px, so these land
-     close to their px names at the target resolution but scale on others. */
-  --t-xs: clamp(11px, 1.25vmin, 15px);
-  --t-sm: clamp(13px, 1.6vmin, 19px);
-  --t-md: clamp(15px, 2vmin, 24px);
-  --t-lg: clamp(19px, 2.7vmin, 33px);
-  --t-xl: clamp(25px, 3.8vmin, 46px);
-  --t-2xl: clamp(33px, 5.4vmin, 66px);
-  --t-3xl: clamp(42px, 7.2vmin, 88px);
+  /* Portrait type scale MOVED to design-tokens.g.css (imported at the top of
+     this file) on 2026-09-09. It is now generated as
+     kiosk.typeBase x kiosk.typeScaleMultiplier, which is how that 1.25 in
+     tokens.json finally reaches a pixel -- it had no consumer before.
+     DO NOT redeclare --t-* here: this file @imports the generated one, so
+     anything declared below would silently win and orphan the multiplier
+     all over again. 1vmin on a 1080x1920 panel is 10.8px. */
 
   --sp-1: clamp(4px, 0.6vmin, 8px);
   --sp-2: clamp(8px, 1.1vmin, 14px);

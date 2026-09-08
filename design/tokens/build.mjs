@@ -455,6 +455,19 @@ ${vars(dark)}
 // the ~20 call sites referencing --teal/--violet/--amber aliases keep working.
 // The viewport-derived type and spacing scales stay in theme.css: they are
 // clamp() expressions against a 1080x1920 portrait panel, not token values.
+// Multiplies each authored [minPx, vmin, maxPx] triple by the kiosk's type
+// scale multiplier. Rounded to whole px / 2dp vmin so the emitted CSS stays
+// readable and diffable rather than carrying float noise.
+function kioskType() {
+  const m = tokens.kiosk.typeScaleMultiplier;
+  const px = (n) => `${Math.round(n * m)}px`;
+  const vm = (n) => `${+(n * m).toFixed(2)}vmin`;
+  return Object.entries(tokens.kiosk.typeBase)
+    .map(([step, [lo, mid, hi]]) =>
+      `  --t-${step}: clamp(${px(lo)}, ${vm(mid)}, ${px(hi)});`)
+    .join("\n");
+}
+
 function buildKioskCss() {
   const r = tokens.scale.radius;
   return `${CSS_BANNER(
@@ -515,6 +528,15 @@ function buildKioskCss() {
 
   /* Kiosk-industry minimum physical finger target; nothing tappable is smaller. */
   --touch-min: clamp(${tokens.kiosk.minTouchTargetPx}px, 7vmin, 96px);
+
+  /* Type scale = kiosk.typeBase x kiosk.typeScaleMultiplier.
+     This block used to live hand-authored in theme.css, where the multiplier
+     could not reach it -- so a 1.25 sitting in tokens.json did nothing for
+     two phases. Measured on the real 1080x1920 panel before the move: the
+     smallest step rendered 13.5px and body copy 17.3px, too small for a
+     wall-mounted display read standing up. theme.css must NOT redeclare
+     these: it @imports this file at its top and later declarations win. */
+${kioskType()}
 
   --motion-fast: ${tokens.scale.motion.fast}ms;
   --motion-base: ${tokens.scale.motion.base}ms;
