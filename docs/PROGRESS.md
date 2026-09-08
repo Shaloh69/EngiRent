@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E3.1 COMPLETE · borderStrong/WCAG 1.4.11: 3 of 4 surfaces DONE + VERIFIED (Flutter, website, kiosk) · admin blocked on a very slow dev compile, NOT edited yet · G1 debt 0 · D-45 fixed · B-4 worked around (sentry_flutter 8→9 NEEDS RULING) · C: 8.4GB and falling · S-3 open, S-5 live, S-6 low · defects 13/45 · screens 0/69 PASS]
+[E3.1 COMPLETE · WCAG 1.4.11 CLEARED ON ALL 4 SURFACES, each verified in browser/on device · G1 debt 0 · D-45, D-46 fixed · B-4 worked around (sentry_flutter 8→9 NEEDS RULING) · disk cleared: C: 56.8GB, D: 61.7GB · S-3 open, S-5 live, S-6 low · defects 13/46 · screens 0/69 PASS · NEXT: E3.1 leftovers (interaction states, kiosk type scale) then E3.2]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,38 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-09 (WCAG 1.4.11 sweep complete, all 4 surfaces) — G5 six-symptom
+check at the E3.1→E3.2 boundary. ONE SYMPTOM, and it is a repeat.**
+
+1. *Re-deriving established facts?* No.
+2. *Asserting done from memory / accepting a proxy for the thing?* **YES,
+   again, and it is the same root cause as the last check.** I reported "the
+   build succeeded" off a pipeline exit code earlier; this time I twice
+   declared a surface fixed from the *source edit* rather than the rendered
+   result. Both were caught by measurement, not by me: the website's `.tb-menu`
+   (a CSS class, invisible to a grep for the Tailwind utility) and the admin's
+   inputs, which after the first fix still rendered Mantine's grey while the
+   button next to them had already flipped. **The habit that now works:
+   getComputedStyle on every control, compared against the decorative value,
+   and treat a source edit as a hypothesis until the browser agrees.**
+3. *Scope drift?* One deliberate expansion, declared: `borderStrong` was
+   scheduled as "wire into inputs", and I also fixed outlined buttons, the
+   kiosk's four button classes and `ColorScheme.outline`, because 1.4.11 is
+   about control boundaries and inputs are not the only ones. Cards, dividers,
+   chips and table rules were deliberately left decorative.
+4. *Losing the thread?* No. Four surfaces, one at a time, verified between
+   each, G1 debt never exceeded 1 and ended at 0.
+5. *Gate skipping?* No G4 lapse this stretch. G6 run before each commit.
+6. *Docs drifting from the repo?* Caught one of my own: the status line still
+   said "C: 8.4GB and falling" after the disk was cleared to 56.8 GB. Fixed in
+   the same response that noticed it.
+
+**Non-degradation note worth keeping:** the admin console's 20-minute
+`Compiling /` was diagnosed as an environment problem, not a code one, and the
+diagnosis held — after the disk cleanup the same compile took **15.6 seconds**.
+The earlier instinct to keep waiting on it rather than "fix" the code was
+correct.
 
 **2026-09-09 (E3.1 close, Flutter verified) — G5 six-symptom check at the
 E3.1→E3.2 boundary. ONE SYMPTOM, and it is the same one twice.**
@@ -477,39 +509,40 @@ status states, `review`/PENDING rendering cyan-teal `#0E9BB8` light /
 `#33B6D1` dark, all seven ink pairs ≥ 4.88:1, and an unmapped status falling
 through to neutral rather than to a brand colour.
 
-**WCAG 1.4.11 — 3 of 4 surfaces done and verified in the browser/on device,
-2026-09-09.** The `border` (decorative, no floor) vs `borderStrong` (3:1
-control boundary) split is now real, not just declared:
+**WCAG 1.4.11 — DONE. All 4 surfaces, each verified in a browser or on the
+device, 2026-09-09.** The `border` (decorative, no floor) vs `borderStrong`
+(3:1 control boundary) split is real everywhere now:
 
-| Surface | Controls fixed | Verified | Measured result |
+| Surface | Controls fixed | Verified how | Result |
 |---|---|---|---|
-| Flutter | inputs, outlined buttons, `ColorScheme.outline` | emulator, both themes | outline `#D5E3F2`→`#6E8FB3` light, `#43708F` dark |
-| Website | 3 button-links, theme switch, **navbar menu button** | Playwright, both themes, 2 pages | 0 controls left on the hairline |
-| Kiosk | `.info-back`, `.flow-back`, `.flow-cancel`, `.btn-err-home` | Playwright @1080×1920, 8 demo screens | 6 → 0 on the hairline |
-| **Admin** | **not started** | — | generator now emits `--color-border-strong`; nothing wired |
+| Flutter | inputs, outlined buttons, `ColorScheme.outline` | emulator, both themes, pixel-sampled | `#D5E3F2`→`#6E8FB3` light, `#43708F` dark |
+| Website | 3 button-links, theme switch, **`.tb-menu`** | Playwright, 2 pages × both themes | 0 controls on the hairline |
+| Kiosk | `.info-back`, `.flow-back`, `.flow-cancel`, `.btn-err-home` | Playwright @1080×1920, 8 demo screens | 6 → 0 |
+| Admin | Mantine default-border **+** `.mantine-Input-input` | Playwright, both schemes via `prefers-color-scheme` | 0 below 3:1 (**D-46**) |
 
-**The generator did not emit the token for the website OR the admin** — both
-`buildWebCss` and `buildAdminCss` wrote only the decorative `border`. Both now
-emit the strong variant. Each regeneration touched exactly one file, which
-doubles as a fidelity check that the other generators are current.
+**Two of the four were not what the source suggested.** The generator emitted
+no strong token for the website *or* the admin — both `buildWebCss` and
+`buildAdminCss` wrote only the decorative `border`; both now emit it. And the
+admin's inputs turned out never to have been on an EngiRent token at all
+(**D-46**), rendering a dependency's default grey at 1.42:1.
 
-**The method that mattered:** grepping for the border token found four website
-controls and missed a fifth, `.tb-menu`, because it is a CSS class rather than
-an inline utility. A Playwright probe reading `getComputedStyle` off every
-`a/button/input/select/textarea` and comparing to the decorative value found
-it. Every surface since has been checked that way rather than by grep.
+**The method, which is the transferable part:** grep found 4 of the website's 5
+controls and would never have found the 5th. A Playwright probe reading
+`getComputedStyle` off every `a/button/input/select/textarea` and comparing
+against the decorative value found it, and then found the kiosk's six and the
+admin's two. **Treat a source edit as a hypothesis until the browser agrees.**
 
-**Next concrete step: the admin console, the last surface.** Its dev server
-(`npm run dev`, port 3001) was still on its first `Compiling /` after ~15
-minutes — progressing (CPU 660s→1394s), not wedged, but slow enough to block
-verification. **Do not wire admin controls until a browser can measure them**:
-`globals.css:29` sets `border-color` on the UNIVERSAL selector, so which
-Mantine elements actually take `--color-border-strong` cannot be predicted from
-the source. After admin: interaction-state tokens, kiosk type scale — then E3.2.
+**Next concrete step: E3.1's remaining leftovers** — interaction-state tokens
+(default/hover/focus/active/disabled/selected), and the kiosk type-scale
+multiplier (`--touch-min` is generated; the multiplier is not applied). Then
+**E3.2** (toast + connection indicator onto tokens, and D-37's execution).
 
-**Watch the disk.** C: went 18.55 → 10.27 → **8.4 GB** across this session's
-builds and dev servers. B-4's disk half is not safely behind us.
-
+**Disk: cleared 2026-09-09.** C: 8.4 → **56.8 GB**, D: 28.3 → **61.7 GB**.
+`C:\Projects` is a **JUNCTION to `D:\Projects-Shem`** and consumes zero bytes
+on C: — it measures as 189 GB through the link, and deleting it would destroy
+the real project trees. Recorded because it is a trap for any future cleanup.
+**The admin console's 20-minute `Compiling /` was this disk, not the code:**
+after the cleanup the identical compile took **15.6 seconds**.
 ## Completed phases
 - **E0 — discovery and hygiene.** Complete except two kiosk-blocked sections
   (E0.3's three wait measurements, E0.1's hardware confirmation).
@@ -1949,6 +1982,26 @@ implement. Not the same as the *website's* dark hero, which also looks warm but
 is correct — that one resolves `--brand-via` to the dark set's lifted
 `#F5B85C` on purpose, per the generator's own banner. Same symptom, opposite
 cause; only one was a bug.
+**D-46 — the admin console's inputs were never on the design token system at
+all. FOUND AND FIXED 2026-09-09 (E3.1, WCAG 1.4.11 sweep).** Every text input
+in the console rendered `#CED4DA` — Mantine's `--mantine-color-gray-4` — not
+`--color-border` (`#D5E3F2`) and not any EngiRent token. **1.42:1** against the
+console's white `#F7F9FC`: *worse* than the decorative hairline everyone
+assumed it was using, and under half the 3:1 control floor. It is a generic
+grey of exactly the class the mandate banned from Flutter in E3.1, and it
+survived because it arrives from a **dependency default** rather than our
+source — **no grep for a banned hex could have found it**. `globals.css:29`
+sets `border-color` on the universal selector, which is right for cards and
+dividers and never reached the inputs, because Mantine styles those with higher
+specificity. **Two fixes were needed and measurement proved it:** (1) point
+`--mantine-color-default-border` at `--color-border-strong`, using
+`:root[data-mantine-color-scheme="…"]` — a bare attribute selector is (0,1,0)
+against Mantine's (0,2,0) and **loses even though globals.css is imported
+later**; (2) `.mantine-Input-input` separately, because Mantine's
+default-variant input does not read that variable at all. After (1) the
+theme-switch button took the token and the email field did not — visible only
+by measuring. Verified: 0 controls below 3:1 in either scheme.
+
 
 
 ### New defects found in E2
