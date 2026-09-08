@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[E3.1 COMPLETE · WCAG 1.4.11 CLEARED ON ALL 4 SURFACES, each verified in browser/on device · G1 debt 0 · D-45, D-46 fixed · B-4 worked around (sentry_flutter 8→9 NEEDS RULING) · disk cleared: C: 56.8GB, D: 61.7GB · S-3 open, S-5 live, S-6 low · defects 13/46 · screens 0/69 PASS · NEXT: E3.1 leftovers (interaction states, kiosk type scale) then E3.2]
+[PHASE E3 (design foundation), section E3.1 · B-4 RESOLVED: sentry_flutter 9.29.0 + Gradle 8.14/AGP 8.11.1/Kotlin 2.2.20, builds with NO bypass, run on device · WCAG 1.4.11 clear on all 4 surfaces · G1 debt 0 · D-45, D-46 fixed · defects 13/46 · screens 0/69 PASS · NEXT: interaction states on kiosk+admin+Flutter (website done), then E3.2]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,43 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-09 (B-4 resolved, user-requested check) — G5 six-symptom check.
+TWO SYMPTOMS, one of them the third repeat of the same root cause.**
+
+1. *Re-deriving established facts?* No.
+2. *Accepting a proxy for the thing itself?* **YES — third instance, and this
+   time I caught it before reporting.** After the no-bypass build ran on the
+   emulator with no crash I was one sentence from calling Sentry 9 verified.
+   The log said `no SENTRY_DSN supplied` — **`SentryFlutter.init` had never been
+   called.** The run proved the app builds and the *fallback* path works, and
+   nothing about v9's init. Rebuilt with a dummy DSN at 127.0.0.1; only then
+   did `sentry-native: starting backend` appear. Earlier instances: "the build
+   succeeded" off a pipeline exit code, and treating a source edit as a fix on
+   the website and admin. **The pattern is now explicit: ask what the evidence
+   actually exercised, not whether it was green.**
+3. *Misattributing a failure?* **YES, narrowly avoided.** Two consecutive
+   `BUILD FAILED`s during the Sentry upgrade looked like the upgrade failing.
+   They were corrupt Gradle transform metadata from **my own** partial deletion
+   of `~/.gradle/caches` during the disk cleanup, with two daemons from 23:49
+   holding the freed state. Taking them at face value would have reverted a
+   correct upgrade.
+4. *Scope drift?* No. The Sentry bump was explicitly ruled by the human, and I
+   deliberately did NOT rewrite the 4 `copyWith` deprecations: that touches a
+   privacy control and deserves its own commit and test.
+5. *Gate skipping?* No G4 lapse. G6 run before each commit, including a
+   DSN-specific sweep.
+6. *Docs drifting from the repo?* **YES, found and fixed in this pass.** The
+   "NOT yet done in E3.1" list still named four items that were already done
+   and verified. Replaced with a re-derived table. This is the second doc-drift
+   catch in two checks, which suggests the register needs updating *at* each
+   sub-boundary rather than at phase end.
+
+**Honest overall read:** no confusion about where the work is or what is true.
+The recurring weakness is not memory, it is **evidentiary standards** — three
+times now I have been ready to accept something adjacent to proof. The
+countermeasure that keeps working is naming, before I look, exactly which
+signal would distinguish success from failure.
 
 **2026-09-09 (WCAG 1.4.11 sweep complete, all 4 surfaces) — G5 six-symptom
 check at the E3.1→E3.2 boundary. ONE SYMPTOM, and it is a repeat.**
@@ -765,18 +802,18 @@ on another."* It was untrue when written. It is true now.
   anything that is not a 6-digit hex. **11th instance of the check-your-own-
   harness trap**, and the first one caught by a consumer rather than by a test.
 
-**NOT yet done in E3.1** (do not record these as done):
-- **Flutter is unverified** (B-4). Its PENDING cyan, its banned-grey removal and
-  its reference screen have not been seen.
-- **Admin's authenticated pages are unverified in situ** — needs the password.
-- `borderStrong` is defined and exposed on every surface but **wired into no
-  input**, so the WCAG 1.4.11 control-outline failure is **still live**. This is
-  the largest known-and-unfixed item in E3.1.
-- Interaction states (default/hover/focus/active/disabled/selected) are not
-  token'd yet — E3.1's bullet 5.
-- Kiosk 64px targets / larger type scale — `--touch-min` is generated, the
-  type-scale multiplier is not applied.
-- E3.2 and E3.3 are **untouched**. D-37's execution still belongs to E3.2.
+**E3.1 STATE, re-derived from the repo 2026-09-09** (this list was stale: four
+of its six items had been done and it still said otherwise):
+
+| Item | State |
+|---|---|
+| Flutter verified on screen | **DONE** 2026-09-09 — reference screen, both themes |
+| `borderStrong` wired into controls | **DONE** — all 4 surfaces, 0 controls below 3:1 |
+| Interaction states token'd | **PARTIAL** — tokens defined + applied/verified on the WEBSITE only. Kiosk, admin, Flutter still to do |
+| Kiosk 64px targets | **DONE and VERIFIED** — 0 targets under 64px across 8 screens |
+| Kiosk type scale | **DONE** — multiplier now consumed; smallest step 13.5→16.8px |
+| Admin authenticated pages verified in situ | **STILL NOT DONE** — needs the password; only the login page has been seen |
+| E3.2 / E3.3 | **UNTOUCHED.** D-37's execution still belongs to E3.2 |
 
 **Doc error corrected while here:** the B-2 note below said the kiosk BEFORE
 images were "captured at 1920×1200". They are **1080×1920** — read from the PNG
