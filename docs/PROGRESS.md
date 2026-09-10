@@ -964,6 +964,63 @@ is a deliberate stop before that, not a claim that E3.1 is done.
 
 ---
 
+## P-1 — THE PHASE FILES ARE NOT READABLE AS STATUS. Raised by the user
+## 2026-09-11, audited the same day.
+
+**The user's question: we are in E3, so why do E1 and E2 still have unfinished
+boxes?** Audited rather than answered from memory. The census:
+
+| Phase file | ticked | open | What PROGRESS.md says about the phase |
+|---|---|---|---|
+| E0 | **0** | 37 | "complete except two kiosk-blocked sections" |
+| E1 | 4 | 5 | "Complete with named gaps" |
+| E2 | **0** | 21 | "**COMPLETE 2026-09-07**" |
+| E3 | 0 | 16 | in progress |
+| E4 | 0 | 16 | not started |
+| E5 | 0 | 19 | not started |
+| E6 | 1 | 31 | not started |
+| E7 | 0 | 17 | not started |
+
+**Root cause: the phase files were never the live checklist.**
+`ENGIRENT-CLAUDE.md` §4 makes `docs/PROGRESS.md` the continuity mechanism
+("created in E0 and updated continuously"), and that is what every session
+actually wrote to. Nobody went back to tick boxes. E2 at **0 of 21** while
+being recorded COMPLETE is the clearest proof.
+
+**But the open boxes are three different things, and that is the real
+problem.** Sampled against the repo, not assumed:
+
+1. **DONE, never ticked** — the majority. `E2:27` self-action reject is live
+   (`rentalController.ts:40-41`, *"You cannot rent your own item"*); `E2:54`'s
+   admin ID-decision socket event is at `adminController.ts:1806` with tests;
+   `E2:39/40`'s `ConnectionIndicator.tsx` exists and was verified LIVE;
+   `E1:82`'s self-action sweep is recorded COMPLETE; `E1:105`'s socket audit
+   is a stale duplicate of `E1:81`, which IS ticked.
+2. **RULED, never ticked** — `E2:46` push notifications were **ruled defer to
+   backlog**. A decision, not an omission; the phase file gives no hint.
+3. **GENUINELY OPEN** — `E1:71`/`E1:103` ("five minimum cases per endpoint",
+   "full coverage per the plan"): the real number is **73/93 happy path
+   (78%)** with all 21 uncovered rows named, which is why E1 was closed *"with
+   named gaps"*. And `E2:69` ("real-time verified by using **two devices
+   simultaneously**") — never done that way; it was proven with a socket
+   client plus the emulator, which is different evidence and weaker on that
+   specific bullet.
+
+**Why this is a process finding and not tidying.** This is the shape of
+degradation occurrence 2 — *"phase-start ritual skipped, hiding 3 unfinished
+E2 bullets for 4 commits."* A reader (including a fresh session) opening E2's
+file sees 21 unchecked boxes and **cannot tell the three categories apart**.
+G2 catches this today only because PROGRESS.md carries a repo-derived table;
+the phase files contribute nothing to it. `CLAUDE.md`'s rule is that where
+docs conflict with the code you *flag it, fix the doc, then proceed* — so
+leaving them is not an option, it is just not yet scheduled.
+
+**PROPOSED FIX (needs the user's go-ahead on scope):** one reconciliation
+pass over the closed phases (E0, E1, E2), ticking what is verifiably done with
+a pointer to its evidence, annotating the ruled items with the ruling, and
+leaving genuinely-open items open with a one-line reason. **Not** a
+bulk tick — that would destroy exactly the information this finding is about.
+
 ## BLOCKERS (nothing below moves until these clear)
 
 **B-1 — CLEARED 2026-09-05.** Stack restarted; all four ports bound and all
