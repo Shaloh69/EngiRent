@@ -147,7 +147,7 @@ corrected in the same session — and that strength masked the weakness, because
 "I am catching doc errors" felt like evidence of sharpness. It was not evidence
 about verification debt.
 
-**The seven gates now in force (`CLAUDE-CODE-PLAYBOOK.md` §2d), in one line
+**The NINE gates now in force (`CLAUDE-CODE-PLAYBOOK.md` §2d), in one line
 each:**
 
 - **G1** — at most **one** unverified chunk at a time. Blocked verification
@@ -163,7 +163,14 @@ each:**
 - **G6** — secret sweep before the first commit of a session. Run late in #2;
   it found two live published credentials (S-3, S-4).
 - **G7** — do not end or clear until registers are current, this log has this
-  session's entry, and the continuation prompt is written and committed.
+  session's entry, the phase file's boxes are current, and the continuation
+  prompt is written and committed.
+- **G8** — name the distinguishing signal in writing BEFORE you look. Evidence
+  adjacent to proof is not proof.
+- **G9** — when a bullet is implemented, tick its box **in the same commit**,
+  with evidence. Deferred stays unticked carrying its ruling; blocked stays
+  unticked carrying its blocker. Never bulk-tick. Added by the user after P-1
+  found 63 boxes unticked across three completed phases.
 
 ### Session entries
 

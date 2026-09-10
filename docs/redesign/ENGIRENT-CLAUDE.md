@@ -221,7 +221,7 @@ and adapted to this project's realities:
   human noticed before the model did** (`docs/PROGRESS.md` → CONTEXT
   DEGRADATION LOG). Noticing it is therefore not a skill this track can rely
   on, so `CLAUDE-CODE-PLAYBOOK.md` §2d replaces the advice with **seven
-  checkable gates, G1-G7**. Read them before starting a phase. The one that
+  checkable gates, G1-G9**. Read them before starting a phase. The one that
   binds most often: **G1, at most one unverified chunk at a time** — and
   verification blocked by a permission refusal or offline hardware still
   counts as unverified. The second occurrence looked like productive,
@@ -235,6 +235,11 @@ and adapted to this project's realities:
 - **One phase per session, `/clear` between phases.** `docs/PROGRESS.md` is
   the continuity mechanism, not conversation history
 - **Small, verifiable commits**, one logical change each
+- **Tick the phase-file box in the same commit as the work (G9).** The phase
+  files are records, not plans. Leaving them for phase-close is how E0 came to
+  read 0 of 37 done while being recorded complete. A deferred item stays
+  unticked and carries its **ruling**; a blocked one stays unticked and carries
+  its **blocker**. Never bulk-tick
 - **Ask for the diff, not the file**, on anything touching several screens
 - **Subagents for genuinely parallel read-only work** (e.g. auditing four
   surfaces' socket consumers) — not for anything writing to the same files

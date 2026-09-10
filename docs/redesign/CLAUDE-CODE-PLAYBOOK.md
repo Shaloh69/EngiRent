@@ -242,11 +242,48 @@ Concretely, on this repo:
 **This gate is cheap and it has caught something every single time it was
 applied.** The three rows above were all found *after* a confident first read.
 
+### G9 — When a bullet is implemented, TICK ITS BOX IN THE SAME COMMIT
+
+**Added 2026-09-11, by the user, after P-1.** The phase files had been running
+as plans nobody ever converted into records: **E0 read 0 of 37 done while it
+was recorded complete; E2 read 0 of 21 while recorded COMPLETE 2026-09-07.**
+Sixty-three boxes, three phases, and the human found it — not the model.
+
+**The gate.** When work satisfying a phase-file bullet is finished, tick that
+bullet **in the same commit as the work**, with the evidence beside it — a
+file:line, a command, or a screenshot path. Not "later", not "at phase close":
+at phase close nobody remembers which of forty boxes moved, which is exactly
+how this got to sixty-three.
+
+**Three states, and they must stay distinguishable.** A box is not binary:
+
+- `- [x]` — **done**, with evidence attached.
+- `- [ ]` + **`RULED`** — decided against or deferred, *with the ruling*. This
+  is a decision, not an omission, and ticking it would erase that.
+- `- [ ]` + **`OPEN`** — genuinely outstanding, *with the reason and the
+  blocker*.
+
+**Never bulk-tick to make a file look finished.** That destroys precisely the
+information the gate exists to preserve, and it is worse than leaving the file
+stale, because a stale file at least looks stale.
+
+**When the work does not map cleanly to a bullet** — it partly satisfies one,
+or satisfies it differently than written — say so on the box rather than
+rounding to done or open. `HALF MET`, or `DONE, and met better than
+specified`, both carry more than a tick.
+
+*Check:* `git show <commit> --stat` for any implementation commit should touch
+the phase file whenever a bullet moved. A phase whose ticked count never
+changes across a run of implementation commits is the failure this gate names.
+
+---
+
 ### G7 — Ending a session
 
 Do not end or clear until: PROGRESS.md's registers are current, the degradation
-log has this session's entry, and the continuation prompt for the next session
-is written and committed. Then answer §5's question 8 honestly.
+log has this session's entry, **the current phase file's boxes reflect what was
+actually done this session (G9)**, and the continuation prompt for the next
+session is written and committed. Then answer §5's question 8 honestly.
 
 ---
 
@@ -386,6 +423,6 @@ the doc without showing me the conflict first.
    `/clear`, not after every chunk
 9. **A green test is not a fix.** Verify on screen before recording anything as
    fixed — D-1 passed six unit tests while still visibly broken
-10. **The §2d gates G1-G8 bind.** Especially **G1**: at most one unverified
+10. **The §2d gates G1-G9 bind.** Especially **G1**: at most one unverified
     chunk at a time. Context degradation has happened twice on this track and
     both times the human had to be the one who noticed
