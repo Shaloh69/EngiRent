@@ -1316,6 +1316,28 @@ and their biometric data. That is not a new rule invented here — see the
 2026-09-04 entry above: *"Don't screenshot real biometric or ID images into the
 repo."* Same rule, same reason.
 
+**Its password was reset 2026-09-10** and lives in the repo-root `.env.local`
+(gitignored, `.gitignore:30`, confirmed `!!`) as `TEST_STUDENT_PASSWORD`,
+alongside the email and name. Login returns `data.tokens.accessToken` — NOT
+`data.token`; that shape cost a round trip.
+
+**Three concrete things learned wiring the photo up, all of which would
+otherwise be rediscovered:**
+1. **The multipart field is named `file`, not `image`.** `uploadSingle` is
+   `multerConfig.single("file")` (`middleware/upload.ts:36`). Posting `image=`
+   returns a bare `{"success":false,"error":"Internal server error"}` with no
+   hint that the field name is the problem. Tenth instance of this project's
+   "check the field name before filing a defect" trap.
+2. **The source image must be converted first.** The user's file is
+   `Downloads/ChesterTestinggon.webp`; WebP is not what the ML path expects, so
+   convert to JPEG (PIL, quality 92) before posting.
+3. **THE UPLOAD ITSELF IS BLOCKED BY THE AUTO-MODE CLASSIFIER.** `curl -F` of a
+   file to the server is the documented "base64-to-server" shape
+   (`ACCESS-AND-WORKAROUNDS.md`). The fix is a user-side allow rule, not
+   reformulating the command — reformulating to evade is explicitly the wrong
+   move. **So the face photo is NOT yet registered**; the account is renamed and
+   its password is set, and that one step is outstanding.
+
 **How to apply the face photo** (upload path, never a commit):
 1. Get the file path from the user — a pasted image is not on disk.
 2. Upload it through the API for that account, or write it to the server's
