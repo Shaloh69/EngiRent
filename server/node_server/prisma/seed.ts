@@ -152,31 +152,6 @@ async function seedStudents() {
  */
 const KIOSK_ID = "KIOSK-001";
 
-/**
- * D-54 — DELIBERATELY STILL THE WRONG ID, AND IT MUST NOT BE "FIXED" ON SIGHT.
- *
- * `seedKioskConfig` below writes an OBSOLETE hardware schema: `trapdoor`
- * solenoid pins (the trapdoor was removed from the design), `pwm` actuator
- * pins (the actuators are relay on/off — there is no PWM circuit), GPIO
- * numbers matching nothing in the real `config.py`, 3 cameras where there are
- * 5, and 5s/3s timings against the real hand-calibrated 15s doors and
- * 22/21/17/23s actuators. The identical row was found in the live DB and
- * DELETED on 2026-09-03 for exactly that reason.
- *
- * It is harmless today only because this key does not match the real kiosk.
- * Point it at KIOSK_ID and a `prisma db seed` upserts that payload onto the
- * real kiosk's config row, which `index.ts`'s `kiosk:register` handler then
- * pushes to the Pi on every connect. The Pi's `on_config` guard (it saves
- * only when the payload has a `lockers` key, which this one lacks) is the one
- * thing between that and overwritten calibration — a guard is not a reason to
- * aim a loaded seed at real hardware.
- *
- * The right fix is to rewrite this payload from the Pi's `kiosk_config.json`,
- * or delete the function. Both are hardware-calibration decisions and need a
- * ruling, so this is recorded and made visible rather than quietly changed.
- */
-const OBSOLETE_CONFIG_KIOSK_ID = "kiosk-1";
-
 const LOCKERS = [
   { lockerNumber: "1", size: LockerSize.MEDIUM },
   { lockerNumber: "2", size: LockerSize.MEDIUM },
@@ -201,40 +176,39 @@ async function seedLockers() {
   }
 }
 
-// ── Kiosk config ──────────────────────────────────────────────────────────────
+// -- Kiosk config: DELETED (D-54) ------------------------------------------
 
-async function seedKioskConfig() {
-  const kioskConfigData = {
-    door_open_duration_ms: 5000,
-    actuator_extend_duration_ms: 3000,
-    actuator_retract_duration_ms: 3000,
-    capture_delay_ms: 1500,
-    num_capture_frames: 3,
-    face_detection_timeout_ms: 15000,
-    solenoid_pins: {
-      locker_1: { main_door: 17, trapdoor: 18, bottom_door: 27 },
-      locker_2: { main_door: 22, trapdoor: 23, bottom_door: 24 },
-      locker_3: { main_door: 25, trapdoor: 9,  bottom_door: 7  },
-      locker_4: { main_door: 11, trapdoor: 10, bottom_door: 5  },
-    },
-    actuator_pins: {
-      locker_1: { pwm: 12, dir: 16 },
-      locker_2: { pwm: 20, dir: 21 },
-      locker_3: { pwm: 19, dir: 26 },
-      locker_4: { pwm: 13, dir: 6  },
-    },
-    camera_indices: { item_camera_1: 0, item_camera_2: 1, face_camera: 2 },
-  };
-
-  // D-54 — see OBSOLETE_CONFIG_KIOSK_ID above before changing this key.
-  const config = await prisma.kioskConfig.upsert({
-    where: { kioskId: OBSOLETE_CONFIG_KIOSK_ID },
-    update: { config: kioskConfigData },
-    create: { kioskId: OBSOLETE_CONFIG_KIOSK_ID, config: kioskConfigData },
-  });
-
-  log(`  ✓ KioskConfig ${config.kioskId}`);
-}
+/**
+ * `seedKioskConfig` was removed on 2026-09-11 (D-54, ruled by the user) and is
+ * deliberately not replaced. **Do not write another one without reading this.**
+ *
+ * It upserted a hardware schema that had been obsolete for months: `trapdoor`
+ * solenoid pins (the trapdoor was removed from the design), `pwm` actuator pins
+ * (the actuators are relay on/off - there is no PWM circuit), GPIO numbers
+ * matching nothing in the real `config.py`, 3 cameras where there are 5, and
+ * 5s/3s timings against the real hand-calibrated 15s doors and 22/21/17/23s
+ * actuators. The identical row was found in the live database and deleted on
+ * 2026-09-03 for exactly that reason.
+ *
+ * It was harmless only because it was keyed "kiosk-1" while the real kiosk
+ * registers as "KIOSK-001" - the same mismatch that made every door command
+ * vanish into an empty room. Repointing that key at KIOSK_ID, which is what
+ * "fix the typo" looks like from a diff, would have made a `prisma db seed`
+ * upsert the obsolete payload onto the real kiosk's config row, which
+ * `index.ts`'s `kiosk:register` handler pushes to the Pi on every connect.
+ *
+ * **The Pi's own `server/kiosk/kiosk_config.json` is the source of truth for
+ * per-locker timings** (`CLAUDE.md`: hand-calibrated, verified twice against
+ * real hardware, and where an animation and a hardware value disagree the
+ * hardware is right). The live DB has held ZERO `KioskConfig` rows since
+ * 2026-09-03 and the kiosk works, because with no stored config the server
+ * pushes nothing and the Pi keeps its local file. Seeding nothing here is not
+ * a gap - it is the fix.
+ *
+ * Any future seed would have to be GENERATED from the Pi's calibrated file,
+ * never hand-written, and would still be a hardware-calibration change that
+ * needs a ruling.
+ */
 
 // ── Sample items ──────────────────────────────────────────────────────────────
 
@@ -437,9 +411,6 @@ async function main() {
 
   log("\n🔒 Lockers");
   await seedLockers();
-
-  log("\n⚙️  Kiosk Config");
-  await seedKioskConfig();
 
   log("\n📦 Sample Items");
   await seedItems(students.map((s) => s.id));
