@@ -10,6 +10,7 @@ import {
 import logger from "../utils/logger";
 import kioskEventBus from "../utils/kioskEventBus";
 import { recordAudit } from "../services/auditLogService";
+import { emitLockerOccupancy } from "../services/lockerOccupancyService";
 import {
   signedMediaUrl,
   saveBuffer,
@@ -79,6 +80,12 @@ export const depositItem = async (
     // Command Pi to open the insertion door
     const io = req.app.get("io");
     if (io) {
+      // D-53: the bay is RESERVED from this instant, so it must stop showing
+      // as free before the door even opens — a second student walking up
+      // during the owner's 20s insertion window would otherwise be told the
+      // bay is available.
+      await emitLockerOccupancy(io, locker.kioskId);
+
       io.to(`kiosk:${locker.kioskId}`).emit("kiosk:command", {
         action: "open_door",
         locker_id: parseInt(locker.lockerNumber, 10),
@@ -348,6 +355,10 @@ export const releaseLocker = async (
     });
 
     logger.info(`Locker ${locker.lockerNumber} released`);
+    // D-53. `req.app?.get` rather than `req.app.get`: releaseLocker's unit
+    // tests construct a bare AuthRequest with no Express app on it, and a
+    // status push is not worth turning those into integration tests over.
+    await emitLockerOccupancy(req.app?.get("io"), locker.kioskId);
     // Checklist Stage 9 — only the admin/support case is audited here; a
     // renter or owner releasing the locker tied to their own rental is
     // normal product flow, not an admin action worth a trail entry.
@@ -396,6 +407,9 @@ export const releaseLockerByNumber = async (
     });
 
     logger.info(`Locker ${locker.lockerNumber} released (by number, admin)`);
+    // D-53: an admin force-releasing a bay is exactly the case where the
+    // panel must not keep showing the old state.
+    await emitLockerOccupancy(req.app?.get("io"), locker.kioskId);
     await recordAudit(req, {
       action: "kiosk.releaseLocker",
       targetType: "kiosk",

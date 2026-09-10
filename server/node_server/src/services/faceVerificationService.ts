@@ -34,6 +34,10 @@ import logger from "../utils/logger";
 import env from "../config/env";
 import { decryptFaceEncoding } from "../utils/crypto";
 import { signedMediaUrl } from "./storageService";
+import {
+  emitLockerOccupancy,
+  emitOccupancyForLockerId,
+} from "./lockerOccupancyService";
 
 /** Rental states in which someone can legitimately be standing at a kiosk. */
 export const KIOSK_ACTIONABLE_STATUSES = [
@@ -162,6 +166,10 @@ async function assignLockerAndOpen(
     data: { status: "RESERVED", currentRentalId: rentalId, lastUsedAt: new Date() },
   });
 
+  // D-53: RESERVED means "spoken for", not free. Pushed before the door
+  // command so the panel is already correct when the bay physically opens.
+  await emitLockerOccupancy(io, kioskId);
+
   const lockerNumber = parseInt(locker.lockerNumber, 10);
   const kioskRoom = `kiosk:${kioskId}`;
 
@@ -265,6 +273,14 @@ export async function applyFaceVerificationOutcome(params: {
       where: { id: rental.depositLocker.id },
       data: { status: "AVAILABLE", currentRentalId: null },
     });
+
+    // D-53. Resolved from the locker rather than from `kioskId` (the kiosk
+    // the person is standing at) because the relation is selected as
+    // `{id, lockerNumber}` only — and because the bay that changed is the
+    // deposit locker's, which in a multi-kiosk deployment need not be this
+    // one. Today they are the same; assuming so in code is how the earlier
+    // kiosk-id mismatch stayed invisible.
+    await emitOccupancyForLockerId(io, rental.depositLocker.id);
 
     await prisma.notification.create({
       data: {

@@ -18,6 +18,10 @@ import kioskEventBus from "./utils/kioskEventBus";
 import { installKioskEventLog } from "./utils/kioskEventLog";
 import { recomputeItemAvailability } from "./services/itemAvailabilityService";
 import {
+  emitLockerOccupancy,
+  emitOccupancyForLockerId,
+} from "./services/lockerOccupancyService";
+import {
   ADMIN_ROOM,
   canJoinAdminRoom,
   notifyAdmins,
@@ -326,6 +330,17 @@ io.on("connection", (socket: Socket) => {
         logger.error(`Failed to push config to kiosk ${kiosk_id}:`, err);
       }
 
+      // D-53. Push current bay occupancy the moment the Pi is in its room.
+      // Without this the kiosk starts every session with an empty
+      // `_ui_state["occupancy"]` and — correctly, per the UI half — renders
+      // every bay as UNKNOWN until the next rental transition happens to
+      // change something. On a wall panel that could be hours.
+      //
+      // Deliberately keyed on the id the KIOSK just sent, not on anything
+      // this process assumes, so a mismatch against Locker.kioskId surfaces
+      // as the warning inside emitLockerOccupancy rather than as silence.
+      await emitLockerOccupancy(io, kiosk_id);
+
       // D-37 (b): the admin socket no longer carries kiosk telemetry. The
       // kioskEventBus emit below feeds the SSE stream at
       // /admin/kiosks/events, which is what health/ and kiosk/ actually
@@ -536,6 +551,8 @@ io.on("connection", (socket: Socket) => {
                 where: { id: locker.id },
                 data: { status: "AVAILABLE", currentRentalId: null },
               });
+              // D-53: the bay just went back to AVAILABLE. Tell the kiosk.
+              await emitLockerOccupancy(io, locker.kioskId);
             }
             await prisma.notification.create({
               data: {
@@ -599,6 +616,8 @@ io.on("connection", (socket: Socket) => {
                 lastUsedAt: new Date(),
               },
             });
+            // D-53: deposit accepted — the bay now holds an item.
+            await emitLockerOccupancy(io, locker.kioskId);
           }
 
           await prisma.notification.create({
@@ -735,6 +754,8 @@ io.on("connection", (socket: Socket) => {
                 where: { id: locker.id },
                 data: { status: "AVAILABLE", currentRentalId: null },
               });
+              // D-53: disputed return still frees the bay.
+              await emitLockerOccupancy(io, locker.kioskId);
             }
             await prisma.notification.create({
               data: {
@@ -825,6 +846,8 @@ io.on("connection", (socket: Socket) => {
                 lastUsedAt: new Date(),
               },
             });
+            // D-53: returned item is now sitting in the bay awaiting the owner.
+            await emitLockerOccupancy(io, locker.kioskId);
           }
 
           socket.emit("kiosk:command", {
@@ -968,6 +991,10 @@ io.on("connection", (socket: Socket) => {
               where: { id: rental.depositLockerId },
               data: { status: "AVAILABLE", currentRentalId: null },
             });
+            // D-53: renter has collected — the bay is genuinely free again.
+            // Only the locker's primary key is in scope here, so the kiosk is
+            // resolved from it rather than assumed.
+            await emitOccupancyForLockerId(io, rental.depositLockerId);
           }
 
           await prisma.notification.create({

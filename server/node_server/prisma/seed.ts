@@ -141,7 +141,41 @@ async function seedStudents() {
 
 // ── Lockers ───────────────────────────────────────────────────────────────────
 
-const KIOSK_ID = "kiosk-1";
+/**
+ * The identity the REAL deployed kiosk registers itself with (its `KIOSK_ID`
+ * env var, sent on `kiosk:register`). Socket.io room membership is an exact
+ * string match, so this value is load-bearing: `Locker.kioskId` read
+ * "kiosk-1" until 2026-09-03, which meant every door command — and now every
+ * `kiosk:occupancy` push (D-53) — went to a room nobody was in, while the API
+ * reported success and nothing physically happened. It was fixed directly in
+ * the live DB; this line is what stopped a fresh seed from recreating it.
+ */
+const KIOSK_ID = "KIOSK-001";
+
+/**
+ * D-54 — DELIBERATELY STILL THE WRONG ID, AND IT MUST NOT BE "FIXED" ON SIGHT.
+ *
+ * `seedKioskConfig` below writes an OBSOLETE hardware schema: `trapdoor`
+ * solenoid pins (the trapdoor was removed from the design), `pwm` actuator
+ * pins (the actuators are relay on/off — there is no PWM circuit), GPIO
+ * numbers matching nothing in the real `config.py`, 3 cameras where there are
+ * 5, and 5s/3s timings against the real hand-calibrated 15s doors and
+ * 22/21/17/23s actuators. The identical row was found in the live DB and
+ * DELETED on 2026-09-03 for exactly that reason.
+ *
+ * It is harmless today only because this key does not match the real kiosk.
+ * Point it at KIOSK_ID and a `prisma db seed` upserts that payload onto the
+ * real kiosk's config row, which `index.ts`'s `kiosk:register` handler then
+ * pushes to the Pi on every connect. The Pi's `on_config` guard (it saves
+ * only when the payload has a `lockers` key, which this one lacks) is the one
+ * thing between that and overwritten calibration — a guard is not a reason to
+ * aim a loaded seed at real hardware.
+ *
+ * The right fix is to rewrite this payload from the Pi's `kiosk_config.json`,
+ * or delete the function. Both are hardware-calibration decisions and need a
+ * ruling, so this is recorded and made visible rather than quietly changed.
+ */
+const OBSOLETE_CONFIG_KIOSK_ID = "kiosk-1";
 
 const LOCKERS = [
   { lockerNumber: "1", size: LockerSize.MEDIUM },
@@ -192,10 +226,11 @@ async function seedKioskConfig() {
     camera_indices: { item_camera_1: 0, item_camera_2: 1, face_camera: 2 },
   };
 
+  // D-54 — see OBSOLETE_CONFIG_KIOSK_ID above before changing this key.
   const config = await prisma.kioskConfig.upsert({
-    where: { kioskId: KIOSK_ID },
+    where: { kioskId: OBSOLETE_CONFIG_KIOSK_ID },
     update: { config: kioskConfigData },
-    create: { kioskId: KIOSK_ID, config: kioskConfigData },
+    create: { kioskId: OBSOLETE_CONFIG_KIOSK_ID, config: kioskConfigData },
   });
 
   log(`  ✓ KioskConfig ${config.kioskId}`);
