@@ -44,10 +44,26 @@ export interface LockerDoors {
   bottom?: "locked" | "unlocked";
 }
 
+/** Server-side LockerStatus. D-53: this is OCCUPANCY, not door state. */
+export type LockerOccupancy =
+  | "AVAILABLE"
+  | "OCCUPIED"
+  | "RESERVED"
+  | "MAINTENANCE"
+  | "OUT_OF_SERVICE";
+
 export interface KioskServerState {
   status?: string;
   message?: string;
+  /** DOOR state only — "unlocked" means physically open right now. */
   lockers?: Record<string, LockerDoors>;
+  /**
+   * D-53. Per-bay LockerStatus from the server. ABSENT until the server sends
+   * it, and absent must be read as UNKNOWN — never as available. The screen
+   * that reports free bays has to say it does not know rather than guess,
+   * because guessing wrong sends a student to a door that is not free.
+   */
+  occupancy?: Record<string, LockerOccupancy | string>;
   active_locker?: number | string;
 }
 

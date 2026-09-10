@@ -20,6 +20,7 @@ export function useKioskState() {
   const [screen, setScreen] = useState<Screen>(DEMO_SCREEN ?? "idle");
   const [offline, setOffline] = useState(!DEMO_SCREEN);
   const [mode, setMode] = useState<Mode>(DEMO_SCREEN ? "place" : null);
+  const [occupancy, setOccupancy] = useState<Record<string, string> | null>(null);
   const [lockers, setLockers] = useState<Record<string, boolean>>({
     "1": false,
     "2": false,
@@ -151,6 +152,10 @@ export function useKioskState() {
       }
       setLockers(next);
     }
+    // D-53: relayed straight through. Deliberately NOT merged into `lockers`
+    // -- door state and occupancy answer different questions and collapsing
+    // them is what caused the defect.
+    if (s.occupancy) setOccupancy(s.occupancy);
 
     const cur = screenRef.current;
     if (s.status === "face_scan") {
@@ -246,6 +251,7 @@ export function useKioskState() {
     mode,
     setMode,
     lockers,
+    occupancy,
     faceProgress,
     faceLabel,
     faceInstr,

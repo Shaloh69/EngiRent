@@ -192,6 +192,17 @@ _ui_state: dict = {
     "message": "Welcome to EngiRent Hub",
     "active_locker": None,
     "lockers": {str(i): {"main": "locked", "bottom": "locked"} for i in range(1, 5)},
+    # D-53. "lockers" above is DOOR state and nothing else: a door reads
+    # "unlocked" only while it is physically standing open, for the few
+    # seconds of a handover (see the command handler below). It says
+    # nothing about whether a bay holds an item, and the UI was using it
+    # to tell students how many bays were free.
+    #
+    # "occupancy" carries the server's LockerStatus (AVAILABLE, OCCUPIED,
+    # RESERVED, MAINTENANCE, OUT_OF_SERVICE) per bay. It is pure relayed
+    # state -- nothing here drives hardware. Empty until the server sends
+    # it, and the UI must treat "empty" as UNKNOWN rather than as free.
+    "occupancy": {},
 }
 
 
@@ -262,6 +273,26 @@ async def on_config(data: dict):
         log.info("Server config has no 'lockers' key — keeping local kiosk_config.json")
 
     await sio.emit("kiosk:status", _build_status())
+
+
+@sio.on("kiosk:occupancy")
+async def on_occupancy(data: dict):
+    """Server pushes per-bay LockerStatus. D-53.
+
+    Data only: this handler stores what the server says about occupancy and
+    touches no solenoid, actuator or camera. Door state stays entirely separate
+    (see _ui_state["lockers"]) because the two answer different questions --
+    "is this door open right now" versus "does this bay hold an item".
+    """
+    if not isinstance(data, dict):
+        log.warning("kiosk:occupancy ignored - expected a dict, got %s", type(data).__name__)
+        return
+    lockers = data.get("lockers") if "lockers" in data else data
+    if not isinstance(lockers, dict):
+        log.warning("kiosk:occupancy ignored - no locker map in payload")
+        return
+    _ui_state["occupancy"] = {str(k): str(v) for k, v in lockers.items()}
+    log.info("Occupancy updated: %s", json.dumps(_ui_state["occupancy"]))
 
 
 @sio.on("kiosk:command")

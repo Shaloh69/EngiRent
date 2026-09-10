@@ -71,7 +71,7 @@ export default function App() {
         <CatalogueScreen onBack={k.actions.backToMain} isDemo={k.isDemo} />
       )}
       {k.screen === "lockers" && (
-        <LockersScreen lockers={k.lockers} onBack={k.actions.backToMain} />
+        <LockersScreen occupancy={k.occupancy} onBack={k.actions.backToMain} />
       )}
       {k.screen === "face" && (
         <FaceScreen instr={k.faceInstr} onCancel={k.actions.cancel} />

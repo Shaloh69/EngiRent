@@ -13,14 +13,43 @@ import { motion } from "framer-motion";
  * a corridor.
  */
 export function LockersScreen({
-  lockers,
+  occupancy,
   onBack,
 }: {
-  lockers: Record<string, boolean>;
+  /**
+   * Per-bay LockerStatus from the server. D-53.
+   *
+   * The `lockers` prop this screen used to take is GONE, and the compiler is
+   * what pointed it out: once availability came from occupancy, door state was
+   * unused here. That is the right shape. Door state answers "is this door
+   * physically open right now", which is a live hardware fact lasting seconds;
+   * this screen answers "which bays can I drop into", which is occupancy. They
+   * were being conflated, and conflating them is the whole of D-53.
+   */
+  occupancy?: Record<string, string> | null;
   onBack: () => void;
 }) {
   const ids = ["1", "2", "3", "4"];
-  const free = ids.filter((id) => !lockers[id]).length;
+
+  // D-53. This used to be `ids.filter((id) => !lockers[id]).length`, i.e. it
+  // counted bays with no door standing open and called them "empty and ready
+  // for a drop-off". `lockers[id]` is DOOR state: a door reads unlocked only
+  // for the few seconds it is physically open during a handover. So the count
+  // was ~4 essentially always, whatever the bays actually held.
+  //
+  // Availability comes from the server's LockerStatus now. When that has not
+  // arrived we say so, because the honest answer to "how many are free" is
+  // sometimes "I do not know yet" -- and on a wall panel a confident wrong
+  // number sends a student to a door that is not free.
+  const known = occupancy != null && ids.some((id) => occupancy[id]);
+  const free = known
+    ? ids.filter((id) => occupancy![id] === "AVAILABLE").length
+    : null;
+  const outOfService = known
+    ? ids.filter((id) =>
+        ["MAINTENANCE", "OUT_OF_SERVICE"].includes(occupancy![id]),
+      ).length
+    : 0;
 
   return (
     <div className="screen screen-info">
@@ -39,33 +68,58 @@ export function LockersScreen({
 
       <div className="lockers-summary">
         <div className="lockers-count">
-          <span className="lockers-count-n">{free}</span>
+          <span className="lockers-count-n">{free ?? "—"}</span>
           <span className="lockers-count-of">of {ids.length}</span>
         </div>
         <p className="lockers-count-label">
-          {free === 0
-            ? "All doors are currently holding an item. One frees up as soon as a rental is collected."
-            : free === ids.length
-              ? "Every door is empty and ready for a drop-off."
-              : `${free} ${free === 1 ? "door is" : "doors are"} empty and ready for a drop-off.`}
+          {!known
+            ? "Waiting for the locker controller to report bay status."
+            : free === 0
+              ? "Every bay is currently holding an item. One frees up as soon as a rental is collected."
+              : free === ids.length
+                ? "Every bay is empty and ready for a drop-off."
+                : `${free} ${free === 1 ? "bay is" : "bays are"} empty and ready for a drop-off.`}
+          {known && outOfService > 0
+            ? ` ${outOfService} ${outOfService === 1 ? "bay is" : "bays are"} out of service.`
+            : ""}
         </p>
       </div>
 
       <div className="info-scroll">
         <div className="locker-bay">
           {ids.map((id, i) => {
-            const occupied = !!lockers[id];
+            // D-53: these cards had the same bug as the summary above --
+            // `!!lockers[id]` is DOOR state, so every bay read "Free" whenever
+            // no door happened to be standing open. Leaving them while fixing
+            // only the summary would have been worse than leaving both: the
+            // screen would say "waiting for bay status" over four confident
+            // FREE cards.
+            const state = occupancy?.[id];
+            const label = !state
+              ? "Unknown"
+              : state === "AVAILABLE"
+                ? "Free"
+                : state === "OCCUPIED"
+                  ? "In use"
+                  : state === "RESERVED"
+                    ? "Reserved"
+                    : "Out of service";
+            const occupied = state === "OCCUPIED" || state === "RESERVED";
+            const unusable =
+              state === "MAINTENANCE" || state === "OUT_OF_SERVICE";
             return (
               <motion.div
                 key={id}
-                className={`bay-door ${occupied ? "occupied" : "free"}`}
+                className={`bay-door ${
+                  !state ? "unknown" : unusable ? "occupied" : occupied ? "occupied" : "free"
+                }`}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.06 + i * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               >
                 <span className="bay-num">{id.padStart(2, "0")}</span>
                 <span className="bay-hinge" aria-hidden />
-                <span className="bay-state">{occupied ? "In use" : "Free"}</span>
+                <span className="bay-state">{label}</span>
                 <span className="bay-icon" aria-hidden>
                   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     {occupied ? (
