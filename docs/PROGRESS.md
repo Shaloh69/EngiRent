@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2: 3 loading primitives BUILT + VERIFIED ON SCREEN (kiosk, 1080×1920, 6 cases) · REMAINING IN E3.2: phone-side primitives (120s countdown) + socket_client duration_seconds (Pi-blocked) · G1 debt 1 (D-53 kiosk half, BLOCKED: Pi offline) · gates G1-G8 · D-53 NODE HALF DEPLOYED+PROVEN, PANEL NOT SEEN · D-54 RULED+EXECUTED · D-55/D-56 NEW · defects 14/56 · screens 0/69 PASS]
+[PHASE E3 · E3.1 COMPLETE · E3.2: loading primitives DONE + VERIFIED ON SCREEN on BOTH surfaces (kiosk 1080×1920, phone on device) · REMAINING IN E3.2: socket_client duration_seconds + §1.1 mirrored phone progress (both Pi-blocked) · G1 debt 1 (D-53 kiosk half, BLOCKED: Pi offline) · gates G1-G9 · P-1 EXECUTED (E0/E1/E2/E3 files reconciled) · D-53 NODE HALF DEPLOYED+PROVEN · D-54 RULED+EXECUTED · D-55/D-56 NEW · defects 14/56 · screens 0/69 PASS · ⚠ C: 98% FULL]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -173,6 +173,25 @@ each:**
   found 63 boxes unticked across three completed phases.
 
 ### Session entries
+
+**2026-09-11 (E3.2 phone half verified on device) — G5 six-symptom check at
+the E3.2 close boundary. ONE SYMPTOM, twice, both caught before reporting.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it paid.** Before building the countdown I checked whether the server actually sends an expiry. **It did not** — `openKioskSession` computed `expiresAt` and returned `void`. Building the UI first would have produced a phone-side `120` constant that drifts and overstates the time left. |
+| 2 vaguer summaries | Absent |
+| 3 **trusting a tool over the artifact** | **PRESENT ×2, both caught.** (a) `adb` returned *"Unable to connect to activity manager; is the system running?"* and I was one step from filing "the emulator is dead" — it was a transient system-server restart; `boot_completed=1` and `adb shell echo` returned `ALIVE`. (b) The first APK build printed **BUILD FAILED**; the retry printed no error, and rather than trusting either exit code I checked the **artifact mtime** (03:12:41, 8s old) and confirmed it had genuinely built. Related: the crash dialog the user saw was the **first** emulator dying during the build, not the one I had launched — the device I was talking to was alive throughout. |
+| 4 drifting to agreement | **Absent, twice deliberately.** Refused to build a staged primitive for the phone (no phone screen waits on the ML pipeline — it would be a widget nothing renders), and refused a local `120` countdown in favour of an absolute server deadline. |
+| 5 batching | Absent — the server enabler and the UI were separate commits. |
+| 6 skipping verification | **Absent, and it caught a real gap.** The first device capture missed the low-but-not-expired countdown state: the 12s row had already expired before the screenshot. Recaptured rather than claimed, and the second shot shows **"9s left in this session"** in warning. |
+
+**Environment note that cost real time and belongs in the record:** **C: is at
+98%, 14 GB free.** One APK build failed then succeeded unchanged, and two
+emulator instances crashed. `docs/PROGRESS.md` already records the same
+condition (2026-09-09, C: at 8.4 GB) producing failures that *looked like code
+problems* — a 20-minute `Compiling /` that became 15.6s after a cleanup.
+**Suspect the disk before the code.**
 
 **2026-09-11 (E3.2 loading primitives built + verified) — G5 six-symptom
 check at the E3.2 primitives boundary. ONE SYMPTOM, and it fired THREE times.**
