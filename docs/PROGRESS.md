@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2 ~80%: toast+connection indicator on tokens, D-37 executed, D-38 swept across all 12 admin pages, status chip verified (×2 surfaces, 26/26 agree, drift guard proven) · REMAINING IN E3.2: 3 loading primitives + D-53’s Node emitter · G1 debt 0 · gates G1-G8 · S-5 CLOSED · D-39 DEPLOYED+VERIFIED LIVE · D-45..D-52 fixed · D-53 half-done (relay+UI shipped, Node emitter NOT written, NOT deployed to Pi) · defects 13/53 · screens 0/69 PASS]
+[PHASE E3 · E3.1 COMPLETE · E3.2 ~90%: toast+connection indicator on tokens, D-37 executed, D-38 swept across all 12 admin pages, status chip verified (×2 surfaces, 26/26 agree, drift guard proven) · REMAINING IN E3.2: 3 loading primitives · G1 debt 1 (D-53, BLOCKED: Pi offline) · gates G1-G8 · S-5 CLOSED · D-39 DEPLOYED+VERIFIED LIVE · D-45..D-52 fixed · D-53 BOTH HALVES WRITTEN + 124/124 Jest, NOT DEPLOYED, NOT SEEN ON SCREEN · D-54 NEW (obsolete kiosk hardware config in seed, needs ruling) · defects 13/54 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,42 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-11 (D-53's Node emitter written) — G5 six-symptom check at the
+E3.2 D-53 boundary. TWO SYMPTOMS. One is a G4 lapse and it is the third
+occurrence of the same rule.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it paid immediately.** The emitter's routing key was re-derived from the **live DB**, not from `seed.ts` — and the seed was wrong (`kiosk-1` vs the real `KIOSK-001`). Reading the seed and trusting it would have shipped an emitter that addresses an empty room forever. |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | **PRESENT. The status line was dropped from every response until this check.** Not a report/working split — simply absent throughout, exactly as in the 2026-09-08 entry and occurrence 2 before it. **Self-caught, at a G5 boundary rather than by the human**, which is the only mitigating fact. **This is the third recorded instance of G4 specifically**, and the pattern each time is a session that opens with a long block of reading and never establishes the habit on turn 1. |
+| 4 drifting to agreement | **Absent, and twice deliberately.** (a) The instruction was “deploy it together with the kiosk UI half”; the Pi is offline, so the deploy was **held and surfaced** rather than half-done or quietly reported as done. (b) `seed.ts`'s `kiosk-1` looked like a one-word fix and I did not make it — see D-54; the obvious change would have aimed an obsolete hardware config at the real kiosk. |
+| 5 batching | Absent — one commit, one logical change, tests in the same commit as the code they cover. |
+| 6 skipping verification | **Not skipped, not achieved, and recorded as such.** `tsc` clean and 124/124 Jest is explicitly **not** a fix here. Nothing has been seen on a panel. G1 debt is **1** and it stays there. |
+
+**G8 was applied twice and earned its keep both times.** (a) Before touching
+the emitter I wrote down that success meant `Locker` rows with `kioskId`
+exactly matching the Pi's `KIOSK_ID` and `lockerNumber` in `{"1".."4"}`, and
+that the failure mode is invisible from the server side — every log line reads
+“sent” while the room is empty. Checking that first is what surfaced D-54.
+(b) The seven new tests were mutation-checked in three directions rather than
+being trusted because they were green.
+
+**Fifth instance of “check your tool before the artifact”, handled correctly
+this time.** The first `npx jest` run reported `1 failed, 13 passed` with
+`UNKNOWN: unknown error, open … readable-stream/lib/internal/streams/pipeline.js`
+— a filesystem error inside `node_modules`, not a test failure. Re-run: 14/14,
+124 tests. Not filed as a defect. The tell was that the “failure” was a suite
+that **failed to run** rather than an assertion that failed, and it named a
+dependency I had not touched.
+
+**Assessment.** The evidentiary discipline held — G8 caught a real hardware
+hazard before it was created, and the one blocked verification is named as
+blocked rather than papered over. The weakness is the oldest one on this list:
+**a gate that costs one line got dropped for a whole session because turn 1 was
+spent reading.** Concrete corrective for next session: write the status line
+*before* the first `cat`, not after the last one.
 
 **2026-09-10 (SESSION END, 18 commits) — G5 six-symptom check, run at the
 user's request before a `/clear`. TWO SYMPTOMS, both self-caught, both the
@@ -1000,7 +1036,13 @@ screen 2026-09-09, G1 debt back to 0. Still blocks nothing else known, but any
 release APK is being cut through the same bypass.
 
 **B-2 — The kiosk is offline. RULED 2026-09-05: worked around, partially
-resolved.** The Pi stays unreachable, but the kiosk UI now runs locally in Vite
+resolved.** **RE-BLOCKING AS OF 2026-09-11: the Pi went down again**
+(`tailscale status` → `engirent-kiosk … offline, last seen 1h ago`; `ssh` to
+both `engirent-kiosk` and `100.78.42.89` times out). It was up on 2026-09-10
+long enough for the rotation fix, the physical contrast measurements and a UI
+deploy. **What it blocks right now: D-53's deploy and its on-screen
+verification — both halves are written and neither can land.** The unblock is
+physical: power the Pi on and confirm it appears in `tailscale status`. The Pi stays unreachable, but the kiosk UI now runs locally in Vite
 dev mode and its built-in `?demo=<screen>` parameter drives every screen with
 no backend. **All 12 kiosk BEFORE images captured at 1080×1920 PORTRAIT**
 (corrected 2026-09-08 — this line previously said 1920×1200, which is wrong;
@@ -2167,6 +2209,116 @@ alongside door state, rather than inferring availability from locks? That is a
 payload change on the kiosk socket, not a UI change, which is why it stops
 here. **E4 owns the kiosk flows and should not start on top of this
 unresolved.**
+
+**RULED (receive `LockerStatus`) AND NOW FULLY WRITTEN — 2026-09-11. BOTH
+HALVES ARE IN THE REPO. NEITHER IS DEPLOYED AND NOTHING HAS BEEN SEEN ON
+SCREEN. G1 debt 1, blocked on hardware, not on work.**
+
+| Half | State | Commit |
+|---|---|---|
+| Kiosk relay (`socket_client.py`) + UI (`LockersScreen`, `useKioskState`) | written, **not copied to the Pi** | `2a23682` |
+| Node emitter (`services/lockerOccupancyService.ts` + 11 call sites) | written, **not copied to the server** | `6a9d07b` |
+
+**What the Node half does.** `buildOccupancyMap(kioskId)` reads the `Locker`
+table into `{lockerNumber: LockerStatus}` — the exact keys `LockersScreen.tsx`
+indexes (`["1","2","3","4"]`) and the exact strings it compares against.
+`emitLockerOccupancy` addresses it to `kiosk:${kioskId}`. It fires on
+`kiosk:register` (otherwise a panel sits on UNKNOWN until the next rental
+transition, which on a quiet day is hours) and at **all 10 `locker.update`
+sites**: deposit reserve (×2 — REST and the face-verification path),
+deposit accept, deposit reject, claim (×2), return accept, return dispute,
+and the two admin release paths.
+
+**Three decisions, each with a reason that is not obvious from the diff:**
+
+1. **`isOperational: false` folds to `OUT_OF_SERVICE`.** The two are separate
+   columns, but every server-side assignment query (`getAvailableLockers`,
+   `assignLockerAndOpen`, `depositItem`) requires `isOperational: true` — so a
+   bay that is `AVAILABLE` and not operational is one the server will never
+   hand out. Reporting it as “Free” is D-53’s own lie reintroduced under a
+   different column.
+2. **The service never throws.** Every call site sits immediately after a
+   committed rental transition. A failed status push must not turn a completed
+   deposit into a 500 — same reasoning as `recomputeItemAvailability`.
+3. **A kiosk id with no `Locker` rows warns and does NOT emit.** Emitting `{}`
+   would be worse than silence: the Pi relay would overwrite good occupancy
+   with an empty map and the panel would flip to UNKNOWN with no error
+   anywhere. This is the health check `memory.md` asked for after the
+   2026-09-03 mismatch (“confirm at least one live kiosk socket is actually
+   joined to every `kioskId` a `Locker` row references”).
+
+**The routing key was checked against the LIVE DB before the code was written,
+not after.** Named in advance (G8): success is `Locker` rows whose `kioskId`
+is exactly the Pi’s `KIOSK_ID` with `lockerNumber` in `{"1".."4"}`; failure is
+any other value, which emits into an empty room *while every log line reports
+success*. Result — 4 rows, `kioskId: "KIOSK-001"`, `lockerNumber` `"1".."4"`,
+all `AVAILABLE`/`isOperational: true`. **That is a match**, because the
+mismatch was already found and fixed in the DB on 2026-09-03 (`memory.md`).
+The repo’s `server/kiosk/.env` says `kiosk-1`, which is the gitignored dev
+checkout’s file and **not** the Pi’s — confirmed against
+`client/admin/src/app/kiosk/page.tsx:77`, which states the deployed kiosk
+registers as `KIOSK-001`.
+
+**Tests: 7, mutation-checked in three directions.** Dropping the
+`isOperational` fold, dropping the `kiosk:` room prefix, and emitting on an
+empty map each turn **exactly one** test red; the file restores byte-identical
+after each. 124/124 Jest (117 before, +7), `tsc` clean. **None of that is a
+fix.** The panel has not been looked at.
+
+**BLOCKED ON HARDWARE.** `tailscale status` reports `engirent-kiosk … offline,
+last seen 1h ago`, and `ssh` to both the MagicDNS name and `100.78.42.89`
+times out. The kiosk half deploys as a file copy into
+`kiosk_ui_react/dist` **plus** `services/socket_client.py`, and neither can be
+copied to a machine that is down. Per the ruling in `CONTINUE-E3-SESSION-2.md`
+the two halves deploy **together**, so the Node half is also held.
+
+**D-54 — `prisma/seed.ts` silently recreates the empty-room kiosk bug, AND
+the obvious one-word fix would have aimed an OBSOLETE HARDWARE CONFIG at the
+real kiosk. FOUND 2026-09-11 (D-53's Node emitter). HALF FIXED; the other half
+NEEDS A RULING because it is calibration data.**
+
+**Half 1 — fixed.** `seed.ts:144` seeded every `Locker.kioskId` as
+`"kiosk-1"`, while the real deployed kiosk registers as `"KIOSK-001"`. Socket.io
+room membership is an exact string match, so on any fresh install every door
+command — and now every `kiosk:occupancy` push — goes to a room nobody is in,
+while the API reports success and nothing physically happens. **This exact bug
+was found and fixed in the live DB on 2026-09-03** (`memory.md`), but only in
+the DB: the seed that produced it was never touched, so a reseed reintroduces
+it. Changed to `KIOSK-001`, with the reason written above the constant.
+
+**Half 2 — NOT fixed, and it is the reason this entry exists.** The same
+constant also keyed `seedKioskConfig`, whose payload is the **obsolete hardware
+schema that was deleted from the live DB on 2026-09-03 for being dangerous**:
+`trapdoor` solenoid pins (the trapdoor was removed from the design), `pwm`
+actuator pins (the actuators are relay on/off — there is no PWM circuit), GPIO
+numbers matching nothing in the real `config.py`, 3 cameras where there are 5,
+and 5s/3s timings against the real hand-calibrated **15s doors and
+22/21/17/23s actuators**.
+
+**It is inert today only because the key does not match the real kiosk.**
+Pointing it at `KIOSK_ID` — which is exactly what “fix the mismatch” looks like
+from the diff — makes a `prisma db seed` upsert that payload onto the real
+kiosk's config row, which `index.ts`'s `kiosk:register` handler then **pushes
+to the Pi on every connect**. The Pi's `on_config` guard (it saves only when
+the payload carries a `lockers` key, which this one lacks) is the single thing
+between that and overwritten calibration. **A guard is not a reason to aim a
+loaded seed at real hardware**, and `CLAUDE.md`'s rule is that where an
+animation and a hardware value disagree, the hardware is right.
+
+**Done instead:** the two uses were split into `KIOSK_ID` (real, used by the
+`Locker` rows) and `OBSOLETE_CONFIG_KIOSK_ID` (still `"kiosk-1"`, deliberately
+wrong, used only by `seedKioskConfig`), with the full reason written at both
+sites so the next reader hits it before the constant. **The trap is now
+visible instead of invisible, which is the most that can be done without a
+ruling.**
+
+**The ruling needed:** rewrite `seedKioskConfig`'s payload from the Pi's real
+`kiosk_config.json`, or delete the function outright? Deleting is arguably
+right — the live DB currently has **zero** `KioskConfig` rows (verified
+2026-09-11), the Pi falls back to its local hand-calibrated `kiosk_config.json`,
+and `CLAUDE.md` names that file the source of truth. Either way it is a
+hardware-calibration decision and not one to take inside a UI phase.
+`server/node_server/prisma/seed.ts:144-176, 196-230`
 
 **D-51 — a DEBUG build accepts ANY credentials the moment the network fails,
 and it is ON BY DEFAULT. INVESTIGATED 2026-09-10, NOT a shipping

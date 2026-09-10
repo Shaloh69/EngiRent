@@ -67,12 +67,14 @@ mentioning the module name.
   drift guard (`node design/tokens/build.mjs --check`) was proven by injecting
   `PENDING: review → warning` and watching it report STALE.
 
-**REMAINING IN E3.2 — two items:**
+**REMAINING IN E3.2 — one item, plus a deploy that is blocked:**
 
 1. **The three loading primitives** (determinate / staged / indeterminate).
    Not started. **Survey the repo before building** — the "×4 surfaces"
    assumption in the E3.2 row has already been wrong once.
-2. **D-53's Node emitter.** See below. This is the more valuable of the two.
+2. ~~**D-53's Node emitter.**~~ **WRITTEN 2026-09-11 (`6a9d07b`).** Both halves
+   of D-53 are now in the repo. **Neither is deployed and nothing has been seen
+   on screen — the Pi went offline again.** See the updated section below.
 
 ---
 
@@ -93,13 +95,36 @@ drop-off"* — ~4 of 4 essentially always, whatever the bays held.
 - Kiosk UI: availability now derives from `LockerStatus`; **absent renders as
   UNKNOWN**, never as free.
 
-**Still to do:**
-- **Node must emit `kiosk:occupancy`** from the `Locker` table (states:
-  `AVAILABLE | OCCUPIED | RESERVED | MAINTENANCE | OUT_OF_SERVICE`) on kiosk
-  connect and on rental state changes. Follow the `kiosk:config` pattern at
-  `server/node_server/src/index.ts:322`.
+**Node half — WRITTEN 2026-09-11, `6a9d07b`, NOT DEPLOYED.**
+`server/node_server/src/services/lockerOccupancyService.ts` emits
+`kiosk:occupancy` to `kiosk:${kioskId}` on `kiosk:register` and at all 10
+`locker.update` sites. `isOperational: false` folds to `OUT_OF_SERVICE`; the
+service never throws; a kiosk id with no `Locker` rows warns instead of
+emitting an empty map. 7 tests, mutation-checked three ways; 124/124 Jest;
+`tsc` clean. Full detail and the reasoning: `docs/PROGRESS.md` → D-53.
+
+**Still to do — THE DEPLOY, AND IT IS BLOCKED ON HARDWARE:**
+- **The Pi is offline** (`tailscale status` → `engirent-kiosk … offline`; ssh
+  to the name and to `100.78.42.89` both time out). **Unblock is physical:
+  power it on.**
 - **Then deploy both halves together**, so the panel goes from "unknown" to
   real status in one step instead of shipping a half-state to a live kiosk.
+  The kiosk half is **two** copies, not one: the built UI into
+  `kiosk_ui_react/dist` **and** `server/kiosk/services/socket_client.py` (the
+  relay handler is a Python file and does **not** travel with `dist/`).
+- **Verify on the panel, not in a log.** The distinguishing signal: with four
+  `AVAILABLE` bays the Locker screen must read **"4 of 4 — Every bay is empty
+  and ready for a drop-off"**; flip one row to `OCCUPIED` in the DB and it must
+  read **3 of 4** with that bay's card showing **"In use"**. If it reads
+  **"— / Waiting for the locker controller to report bay status"**, the relay
+  did not land or the room name missed — that is the failure this whole
+  change is shaped around, and it is invisible from the server side.
+
+**D-54 is open and needs a ruling** (`docs/PROGRESS.md`): `seed.ts`'s
+`seedKioskConfig` still writes an obsolete hardware schema — trapdoor pins,
+PWM actuator pins, wrong GPIO numbers, 3 cameras of 5, 5s/3s against the real
+calibrated 15s/22/21/17/23s. It is inert only because its key is still
+`kiosk-1`. **Do not "fix" that constant without reading D-54 first.**
 
 ---
 
