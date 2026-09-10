@@ -1316,6 +1316,34 @@ and their biometric data. That is not a new rule invented here — see the
 2026-09-04 entry above: *"Don't screenshot real biometric or ID images into the
 repo."* Same rule, same reason.
 
+**DONE 2026-09-10: the face photo is registered and the account fully works.**
+The user supplied the image; it is converted to JPEG and posted to
+`POST /auth/register-face` (field name `file`), then the returned encoding is
+posted to `POST /auth/profile/complete` with `biometricConsent: true`.
+Confirmed in the DB: `faceEncoding` is `{iv, data, __enc, authTag}` — the
+AES-256-GCM blob `encryptJson()` produces, i.e. the biometric template is
+stored encrypted and never in plaintext, as designed.
+
+**IT IS A TWO-STEP FLOW AND STEP 1 ALONE LOOKS LIKE A BUG.**
+`register-face` returns a 128-float encoding to the CLIENT and saves only the
+photo — it does **not** persist the encoding. So after step 1 the API answers
+`success: true` with a full encoding while `faceEncoding` is still `NULL` in
+the database. That is by design (`completeProfile` is what writes it, and
+writes it encrypted), but it reads exactly like a silent persistence failure.
+Do not file it as one.
+
+**Side effect worth knowing: completing the profile reset
+`verificationStatus` APPROVED → PENDING.** Correct product behaviour — a
+resubmitted face/ID needs re-review — but this account is a fixture five e2e
+suites depend on, so it was **restored to APPROVED** afterwards. Anyone
+re-running the face registration must restore it again.
+
+**Two measurement traps hit while verifying, both G8-shaped:** `String(faceEncoding).length`
+returns **15** because the field is an object and `String()` gives
+`[object Object]` — that is not a 15-character secret, it is a coercion
+artifact. And the API's `success: true` is not evidence of persistence; the DB
+row is.
+
 **Its password was reset 2026-09-10** and lives in the repo-root `.env.local`
 (gitignored, `.gitignore:30`, confirmed `!!`) as `TEST_STUDENT_PASSWORD`,
 alongside the email and name. Login returns `data.tokens.accessToken` — NOT
