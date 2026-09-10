@@ -33,6 +33,7 @@ import { DataTableCard } from "@/components/ui/DataTableCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { roleColor } from "../theme";
+import { StatValue } from "@/components/ui/UnknownValue";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -198,7 +199,13 @@ export default function DisputesPage() {
                     {s.label}
                   </Text>
                   <Text size="xl" fw={800} mt={4}>
-                    {s.value}
+                    {/* D-38: these read 0 (or P0) directly under the page's
+                        own error banner. A count derived from a response we
+                        never received is not zero, it is unknown. */}
+                    <StatValue
+                      value={error ? null : s.value}
+                      label={`${s.label} unavailable`}
+                    />
                   </Text>
                 </div>
                 <ThemeIcon size={40} radius="md" variant="light" color={s.color}>

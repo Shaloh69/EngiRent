@@ -194,9 +194,16 @@ export default function SettingsPage() {
 
           {!config ? (
             <Alert icon={<Info size={16} />} color={roleColor.warning} variant="light">
-              {kiosks.length === 0
-                ? "No kiosks are registered yet — configuration appears once a kiosk connects."
-                : "Select a kiosk to view its configuration."}
+              {/* D-38: "no kiosks are registered" is a claim about hardware.
+                  If the request failed we know nothing about the hardware --
+                  and on this page that distinction matters more than most,
+                  because "no kiosks registered" reads as a deployment problem
+                  rather than a network one. */}
+              {error
+                ? "Could not load kiosks. This is not the same as none being registered."
+                : kiosks.length === 0
+                  ? "No kiosks are registered yet — configuration appears once a kiosk connects."
+                  : "Select a kiosk to view its configuration."}
             </Alert>
           ) : (
             <SimpleGrid cols={{ base: 1, sm: 3 }}>

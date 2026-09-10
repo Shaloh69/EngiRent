@@ -178,7 +178,11 @@ export default function ReportsPage() {
                   {rentalStatusData.length === 0 && (
                     <Center style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                       <Text size="sm" c="dimmed" fw={600}>
-                        No rentals in this period
+                        {/* D-38: a period we could not query is not a
+                            period with no rentals. */}
+                        {error
+                          ? "Could not load this period"
+                          : "No rentals in this period"}
                       </Text>
                     </Center>
                   )}
@@ -202,7 +206,9 @@ export default function ReportsPage() {
                   {categoryData.length === 0 && (
                     <Center style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                       <Text size="sm" c="dimmed" fw={600}>
-                        No category data in this period
+                        {error
+                          ? "Could not load this period"
+                          : "No category data in this period"}
                       </Text>
                     </Center>
                   )}
@@ -218,8 +224,21 @@ export default function ReportsPage() {
                 {verificationData.length === 0 ? (
                   <EmptyState
                     icon={BarChart3}
-                    title="No verifications in this period"
-                    description="AI check outcomes appear here once items are deposited and returned."
+                    title={
+                      error
+                        ? "Could not load this period"
+                        : "No verifications in this period"
+                    }
+                    description={
+                      /* The title said "could not load" while this line
+                         still explained what an EMPTY period looks like.
+                         Half-fixed reads worse than unfixed: it tells the
+                         reader the pipeline is idle in the same breath as
+                         admitting we do not know. */
+                      error
+                        ? "The request failed, so this is not a count of zero."
+                        : "AI check outcomes appear here once items are deposited and returned."
+                    }
                     minHeight={240}
                   />
                 ) : (
@@ -246,8 +265,14 @@ export default function ReportsPage() {
                 {topItems.length === 0 ? (
                   <EmptyState
                     icon={Trophy}
-                    title="No ranking yet"
-                    description="The most-rented items in this period will be listed here."
+                    /* D-38: a ranking we failed to fetch is not an empty
+                       ranking. */
+                    title={error ? "Could not load the ranking" : "No ranking yet"}
+                    description={
+                      error
+                        ? "The request failed, so this is not an empty ranking."
+                        : "The most-rented items in this period will be listed here."
+                    }
                     minHeight={240}
                   />
                 ) : (
