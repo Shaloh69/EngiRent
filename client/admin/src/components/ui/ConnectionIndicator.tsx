@@ -30,14 +30,22 @@ const PRESENTATION: Record<
     color: roleColor.success,
     tooltip: "Connected and subscribed — queues update themselves.",
   },
+  // D-50: both of these were roleColor.warning. They are IN-PROGRESS states,
+  // not warnings, and tokens.json already maps that meaning to `review`
+  // (PROCESSING, AWAITING_CONFIRMATION and PENDING all resolve to it). E3.1's
+  // ruling is explicit that a pending state must never read as
+  // warning-yellow: an amber "Connecting…" tells an admin something is WRONG
+  // when the system is merely WORKING, which is the one thing this indicator
+  // exists to stop it doing. Cyan-teal here means the same thing it means on a
+  // PENDING chip anywhere else in the product.
   connected: {
     label: "Connecting…",
-    color: roleColor.warning,
+    color: roleColor.review,
     tooltip: "Socket is up; waiting for the server to accept the subscription.",
   },
   connecting: {
     label: "Connecting…",
-    color: roleColor.warning,
+    color: roleColor.review,
     tooltip: "Opening the live connection.",
   },
   offline: {

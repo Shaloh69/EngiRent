@@ -7,6 +7,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/animated_auth_background.dart';
 import '../../../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../../../core/utils/toast_utils.dart';
 
 /// Login — mandate §2.1 names the auth screens as a deliverable in their own
 /// right, since this is the first thing any user sees. Rebuilt presentation
@@ -62,9 +63,12 @@ class _LoginScreenState extends State<LoginScreen>
     if (success) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(authProvider.error ?? 'Login failed')),
-      );
+      // E3.2: was a raw SnackBar. This screen and register_screen were the
+      // ONLY two of 64 error paths in the app still bypassing the shared
+      // toast -- 62 call sites already used AppToast. So a failed sign-in,
+      // one of the few errors every single user will eventually see, was the
+      // one styled by Flutter's defaults instead of by our tokens.
+      AppToast.error(context, authProvider.error ?? 'Login failed');
     }
   }
 

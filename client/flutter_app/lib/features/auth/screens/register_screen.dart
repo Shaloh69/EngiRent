@@ -4,6 +4,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/animated_auth_background.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../providers/auth_provider.dart';
+import '../../../core/utils/toast_utils.dart';
 
 /// Register — the second of §2.1's named auth deliverables.
 ///
@@ -85,9 +86,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Profile setup (face + ID camera) is required before accessing home
       Navigator.pushReplacementNamed(context, '/profile/setup');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(authProvider.error ?? 'Registration failed')),
-      );
+      // E3.2: was a raw SnackBar — see the note in login_screen.dart.
+      AppToast.error(context, authProvider.error ?? 'Registration failed');
     }
   }
 

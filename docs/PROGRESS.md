@@ -2047,6 +2047,31 @@ implement. Not the same as the *website's* dark hero, which also looks warm but
 is correct — that one resolves `--brand-via` to the dark set's lifted
 `#F5B85C` on purpose, per the generator's own banner. Same symptom, opposite
 cause; only one was a bug.
+**D-51 — a DEBUG build accepts ANY credentials the moment the network fails,
+and it is ON BY DEFAULT. INVESTIGATED 2026-09-10, NOT a shipping
+vulnerability, recorded because it is a trap for anyone testing offline.**
+`auth_service.dart:102-110`: when the login POST throws, if
+`AppConstants.demoMode` is set, any non-empty email plus any non-empty password
+returns `_demoAuthSuccess` — a fully authenticated "Demo User" session. Hit it
+live: cleared app data, walked onboarding, entered `nobody@uclm.edu.ph` /
+`wrongpassword123` against an unreachable API, and landed on **Verify your
+identity** with the socket attempting to connect.
+**Why it is NOT a security defect:** `app_constants.dart:71` gates it as
+`kDebugMode && const bool.fromEnvironment('USE_DEMO_MODE', defaultValue: true)`.
+`kDebugMode` is false in any release build, so the branch cannot execute in a
+shipped APK — the same gating the admin console uses, verified separately.
+**Why it still matters:** `defaultValue: true` means **every debug build has it
+on unless you opt out**. Any offline testing of the auth path is therefore
+testing the demo branch and not the real one, silently. It also masks error
+states: it is exactly why an error toast could not be produced for E3.2's
+verification until the app was rebuilt with `--dart-define=USE_DEMO_MODE=false`.
+**Worth considering** (not done, needs a ruling): flipping `defaultValue` to
+`false` so demo mode is opt-in, which would make offline testing honest by
+default and cost only a flag on the two occasions someone wants it.
+**Related, and the reason the app was offline at all:** the bundled
+`API_BASE_URL` default still points at `mpg-clothing-maui-chicago.trycloudflare.com`,
+a tunnel hostname that rotated away runs ago — the known baked-in-URL problem.
+
 **D-47 — the dashboard's PENDING VERIFICATION card broke the KPI row.
 FOUND AND FIXED 2026-09-09**, in the first minute of the first authenticated
 admin page anyone has looked at. Mantine's `Group` wraps by default; on the one
