@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 (design foundation) · E3.1 COMPLETE — tokens generate into all 4 surfaces, WCAG 1.4.11 clear on all 4, interaction states on all 4, admin verified in situ · B-4 RESOLVED (sentry 9.29.0, no bypass) · G1 debt 0 · gates now G1-G8 · S-5 CLOSED: kiosk sudo pw ROTATED (Pi back up) · B-2 partially lifted · D-45..D-49 fixed · defects 13/49 · screens 0/69 PASS · NEXT: E3.2 (toast + connection indicator onto tokens, D-37 execution)]
+[PHASE E3 (design foundation) · E3.1 COMPLETE — tokens generate into all 4 surfaces, WCAG 1.4.11 clear on all 4, interaction states on all 4, admin verified in situ · B-4 RESOLVED (sentry 9.29.0, no bypass) · G1 debt 0 · gates now G1-G8 · S-5 CLOSED: kiosk sudo pw ROTATED (Pi back up) · B-2 partially lifted · D-45..D-49 fixed · defects 13/53 · screens 0/69 PASS · E3.2: toast+indicator+D-37+D-38 DONE, status chip verified x2 surfaces; NEXT: loading primitives, then E3.3 · D-53 NEEDS A RULING (kiosk free-locker count uses door locks, not occupancy)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -2087,6 +2087,46 @@ implement. Not the same as the *website's* dark hero, which also looks warm but
 is correct — that one resolves `--brand-via` to the dark set's lifted
 `#F5B85C` on purpose, per the generator's own banner. Same symptom, opposite
 cause; only one was a bug.
+**D-53 — the kiosk tells students how many lockers are free using DOOR LOCK
+STATE, which is not occupancy. FOUND 2026-09-10 (E3.2 locker-model survey).
+NOT FIXED — NEEDS A RULING, because the correct polarity is a hardware
+question and `CLAUDE.md` forbids reaching the GPIO layer during UI work.**
+
+The server’s canonical model has five locker states — `LockerStatus` =
+`AVAILABLE | OCCUPIED | RESERVED | MAINTENANCE | OUT_OF_SERVICE`
+(`schema.prisma:708`) plus a separate `isOperational` flag. **The kiosk UI never
+receives any of them.** Its entire locker model is
+`LockerDoors { main?: "locked"|"unlocked", bottom?: "locked"|"unlocked" }`
+(`kiosk_ui_react/src/types.ts:42`) — door hardware state only.
+
+`useKioskState.ts:150` collapses that to one boolean per bay:
+`next[id] = doors.main === "unlocked" || doors.bottom === "unlocked"`,
+and `LockersScreen.tsx:23` counts the inverse as *free*:
+`const free = ids.filter((id) => !lockers[id]).length` — i.e. **free = every
+door is LOCKED** — then tells a student
+*"N doors are empty and ready for a drop-off."*, and at `free === 0`
+*"All doors are currently holding an item."*
+
+**A locked door is not an empty door.** A bay holding someone’s deposited item
+is locked. On that reading the screen counts full bays as ready for a drop-off,
+and reports "all holding an item" precisely when every door is unlocked.
+
+**Why this is recorded rather than fixed.** The polarity may be correct if the
+hardware convention is inverted (relays are active-LOW here, and `CLAUDE.md`
+says that where an animation and a hardware value disagree, *the hardware is
+right*). I cannot settle that from the repo, and settling it by experiment
+means driving solenoids — GPIO, which UI work must not touch. **Two things are
+true regardless of polarity:** the kiosk cannot represent `RESERVED`,
+`MAINTENANCE` or `OUT_OF_SERVICE` at all, so a bay withdrawn for maintenance
+renders to a student as an ordinary bay; and a transiently-unlocked door during
+a handover is counted as not-free.
+
+**The ruling needed:** should the kiosk receive `LockerStatus` (occupancy)
+alongside door state, rather than inferring availability from locks? That is a
+payload change on the kiosk socket, not a UI change, which is why it stops
+here. **E4 owns the kiosk flows and should not start on top of this
+unresolved.**
+
 **D-51 — a DEBUG build accepts ANY credentials the moment the network fails,
 and it is ON BY DEFAULT. INVESTIGATED 2026-09-10, NOT a shipping
 vulnerability, recorded because it is a trap for anyone testing offline.**
