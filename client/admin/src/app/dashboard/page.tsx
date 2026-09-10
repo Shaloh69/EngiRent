@@ -31,6 +31,7 @@ import {
 import api from "@/lib/api";
 import type { DashboardStats, Rental } from "@/types";
 import { roleColor, statusColorKey } from "../theme";
+import { StatValue, tableStateMessage } from "@/components/ui/UnknownValue";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -80,15 +81,12 @@ const EMPTY_CHART_SCAFFOLD = [
 ];
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalUsers: 0,
-    totalItems: 0,
-    activeRentals: 0,
-    pendingVerifications: 0,
-    totalRevenue: 0,
-    rentalsByCategory: [],
-  });
-  const [recentRentals, setRecentRentals] = useState<Rental[]>([]);
+  // D-38: this was seeded with zeros and never blanked on failure, so a dead
+  // API rendered "Unable to load dashboard data." directly above TOTAL USERS 0
+  // / REVENUE P0 -- two contradictory claims, and the numbers were the more
+  // believable pair. `null` now means NOT KNOWN, distinct from a real 0.
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentRentals, setRecentRentals] = useState<Rental[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -122,6 +120,11 @@ export default function DashboardPage() {
       setError(
         apiError?.response?.data?.error || "Unable to load dashboard data.",
       );
+      // The half of D-38 that was missing. Without this the previous (or
+      // seeded) numbers stay on screen under an error banner and read as
+      // current.
+      setStats(null);
+      setRecentRentals(null);
     } finally {
       setLoading(false);
     }
@@ -129,15 +132,17 @@ export default function DashboardPage() {
 
   const chartData = useMemo(
     () =>
-      stats.rentalsByCategory.map((row) => ({
+      (stats?.rentalsByCategory ?? []).map((row) => ({
         category: CATEGORY_LABELS[row.category] ?? row.category,
         Rentals: row.count,
       })),
-    [stats.rentalsByCategory],
+    [stats?.rentalsByCategory],
   );
 
-  const kpiValue = (key: (typeof KPI_CARDS)[number]["key"]) =>
-    key === "totalRevenue" ? peso.format(stats.totalRevenue) : stats[key];
+  const kpiValue = (key: (typeof KPI_CARDS)[number]["key"]) => {
+    if (!stats) return null;
+    return key === "totalRevenue" ? peso.format(stats.totalRevenue) : stats[key];
+  };
 
   return (
     <AdminLayout>
@@ -193,7 +198,13 @@ export default function DashboardPage() {
                         IBM Plex Mono with tabular figures, so a column of
                         numbers aligns and reads as instrument output. */}
                     <Text size="28px" fw={600} mt={4} className="mono-num">
-                      {kpiValue(card.key)}
+                      {/* D-38: an em-dash when the number is unknown, the real
+                          figure when it is known -- including a genuine 0,
+                          which is a true and useful statement. */}
+                      <StatValue
+                        value={kpiValue(card.key)}
+                        label={`${card.label} unavailable`}
+                      />
                     </Text>
                   </div>
                   <ThemeIcon size={40} radius="md" variant="light" color={card.color}>
@@ -237,11 +248,17 @@ export default function DashboardPage() {
                     pointerEvents: "none",
                   }}
                 >
+                  {/* D-38 again, third instance on this one page. The chart
+                      said "No rentals yet" whether there were none or whether
+                      the request failed -- the same false claim as the KPI
+                      zeros and the table's "No rentals found". */}
                   <Text c="dimmed" size="sm" fw={600}>
-                    No rentals yet
+                    {stats === null ? "Category volume unavailable" : "No rentals yet"}
                   </Text>
                   <Text c="dimmed" size="xs">
-                    Category volume appears here once rentals start coming in.
+                    {stats === null
+                      ? "The request failed, so this is not a count of zero."
+                      : "Category volume appears here once rentals start coming in."}
                   </Text>
                 </Center>
               )}
@@ -268,16 +285,30 @@ export default function DashboardPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {recentRentals.length === 0 ? (
+                    {/* D-38, the same defect in words rather than digits.
+                        "No rentals found." was shown when the fetch FAILED,
+                        which is not "there are none" -- it is "we could not
+                        ask". Three states now, not two. */}
+                    {tableStateMessage({
+                      loading,
+                      failed: recentRentals === null && !loading,
+                      count: recentRentals?.length ?? 0,
+                      noun: "rentals",
+                    }) ? (
                       <Table.Tr>
                         <Table.Td colSpan={4}>
                           <Text c="dimmed" ta="center" py="md">
-                            No rentals found.
+                            {tableStateMessage({
+                              loading,
+                              failed: recentRentals === null && !loading,
+                              count: recentRentals?.length ?? 0,
+                              noun: "rentals",
+                            })}
                           </Text>
                         </Table.Td>
                       </Table.Tr>
                     ) : (
-                      recentRentals.map((rental) => (
+                      (recentRentals ?? []).map((rental) => (
                         <Table.Tr key={rental.id}>
                           <Table.Td>{rental.item?.title || "Unknown Item"}</Table.Td>
                           <Table.Td>
