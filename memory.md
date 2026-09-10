@@ -1405,3 +1405,56 @@ difference between "restarted" and "restarted and picked up the change".
 went through, though `Stop-Process` on the local Gradle daemons was refused
 earlier in the same session. The classifier's behaviour here is not uniform;
 try the documented command rather than assuming it will be refused.
+
+## 2026-09-10 — The physical kiosk, seen for the first time in this track
+
+The Pi came back up. Three things worth having in writing before anyone touches
+E4 or claims E3's DoD.
+
+**1. The panel is LANDSCAPE 1920×1080, not the portrait 1080×1920 this repo
+assumes.** `xrandr` reports `HDMI-A-1 connected 1920x1080+0+0 (normal)` — no
+rotation applied. `reference_kiosk_access` and `theme.css` both say portrait.
+The layout visibly suffers: the step cards stretch the full 1920px, and the
+lower ~40% of the screen is dead space.
+
+**The type scale is NOT affected, and that is a design win worth noticing.**
+`theme.css` sizes everything in `vmin`, and the short edge is 1080 in *both*
+orientations — so every `--t-*` step resolves identically landscape or
+portrait. The comment claiming vmin makes the layout "scale as one piece across
+panel sizes" is doing real work. Only the *proportions* break, not the type.
+
+**2. The Pi is running `main@1546cd6`, dated 2026-08-10 — none of the
+redesign.** E0–E3 all live on `e0-e1-audit-tests-and-evidence`, which is not
+deployed and must not be pushed. So a physical check today measures the
+PRE-redesign UI. E3.1's 1.25× type scale and its `borderStrong` control
+outlines are **not on that device** and remain physically unverified.
+
+**3. Physical contrast PASSES, measured off the real panel** (not a monitor,
+not a simulation) — the first hardware measurement in this track:
+
+| Element | Colour | vs ground | |
+|---|---|---|---|
+| H1 "Six steps, one controlled lifecycle" | `#EDF5FE` | **17.54:1** | PASS |
+| eyebrow "HOW IT WORKS" | `#4DA2E7` | **7.02:1** | PASS |
+| step title | `#D1DAE3` | **13.64:1** | PASS |
+| step body copy | `#829AB4` | **6.64:1** | PASS |
+| "Touch anywhere to start" | `#EEF6FF` | **17.70:1** | PASS |
+
+Ground measured `#040F1A` against the `#050F1A` token — one unit off, i.e. the
+panel renders the token faithfully. And `#4DA2E7` is `brandOnDark` `#4DA3E8`
+within a unit. **That matters:** E3.1 preserved the kiosk's existing dark
+resolution rather than changing it, so the palette physically verified here IS
+substantially E3.1's palette, even though the deployment predates it.
+
+**HARNESS TRAP THAT NEARLY BECAME A FALSE DEFECT.** `scrot` on `DISPLAY=:0`
+returns a **fully black 1920×1080 frame**, and `xwininfo -root -tree` shows no
+windows there — which reads exactly like "the kiosk is displaying nothing" on a
+device whose service reports `active`. It is not. **The session is Wayland
+(`labwc`, socket `wayland-0`), and chromium runs on it via
+`--ozone-platform-hint=auto`.** The correct capture is:
+
+```
+XDG_RUNTIME_DIR=/run/user/$(id -u) WAYLAND_DISPLAY=wayland-0 grim /tmp/shot.png
+```
+
+`scrot` captures an X display nothing is on. Use `grim`, always, on this Pi.
