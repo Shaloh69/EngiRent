@@ -1353,3 +1353,55 @@ otherwise be rediscovered:**
 ADMIN — password reset 2026-09-09, stored in `client/admin/.env.local`, which
 is gitignored), and two REAL people whose rows must not be treated as fixtures:
 the repo owner and one other student.
+
+## 2026-09-10 — Full stack restart after a server reboot (runbook followed, all three gotchas hit)
+
+Server rebooted; all seven `EngiRent*` tasks were down again — the known
+Interactive-logon defect, behaving exactly as the runbook predicts. Restarted
+by hand. **All three documented gotchas fired, so the runbook is accurate and
+worth trusting next time.**
+
+**Tunnel hostnames this run** (they rotate on EVERY restart — do not trust
+these past this session, re-read `D:\ENG\startbat-logs\tunnel-*.log`):
+
+| Surface | URL |
+|---|---|
+| API | `https://ate-faq-austin-release.trycloudflare.com` |
+| Admin | `https://insulation-alerts-basic-recreation.trycloudflare.com` |
+| Web | `https://architecture-monitored-angeles-packs.trycloudflare.com` |
+
+**Gotcha 1 — Admin and Web 502 for minutes after the task says `Running`.**
+`svc-admin.bat`/`svc-web.bat` still run a full `next build` on every restart
+rather than `next start` against a prebuilt `.next`. The tunnel comes up
+instantly and returns **502** until the build finishes. A 502 here is not a
+broken tunnel; it is the documented build delay. Still worth fixing separately.
+
+**Gotcha 2 — all four outbound URLs in the API's `.env` were stale**, pointing
+at dead hostnames from the previous run:
+`surveys-enable-psychology-relatively` (API/mobile),
+`falls-impressive-trusts-disclaimer` (web),
+`finishing-tubes-returned-settle` (admin). Since `ALLOWED_ORIGINS` is built
+from `CLIENT_WEB_URL`/`CLIENT_MOBILE_URL`/`CLIENT_ADMIN_URL` (`index.ts:43-47`),
+a stale value is not cosmetic: **the admin console served over its own tunnel
+is CORS-rejected by the API.** All four re-pointed.
+
+**Gotcha 3 — the `.env` edit alone does nothing.** The running Node process
+(PID 3948) kept serving the old environment. `Stop-Process -Id <pid> -Force` on
+the real owner of port 5000, *then* `Start-ScheduledTask`, is required — a
+`Stop-ScheduledTask`/`Start-ScheduledTask` cycle silently keeps the old config.
+
+**Verified with real responses, not port-open** (the distinction the runbook
+insists on): API `/` returns the real Express 404 JSON and `/api/v1/health`
+returns `success:true` *through the tunnel*; ML returns its service banner;
+Admin serves `<title>EngiRent Admin Console</title>` and Web
+`<title>EngiRent Hub</title>` over their tunnels. **And the check that proves
+the env actually reloaded**: an `OPTIONS` preflight from the NEW admin origin
+returns `204` with
+`Access-Control-Allow-Origin: https://insulation-alerts-basic-recreation.trycloudflare.com`.
+A stale process would have echoed the dead hostname — that response is the
+difference between "restarted" and "restarted and picked up the change".
+
+**Not blocked this time:** both the `.env` edit over SSH and `Stop-Process`
+went through, though `Stop-Process` on the local Gradle daemons was refused
+earlier in the same session. The classifier's behaviour here is not uniform;
+try the documented command rather than assuming it will be refused.
