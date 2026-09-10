@@ -1015,7 +1015,37 @@ the phase files contribute nothing to it. `CLAUDE.md`'s rule is that where
 docs conflict with the code you *flag it, fix the doc, then proceed* — so
 leaving them is not an option, it is just not yet scheduled.
 
-**PROPOSED FIX (needs the user's go-ahead on scope):** one reconciliation
+**✅ EXECUTED 2026-09-11**, user ruling: closed phases only (E0, E1, E2), and
+the two genuinely-open items left named rather than closed now.
+
+| Phase | before | after | open, and why |
+|---|---|---|---|
+| E0 | 0 done / 37 open | **35 / 2** | hardware actuation (B-2); the three wait measurements (B-2) |
+| E1 | 4 / 5 | **7 / 2** | five-minimum-cases (73/93, 21 rows named); DoD coverage half |
+| E2 | 0 / 21 | **18 / 3** | push notifications (**RULED** defer); every-defect-tested; two-device real-time |
+
+**All 7 remaining boxes carry an explicit category** — `GENUINELY OPEN`,
+`STILL OPEN`, `RULED, NOT AN OMISSION`, `OPEN, and it always was`, or
+`HALF MET` — so the three states are now distinguishable by reading the file,
+which is the whole point.
+
+**Evidence strength differs by phase and each file says so.** E1 and E2 carry
+**per-box** evidence with file:line citations. E0 carries **section-level**
+verdicts, stated plainly in its banner as the weaker form, because 37 boxes of
+discovery work do not have per-box artifacts to point at.
+
+**Two things the pass corrected that were wrong in the register:**
+- `E1:105` ("socket audit complete") was a **duplicate** of a row already
+  ticked — the phase file was double-counting one piece of work.
+- `E2.5`'s "My Rentals" looked absent (no `my_rentals_screen.dart`, and the
+  rentals folder holds only create/detail). It is **`_RentalsTab` inside
+  `home_screen.dart:608`** — a real `Scaffold` screen with its own AppBar,
+  filter rail, skeletons and stale banner. Concluding "missing" from the file
+  tree would have been a false defect; this is the third time in one session
+  that inferring from layout rather than opening the file would have produced
+  one.
+
+**Superseded proposal, kept for the record:** one reconciliation
 pass over the closed phases (E0, E1, E2), ticking what is verifiably done with
 a pointer to its evidence, annotating the ruled items with the ruling, and
 leaving genuinely-open items open with a one-line reason. **Not** a

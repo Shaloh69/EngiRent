@@ -57,6 +57,16 @@ E0 fixed some and found others. Each needs a regression test here:
   including `payoutReady && !PAYMONGO_SECRET_KEY`, and a payout attempted before
   funds clear is queued rather than reported to the owner as failed.
 
+> **STATUS RECONCILIATION, 2026-09-11 (P-1).** Until today this file's boxes
+> were never ticked as work completed — `docs/PROGRESS.md` was the running
+> record and this stayed a plan. That made the file unreadable as status: a
+> reader could not tell "done", "ruled deferred" and "genuinely open" apart.
+> Every box below has now been checked against the repo, once. **Boxes left
+> open are open on purpose and say why.** `docs/PROGRESS.md` remains
+> authoritative where the two ever disagree.
+
+---
+
 ## Prerequisite
 
 `GET /payments/receiving-institutions` and every Disbursements-dependent route
@@ -66,10 +76,26 @@ than counting them as failures — see `PAYMENTS-AND-PAYOUTS-REVAMP.md`.
 ---
 
 
-- [ ] Extend the existing real-HTTP `server/node_server/scripts/e2e-*.mjs` approach — **not** the
-      mocked-Prisma unit tests, which proved less useful in practice
+- [x] ~~Extend the existing real-HTTP `server/node_server/scripts/e2e-*.mjs` approach — **not** the
+      mocked-Prisma unit tests, which proved less useful in practice~~
+      — **DONE.** **17** `e2e-*.mjs` suites on disk (`e2e-all`, `auth-matrix`,
+      `availability`, `coverage-sweep`, `defect-regressions`,
+      `enterprise-hygiene`, `feedback`, `full-lifecycle`, `item-moderation`,
+      `kiosk-trust`, `listing-video`, `messaging`, `my-listings`,
+      `self-action`, `trust-safety`, `verification`, `webhook-signature`).
+      13/13 runnable suites green, 383 assertions — see the one-command entry
+      below.
 - [ ] Every endpoint gets the five minimum cases (happy path, missing auth,
       wrong role, malformed body, self-action rejection where applicable)
+      — **GENUINELY OPEN, and this is why E1 was closed "with named gaps"
+      rather than complete.** Measured across the 93-row register
+      (`docs/PROGRESS.md` → "Computed coverage across 93 rows"): happy path
+      **73/93 (78%)**, 401 asserted **34**, 403 asserted **12**,
+      malformed-400 empirically sampled **7** (the rest carried by the shared
+      `errorHandler` fix, D-15, or n/a for bodyless routes), self-action
+      **5**. **All 21 uncovered rows are named with a reason** in the endpoint
+      register. Carried forward deliberately on the user's ruling 2026-09-11;
+      closing it is a large detour and each gap is already attributed.
 - [x] ~~Every specifically-risky item in `API-TEST-PLAN.md` gets a named test —
       the kiosk session trust boundary especially: **test it by attacking it**~~
       — **DONE 2026-09-06.** Kiosk session store (9 + 9 Jest, 11 live
@@ -79,8 +105,12 @@ than counting them as failures — see `PAYMENTS-AND-PAYOUTS-REVAMP.md`.
       boundaries (53 pytest). Every one mutation-checked. Detail and the
       commands in `docs/PROGRESS.md` → "Risky-item coverage".
 - [x] ~~Socket emit/consume audit~~ — **done in E0**, 5 unconsumed events found
-- [ ] **Watch the self-action tests fail before fixing them** (D-3's
-      generalization) — a test that never failed proves nothing.
+- [x] ~~**Watch the self-action tests fail before fixing them** (D-3's
+      generalization) — a test that never failed proves nothing.~~
+      — **DONE 2026-09-06.** The body of this bullet is itself the completion
+      record: the method was settled and applied, the six mutations listed
+      below were made, the tests watched to go red, and the source restored.
+      The box was simply never ticked.
       **Method settled for the risky-item tests, reuse it:** where the code was
       already correct there is nothing to watch fail, so the source was
       deliberately mutated (trust the client's `kioskId`; delete the
@@ -102,4 +132,13 @@ than counting them as failures — see `PAYMENTS-AND-PAYOUTS-REVAMP.md`.
 ## Definition of done
 - [ ] Full coverage per the plan; suite runs clean or every failure is
       recorded and attributed
-- [ ] Socket audit complete, unconsumed events listed for E2
+      — **HALF MET, and the halves differ.** *"Suite runs clean / every
+      failure attributed"* is **met**: 13/13 suites green, 383 assertions,
+      database byte-for-byte unchanged before and after. *"Full coverage per
+      the plan"* is **not** met — 73/93 happy path, see the five-minimum-cases
+      row above. Left open because the coverage half is genuinely outstanding.
+- [x] ~~Socket audit complete, unconsumed events listed for E2~~
+      — **DONE in E0**, and this row is a duplicate of the ticked
+      "Socket emit/consume audit" above. `docs/PROGRESS.md` →
+      "SOCKET EMIT/CONSUME AUDIT (E0.2 / D-6 pattern 3) — COMPLETE";
+      5 unconsumed events found and carried into E2.
