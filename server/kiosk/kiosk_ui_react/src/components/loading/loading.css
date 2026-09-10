@@ -1,0 +1,251 @@
+/* E3.2 loading primitives — kiosk.
+   Every colour, radius, motion duration and type step below is a token from
+   design-tokens.g.css (generated from design/tokens/tokens.json). No raw hex,
+   so a token change restyles these without touching component code —
+   ENGIRENT-CLAUDE.md §7. */
+
+.ld-determinate,
+.ld-staged,
+.ld-indeterminate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  max-width: 78vmin;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.ld-label {
+  font-family: var(--font-display);
+  font-size: var(--t-lg);
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.ld-sub {
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  color: var(--ink2);
+  margin: 0;
+}
+
+/* ── Determinate ───────────────────────────────────────────────────────── */
+
+.ld-bar {
+  width: 100%;
+  height: clamp(10px, 1.4vmin, 18px);
+  background: var(--surf2);
+  /* borderStrong, not the decorative hairline: this is a control boundary and
+     WCAG 1.4.11 wants 3:1 against the ground (E3.1's border/borderStrong
+     split). */
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  margin-top: var(--sp-2);
+}
+
+.ld-bar-fill {
+  height: 100%;
+  background: var(--brand);
+  /* The width is recomputed from wall-clock elapsed time every 100ms, so this
+     transition only smooths between ticks — it never drives the value. That
+     is deliberate: a CSS transition driving the value would keep gliding if
+     the source of truth stalled. */
+  transition: width var(--motion-fast) linear;
+}
+
+/* Reduced motion: the JS tick drops to 1Hz and this removes the tween, so the
+   bar steps once per second. It is NOT frozen — freezing a progress bar to
+   its end state would assert that a 15-second door had already finished. */
+.ld-bar-fill.ld-stepped {
+  transition: none;
+}
+
+.ld-seconds {
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  color: var(--ink);
+  margin: var(--sp-1) 0 0;
+  /* Tabular figures so the number does not jitter as it counts down. */
+  font-variant-numeric: tabular-nums;
+}
+
+.ld-reassurance {
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  color: var(--gold);
+  margin: var(--sp-2) 0 0;
+  max-width: 62vmin;
+}
+
+/* ── Staged ────────────────────────────────────────────────────────────── */
+
+.ld-stages {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+}
+
+.ld-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+}
+
+.ld-stage-dot {
+  flex: 0 0 auto;
+  width: clamp(12px, 1.6vmin, 20px);
+  height: clamp(12px, 1.6vmin, 20px);
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: transparent;
+}
+
+.ld-stage-pending .ld-stage-name {
+  color: var(--ink3);
+}
+
+.ld-stage-done .ld-stage-dot {
+  background: var(--emerald);
+  border-color: var(--emerald);
+}
+.ld-stage-done .ld-stage-name {
+  color: var(--ink2);
+}
+
+.ld-stage-active .ld-stage-dot {
+  background: var(--brand);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 6px var(--brand-glow);
+  animation: ld-pulse 1.4s ease-in-out infinite;
+}
+.ld-stage-active .ld-stage-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Left-aligned to match the stage list directly above it. Centred, it made a
+   third alignment in one column (centred heading, left list, centred note),
+   which read as accidental on the portrait panel. */
+.ld-staged-note {
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  color: var(--ink3);
+  margin: var(--sp-3) 0 0;
+  width: 100%;
+  text-align: left;
+}
+
+@keyframes ld-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px var(--brand-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 10px var(--brand-glow);
+  }
+}
+
+/* ── Indeterminate ─────────────────────────────────────────────────────── */
+
+.ld-track {
+  position: relative;
+  width: 100%;
+  height: clamp(10px, 1.4vmin, 18px);
+  background: var(--surf2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  margin-top: var(--sp-2);
+}
+
+.ld-sweep {
+  position: absolute;
+  inset-block: 0;
+  width: 38%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand) 45%,
+    var(--brand) 55%,
+    transparent
+  );
+  animation: ld-sweep 1.5s ease-in-out infinite;
+  /* Keeps the sweep on its own compositor layer — the Pi's GPU handles this
+     far better than repainting the track, the same reason D-52's idle scene
+     got will-change. */
+  will-change: transform;
+}
+
+@keyframes ld-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.ld-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.ld-attempt {
+  color: var(--ink2);
+}
+
+.ld-countdown {
+  color: var(--ink2);
+}
+
+/* Calm until genuinely low, then — and only then — the warning colour.
+   Not `--danger`: the session running low is a deadline, not a failure, and
+   PENDING-is-not-red is the same principle this project already applied to
+   the status chip. */
+.ld-countdown-low {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* Reduced motion: an indeterminate indicator has NO end state to freeze to,
+   and a motionless one is indistinguishable from a crashed screen — which is
+   the one thing it exists to prevent. So the sweep is replaced by a slow
+   opacity pulse rather than removed. */
+@media (prefers-reduced-motion: reduce) {
+  .ld-sweep {
+    animation: ld-fade 2.4s ease-in-out infinite;
+    transform: none;
+    width: 100%;
+    background: var(--brand);
+  }
+  .ld-stage-active .ld-stage-dot {
+    animation: none;
+  }
+}
+
+@keyframes ld-fade {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}

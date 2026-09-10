@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import type { KioskServerState, Mode, Screen } from "./types";
+import type { WorkingKind } from "./components/screens/WorkingScreen";
 
 const IDLE_MS = 30_000; // MAIN -> IDLE
 const RETURN_MS = 5 * 60_000; // flow screens -> MAIN
@@ -12,9 +13,26 @@ const OFFLINE_GRACE_MS = 4_000; // avoid flicker on a brief reconnect
  * a screen with realistic placeholder data instead of waiting on a live
  * connection that doesn't exist in this environment.
  */
-const DEMO_SCREEN = new URLSearchParams(window.location.search).get(
-  "demo",
-) as Screen | null;
+const DEMO_QS = new URLSearchParams(window.location.search);
+const DEMO_SCREEN = DEMO_QS.get("demo") as Screen | null;
+
+/**
+ * Demo seeds for the "working" screen (E3.2 / spec 1.1). Without these,
+ * `?demo=working` renders the indeterminate fallback only, and the
+ * determinate bar -- the whole point of 1.1 -- could not be looked at
+ * without a live Pi driving a real door.
+ *
+ *   ?demo=working&seconds=15        real 15s door (lockers 1/3/4)
+ *   ?demo=working&seconds=5         locker 2, the one that differs
+ *   ?demo=working                   duration unknown -> indeterminate
+ *   ?demo=working&kind=capturing    indeterminate by nature
+ *
+ * Same precedent as the faceProgress seed below: demo-only, read once, and
+ * it cannot reach a live kiosk because nothing appends a query string to
+ * the autostart URL.
+ */
+const DEMO_WORK_SECONDS = Number(DEMO_QS.get("seconds")) || undefined;
+const DEMO_WORK_KIND = (DEMO_QS.get("kind") as WorkingKind) || "door_open";
 
 export function useKioskState() {
   const [screen, setScreen] = useState<Screen>(DEMO_SCREEN ?? "idle");
@@ -38,8 +56,34 @@ export function useKioskState() {
   const [errorMsg, setErrorMsg] = useState(
     "Please try again or contact staff for assistance.",
   );
+  // E3.2 / spec 1.2. Was "This takes about 15 seconds." -- an invented
+  // number on the one wait the spec explicitly classifies as UNKNOWN
+  // duration, sitting directly above a stage list whose entire point is
+  // that we cannot say how long this takes. Nothing has measured it either:
+  // E0.3's three wait measurements are still outstanding (kiosk-blocked).
+  // The Pi's own `message` still overrides this when it sends one.
   const [verifyingSub, setVerifyingSub] = useState(
-    "This takes about 15 seconds.",
+    "Each check runs in turn. This can take a little while.",
+  );
+  // E3.2 / spec 1.1 -- the hardware waits. `workingDuration` is undefined
+  // until the Pi sends a real one, and undefined renders indeterminate.
+  const [workingKind, setWorkingKind] = useState<WorkingKind>(
+    DEMO_SCREEN === "working" ? DEMO_WORK_KIND : "door_open",
+  );
+  const [workingLabel, setWorkingLabel] = useState(
+    DEMO_SCREEN === "working"
+      ? DEMO_WORK_KIND === "capturing"
+        ? "Checking the bay"
+        : DEMO_WORK_KIND === "dropping"
+          ? "Locker 01 is placing your item"
+          : "Locker 01 is opening"
+      : "Working…",
+  );
+  const [workingSub, setWorkingSub] = useState(
+    DEMO_SCREEN === "working" ? "Main door" : "",
+  );
+  const [workingDuration, setWorkingDuration] = useState<number | undefined>(
+    DEMO_SCREEN === "working" ? DEMO_WORK_SECONDS : undefined,
   );
   const [sessionQrConnected, setSessionQrConnected] = useState(false);
   const [sessionQrUser, setSessionQrUser] = useState<string | null>(null);
@@ -60,7 +104,11 @@ export function useKioskState() {
   const resetInactivity = useCallback(() => {
     if (inactTimer.current) clearTimeout(inactTimer.current);
     const s = screenRef.current;
-    if (s === "idle" || s === "verifying") return;
+    // "working" joins "verifying" in the no-timeout carve-out. Both are
+    // waits the user was explicitly told to stand through -- a 34-46s
+    // actuator sequence would otherwise be interrupted by the attract
+    // screen while the hardware is still moving.
+    if (s === "idle" || s === "verifying" || s === "working") return;
     if (s === "main") {
       inactTimer.current = setTimeout(() => goTo("idle"), IDLE_MS);
     } else {
@@ -174,6 +222,34 @@ export function useKioskState() {
           : "Please collect your item and close the door",
       );
       setTimeout(() => goTo("success"), 600);
+    } else if (
+      s.status === "door_open" ||
+      s.status === "dropping" ||
+      s.status === "capturing"
+    ) {
+      // E3.2 / spec 1.1. These three statuses have been emitted by the Pi
+      // all along and consumed by nothing, so the longest waits in the
+      // product ran with the main menu on screen.
+      const lockerNum = s.active_locker
+        ? `Locker ${String(s.active_locker).padStart(2, "0")}`
+        : "The locker";
+      setWorkingKind(s.status as WorkingKind);
+      setWorkingLabel(
+        s.status === "door_open"
+          ? `${lockerNum} is opening`
+          : s.status === "dropping"
+            ? `${lockerNum} is placing your item`
+            : "Checking the bay",
+      );
+      setWorkingSub(s.message || "");
+      // Absent stays absent. Never substitute a config lookup here: an
+      // admin duration_override would desync the bar from the real door.
+      setWorkingDuration(
+        typeof s.duration_seconds === "number" && s.duration_seconds > 0
+          ? s.duration_seconds
+          : undefined,
+      );
+      if (cur !== "working") goTo("working");
     } else if (s.status === "verifying_item") {
       setVerifyingSub(s.message || "This takes about 15 seconds.");
       if (cur !== "verifying") goTo("verifying");
@@ -260,6 +336,10 @@ export function useKioskState() {
     countdown,
     errorMsg,
     verifyingSub,
+    workingKind,
+    workingLabel,
+    workingSub,
+    workingDuration,
     sessionQrConnected,
     sessionQrUser,
     actions,

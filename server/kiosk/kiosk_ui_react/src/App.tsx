@@ -10,6 +10,7 @@ import { CatalogueScreen } from "./components/screens/CatalogueScreen";
 import { LockersScreen } from "./components/screens/LockersScreen";
 import { FaceScreen } from "./components/screens/FaceScreen";
 import { VerifyingScreen } from "./components/screens/VerifyingScreen";
+import { WorkingScreen } from "./components/screens/WorkingScreen";
 import { SuccessScreen } from "./components/screens/SuccessScreen";
 import { ErrorScreen } from "./components/screens/ErrorScreen";
 import { OfflineScreen } from "./components/screens/OfflineScreen";
@@ -77,6 +78,14 @@ export default function App() {
         <FaceScreen instr={k.faceInstr} onCancel={k.actions.cancel} />
       )}
       {k.screen === "verifying" && <VerifyingScreen sub={k.verifyingSub} />}
+      {k.screen === "working" && (
+        <WorkingScreen
+          kind={k.workingKind}
+          label={k.workingLabel}
+          sub={k.workingSub}
+          durationSeconds={k.workingDuration}
+        />
+      )}
       {k.screen === "success" && (
         <SuccessScreen
           sub={k.successSub}

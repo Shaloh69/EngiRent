@@ -10,6 +10,11 @@ export type Screen =
   | "lockers"
   | "face"
   | "verifying"
+  // E3.2 / spec 1.1. The hardware waits -- door_open, dropping, capturing.
+  // The Pi has emitted these statuses all along and the UI branched on none
+  // of them, so a 15s door (lockers 1/3/4) or a 34-46s actuator sequence
+  // happened with the main menu on screen.
+  | "working"
   | "success"
   | "error";
 
@@ -55,6 +60,22 @@ export type LockerOccupancy =
 export interface KioskServerState {
   status?: string;
   message?: string;
+  /**
+   * E3.2 / spec 1.1. The REAL duration of the operation now running, in
+   * seconds, as decided by the handler that is actually driving the
+   * hardware -- not looked up from a config table here.
+   *
+   * That distinction is load-bearing: the admin console can send a
+   * `duration_override` (adminController.ts:1178), so a UI-side lookup of
+   * `main_door_open_seconds` would silently disagree with the door in front
+   * of the person watching the bar.
+   *
+   * ABSENT means unknown, and unknown must render as INDETERMINATE -- never
+   * as a guessed duration. A canned animation over a hardware wait is the
+   * one thing ANIMATION-AND-LOADING-SPEC.md 1.1 bans outright. Same rule as
+   * D-53: absent is not a licence to invent a value.
+   */
+  duration_seconds?: number;
   /** DOOR state only — "unlocked" means physically open right now. */
   lockers?: Record<string, LockerDoors>;
   /**

@@ -1136,6 +1136,7 @@ h3 {
 .screen-confirm,
 .screen-face,
 .screen-verifying,
+.screen-working,
 .screen-success,
 .screen-error,
 .screen-offline {
@@ -1417,14 +1418,30 @@ h3 {
 
 /* verifying */
 
-.verifying-spinner {
-  width: clamp(90px, 12vmin, 150px);
-  height: clamp(90px, 12vmin, 150px);
-  border-radius: 999px;
-  border: 4px solid var(--border);
-  border-top-color: var(--teal);
-  animation: spin 0.9s linear infinite;
-  margin: 0 auto;
+/* E3.2: `.verifying-spinner` was deleted here, not left behind. It was the
+   generic rotating spinner ANIMATION-AND-LOADING-SPEC.md 1.2 rejects for this
+   wait ("a single generic spinner across all three would be the wrong answer
+   three times"), StagedProgress replaced it, and nothing referenced the class
+   any more -- verified before deleting. Dead CSS that still LOOKS like a
+   working component is how a surface ends up with two implementations of one
+   thing, which ENGIRENT-CLAUDE.md 7 says to grep for at the end of a phase. */
+
+.verifying-wrap,
+.working-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  text-align: center;
+}
+
+.working-instr {
+  font-size: var(--t-md);
+  color: var(--ink2);
+  line-height: 1.5;
+  max-width: 66vmin;
 }
 
 .verifying-warning {
