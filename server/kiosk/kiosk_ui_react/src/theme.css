@@ -82,6 +82,27 @@ body {
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+
+  /* ── Kiosk touch behaviour ────────────────────────────────────────────
+     touch-action + user-select were already here; these are the rest of
+     what an unattended touch panel needs, and their absence is felt as
+     "unresponsive" rather than seen as a bug.
+
+     tap-highlight: without this every tap paints a translucent rectangle
+     over the target for ~100ms. On a wall panel that flash reads as the UI
+     stuttering, not as feedback — and E3.2 gave these buttons a real
+     :active state (D-49), so the browser's default is now redundant AND
+     competing with it.
+
+     overscroll-behavior: stops the rubber-band/glow when a scroll hits its
+     end, which on a fixed kiosk looks like the screen coming loose.
+
+     -webkit-touch-callout: suppresses the long-press "save image / copy
+     link" callout. A student holding a finger on the panel should never be
+     offered a context menu they cannot dismiss. */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
 }
 
 .screen {
@@ -237,4 +258,12 @@ body {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* No mouse is attached to this panel, so a cursor parked mid-screen is just a
+   dot a student cannot explain. Restored to `auto` under a coarse-pointer
+   media query being false, so a maintenance session with a real mouse plugged
+   in still gets a visible pointer. */
+@media (pointer: coarse), (hover: none) {
+  * { cursor: none !important; }
 }

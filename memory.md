@@ -1411,9 +1411,21 @@ try the documented command rather than assuming it will be refused.
 The Pi came back up. Three things worth having in writing before anyone touches
 E4 or claims E3's DoD.
 
-**1. The panel is LANDSCAPE 1920×1080, not the portrait 1080×1920 this repo
-assumes.** `xrandr` reports `HDMI-A-1 connected 1920x1080+0+0 (normal)` — no
-rotation applied. `reference_kiosk_access` and `theme.css` both say portrait.
+**1. CORRECTED LATER THE SAME DAY — the panel IS configured portrait; the
+rotation was simply not being applied.** The original claim below ("the panel
+is landscape, not the portrait this repo assumes") was wrong about the *cause*
+and right only about the observed state. `~/.config/kanshi/config` contains
+`transform 90` for both HDMI outputs, and kanshi was RUNNING (PID 1485) — but
+`wlr-randr` reported `Transform: normal`. A running kanshi that has not applied
+its own profile looks identical to no config at all. **And I read `xrandr` on
+`DISPLAY=:0`, which is XWayland and not the compositor** — the same mistake
+that made `scrot` return a black frame (see below). Fixed by applying
+`wlr-randr --output HDMI-A-1 --transform 90`, verified `Transform: 90` and a
+`grim` capture at **1080×1920**.
+
+*Original, left for the record:* `xrandr` reports `HDMI-A-1 connected
+1920x1080+0+0 (normal)` — no rotation applied. `reference_kiosk_access` and
+`theme.css` both say portrait.
 The layout visibly suffers: the step cards stretch the full 1920px, and the
 lower ~40% of the screen is dead space.
 
@@ -1458,3 +1470,65 @@ XDG_RUNTIME_DIR=/run/user/$(id -u) WAYLAND_DISPLAY=wayland-0 grim /tmp/shot.png
 ```
 
 `scrot` captures an X display nothing is on. Use `grim`, always, on this Pi.
+
+## 2026-09-10 (later) — Kiosk: portrait made to stick, idle flicker fixed, touch tightened
+
+**Rotation now persists.** kanshi has the right profile and does not reliably
+apply it, so there is a **separate** autostart entry,
+`~/.config/autostart/engirent-rotate.desktop`, that waits for an HDMI output to
+appear (up to 60s) and applies `transform 90` itself. It is deliberately NOT
+folded into the browser supervisor: if rotation fails, the kiosk browser must
+still start. Its Exec body was syntax-checked and dry-run on the device before
+being written.
+
+**D-52 — the idle page flickered every 7 seconds, and it was in our code.**
+`IdleScreen.tsx` used `<AnimatePresence mode="wait">`. `mode="wait"` holds the
+incoming scene until the outgoing one has fully left, so for ~0.55s of every 7s
+cycle the stage rendered **nothing** — a full-panel blank that reads as a
+flicker on a 1080×1920 wall display. Fixed by dropping to default (sync) mode
+for a real crossfade, which required making `.idle-scene` `position: absolute;
+inset: 0` so the two scenes share a box instead of stacking and shoving the
+layout. Added `will-change: opacity, transform` so the Pi's GPU keeps the scene
+on its own layer.
+**Measured, not eyeballed:** sampling `.idle-scene` count every 40ms across a
+full 7s cycle — **blank frames 0** (was one per cycle), **7 frames with two
+scenes crossfading**, occupancy never below 1.
+
+**Touch tightened (theme.css).** `touch-action: manipulation` and
+`user-select: none` were already there. Added:
+`-webkit-tap-highlight-color: transparent` (every tap was painting a
+translucent rectangle for ~100ms, which reads as stutter and now competes with
+the real `:active` state added in D-49), `overscroll-behavior: none` (kills the
+rubber-band that makes a fixed panel look loose), `-webkit-touch-callout: none`
+(no long-press "save image" menu a student cannot dismiss), and `cursor: none`
+under `(pointer: coarse)` so no mouse arrow sits on a touch-only panel while a
+maintenance mouse still gets one.
+
+**HOW TO DEPLOY THE KIOSK UI — no GPIO risk, and this is the whole procedure.**
+`main.py` (the GPIO controller, PID serving :8080) also serves the built UI out
+of `server/kiosk/kiosk_ui_react/dist`. So deploying is a **file copy into
+`dist/` and nothing else** — the systemd unit, `main.py` and the GPIO layer are
+never touched:
+```
+npm run build                                   # locally
+tar -czf /tmp/d.tgz -C dist .                   # POSIX path, not C:/...
+scp /tmp/d.tgz engirent@engirent-kiosk:/tmp/
+ssh … 'cd ~/Desktop/EngiRent/server/kiosk/kiosk_ui_react &&
+        cp -r dist dist.bak-<date> && rm -rf dist && mkdir dist &&
+        tar -xzf /tmp/d.tgz -C dist'
+ssh … 'pkill -f "chromium.*--app=http://localhost:8080"'   # supervisor relaunches
+```
+The browser supervisor relaunches Chromium within ~25s and its `pgrep` guard
+keeps it to exactly one instance (verified: 1 after relaunch).
+
+**BLOCKED, still outstanding:** the browser autostart still passes
+`--window-size=1920,1080`, which is landscape on a now-portrait panel and
+causes a wrong-sized window before fullscreen takes over. Editing
+`~/.config/autostart/engirent-browser.desktop` over SSH is refused by the
+auto-mode classifier (in-place remote edit). Needs a user-side allow rule or a
+manual edit: change to `--window-size=1080,1920` and optionally add
+`--hide-scrollbars`.
+
+**Latent, not fixed:** there are **2 browser supervisor loops** running, not 1.
+Harmless while the `pgrep` guard matches, but if that guard ever fails both
+loops would launch a Chromium. Worth collapsing to one.

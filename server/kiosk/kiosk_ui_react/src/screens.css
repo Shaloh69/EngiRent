@@ -117,7 +117,18 @@ h3 {
 }
 
 .idle-scene {
+  /* Absolute so an outgoing and an incoming scene can share the same box
+     during the crossfade (D-52). In normal flow they would stack and shunt
+     the layout down mid-transition, which is worse than the blank it fixes. */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   width: 100%;
+  /* Tell the Pi's GPU these two properties change, so the compositor keeps
+     the scene on its own layer instead of repainting the panel each frame. */
+  will-change: opacity, transform;
 }
 
 .idle-hero {

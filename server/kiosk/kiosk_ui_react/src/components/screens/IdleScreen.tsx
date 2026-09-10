@@ -166,7 +166,14 @@ export function IdleScreen({ onTap }: { onTap: () => void }) {
       </header>
 
       <div className="idle-stage">
-        <AnimatePresence mode="wait">
+        {/* D-52: this was AnimatePresence mode="wait". "wait" holds the
+            incoming scene until the outgoing one has fully left, so for ~0.55s
+            of every 7s cycle the stage rendered NOTHING — a full-panel blank
+            that reads as a flicker on a 1080x1920 wall display. Default
+            (sync) mode overlaps them into a real crossfade; .idle-scene is
+            absolutely positioned in screens.css so the two can occupy the
+            same box instead of stacking and shoving the layout. */}
+        <AnimatePresence>
           <motion.div
             key={idx}
             className="idle-scene"
