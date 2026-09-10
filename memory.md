@@ -1281,3 +1281,53 @@ User approved a rebuild after the manual-test audit flagged the published APK (P
 3. **The DB-backed `AppRelease` table + `LATEST_APP_VERSION` env var** — a completely separate source of truth from #2, read by `GET /app-config` for the *app's own* in-app Update Required gate (existing installs on old builds, not the website). Was about to be missed: `LATEST_APP_VERSION` had no override in `.env`, silently defaulting to `"1.7.0"` in `env.ts` — meaning updating the website alone would have left every already-installed 1.7.0 app never told to update, no matter how new the download page looked. Added an `AppRelease` row for `1.8.0` (same highlights as the changelog, per the mandate's "real, queryable rows, never hand-written into the gate" rule) via a throwaway `.cjs` script, same pattern and same server-side cleanup as the user-clearing operation above — appended `LATEST_APP_VERSION=1.8.0` to `.env`, restarted Node.
 
 **Verified end to end after every deploy step, not just "it responded":** `/download` 200, direct APK URL 200 with `Content-Length: 89785805` matching exactly, `/changelog` contains `1.8.0` and the real feature title, and `GET /api/v1/app-config` returns `"latestVersion":"1.8.0"` with the real highlights array — confirms the in-app gate is now correctly wired, not just the marketing page.
+
+## 2026-09-10 — The face-verification test account is now "Chester Testinggton"
+
+**Read this before creating another test account or hunting for one.**
+
+`e2e-sweep-probe@students.uclm.edu.ph` is **the** face-verification test
+account. Its display name is now **Chester Testinggton** (was "Swept Probe"),
+set on the live DB on the user's instruction so screenshots and admin lists
+read as an obvious test persona rather than something that could be mistaken
+for a real student.
+
+| Field | Value |
+|---|---|
+| Email | `e2e-sweep-probe@students.uclm.edu.ph` |
+| Name | Chester Testinggton |
+| Id | `1f09f53e-ba0e-47dc-9c84-a927917ae4ba` |
+| Role / status | STUDENT, `APPROVED`, `profileComplete: true` |
+
+**THE EMAIL MUST NOT CHANGE.** Five e2e suites key off that exact string —
+`e2e-coverage-sweep`, `e2e-auth-matrix`, `e2e-kiosk-trust`, `e2e-self-action`
+and `e2e-defect-regressions`. Renaming it silently breaks all five. Only the
+display name was changed, deliberately, for that reason.
+
+**Its face photo, and the rule that governs it.** The ML service genuinely runs
+face detection, so this account needs a real face image to exercise the
+verification path at all — that is the whole reason D-39 exists (the profile
+completed with a blurry wall shot, `docs/hardware-verification/2026-09-03/face.jpg`,
+because ML answered HTTP 200 with `success:false` and nothing checked).
+
+**The image is supplied by the user and lives OUTSIDE git.** This repository is
+public, so committing an identifiable person's face publishes their likeness
+and their biometric data. That is not a new rule invented here — see the
+2026-09-04 entry above: *"Don't screenshot real biometric or ID images into the
+repo."* Same rule, same reason.
+
+**How to apply the face photo** (upload path, never a commit):
+1. Get the file path from the user — a pasted image is not on disk.
+2. Upload it through the API for that account, or write it to the server's
+   media storage directly. It ends up in the server's storage and the DB row,
+   not in this checkout.
+3. If a copy must exist locally, put it somewhere gitignored and verify with
+   `git check-ignore -v <path>` before going near `git add`.
+4. Never add it to `design/before/`, `docs/hardware-verification/`, or any
+   evidence folder that gets committed.
+
+**Other accounts on the live DB as of 2026-09-10**: `e0test.renter@engirent.edu.ph`
+("Test Renter", a second STUDENT fixture), `admin@engirent.edu.ph` (the only
+ADMIN — password reset 2026-09-09, stored in `client/admin/.env.local`, which
+is gitignored), and two REAL people whose rows must not be treated as fixtures:
+the repo owner and one other student.
