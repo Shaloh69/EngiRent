@@ -31,12 +31,21 @@ const SOCKET_URL = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1"
 ).replace(/\/api\/v1\/?$/, "");
 
-/** Events the server sends to the admin room. */
+/**
+ * Events the server sends to the admin room.
+ *
+ * D-37 (ruled option (b), executed 2026-09-10): the four `admin:kiosk_*`
+ * events are GONE from this list and from the server. The console had two
+ * independent live channels carrying the same kiosk telemetry -- this socket
+ * and the raw SSE stream at /admin/kiosks/events -- and neither knew about the
+ * other. SSE won because health/page.tsx and kiosk/page.tsx already read it and
+ * nothing read the socket copies: they were declared here and consumed by no
+ * component, which is why the duplication was invisible.
+ *
+ * The socket's real job is the QUEUE events below. Do not add kiosk telemetry
+ * back here; it belongs on the SSE stream.
+ */
 export const ADMIN_EVENTS = [
-  "admin:kiosk_online",
-  "admin:kiosk_ack",
-  "admin:kiosk_status",
-  "admin:kiosk_error",
   "admin:verification_submitted",
   "admin:feedback_new",
   "admin:dispute_opened",

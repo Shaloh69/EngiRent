@@ -64,17 +64,24 @@ describe("notifyAdmins — telemetry goes to the room, never to everyone", () =>
 
   it("emits to the admin room", () => {
     const { io, to, emit } = makeIo();
-    notifyAdmins(io, "admin:kiosk_status", { kiosk_id: "k1" });
+    notifyAdmins(io, "admin:verification_submitted", { user_id: "u1" });
 
     expect(to).toHaveBeenCalledWith(ADMIN_ROOM);
-    expect(emit).toHaveBeenCalledWith("admin:kiosk_status", { kiosk_id: "k1" });
+    expect(emit).toHaveBeenCalledWith("admin:verification_submitted", {
+      user_id: "u1",
+    });
   });
 
-  // The whole point of D-14. A regression here silently starts pushing kiosk
-  // error payloads to every student's phone again, and nothing would fail.
+  // The whole point of D-14. A regression here silently starts pushing
+  // admin-only payloads to every student's phone again, and nothing would
+  // fail. Repointed from admin:kiosk_error to a QUEUE event by D-37 (b),
+  // which removed kiosk telemetry from this socket entirely -- the guarantee
+  // under test is notifyAdmins' room targeting, not any one event name, and
+  // the stakes did not drop with the rename: a verification payload reaching
+  // every phone leaks who is being reviewed.
   it("never calls the broadcast io.emit", () => {
     const { io, emit } = makeIo();
-    notifyAdmins(io, "admin:kiosk_error", { detail: "locker 2 jammed" });
+    notifyAdmins(io, "admin:verification_submitted", { user_id: "u1" });
 
     expect(io.emit).not.toHaveBeenCalled();
     expect(emit).toHaveBeenCalled();
@@ -82,10 +89,10 @@ describe("notifyAdmins — telemetry goes to the room, never to everyone", () =>
 
   it("is a no-op when no socket server is attached", () => {
     expect(() =>
-      notifyAdmins(undefined, "admin:kiosk_online", { kiosk_id: "k1" }),
+      notifyAdmins(undefined, "admin:feedback_new", { id: "f1" }),
     ).not.toThrow();
     expect(() =>
-      notifyAdmins(null, "admin:kiosk_online", { kiosk_id: "k1" }),
+      notifyAdmins(null, "admin:feedback_new", { id: "f1" }),
     ).not.toThrow();
   });
 });

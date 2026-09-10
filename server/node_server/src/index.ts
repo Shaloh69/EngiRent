@@ -326,8 +326,10 @@ io.on("connection", (socket: Socket) => {
         logger.error(`Failed to push config to kiosk ${kiosk_id}:`, err);
       }
 
-      // Broadcast online status to admin
-      notifyAdmins(io, "admin:kiosk_online", { kiosk_id, socket_id: socket.id });
+      // D-37 (b): the admin socket no longer carries kiosk telemetry. The
+      // kioskEventBus emit below feeds the SSE stream at
+      // /admin/kiosks/events, which is what health/ and kiosk/ actually
+      // read. Two transports for one stream was the duplication.
       kioskEventBus.emit("kiosk_online", {
         kiosk_id,
         socket_id: socket.id,
@@ -369,7 +371,6 @@ io.on("connection", (socket: Socket) => {
             `└─────────────────────────────────────────────`,
         );
       }
-      notifyAdmins(io, "admin:kiosk_ack", data);
       kioskEventBus.emit("kiosk_ack", { ...data, ts: Date.now() });
     },
   );
@@ -398,7 +399,6 @@ io.on("connection", (socket: Socket) => {
         `│  Lockers : ${lockerSummary}\n` +
         `└─────────────────────────────────────────────`,
     );
-    notifyAdmins(io, "admin:kiosk_status", data);
     kioskEventBus.emit("kiosk_status", { ...d, ts: Date.now() });
   });
 
@@ -1192,7 +1192,6 @@ io.on("connection", (socket: Socket) => {
         `│  Error  : ${d?.message ?? JSON.stringify(data)}\n` +
         `└─────────────────────────────────────────────`,
     );
-    notifyAdmins(io, "admin:kiosk_error", data);
     kioskEventBus.emit("kiosk_error", { ...d, ts: Date.now() });
   });
 
