@@ -56,15 +56,25 @@ export function openKioskSession(
   rentalId: string,
   kioskId: string,
   userId: string,
-): void {
+): KioskSession {
   const now = Date.now();
-  sessions.set(rentalId, {
+  const session: KioskSession = {
     kioskId,
     userId,
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
     attempts: 0,
-  });
+  };
+  sessions.set(rentalId, session);
+  // Returns the session so the caller can tell the phone when this deadline
+  // actually falls (E3.2 / ANIMATION-AND-LOADING-SPEC.md 2.3). It already
+  // computed expiresAt and threw it away, which left the phone with no
+  // truthful way to show the countdown the spec asks for.
+  //
+  // NOT a change to the trust boundary: this module still decides, expiry is
+  // still enforced here on every read, and nothing the phone sends is
+  // believed. Telling someone their own deadline is a fact, not authority.
+  return session;
 }
 
 /** Returns the session only if it exists and hasn't expired — an expired

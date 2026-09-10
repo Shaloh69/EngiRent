@@ -143,3 +143,42 @@ describe("kioskSessionStore — failed-attempt cap", () => {
     });
   });
 });
+
+describe("kioskSessionStore — the deadline it hands back (E3.2 / spec 2.3)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("returns the session it created, carrying the 120s deadline as an ABSOLUTE timestamp", () => {
+    // The phone needs a deadline it can count down to. It used to get
+    // nothing: openKioskSession computed expiresAt and returned void, so the
+    // only way to show the spec's countdown was a phone-side `120` constant
+    // whose clock starts when the event ARRIVES -- consistently overstating
+    // the time left, on the one constraint most likely to expire mid-attempt.
+    const now = Date.now();
+    const session = openKioskSession(RENTAL, KIOSK, USER);
+
+    expect(session.expiresAt).toBe(now + 120_000);
+    expect(session.kioskId).toBe(KIOSK);
+    expect(session.userId).toBe(USER);
+    expect(session.attempts).toBe(0);
+  });
+
+  it("hands back the same record the store will later enforce against", () => {
+    // Absolute, not relative: if these two ever disagreed, the phone would be
+    // counting down to a different instant than the one the server expires on.
+    const session = openKioskSession(RENTAL, KIOSK, USER);
+    expect(getKioskSession(RENTAL)?.expiresAt).toBe(session.expiresAt);
+  });
+
+  it("the returned deadline is the one that actually expires the session", () => {
+    const session = openKioskSession(RENTAL, KIOSK, USER);
+    jest.setSystemTime(session.expiresAt - 1);
+    expect(getKioskSession(RENTAL)).toBeDefined();
+    jest.setSystemTime(session.expiresAt);
+    expect(getKioskSession(RENTAL)).toBeUndefined();
+  });
+});

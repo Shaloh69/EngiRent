@@ -1175,11 +1175,23 @@ io.on("connection", (socket: Socket) => {
         // Everything downstream of here — verify-face, the door command —
         // trusts this record and nothing the phone sends. See
         // kioskSessionStore.ts.
-        openKioskSession(rental_id, data.kiosk_id, subject.userId);
+        const session = openKioskSession(
+          rental_id,
+          data.kiosk_id,
+          subject.userId,
+        );
 
         io.to(`user:${subject.userId}`).emit("kiosk:face_required", {
           rentalId: rental_id,
           kioskId: data.kiosk_id,
+          // E3.2 / spec 2.3 -- the 120s session countdown. Sent as an ABSOLUTE
+          // epoch-ms deadline, not a duration, and that distinction is the
+          // whole point: a phone counting down from its own `120` would start
+          // its clock when the event ARRIVES, so network and render latency
+          // make it consistently show more time than is left. It would tell a
+          // student "40s remaining" on a session the server has already
+          // expired. An absolute deadline cannot drift that way.
+          expiresAt: session.expiresAt,
           action:
             rental.status === "AWAITING_DEPOSIT"
               ? "deposit"
