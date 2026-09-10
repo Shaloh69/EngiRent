@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 (design foundation) · E3.1 COMPLETE — tokens generate into all 4 surfaces, WCAG 1.4.11 clear on all 4, interaction states on all 4, admin verified in situ · B-4 RESOLVED (sentry 9.29.0, no bypass) · G1 debt 0 · gates now G1-G8 · S-5 CLOSED: kiosk sudo pw ROTATED (Pi back up) · B-2 partially lifted · D-45..D-49 fixed · defects 13/53 · screens 0/69 PASS · E3.2: toast+indicator+D-37+D-38 DONE, status chip verified x2 surfaces; NEXT: loading primitives, then E3.3 · D-39 FIXED+DEPLOYED+VERIFIED LIVE · D-53 RULED: kiosk to receive LockerStatus (in progress)]
+[PHASE E3 · E3.1 COMPLETE · E3.2 ~80%: toast+connection indicator on tokens, D-37 executed, D-38 swept across all 12 admin pages, status chip verified (×2 surfaces, 26/26 agree, drift guard proven) · REMAINING IN E3.2: 3 loading primitives + D-53’s Node emitter · G1 debt 0 · gates G1-G8 · S-5 CLOSED · D-39 DEPLOYED+VERIFIED LIVE · D-45..D-52 fixed · D-53 half-done (relay+UI shipped, Node emitter NOT written, NOT deployed to Pi) · defects 13/53 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,47 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-10 (SESSION END, 18 commits) — G5 six-symptom check, run at the
+user's request before a `/clear`. TWO SYMPTOMS, both self-caught, both the
+same shape.**
+
+1. *Re-deriving established facts?* No. Every phase/defect claim in this
+   session was re-derived from the repo or the running system and cited.
+2. *Accepting a proxy for proof?* **The dominant pattern of the session, and
+   it fired repeatedly — but it was caught before reporting every time after
+   G8 was added.** Instances: `ROTATE_EXIT=1` (a `grep`'s status, not
+   `chpasswd`'s) during the S-5 rotation; `String(faceEncoding).length === 15`
+   (that is `[object Object]`, not a short secret); `register-face` returning
+   `success:true` while the DB row was still NULL (a two-step flow, not a
+   persistence bug); a 48.85 pixel delta that was a form submission, not a
+   ripple. **G8 — name the distinguishing signal in writing before looking —
+   is now a hard gate and is the single most load-bearing change to process
+   this session.**
+3. *Trusting my own harness over the artifact?* **YES, four times, and this is
+   the symptom to watch next session.** `scrot` returned a black frame on a
+   Wayland Pi and I nearly filed "the kiosk displays nothing"; `xrandr` on
+   XWayland told me the panel was landscape when kanshi had it configured
+   portrait; a regex for `statusRole` reported Flutter as missing all 26
+   states when Dart names it `kStatusRole`; an import guard testing
+   `'UnknownValue' not in source` was fooled by a *comment* mentioning the
+   module. **Each time the tool was wrong and the code was fine.**
+4. *Scope drift?* No. Two items were explicitly NOT built after checking the
+   repo — a status chip for the kiosk/website (they render a different
+   vocabulary and none respectively) and a locker-model change beyond the UI
+   (GPIO boundary). Both recorded rather than quietly skipped or quietly done.
+5. *Gate skipping?* One G4 lapse early (a response without the status line),
+   self-caught. G6 run before every commit; no secret ever staged.
+6. *Docs drifting from the repo?* **Caught and corrected three times, all mine:**
+   a landscape claim that was wrong about cause, an E3.2 row asserting ×4
+   surfaces, and a stale "NOT yet done in E3.1" list naming four completed
+   items. The repo won each time, which is the rule working.
+
+**Assessment for the next session.** No confusion about state, phase or what is
+true — the weakness is *evidentiary*, not memory. Symptom 3 is the live one:
+**when a tool disagrees with the artifact, check the tool first.** On this repo
+specifically: use `grim` not `scrot` on the Pi, `wlr-randr` not `xrandr`, and
+never conclude from a regex that a file lacks something.
 
 **2026-09-09 (E3.1 CLOSE, all sections done) — G5 six-symptom check at the
 E3.1→E3.2 boundary. ONE SYMPTOM, self-caught by the new G8.**

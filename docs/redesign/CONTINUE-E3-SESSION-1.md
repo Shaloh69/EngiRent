@@ -1,5 +1,7 @@
 # CONTINUE-E3-SESSION-1.md — paste into a fresh Claude Code session
 
+> ## ⚠ FULLY SUPERSEDED — use **CONTINUE-E3-SESSION-2.md** instead (2026-09-10)
+>
 > ## ⚠ SUPERSEDED IN PLACE — 2026-09-08, later the same day
 >
 > **This doc describes the E2→E3 boundary. E3.1 has since been done.** Read
