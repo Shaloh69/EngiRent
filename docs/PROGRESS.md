@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2 ~90% · REMAINING IN E3.2: 3 loading primitives · G1 debt 1 (D-53 kiosk half, BLOCKED: Pi offline) · gates G1-G8 · S-5 CLOSED · D-39 DEPLOYED+VERIFIED LIVE · D-53 NODE HALF DEPLOYED + PROVEN via kiosk-authed socket client; KIOSK HALF NOT DEPLOYED, PANEL NOT SEEN · D-54 RULED+EXECUTED (obsolete kiosk hardware config deleted from seed) · defects 14/54 · screens 0/69 PASS]
+[PHASE E3 · E3.1 COMPLETE · E3.2: 3 loading primitives BUILT + VERIFIED ON SCREEN (kiosk, 1080×1920, 6 cases) · REMAINING IN E3.2: phone-side primitives (120s countdown) + socket_client duration_seconds (Pi-blocked) · G1 debt 1 (D-53 kiosk half, BLOCKED: Pi offline) · gates G1-G8 · D-53 NODE HALF DEPLOYED+PROVEN, PANEL NOT SEEN · D-54 RULED+EXECUTED · D-55/D-56 NEW · defects 14/56 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -166,6 +166,29 @@ each:**
   session's entry, and the continuation prompt is written and committed.
 
 ### Session entries
+
+**2026-09-11 (E3.2 loading primitives built + verified) — G5 six-symptom
+check at the E3.2 primitives boundary. ONE SYMPTOM, and it fired THREE times.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it paid three times.** The routing key came from the live DB rather than `seed.ts` (the seed was wrong); the status survey was derived from *both* sides of the socket rather than either alone; and `_build_status` vs `/api/state` was checked rather than assumed. |
+| 2 vaguer summaries | Absent |
+| 3 **trusting a tool / an inference over the artifact** | **PRESENT ×3.** (a) `grep -n "countdown"` returned only two hits, which reads exactly like `setCountdown` is never called — **grep is case-sensitive**; it is called at 216/219 and the countdown is fine. Caught before filing. (b) I wrote into this file that `FaceScreen` renders "a fake determinate bar", inferred from `setFaceProgress` existing in the hook. **It renders no bar at all** — nothing consumes `faceProgress`; the component's own docstring says so. That one **reached the register and had to be corrected**. (c) I wrote that the UI "already receives the config": `_build_status()` carries it to **Node**, while the browser gets `/api/state` → `get_ui_state()`, which does not. Caught before building on it. |
+| 4 drifting to agreement | **Absent, twice deliberately.** Refused the obvious `main_door_open_seconds` lookup (an admin `duration_override` would desync it from the real door), and refused to make the `socket_client.py` change while it cannot be verified — shipping an honest indeterminate instead of an unverifiable determinate. |
+| 5 batching | Absent — survey committed before any edit; build committed only after the on-screen pass. |
+| 6 skipping verification | **Absent, and it is what saved this chunk.** Both real defects were invisible to the DOM probe: the label rendered **twice** (each instance correct alone, so every assertion passed) and the staged screen asserted *"about 15 seconds"* over a stage list whose point is that the duration is unknown. Only opening the 1080×1920 capture found either. |
+
+**The lesson from symptom 3(b), which is the one worth keeping.** All three
+instances are the same move: concluding what the screen shows from what the
+*state layer* contains. That is D-43's shape ("emitted but consumed by
+nothing") pointed the other way, and G8 already names the cure — a signal is
+only verified by a **consumer rendering it**. The corrective is concrete:
+**before writing a survey row about what a screen shows, open the screen's
+component.** The hook is not evidence.
+
+**G4 held** after the lapse recorded in the previous entry: every response
+since has opened with the status line.
 
 **2026-09-11 (D-53's Node emitter written) — G5 six-symptom check at the
 E3.2 D-53 boundary. TWO SYMPTOMS. One is a G4 lapse and it is the third
@@ -2106,6 +2129,52 @@ alter the room-join contract — `adminRoom.test.ts` covers `notifyAdmins`
 directly and will need its two `admin:kiosk_*` cases repointed at a queue event
 rather than deleted, or the room's fan-out loses its only unit coverage.
 
+## E3.2 LOADING PRIMITIVES — BUILT AND VERIFIED ON SCREEN, 2026-09-11 (kiosk)
+
+**Built** as one shared module, `kiosk_ui_react/src/components/loading/`
+(`LoadingPrimitives.tsx` + `loading.css`), consuming only generated tokens —
+no raw hex — so a token change restyles them without touching component code
+(`ENGIRENT-CLAUDE.md` §7).
+
+| Primitive | Consumer | State |
+|---|---|---|
+| `DeterminateProgress` | new `WorkingScreen` ← `door_open`, `dropping` | ✅ verified |
+| `StagedProgress` | `VerifyingScreen` ← `verifying_item` | ✅ verified |
+| `IndeterminateProgress` | `WorkingScreen` ← `capturing`, **and any wait with no known duration** | ✅ verified |
+
+**The kiosk now renders its hardware waits at all.** A new `"working"` screen
+consumes `door_open` / `dropping` / `capturing`, and joins `"verifying"` in
+the inactivity carve-out — a person told to stand and wait must not be
+returned to the attract screen while an actuator is still moving.
+
+**Verified at 1080×1920 portrait, 6 cases** (`design/tools/capture-loading.mjs`,
+shots in the gitignored `design/screenshots/2026-09-11-loading-v2/`;
+`design/before/` untouched). The probe asserted the *distinguishing* signal
+rather than saving a PNG to squint at: determinate fills of 19% / 66% / 38%
+with real "12s / 5s / 3s remaining" and the reassurance beat appearing only
+after 8s; **both indeterminate cases with `anyNumberShown: false`**; staged
+with 7 stages, **0 done, 0 active**.
+
+**REMAINING IN E3.2:**
+1. **`socket_client.py` must send `duration_seconds`** — one optional kwarg on
+   the existing `_set_ui(...)` calls in `_cmd_open_door` / `_cmd_drop_item`,
+   using the duration those handlers already computed. **Deliberately not
+   written yet:** it cannot be verified without the Pi, and G1 already holds
+   one blocked chunk. **Until it lands the kiosk renders these waits
+   INDETERMINATE**, which is correct-but-lesser, never a guessed bar.
+   *Why a kwarg and not a config lookup:* the admin console can send
+   `duration_override` (`adminController.ts:1178`), so a UI-side read of
+   `main_door_open_seconds` would disagree with the door in front of the
+   person watching it.
+2. **The phone side.** §1.3's indeterminate + **120s session countdown** +
+   "attempt N of 4" belongs to Flutter (`ANIMATION-AND-LOADING-SPEC.md` §2
+   gives the *kiosk* only a passive waiting state there, which `FaceScreen`
+   already implements correctly). The phone has `attemptsRemaining`; it has
+   **no countdown**. §1.1's mirrored progress is also phone-side
+   (`'Opening a locker…'` is a static string today).
+
+---
+
 ## E3.2 LOADING PRIMITIVES — repo survey, 2026-09-11 (G2). Done BEFORE any edit.
 
 **The E3.2 row says "three loading primitives (determinate/staged/indeterminate)".
@@ -2127,7 +2196,7 @@ for the status chip.
 |---|---|---|---|
 | **§1.1** locker actuation | **determinate** — duration is KNOWN per locker | **NOTHING.** No screen, no state, no status branch | `'Opening a locker…'`, a static string (`kiosk_scan_screen.dart:233`) |
 | **§1.2** ML item verification | **staged** — stages known, duration unknown | one rotating `verifying-spinner` + a hardcoded *"This takes about 15 seconds."* | none |
-| **§1.3** face round-trip | **indeterminate** + 120s countdown + attempt N of 4 | `FaceScreen`: a **fake determinate bar** ticking to 90% on a 90 ms timer, unrelated to the request | `CircularProgressIndicator` + `attemptsRemaining` → *"N tries left"* ✅; **no 120s countdown** |
+| **§1.3** face round-trip | kiosk: **passive** waiting state; phone: **indeterminate** + 120s countdown + attempt N of 4 | `FaceScreen` is **already correct** — a pulse badge + *"Check your phone"*, no progress claim. **Leave it alone.** | `CircularProgressIndicator` + `attemptsRemaining` → *"N tries left"* ✅; **no 120s countdown** |
 
 ### The finding that makes §1.1 buildable without touching GPIO
 
@@ -2164,6 +2233,41 @@ forbids touching `kiosk_config.json`'s timings; this touches neither.
 
 `_cmd_open_door` holds the solenoid for `main_door_open_seconds`; `_cmd_drop_item`
 runs extend **then** retract, so a place sequence is **34–46 s** end to end.
+
+### CORRECTION, same session, before any of this was built
+
+**An earlier draft of the §1.3 row above said `FaceScreen` renders "a fake
+determinate bar ticking to 90% on a 90 ms timer". That was wrong, and it
+would have caused the wrong thing to be built.** The 90 ms timer is real and
+`setFaceProgress` really does climb to 90 — but **nothing renders it**:
+`App.tsx` passes `FaceScreen` only `instr` and `onCancel`, and a grep for
+`faceProgress|faceLabel` across `kiosk_ui_react/src` returns **four** hits,
+all inside `useKioskState.ts` (declaration, and the hook's own return). The
+screen's docstring says so itself: *"No camera feed, no progress bar
+pretending the kiosk is doing work it isn't."*
+
+**The mistake was inferring a rendered widget from the existence of state
+that sets it** — the same shape as D-43 ("emitted but consumed by nothing"),
+and the reason G8 says a signal is only verified by a consumer rendering it.
+Caught by opening the component instead of trusting the hook.
+
+**Two consequences, both of which changed the build:**
+1. `FaceScreen` is **already spec-correct** and is not being touched.
+   `ANIMATION-AND-LOADING-SPEC.md` §2 gives the kiosk a *passive* waiting
+   state there and puts progress + countdown + "attempt N of 4" on the
+   **phone**. §1.3's indeterminate primitive is therefore a *phone* job.
+2. On the kiosk the indeterminate primitive's real consumer is **`capturing`**
+   — the camera capture, the one kiosk wait with no configured duration.
+
+**D-56 — `faceProgress` / `faceLabel` are dead state, and they cost real
+frames.** They are computed by a `setInterval` firing **every 90 ms** for the
+whole time the face screen is up, each tick calling `setFaceProgress` and so
+re-rendering the hook's consumer tree, to produce a number no component
+reads. Harmless on a desktop; this runs on a Raspberry Pi driving a
+1080×1920 panel, and needless re-render cost on that device is the same
+family as D-52's idle flicker. **Not fixed in this pass** — deleting them is
+trivial but it is a different change from adding the primitives, and G1 says
+one verifiable chunk at a time.
 
 ### D-55 — the success screen tells a student the door is open, then abandons
 ### them 10 seconds before it actually is. FOUND 2026-09-11 (this survey).
