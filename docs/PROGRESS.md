@@ -147,7 +147,7 @@ corrected in the same session — and that strength masked the weakness, because
 "I am catching doc errors" felt like evidence of sharpness. It was not evidence
 about verification debt.
 
-**The NINE gates now in force (`CLAUDE-CODE-PLAYBOOK.md` §2d), in one line
+**The TEN gates now in force (`CLAUDE-CODE-PLAYBOOK.md` §2d), in one line
 each:**
 
 - **G1** — at most **one** unverified chunk at a time. Blocked verification
@@ -171,6 +171,11 @@ each:**
   with evidence. Deferred stays unticked carrying its ruling; blocked stays
   unticked carrying its blocker. Never bulk-tick. Added by the user after P-1
   found 63 boxes unticked across three completed phases.
+- **G10** — **show the phase report at every session end** (`npm run report`
+  → `design/tools/phase-report.mjs`). It counts the phase files rather than
+  summarising from memory. Read `BLOCKED` before `todo`: that column is the
+  one thing here the model cannot move on its own. Added by the user
+  2026-09-11.
 
 ### Session entries
 

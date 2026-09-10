@@ -278,12 +278,50 @@ changes across a run of implementation commits is the failure this gate names.
 
 ---
 
+### G10 — SHOW THE PHASE REPORT AT EVERY SESSION END
+
+**Added 2026-09-11, by the user.** Run it and paste the output:
+
+```
+node design/tools/phase-report.mjs      # or: npm run report
+```
+
+**Every session end, every phase boundary, and any time the user asks where
+things stand.** Not a summary written from memory — the script reads
+`docs/redesign/phases/*.md` and counts, so the number comes from the same
+artifact the user can open. A hand-written tally is how E0 came to be
+described as "complete" while sitting at **0 of 37** ticked (P-1); this closes
+that gap by making the claim mechanical.
+
+**It reports five states, not four, and the extra ones carry the meaning:**
+
+| Column | What it is |
+|---|---|
+| `done` | `- [x]`, evidence attached (G9) |
+| `prog` | partly delivered — real work exists, the bullet is not met |
+| `todo` | genuinely outstanding, nobody has started |
+| `BLOCKED` | needs hardware or a permission. **Not the same as todo** — no amount of effort moves these |
+| `ruled` | deliberately not doing / deferred, carrying its ruling |
+
+`%` is `done / (total − ruled)`: a decision the project already made should not
+sit in the denominator forever.
+
+**Read `BLOCKED` before `todo`.** A high BLOCKED count is a request for the
+human to unblock something, and it is the single most actionable line in the
+report — it is the one thing in this whole track that the model cannot move on
+its own.
+
+*Check:* the last message of any session contains the report's output.
+
+---
+
 ### G7 — Ending a session
 
 Do not end or clear until: PROGRESS.md's registers are current, the degradation
 log has this session's entry, **the current phase file's boxes reflect what was
 actually done this session (G9)**, and the continuation prompt for the next
-session is written and committed. Then answer §5's question 8 honestly.
+session is written and committed. Then answer §5's question 8 honestly, **and
+show the phase report (G10)**.
 
 ---
 
@@ -423,6 +461,6 @@ the doc without showing me the conflict first.
    `/clear`, not after every chunk
 9. **A green test is not a fix.** Verify on screen before recording anything as
    fixed — D-1 passed six unit tests while still visibly broken
-10. **The §2d gates G1-G9 bind.** Especially **G1**: at most one unverified
+10. **The §2d gates G1-G10 bind.** Especially **G1**: at most one unverified
     chunk at a time. Context degradation has happened twice on this track and
     both times the human had to be the one who noticed

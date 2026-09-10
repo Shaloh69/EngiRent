@@ -221,7 +221,7 @@ and adapted to this project's realities:
   human noticed before the model did** (`docs/PROGRESS.md` → CONTEXT
   DEGRADATION LOG). Noticing it is therefore not a skill this track can rely
   on, so `CLAUDE-CODE-PLAYBOOK.md` §2d replaces the advice with **seven
-  checkable gates, G1-G9**. Read them before starting a phase. The one that
+  checkable gates, G1-G10**. Read them before starting a phase. The one that
   binds most often: **G1, at most one unverified chunk at a time** — and
   verification blocked by a permission refusal or offline hardware still
   counts as unverified. The second occurrence looked like productive,
