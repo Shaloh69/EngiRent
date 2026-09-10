@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/widgets/loading_primitives.dart';
 
 enum _Phase { framing, captured, uploading, exhausted }
 
@@ -37,11 +38,18 @@ class FaceVerifyScreen extends StatefulWidget {
   /// kiosk this happened at.
   final String? kioskId;
 
+  /// When this kiosk session expires, as an ABSOLUTE instant from the server
+  /// (E3.2 / `ANIMATION-AND-LOADING-SPEC.md` §2.3). Null when the server did
+  /// not send one — the countdown then renders nothing rather than guessing a
+  /// local 120 seconds, which would drift and overstate the time left.
+  final DateTime? sessionExpiresAt;
+
   const FaceVerifyScreen({
     super.key,
     required this.rentalId,
     required this.mode,
     this.kioskId,
+    this.sessionExpiresAt,
   });
 
   @override
@@ -385,10 +393,27 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen>
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
-          Text(
-            instr,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF9FBFB8)),
-          ),
+          // E3.2 / spec §1.3: an indeterminate indicator for the round-trip
+          // (duration genuinely unknown, so no percentage), with the session
+          // countdown and the attempt budget beside it. Before this the screen
+          // showed the word "Verifying…" and nothing else, and the 120s
+          // session — the constraint most likely to expire on someone
+          // mid-attempt — was completely invisible to them.
+          if (_phase == _Phase.uploading)
+            AppIndeterminateProgress(
+              label: instr,
+              attemptLabel: _attemptsRemaining != null
+                  ? 'Attempt ${4 - _attemptsRemaining!} of 4'
+                  : null,
+            )
+          else
+            Text(
+              instr,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF9FBFB8)),
+            ),
+          const SizedBox(height: AppSpacing.xs),
+          // Renders nothing at all when the server sent no deadline.
+          AppSessionCountdown(deadline: widget.sessionExpiresAt),
           const SizedBox(height: AppSpacing.sm),
           GestureDetector(
             onTap: shutterEnabled ? _capture : null,

@@ -109,11 +109,28 @@ One design system across four stacks that share nothing technically
       They also gave the kiosk its **first ever UI for its hardware waits** —
       the Pi emits 13 statuses and the UI branched on 6, so a 15s door and a
       34–46s actuator sequence ran with the main menu on screen.
+      **PHONE HALF DONE AND VERIFIED ON A REAL DEVICE 2026-09-11**
+      (`core/widgets/loading_primitives.dart`, emulator, light theme):
+      indeterminate with **no number and no percentage** + "Attempt 2 of 4";
+      the **120s session countdown** seeded at 95s rendering **78s** — i.e.
+      genuinely counting against the wall clock, not printing its seed; the
+      **low** state at **"9s left"** in warning (not critical — a deadline is
+      not a failure); the **expired** state; and a null deadline rendering
+      **nothing at all** rather than inventing 120s.
+      The countdown is driven by an **absolute** `expiresAt` from the server
+      (`kiosk:face_required`), never a local `120` — a phone starting its own
+      clock on arrival drifts and overstates the time left.
+      **Staged is deliberately NOT built for the phone:** §1.2's ML pipeline
+      runs on the kiosk and no phone screen waits on it, so it would be a
+      widget nothing renders — D-43's failure mode in widget form.
       **Still open:** (a) `socket_client.py` must send `duration_seconds` so
-      the determinate bar has a real duration — until then these render
-      indeterminate, never a guessed bar (Pi-blocked, B-2); (b) the **phone
-      side** — §1.3's 120s session countdown does not exist, and §1.1's
-      mirrored progress is a static `'Opening a locker…'` string.
+      the kiosk's determinate bar has a real duration — until then those
+      render indeterminate, never a guessed bar (Pi-blocked, B-2); (b) §1.1's
+      **mirrored** phone progress is still a static `'Opening a locker…'`
+      string, and mirroring needs door state to reach the phone, which it does
+      not yet; (c) the whole face path is **Pi-blocked end-to-end** —
+      `kiosk:flow_start` comes from the Pi, so the countdown has been seen
+      rendering but not yet driven by a real session.
 
 ## E3.3 — Motion vocabulary
 - [ ] Durations/easing as shared tokens

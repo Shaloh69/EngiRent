@@ -148,6 +148,13 @@ class _KioskScanScreenState extends State<KioskScanScreen>
           rentalId: widget.rentalId,
           mode: widget.mode,
           kioskId: (data['kioskId'] as String?) ?? _kioskId,
+          // E3.2 / spec 2.3. The server's ABSOLUTE deadline for this kiosk
+          // session, forwarded untouched. Null on an older server, and the
+          // countdown then renders nothing rather than inventing 120s.
+          sessionExpiresAt: switch (data['expiresAt']) {
+            final int ms => DateTime.fromMillisecondsSinceEpoch(ms),
+            _ => null,
+          },
         ),
       ),
     );

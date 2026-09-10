@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'design_tokens.g.dart';
+import '../widgets/loading_primitives.dart';
 
 /// E3 design reference — Flutter surface.
 ///
@@ -183,6 +184,55 @@ class DesignReferenceScreen extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: _Chip(status: 'SOME_FUTURE_STATE', t: t),
+            ),
+          ),
+          // E3.2 — the phone's loading primitives, rendered here so they have
+          // a place they can actually be LOOKED at. The real consumer is the
+          // face-verification screen, which needs a live kiosk session to
+          // reach; without this the widgets would ship unseen, which on this
+          // project is how D-43 and D-44 happened.
+          _Section(
+            t: t,
+            title: 'Loading — indeterminate (spec §1.3)',
+            subtitle:
+                'The face round-trip. Duration is genuinely unknown, so there '
+                'is no percentage and no number. The attempt budget is real, '
+                'reported by the server.',
+            child: const AppIndeterminateProgress(
+              label: 'Verifying…',
+              sub: 'Checking it is you',
+              attemptLabel: 'Attempt 2 of 4',
+            ),
+          ),
+          _Section(
+            t: t,
+            title: 'Loading — session countdown (spec §2.3)',
+            subtitle:
+                'Determinate, because the server sends an absolute deadline. '
+                'Calm above 20s, warning below. A null deadline renders '
+                'NOTHING rather than inventing 120s — the third row proves it.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppSessionCountdown(
+                  deadline: DateTime.now().add(const Duration(seconds: 95)),
+                ),
+                const SizedBox(height: 8),
+                AppSessionCountdown(
+                  deadline: DateTime.now().add(const Duration(seconds: 12)),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text('no deadline sent →',
+                        style: TextStyle(color: t.textSecondary, fontSize: 12)),
+                    const SizedBox(width: 6),
+                    const AppSessionCountdown(deadline: null),
+                    Text('(nothing, deliberately)',
+                        style: TextStyle(color: t.textDisabled, fontSize: 12)),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
