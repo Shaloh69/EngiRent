@@ -2106,6 +2106,90 @@ alter the room-join contract — `adminRoom.test.ts` covers `notifyAdmins`
 directly and will need its two `admin:kiosk_*` cases repointed at a queue event
 rather than deleted, or the room's fan-out loses its only unit coverage.
 
+## E3.2 LOADING PRIMITIVES — repo survey, 2026-09-11 (G2). Done BEFORE any edit.
+
+**The E3.2 row says "three loading primitives (determinate/staged/indeterminate)".
+`CONTINUE-E3-SESSION-2.md` said to survey first, because the "×4 surfaces"
+assumption in that row has already been wrong once. It is wrong again, in the
+same direction: this is a ×2 job.**
+
+`ANIMATION-AND-LOADING-SPEC.md` §1 ties each primitive to a *specific real
+wait*. Those three waits exist on the **kiosk** and the **phone** only. The
+admin console's `Loader`/`LoadingOverlay` (10 + 2 uses) and the website's
+`downloading/` page are ordinary data-fetch and file-download spinners — not
+locker actuation, not ML verification, not a face round-trip. Writing the three
+primitives for them would be inventing a need, exactly as it would have been
+for the status chip.
+
+### What the repo actually has today
+
+| Wait (spec §) | Shape required | Kiosk today | Phone today |
+|---|---|---|---|
+| **§1.1** locker actuation | **determinate** — duration is KNOWN per locker | **NOTHING.** No screen, no state, no status branch | `'Opening a locker…'`, a static string (`kiosk_scan_screen.dart:233`) |
+| **§1.2** ML item verification | **staged** — stages known, duration unknown | one rotating `verifying-spinner` + a hardcoded *"This takes about 15 seconds."* | none |
+| **§1.3** face round-trip | **indeterminate** + 120s countdown + attempt N of 4 | `FaceScreen`: a **fake determinate bar** ticking to 90% on a 90 ms timer, unrelated to the request | `CircularProgressIndicator` + `attemptsRemaining` → *"N tries left"* ✅; **no 120s countdown** |
+
+### The finding that makes §1.1 buildable without touching GPIO
+
+**The Pi already emits every signal needed, and the UI already receives it and
+throws it away.** Derived by comparing both sides, not by reading either:
+
+- **`_set_ui(...)` can emit 13 statuses**: `busy capturing door_open dropping
+  error face_scan idle item_retry item_verified offline online session_active
+  verified verifying_item`.
+- **`useKioskState.ts` branches on 6**: `error face_scan item_retry
+  item_verified verified verifying_item`.
+- **The 7 ignored include every long hardware wait** — `door_open`,
+  `dropping`, `capturing`. These are emitted orphans in G8's exact sense: a
+  signal is only verified by a consumer rendering it, and nothing renders these.
+- **`_build_status()` returns `{kiosk_id, ui_state, config}` where `config` is
+  `load_timing_config()`** — the whole per-locker timing table, on every status
+  update. **The UI drops it**: `grep -ri "config|timing|_seconds|duration"`
+  across `kiosk_ui_react/src` returns **zero** hits outside framer-motion props,
+  and `KioskServerState` models only `ui_state`'s fields.
+
+**So the determinate bar needs no Python change, no config change and no GPIO
+contact** — the duration for the active locker is already in the payload. That
+matters because `CLAUDE.md` forbids UI work reaching the GPIO layer and
+forbids touching `kiosk_config.json`'s timings; this touches neither.
+
+### Real timings, read from `kiosk_config.json` (READ-ONLY, not modified)
+
+| Locker | main/bottom door | actuator extend | actuator retract |
+|---|---|---|---|
+| 1 | 15s | 22s | 22s |
+| 2 | **5s** | 21s | 21s |
+| 3 | 15s | 17s | 17s |
+| 4 | 15s | 23s | 23s |
+
+`_cmd_open_door` holds the solenoid for `main_door_open_seconds`; `_cmd_drop_item`
+runs extend **then** retract, so a place sequence is **34–46 s** end to end.
+
+### D-55 — the success screen tells a student the door is open, then abandons
+### them 10 seconds before it actually is. FOUND 2026-09-11 (this survey).
+
+On `status === "verified"` the kiosk sets *"Locker NN is now open — please
+collect your item and close the door"*, and a `setTimeout(…, 5000)` returns to
+the main menu. **The door is held open for 15 s on lockers 1, 3 and 4.** So on
+3 of the 4 bays the instruction disappears while the door is still in its
+cycle, and the screen shows the idle menu during a live handover. Locker 2
+(5 s) is the only one where the 5 s screen and the hardware agree — which is
+why `ANIMATION-AND-LOADING-SPEC.md` insists any sync test must pair **locker 2
+with any other**; a test on locker 2 alone passes and proves nothing.
+
+**Not a timing bug to fix by changing a number.** `CLAUDE.md`: the hardware is
+right. The screen is what is wrong, and §1.1's determinate indicator driven by
+`door_open` + `config` is the fix.
+
+**Checked and NOT filed — the countdown is fine.** A first
+`grep -n "countdown" useKioskState.ts` returned only the declaration and the
+export, which reads exactly like `setCountdown` is never called. It is called,
+at lines 216 and 219 — **`grep` is case-sensitive and `setCountdown` has a
+capital C.** The 5 s bar and the 5 s label do agree with each other. Sixth
+instance of "suspect the tool before the artifact", caught before reporting.
+
+---
+
 ### New defects found in E3
 
 **D-41 — status chips failed the text-contrast floor across the admin console.
