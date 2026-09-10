@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 (design foundation) · E3.1 COMPLETE — tokens generate into all 4 surfaces, WCAG 1.4.11 clear on all 4, interaction states on all 4, admin verified in situ · B-4 RESOLVED (sentry 9.29.0, no bypass) · G1 debt 0 · gates now G1-G8 · D-45..D-49 fixed · defects 13/49 · screens 0/69 PASS · NEXT: E3.2 (toast + connection indicator onto tokens, D-37 execution)]
+[PHASE E3 (design foundation) · E3.1 COMPLETE — tokens generate into all 4 surfaces, WCAG 1.4.11 clear on all 4, interaction states on all 4, admin verified in situ · B-4 RESOLVED (sentry 9.29.0, no bypass) · G1 debt 0 · gates now G1-G8 · S-5 CLOSED: kiosk sudo pw ROTATED (Pi back up) · B-2 partially lifted · D-45..D-49 fixed · defects 13/49 · screens 0/69 PASS · NEXT: E3.2 (toast + connection indicator onto tokens, D-37 execution)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1369,7 +1369,47 @@ binding error **echoed the old key value into the transcript**. No new exposure
 example of how a credential leaks: not by decision, but by an error message
 printing an argument. Name helpers so they cannot collide with an alias.
 
-### S-5 — **LIVE AND UNFIXED. The kiosk's `sudo` password is published on public GitHub.** Found 2026-09-06 (E2 session 4)
+### S-5 — **ROTATED AND CLOSED 2026-09-10.** Found 2026-09-06 (E2 session 4), fixed the first hour the Pi came back up
+
+**Resolved.** The Pi came online 2026-09-10 and the rotation was done
+immediately, as this entry required ("not a backlog item").
+
+**The finding was proven live before it was fixed, not assumed.** The
+six-digit password published on public `main` (`memory.md:246`, still readable
+via `git show main:memory.md`) was tested against the running device and
+**still authenticated `sudo`** — `OLD_PASSWORD_VALID`. So for the four days
+between discovery and the Pi returning, anyone with tailnet access or physical
+presence plus a public clone could take root on the device that drives 8
+solenoids and 4 linear actuators.
+
+**Rotated to a 28-character mixed-case alphanumeric secret.** Verified in BOTH
+directions, because "the new one works" alone would not prove the old one
+stopped working:
+
+| Check | Result |
+|---|---|
+| new password authenticates `sudo` | `NEW_VALID` |
+| **old published password** | **`OLD_NOW_REJECTED`** |
+
+*A G8 note on how nearly this went wrong:* the rotation command returned
+`ROTATE_EXIT=1`, which was the exit status of a `grep` in the pipeline and not
+of `chpasswd`. Taking that at face value would have meant either re-running a
+rotation that had already succeeded, or reporting a failure that had not
+happened. The two-way check above is what actually settled it.
+
+**The new value is NOT in this file, `memory.md`, or any tracked file** — it is
+in the gitignored repo-root `.env.local` as `KIOSK_SUDO_PASSWORD`. That is this
+finding's own lesson applied: a regex sweep cannot detect a credential that
+does not look like one (six digits mid-sentence has no shape), so the fix is
+never writing the value into prose, not a better regex.
+
+**Still true and NOT fixed by this:** the old value remains in public git
+history forever. Rotation is the fix; redaction was never going to be. Same as
+S-3 and S-4.
+
+---
+
+### S-5 (original entry, kept for the record) — LIVE AND UNFIXED at the time of writing. Found 2026-09-06 (E2 session 4)
 
 `memory.md:453` recorded the sudo password for the `engirent` user on
 `engirent-kiosk` in prose, "per direct user instruction", so that a future
