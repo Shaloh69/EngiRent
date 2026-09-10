@@ -103,15 +103,30 @@ service never throws; a kiosk id with no `Locker` rows warns instead of
 emitting an empty map. 7 tests, mutation-checked three ways; 124/124 Jest;
 `tsc` clean. Full detail and the reasoning: `docs/PROGRESS.md` → D-53.
 
-**Still to do — THE DEPLOY, AND IT IS BLOCKED ON HARDWARE:**
+**The Node half is DEPLOYED and PROVEN LIVE (2026-09-11).** A kiosk-authed
+socket client (`{kioskSecret, kioskId:"KIOSK-001"}` + `kiosk:register`)
+receives `kiosk:occupancy` with
+`{"1":"AVAILABLE","2":"AVAILABLE","3":"AVAILABLE","4":"AVAILABLE"}`, and the
+server logs `[PI-OCCUPANCY] KIOSK-001 → …` from the other side. Deployed by
+applying the 11 D-53 edits **onto the remote files**, not by copying the
+branch versions — the remote is *behind* this branch and a wholesale copy
+would have silently shipped D-37's execution too. Full record: `PROGRESS.md`
+→ "D-53 NODE HALF: DEPLOYED AND PROVEN LIVE".
+
+**Still to do — THE KIOSK HALF, BLOCKED ON HARDWARE:**
 - **The Pi is offline** (`tailscale status` → `engirent-kiosk … offline`; ssh
   to the name and to `100.78.42.89` both time out). **Unblock is physical:
   power it on.**
-- **Then deploy both halves together**, so the panel goes from "unknown" to
-  real status in one step instead of shipping a half-state to a live kiosk.
-  The kiosk half is **two** copies, not one: the built UI into
+- **The kiosk half is TWO copies, not one:** the built UI into
   `kiosk_ui_react/dist` **and** `server/kiosk/services/socket_client.py` (the
   relay handler is a Python file and does **not** travel with `dist/`).
+- **One live check is still owed** and was refused by the auto-mode classifier:
+  flip locker 2 to `OCCUPIED` and locker 3 to `isOperational: false` in the DB
+  and require the emitted map to become
+  `{"1":"AVAILABLE","2":"OCCUPIED","3":"OUT_OF_SERVICE","4":"AVAILABLE"}`.
+  An all-`AVAILABLE` map is indistinguishable from a hardcoded default, so
+  this is the check that proves the value tracks state. Doing it as part of
+  the panel verification kills two birds; **restore both rows afterwards.**
 - **Verify on the panel, not in a log.** The distinguishing signal: with four
   `AVAILABLE` bays the Locker screen must read **"4 of 4 — Every bay is empty
   and ready for a drop-off"**; flip one row to `OCCUPIED` in the DB and it must
@@ -120,11 +135,14 @@ emitting an empty map. 7 tests, mutation-checked three ways; 124/124 Jest;
   did not land or the room name missed — that is the failure this whole
   change is shaped around, and it is invisible from the server side.
 
-**D-54 is open and needs a ruling** (`docs/PROGRESS.md`): `seed.ts`'s
-`seedKioskConfig` still writes an obsolete hardware schema — trapdoor pins,
-PWM actuator pins, wrong GPIO numbers, 3 cameras of 5, 5s/3s against the real
-calibrated 15s/22/21/17/23s. It is inert only because its key is still
-`kiosk-1`. **Do not "fix" that constant without reading D-54 first.**
+**D-54 — RULED AND CLOSED 2026-09-11.** `seedKioskConfig` wrote an obsolete
+hardware schema (trapdoor pins, PWM actuator pins, wrong GPIO numbers, 3
+cameras of 5, 5s/3s against the real calibrated 15s/22/21/17/23s), inert only
+because its key was still `kiosk-1`. Deleted on the user's ruling (`886b3e1`),
+with a tombstone comment explaining why no replacement should be written: the
+Pi's own `kiosk_config.json` is the source of truth, and the live DB has held
+zero `KioskConfig` rows since 2026-09-03. `Locker.kioskId` now seeds as
+`KIOSK-001`.
 
 ---
 

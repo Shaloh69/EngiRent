@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2 ~90%: toast+connection indicator on tokens, D-37 executed, D-38 swept across all 12 admin pages, status chip verified (×2 surfaces, 26/26 agree, drift guard proven) · REMAINING IN E3.2: 3 loading primitives · G1 debt 1 (D-53, BLOCKED: Pi offline) · gates G1-G8 · S-5 CLOSED · D-39 DEPLOYED+VERIFIED LIVE · D-45..D-52 fixed · D-53 BOTH HALVES WRITTEN + 124/124 Jest, NOT DEPLOYED, NOT SEEN ON SCREEN · D-54 NEW (obsolete kiosk hardware config in seed, needs ruling) · defects 13/54 · screens 0/69 PASS]
+[PHASE E3 · E3.1 COMPLETE · E3.2 ~90% · REMAINING IN E3.2: 3 loading primitives · G1 debt 1 (D-53 kiosk half, BLOCKED: Pi offline) · gates G1-G8 · S-5 CLOSED · D-39 DEPLOYED+VERIFIED LIVE · D-53 NODE HALF DEPLOYED + PROVEN via kiosk-authed socket client; KIOSK HALF NOT DEPLOYED, PANEL NOT SEEN · D-54 RULED+EXECUTED (obsolete kiosk hardware config deleted from seed) · defects 14/54 · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -2265,17 +2265,85 @@ empty map each turn **exactly one** test red; the file restores byte-identical
 after each. 124/124 Jest (117 before, +7), `tsc` clean. **None of that is a
 fix.** The panel has not been looked at.
 
-**BLOCKED ON HARDWARE.** `tailscale status` reports `engirent-kiosk … offline,
-last seen 1h ago`, and `ssh` to both the MagicDNS name and `100.78.42.89`
-times out. The kiosk half deploys as a file copy into
+**BLOCKED ON HARDWARE (the kiosk half).** `tailscale status` reports
+`engirent-kiosk … offline, last seen 1h ago`, and `ssh` to both the MagicDNS
+name and `100.78.42.89` times out. The kiosk half deploys as a file copy into
 `kiosk_ui_react/dist` **plus** `services/socket_client.py`, and neither can be
-copied to a machine that is down. Per the ruling in `CONTINUE-E3-SESSION-2.md`
-the two halves deploy **together**, so the Node half is also held.
+copied to a machine that is down.
+
+### D-53 NODE HALF: DEPLOYED AND PROVEN LIVE — 2026-09-11
+
+**Deployed on the user's ruling** after the Pi was found offline, overriding
+the deploy-both-together instruction on the grounds that it is **provably
+neutral to the panel**: the Pi carries neither the relay handler nor the new
+UI, so `kiosk:occupancy` is an event it does not listen for.
+
+**The deploy was NOT a wholesale file copy, and that mattered.** Diffing the
+remote first (`CLAUDE.md`: the checkout is diverged by design) showed the
+server's `index.ts` and `kioskController.ts` are **behind** this branch, not
+diverged sideways — the remote still carries D-37's four
+`notifyAdmins(io, "admin:kiosk_*")` calls and a `ValidationError` where the
+branch has `GoneError`. **Copying the branch versions would have silently
+deployed D-37's execution** (removing four socket events a deployed admin
+console may still consume) alongside D-53. Instead the 11 D-53 edits were
+applied **onto the remote versions**, each with an exactly-one-occurrence
+assertion, and the resulting diff was reviewed to confirm it contains D-53 and
+nothing else. `seed.ts` was deliberately **not** deployed: `svc-node.bat` is
+`npm run build && npm start` and never seeds, so it is dev-only tooling.
+
+**Build verified by artifact, not by exit code** (G8). `npm run build` first
+failed on `prisma generate` — `EPERM … rename query_engine-windows.dll.node`,
+because the running API holds that DLL; no schema changed, so `tsc` alone was
+run. `dist/services/lockerOccupancyService.js` exists (2363 B) and
+`dist/index.js` was rewritten at **01:22:40**, after the 01:21:49 build start,
+carrying **6** emitter symbols. Restart per the runbook: `Stop-Process` on the
+real port-5000 owner (**PID 31624**) *before* `Start-ScheduledTask`; new owner
+**PID 24896** at 01:24:02. `/api/v1/health` returns real JSON, not an open
+port.
+
+**PROVEN with a kiosk-authenticated socket client, not a log line.** Named in
+advance: success is a client authenticating `{kioskSecret, kioskId:
+"KIOSK-001"}`, emitting `kiosk:register`, and **receiving** `kiosk:occupancy`;
+failure is no event within 12s, which is what a wrong room name looks like.
+Result:
+
+```
+CONNECTED sid=QaS1ygzAyrLoZPH0AAAB
+REGISTERED as KIOSK-001
+OCCUPANCY_RECEIVED {"kiosk_id":"KIOSK-001","lockers":{"1":"AVAILABLE","2":"AVAILABLE","3":"AVAILABLE","4":"AVAILABLE"},"ts":1789061258510}
+```
+
+The server log agrees from the other side —
+`[PI-OCCUPANCY] KIOSK-001 → {"1":"AVAILABLE",…}` — and the emitted keys and
+values match the live table read independently before any code was written.
+The probe ran **on the server** so `KIOSK_SHARED_SECRET` never left it, and
+borrowed `socket.io-client` from the kiosk UI's `node_modules` rather than
+running `npm install` against a live service. Both scripts were deleted after.
+
+**NOT PROVEN, and named rather than glossed: that a CHANGE propagates.** The
+plan was to flip locker 2 to `OCCUPIED` and locker 3 to `isOperational: false`
+and require the emitted map to become
+`{"1":"AVAILABLE","2":"OCCUPIED","3":"OUT_OF_SERVICE","4":"AVAILABLE"}` —
+because an all-`AVAILABLE` map is indistinguishable from a hardcoded default.
+**The auto-mode classifier refused the live DB write**, both as a compound
+command and alone. Not worked around: reformulating to evade is explicitly the
+wrong move on this track. It needs a user-side allow rule, or it is covered
+anyway when the panel is verified with the Pi up — which requires flipping a
+row regardless. Until then the value-tracking behaviour rests on the 7
+mutation-checked unit tests plus the fact that the emitted map matches the real
+table exactly.
+
+**G1 debt is still 1.** The Node half is deployed and proven at the socket
+layer; **the panel has not been looked at**, and D-53 is not recorded as fixed
+until it has been.
 
 **D-54 — `prisma/seed.ts` silently recreates the empty-room kiosk bug, AND
 the obvious one-word fix would have aimed an OBSOLETE HARDWARE CONFIG at the
-real kiosk. FOUND 2026-09-11 (D-53's Node emitter). HALF FIXED; the other half
-NEEDS A RULING because it is calibration data.**
+real kiosk. FOUND AND FIXED 2026-09-11 (D-53's Node emitter). ✅ RULED BY THE
+USER THE SAME DAY: delete `seedKioskConfig` outright — executed in `886b3e1`,
+with a tombstone comment in its place so the next reader meets the reason
+before the constant. `tsc` clean, 124/124 Jest. Not deployed and does not need
+to be: `svc-node.bat` never runs the seed.**
 
 **Half 1 — fixed.** `seed.ts:144` seeded every `Locker.kioskId` as
 `"kiosk-1"`, while the real deployed kiosk registers as `"KIOSK-001"`. Socket.io
@@ -2312,8 +2380,9 @@ sites so the next reader hits it before the constant. **The trap is now
 visible instead of invisible, which is the most that can be done without a
 ruling.**
 
-**The ruling needed:** rewrite `seedKioskConfig`'s payload from the Pi's real
-`kiosk_config.json`, or delete the function outright? Deleting is arguably
+**The ruling, given 2026-09-11: DELETE the function.** The question was:
+rewrite `seedKioskConfig`'s payload from the Pi's real `kiosk_config.json`, or
+delete it outright? Deleting is arguably
 right — the live DB currently has **zero** `KioskConfig` rows (verified
 2026-09-11), the Pi falls back to its local hand-calibrated `kiosk_config.json`,
 and `CLAUDE.md` names that file the source of truth. Either way it is a
