@@ -431,6 +431,12 @@ export const registerFace = async (
     // it (a photo that fails encoding extraction is still a usable avatar,
     // and completeProfile separately requires a *successful* encoding
     // before it will mark the profile complete — see below).
+    //
+    // D-39, 2026-09-10: that parenthesis was a LIE for as long as it existed.
+    // completeProfile validated the encoding only when one was supplied, so a
+    // caller could simply omit it. It is true now, because completeProfile was
+    // changed to require it — the comment was not describing the code, the
+    // code was changed to match the comment.
     await saveBuffer(userFacePath(req.user.userId), req.file.buffer);
 
     res.json({ success: true, data: mlResp.data });
@@ -485,13 +491,27 @@ export const completeProfile = async (
       );
     }
 
-    if (
-      faceEncoding !== undefined &&
-      faceEncoding !== null &&
-      (!Array.isArray(faceEncoding) || faceEncoding.length !== 128)
-    ) {
+    // D-39. This used to validate the encoding ONLY IF one was supplied, so
+    // omitting it entirely completed the profile with no biometric template at
+    // all. Proven live against the running API on 2026-09-10: a POST of just
+    // {"biometricConsent": true} returned "Profile completed successfully".
+    //
+    // The consequence was not a crash but a SILENT DEAD END. The student
+    // finishes onboarding, an admin approves their ID card (that review never
+    // looks at the face photo), and the failure only appears at the locker --
+    // where face verification correctly fails closed and routes every single
+    // collection and return to a human, for no reason the student can see.
+    //
+    // The Flutter client already refuses to reach this point without an
+    // encoding (profile_setup_screen.dart:136-145 stops and asks for a
+    // retake). That check is UX. This one is the guarantee -- per CLAUDE.md,
+    // server-side stays authoritative and a client-side check is never the
+    // boundary.
+    if (!Array.isArray(faceEncoding) || faceEncoding.length !== 128) {
       throw new ValidationError(
-        "faceEncoding must be a 128-element float array",
+        "faceEncoding is required and must be a 128-element float array. " +
+          "Capture a face photo via POST /auth/register-face and submit the " +
+          "encoding it returns; a profile cannot be completed without one.",
       );
     }
 

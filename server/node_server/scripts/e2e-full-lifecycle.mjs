@@ -139,10 +139,25 @@ async function registerAndVerify(person, facePath) {
   });
   check(`${person.label}: id-photo stored`, idRes.status === 200 || idRes.status === 201, `status ${idRes.status}`);
 
+  // D-39: this used to post ONLY { biometricConsent: true }, which worked
+  // solely because completeProfile validated faceEncoding when present and
+  // ignored its absence. The suite was therefore documenting the defect rather
+  // than needing it -- makePng() is a synthetic image, so the ML service can
+  // never return a real encoding for it.
+  //
+  // completeProfile now REQUIRES a 128-element encoding, so the fixture has to
+  // fast-forward through a state it cannot legitimately reach: the same
+  // "supply what the real flow would have produced" pattern these suites
+  // already use for the direct-DB isVerified flip. The server validates the
+  // SHAPE, which is what it can check; producing a genuine template is the ML
+  // service's job and is covered by e2e-verification.mjs with real faces.
+  const syntheticEncoding = Array.from({ length: 128 }, (_, i) =>
+    Math.sin(i) * 0.1,
+  );
   const complete = await jreq("/auth/profile/complete", {
     method: "POST",
     token,
-    body: { biometricConsent: true },
+    body: { faceEncoding: syntheticEncoding, biometricConsent: true },
   });
   check(`${person.label}: profile/complete`, complete.status === 200, JSON.stringify(complete.json));
 
