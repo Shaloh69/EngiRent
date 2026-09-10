@@ -33,6 +33,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { DataTableCard } from "@/components/ui/DataTableCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { StatValue } from "@/components/ui/UnknownValue";
 import { roleColor } from "../theme";
 
 // Checklist Stage 9 — remembers this page's filters across visits.
@@ -167,7 +168,15 @@ export default function UsersPage() {
                     {s.label}
                   </Text>
                   <Text size="xl" fw={800} mt={4}>
-                    {s.value}
+                    {/* D-38: these three read 0 / 0 / 0 directly under a
+                        "Failed to fetch users." banner -- the same false
+                        claim the table below used to make in words. A count
+                        derived from an array we never received is not zero,
+                        it is unknown. */}
+                    <StatValue
+                      value={error ? null : s.value}
+                      label={`${s.label} unavailable`}
+                    />
                   </Text>
                 </div>
                 <ThemeIcon size={40} radius="md" variant="light" color={s.color}>
@@ -212,9 +221,22 @@ export default function UsersPage() {
           emptyState={
             <EmptyState
               icon={UsersIcon}
-              title={users.length === 0 ? "No users yet" : "No matching users"}
+              title={
+                error
+                  ? "Could not load users"
+                  : users.length === 0
+                    ? "No users yet"
+                    : "No matching users"
+              }
               description={
-                users.length === 0
+                /* D-38: "No users yet" is a claim about the data. When the
+                   request FAILED we have no data to make a claim about --
+                   saying there are none is simply false. Third branch added,
+                   matching components/ui/UnknownValue.tsx's rule that
+                   unknown is not zero. */
+                error
+                  ? "The request failed, so this is not a count of zero."
+                  : users.length === 0
                   ? "Registered students appear here as they sign up."
                   : "Try clearing the search or filters."
               }

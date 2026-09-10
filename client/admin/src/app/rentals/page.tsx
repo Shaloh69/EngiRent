@@ -175,9 +175,22 @@ export default function RentalsPage() {
           emptyState={
             <EmptyState
               icon={Receipt}
-              title={rentals.length === 0 ? "No rentals yet" : "No matching rentals"}
+              title={
+                error
+                  ? "Could not load rentals"
+                  : rentals.length === 0
+                    ? "No rentals yet"
+                    : "No matching rentals"
+              }
               description={
-                rentals.length === 0
+                /* D-38: "No rentals yet" is a claim about the data. When the
+                   request FAILED we have no data to make a claim about --
+                   saying there are none is simply false. Third branch added,
+                   matching components/ui/UnknownValue.tsx's rule that
+                   unknown is not zero. */
+                error
+                  ? "The request failed, so this is not a count of zero."
+                  : rentals.length === 0
                   ? "Rentals appear here once students start booking items."
                   : "Try clearing the search or filters."
               }

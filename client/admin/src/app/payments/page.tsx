@@ -286,9 +286,22 @@ export default function PaymentsPage() {
           emptyState={
             <EmptyState
               icon={CreditCard}
-              title={transactions.length === 0 ? "No transactions yet" : "No matching transactions"}
+              title={
+                error
+                  ? "Could not load transactions"
+                  : transactions.length === 0
+                    ? "No transactions yet"
+                    : "No matching transactions"
+              }
               description={
-                transactions.length === 0
+                /* D-38: "No transactions yet" is a claim about the data. When the
+                   request FAILED we have no data to make a claim about --
+                   saying there are none is simply false. Third branch added,
+                   matching components/ui/UnknownValue.tsx's rule that
+                   unknown is not zero. */
+                error
+                  ? "The request failed, so this is not a count of zero."
+                  : transactions.length === 0
                   ? "Payments, deposits, and payouts appear here as rentals progress."
                   : "Try clearing the search or filters."
               }

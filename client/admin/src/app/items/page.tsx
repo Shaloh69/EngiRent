@@ -296,9 +296,22 @@ export default function ItemsPage() {
           emptyState={
             <EmptyState
               icon={Package}
-              title={items.length === 0 ? "No listings yet" : "No matching items"}
+              title={
+                error
+                  ? "Could not load listings"
+                  : items.length === 0
+                    ? "No listings yet"
+                    : "No matching items"
+              }
               description={
-                items.length === 0
+                /* D-38: "No listings yet" is a claim about the data. When the
+                   request FAILED we have no data to make a claim about --
+                   saying there are none is simply false. Third branch added,
+                   matching components/ui/UnknownValue.tsx's rule that
+                   unknown is not zero. */
+                error
+                  ? "The request failed, so this is not a count of zero."
+                  : items.length === 0
                   ? "Items students list for rent appear here."
                   : "Try clearing the search or filters."
               }
