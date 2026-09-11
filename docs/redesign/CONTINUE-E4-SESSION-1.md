@@ -108,6 +108,125 @@ call:** add `unavailable Boolean @default(false)` and `unavailableReason
 String?` to `Verification`, write them from the result object that already
 carries them, and exclude those rows from any calibration set.
 
+---
+
+## D-65 — STEP BY STEP. Do this first; it unblocks everything else in E4.5
+
+> **THIS IS NOT A KIOSK CHANGE. The Raspberry Pi is not touched at all.**
+> It is a Prisma schema change plus four write sites in the Node API, on the
+> **server PC** (`ssh transfer@desktop-gklhcri`). If you find yourself SSHing
+> into `engirent-kiosk` for this, you are in the wrong machine.
+
+**Why it is first:** until a row can say *why* it scored zero, A-3's
+distribution mixes "no evidence" with "evidence of no match", and no threshold
+calibrated on it means anything. Every real deposit made before this lands is
+a data point you cannot use later.
+
+### Step 0 — facts to re-derive before you start (they will have drifted)
+```bash
+grep -rn "verification.create" server/node_server/src --include=*.ts | grep -v __tests__
+grep -n "mlResult = {" -A 6 server/node_server/src/index.ts
+grep -n "const { decision, confidence, method_scores }" server/node_server/src/index.ts
+```
+As of 2026-09-11 that was **4 create sites** (`index.ts` ~527, ~582, ~728,
+~809), **2 synthetic-result catch blocks** (~483, ~689) and **2 destructure
+lines** (~492, ~698). **Line numbers WILL move — match on content.**
+
+### Step 1 — schema (`server/node_server/prisma/schema.prisma`)
+Add to `model Verification`:
+```prisma
+  /// D-65. Why a zero score is zero. Without these, an ML fetch failure and a
+  /// genuine no-match are the same row, and A-3 cannot be interpreted.
+  unavailable       Boolean @default(false)
+  unavailableReason String?
+```
+Both are **additive and nullable/defaulted**, so no existing row breaks.
+
+### Step 2 — apply it with `db push`, NOT `migrate`
+This project is **MySQL** and has **no `prisma/migrations/` directory** — it
+has always used push. `package.json` has both `db:push` and `db:migrate`;
+**use push.** Running `prisma migrate dev` against a database with no
+migration baseline will try to create one and can offer to reset the database.
+```bash
+cd server/node_server && npx prisma db push && npx prisma generate
+```
+Then confirm the columns exist before touching any code.
+
+### Step 3 — tag the ML-unreachable path (the one most likely to be missed)
+Both catch blocks build a synthetic result and **that is the ML-down case**:
+```ts
+mlResult = { decision: "PENDING", confidence: 0, method_scores: {}, ocr: null };
+```
+Add to **both**:
+```ts
+  unavailable: true,
+  unavailableReason: "ml_unreachable",
+```
+`mlVerificationService` already sets `unavailable` for
+`reference_images_unavailable` / `kiosk_images_unavailable`; this covers the
+third case, which it cannot see because it never got to run.
+
+### Step 4 — carry the fields through the destructure (both sites)
+```ts
+const { decision, confidence, method_scores, unavailable, unavailableReason } = mlResult;
+```
+
+### Step 5 — write them at ALL FOUR `verification.create` sites
+```ts
+  unavailable: unavailable ?? false,
+  unavailableReason: unavailableReason ?? null,
+```
+**All four.** Missing one leaves a path that still writes an uninterpretable
+row, and it will be the path nobody exercises until it matters.
+
+### Step 6 — tests, mutation-checked
+Add to `src/controllers/__tests__/` or a new
+`src/services/__tests__/verificationPersistence.test.ts`:
+- an ML-unreachable run persists `unavailable: true`,
+  `unavailableReason: "ml_unreachable"`
+- a normal scored run persists `unavailable: false`
+- **mutation check:** delete the two fields from one `create` payload and
+  watch the test go red. A test that never failed proves nothing.
+
+### Step 7 — deploy to the server, onto the REMOTE files
+**The server checkout is diverged by design.** Do not copy the branch versions
+over: `scp` the remote `index.ts` down, apply your edits **onto it**, diff to
+confirm the delta is only D-65, then `scp` back. `schema.prisma` can be copied
+directly if the remote one is otherwise identical — **diff it first**.
+```bash
+cd D:\ENG\EngiRent\server\node_server; npx prisma db push; npx prisma generate; npx tsc
+```
+Restart the API and **prove it restarted by the PID changing** — `is-active`
+says `active` for the old process too:
+```powershell
+Get-NetTCPConnection -LocalPort 5000 -State Listen   # note the PID
+Stop-Process -Id <pid> -Force ; Start-ScheduledTask -TaskName EngiRentNode
+```
+
+### Step 8 — verification, and be honest about its limit
+**What you CAN prove without hardware:** point `ML_SERVICE_URL` at a dead port
+in the API's `.env`, restart, and drive one verification; the persisted row
+must read `unavailable: true, unavailableReason: "ml_unreachable"` while a
+healthy run reads `false`. **Put `ML_SERVICE_URL` back afterwards and verify
+you did** — that is a live config change on a running system.
+
+**What you CANNOT prove yet:** that a *real* deposit records it correctly,
+because that needs a door driven and an item placed. Say so rather than
+implying the path is proven.
+
+### Step 9 — the two existing rows
+The two 2026-09-03 verifications will pick up `unavailable: false` from the
+column default, **which is a guess** — nobody knows why they scored zero.
+**Do not let them into any calibration set.** Either leave them and exclude by
+`createdAt`, or set `unavailableReason = "unknown_pre_d65"` so the ambiguity is
+recorded rather than silently defaulted to "genuine no-match".
+
+### Step 10 — close it properly
+Tick the E4.5a box under **G9 in the same commit**, update D-65 in
+`docs/PROGRESS.md` from NOT FIXED, and run `npm run report` (**G10**).
+
+---
+
 **Cameras are HEALTHY** — verified without driving anything. Four cameras, one
 per locker, all four by-path devices resolving to the four capture nodes
 (L1→video4, L2→video6, L3→video2, L4→video0). **D-54's note saying "3 cameras
