@@ -2412,6 +2412,77 @@ instance of "suspect the tool before the artifact", caught before reporting.
 
 ---
 
+## E3.3 MOTION — repo survey, 2026-09-11 (G2). Done BEFORE any edit.
+
+The E3 table said *"E3.3 motion | Not surveyed"*. It is surveyed now, and it
+splits into two findings that are each smaller than the bullet implies.
+
+### Finding 1 — motion IS a token, but 2 of 5 generated outputs drop it
+
+`tokens.json` → `scale.motion` already exists:
+`{fast:160, base:260, slow:420, ease:"cubic-bezier(0.16, 1, 0.3, 1)"}`.
+Where it lands:
+
+| Generated output | motion emitted? |
+|---|---|
+| `client/flutter_app/.../design_tokens.g.dart` | ✅ `DesignMotion.fast/base/slow/ease` |
+| `client/admin/src/app/design-tokens.g.ts` | ✅ `export const motion = {…}` |
+| `client/admin/src/app/design-tokens.g.css` | ❌ **none** |
+| `server/kiosk/.../design-tokens.g.css` | ✅ `--motion-fast/base/slow/ease` |
+| `client/web/styles/design-tokens.g.css` | ❌ **none** |
+
+**It is the same two generators, and the same omission class, as E3.1's
+`borderStrong` finding** — `buildAdminCss` and `buildWebCss` both wrote only
+part of what the other surfaces got. Recorded as **D-57**.
+
+Hardcoded durations that *should* be consuming these are few (so this is
+about drift prevention, not a visible bug today): the website has exactly one
+(`styles/globals.css:208`, `transition: opacity 0.15s`), and the admin's two
+hits are its reduced-motion kill-switch, not real durations.
+
+### Finding 2 — every framer-motion animation ignores reduced motion
+
+**This is the substantive one.** CSS `@media (prefers-reduced-motion: reduce)`
+**cannot stop framer-motion**: framer animates via JS-driven inline styles, and
+its default `reducedMotion` setting is `"never"`. Respecting the OS setting
+requires either `useReducedMotion()` per component or one
+`<MotionConfig reducedMotion="user">` at the root.
+
+| Surface | framer | motion components | `MotionConfig` / `useReducedMotion`? |
+|---|---|---|---|
+| Kiosk | 13.0.0 | **9** (Idle, Main, How, Catalogue, Lockers, Success, Offline, AnimatedLock, BlockAssembly) | **none** except `LoadingPrimitives.tsx` (written today) |
+| Admin | 11.18.2 | 3 files (dashboard, login, AdminLayout) | **none** |
+| Website | 11.18.2 | present | **none** |
+
+So all three web surfaces have a CSS reduced-motion block that looks like
+coverage and **does not cover the animations that actually move**. The admin's
+block is a blanket `*` rule — which makes it look most covered and is equally
+powerless against framer. Recorded as **D-58**.
+
+**Flutter is the surface in the best shape:** `MediaQuery.disableAnimationsOf`
+is genuinely consulted in `animated_auth_background.dart`, and
+`face_verify_screen.dart:83` / `kiosk_scan_screen.dart:74` check
+`.disableAnimations`.
+
+**Website's CSS block is also narrow** — it covers only
+`[data-slot="aurora-background"] > *` and `.asm-layer *`, not a blanket rule
+like the admin's.
+
+### What E3.3 will do
+
+1. Emit motion tokens from `buildAdminCss` and `buildWebCss` (D-57).
+2. Wrap each web surface's root in `<MotionConfig reducedMotion="user">` —
+   one line per surface, and it makes all 9+3+n framer components respect the
+   OS setting at once (D-58). Chosen over per-component `useReducedMotion`
+   precisely because E3's job is to define a thing **once**.
+3. Broaden the website's reduced-motion CSS to match the admin's blanket rule.
+
+**Verifiable without the Pi**, in a browser with
+`prefers-reduced-motion: reduce` emulated — which is what will be done, since
+a source edit is a hypothesis until the browser agrees (E3.1's lesson).
+
+---
+
 ### New defects found in E3
 
 **D-41 — status chips failed the text-contrast floor across the admin console.
