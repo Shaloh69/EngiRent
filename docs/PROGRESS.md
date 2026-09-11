@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.5a + E4.6 · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED, not closed · D-66 server runs a pre-E3.2 index.ts · **PHYSICAL-LAYER AUDIT 2026-09-12: D-67..D-71 — bottom_door and the actuator are NEVER commanded; a rejected deposit/return seals the item in a bay marked AVAILABLE; no owner-retrieval flow; late COLLECTION unmodelled** · G1 debt 2 · gates G1-G10 · defects 21/71 · phases 76/181 (42%) · screens 0/69 PASS]
+[PHASE E4 · E4.6 BUILT (server side), NOT DEPLOYED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G10 · defects 21/72 · phases 83/192 (43%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -825,6 +825,75 @@ after the cleanup the identical compile took **15.6 seconds**.
   belongs in E3's shared-component pass), **D-38** (admin dashboard confident
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
+
+## 2026-09-12 (later) — E4.6 BUILT on the server side. The two-compartment design finally exists in code.
+
+The user ruled on all three open questions and instructed implementation. What
+landed, and what emphatically did not.
+
+### The ruling, mechanically
+
+The bay is **two compartments**. `main_door` is insertion, the actuator's
+extend stroke is the **transfer**, `bottom_door` is retrieval. A drop is not
+part of a deposit — **it is the act of giving an item back**, which is why every
+dead end in the audit was the same missing feature wearing five different
+symptoms.
+
+### Built, with evidence
+
+| Piece | Where | Proof |
+|---|---|---|
+| **D-72 fixed first** | `adminController.ts` | 10 tests, 2 suites, both mutation-checked |
+| Schema | `schema.prisma` | `AWAITING_RETRIEVAL`, `ReleaseReason`, 5 `Rental` columns, relation, index |
+| Release decision | **`services/retrievalPolicy.ts` — pure** | **37 tests**; F1/F2/F4/F10 + grace boundary each individually mutation-checked |
+| Release executor | `services/retrievalService.ts` | ordering is the safety property: request-then-command-then-ack |
+| R1 sweep | `index.ts`, **hourly** | knows none of the rules; hands candidates to the policy |
+| Retrieval flow | `faceVerificationService.ts` | the only `bottom_door` command in the server |
+| F5 subject rule | `resolveFaceSubject` | 11 tests, mutation-checked (reverting fails 5) |
+
+**200 tests, 19 suites, `tsc` clean.**
+
+### Three decisions worth recording, because they are judgement calls
+
+1. **The policy module is pure and the executor is dumb.** Every judgement that
+   ends in a 22-second actuator stroke — in a corridor, with a student's
+   property inside — is made in a module with no Prisma, no socket and no clock
+   of its own. The alternative to proving those rules in a unit test is proving
+   them on the hardware.
+2. **`onDemand` relaxes the release window and the auto-release switch, and
+   does NOT relax the bay-busy guard.** Those two exist to stop the machine
+   acting *unattended*, which an owner standing at the kiosk is not. But an
+   owner's request does not make somebody else's hand safe.
+3. **The sweep runs hourly, not nightly** — the phase file said extend the
+   nightly cron. A configurable 1-hour grace period under a daily tick means
+   "some time tomorrow", which is not what was ruled.
+
+### What is NOT done, stated plainly
+
+- **Nothing is deployed and no migration has run.** `prisma db push` against the
+  live database is a separate, deliberate step.
+- **No part of this has touched hardware.** Not one actuator stroke, not one
+  bottom door. **G1 debt is 3** and this is the largest of the three.
+- **F3's reconnect reconciliation is half-built** — the query and the predicate
+  exist and are tested; nothing calls them on reconnect yet.
+- **No admin UI** for the retrieval policy. The values live in `KioskConfig`
+  JSON and are reachable through the existing endpoint, not through a screen.
+- **The Pi is untouched.** It already implements `drop_item` and `bottom_door`;
+  that is why the server side alone was enough. The Pi-side config merge-per-key
+  (the other half of D-72) is deliberately left for its own change.
+
+### G5 six-symptom check — E4.6 boundary. ONE SYMPTOM, caught three times by the same gate.
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent. The whole session was derivation: the command table, the door literals, the flow branches and the cron query were all read out of source, and each one overturned something written down. |
+| 2 vaguer summaries | Absent. |
+| 3 trusting a tool over the artifact | Absent this time. |
+| 4 drifting toward the user's answer | Absent, and tested: the user said "extend the nightly cron"; an hourly sweep was built instead **and the deviation written on the box**, because a 1-hour grace under a daily tick is not what was ruled. |
+| 5 batching | Absent — D-72, then schema+policy, then the wiring, committed separately. |
+| 6 **skipping verification** | **PRESENT ×3, and caught every time by running the mutation rather than assuming it.** Three mutation checks reported `Tests: 0 total` — the suite had failed to **compile**, which is not a passing test and not a failing one. Taken at face value each would have read as "the guard is covered". Two were re-run with clean replacements (F2: 3 failed, F4: 1 failed) and the third (F5) with a `void` to keep the variable used (5 failed). **`Tests: 0 total` is the mutation-check equivalent of trusting an exit code.** |
+
+---
 
 ## 2026-09-12 — PHYSICAL-LAYER AUDIT, prompted by the user. Five defects, and the two-door design is half-built.
 

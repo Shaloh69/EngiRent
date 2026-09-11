@@ -283,23 +283,48 @@ in the admin console, and **this feature gives admins a new reason to press it.*
 
 ### The boxes
 
-- [ ] **OPEN — D-72 first.** Server-side: `DEFAULT_CONFIG` must not carry
-      invented per-bay timings, and `updateKioskConfig` must deep-merge onto the
-      stored config rather than replace it. Pi-side merge-per-key recorded as a
-      follow-up, not done in the same change (it is the hardware layer)
-- [ ] **OPEN — schema:** `LockerStatus.AWAITING_RETRIEVAL`; `Rental.releaseReason`,
-      `releaseRequestedAt`, `releasedAt`, `retrievalLockerId`, `retrievedAt`
-- [ ] **OPEN — the release policy service.** Pure, unit-testable: given a
-      rental, a bay, a clock and the config, decide release / do not release /
-      why. Every guard F1-F10 lives here, not in the cron
-- [ ] **OPEN — the release executor.** Sends `drop_item`, writes
-      `releasedAt` only on ack, sets the bay `AWAITING_RETRIEVAL`, audit row
-- [ ] **OPEN — extend the nightly cron to R1**, and make it window-aware.
-      Today it queries `ACTIVE` past `endDate` only (`index.ts:1395`)
-- [ ] **OPEN — the retrieval flow.** `resolveKioskFlow` gains a fourth branch:
-      a rental in retrieval → open **`bottom_door`**, subject = the **owner**
-- [ ] **OPEN — `resolveFaceSubject` gains the retrieval case** (F5)
-- [ ] **OPEN — reconnect reconciliation** for F3
+- [x] **D-72 DONE 2026-09-12.** `DEFAULT_CONFIG` carries no per-bay timings at
+      all and `updateKioskConfig` deep-merges onto the stored config, pushing the
+      merged result to the Pi. `adminController.ts` + 10 tests across
+      `kioskConfigMerge.test.ts` and `updateKioskConfig.test.ts`, both
+      mutation-checked — the second suite exists *because* the first stayed green
+      when the merge was swapped for a replace. Pi-side merge-per-key remains a
+      follow-up: it is the hardware layer and gets its own change.
+- [x] **DONE 2026-09-12.** `prisma/schema.prisma`: `LockerStatus.AWAITING_RETRIEVAL`,
+      enum `ReleaseReason` (R1-R5), and the five `Rental` retrieval columns plus a
+      `retrievalLocker` relation and a `[releaseRequestedAt, releasedAt]` index.
+      **NOT YET PUSHED TO THE LIVE DATABASE** — `prisma db push` runs on the
+      server and is a separate, deliberate step.
+- [x] **DONE 2026-09-12.** `services/retrievalPolicy.ts` — pure, no Prisma, no
+      socket, no clock of its own. **37 tests**, and F1/F2/F4/F10 plus the grace
+      boundary were each individually mutation-checked (guard removed, suite
+      watched go red, restored).
+- [x] **DONE 2026-09-12.** `services/retrievalService.ts`. Writes
+      `releaseRequestedAt` **before** the command, sets the bay
+      `AWAITING_RETRIEVAL` immediately, sends `drop_item` with **no durations**
+      (the Pi's own calibration is the only correct source — D-72), and writes
+      `releasedAt` only from the Pi's `kiosk:ack`, correlated by `command_id`.
+- [x] **DONE 2026-09-12, and better than specified:** it runs **hourly**, not
+      nightly, because a configurable 1-hour grace period under a daily tick
+      would mean "some time tomorrow". The sweep knows none of the rules — it
+      hands every uncollected `DEPOSITED` rental to the policy, which applies the
+      window, the grace period and every safety guard.
+- [x] **DONE 2026-09-12.** A fourth branch, checked **first** because retrieval
+      outranks the rental status. It is the only `bottom_door` command in the
+      server. Fails closed when the drop was never acknowledged: the item may
+      still be in the upper compartment, and opening the bottom door would show
+      the owner an empty box and mark their item collected.
+- [x] **DONE 2026-09-12.** A released item is the owner's whatever the status
+      says. The case that made it necessary: a rejected return leaves the rental
+      `DISPUTED` **with the renter still attached**, so the old status-only rule
+      would have let that renter face-match into a bottom door holding the item
+      just taken back off them. 11 tests; mutation-checked (reverting to the
+      status-only rule fails 5).
+- [ ] **PARTLY DONE 2026-09-12.** `findUnacknowledgedReleases()` exists and
+      `isUnacknowledgedRelease()` is tested, but nothing calls them on kiosk
+      reconnect yet. **OPEN:** wire it to the reconnect handler. Deliberately
+      surfaces rather than auto-retries — the item may be in either compartment
+      and a blind second stroke could push a second item onto the first.
 - [ ] **OPEN — admin surface:** the `retrieval` policy on the kiosk config page,
       and the F6 escalation queue
 - [ ] **BLOCKED — verify on real hardware.** Needs the Pi, a real deposit, and a

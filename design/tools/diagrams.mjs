@@ -454,6 +454,78 @@ export const diagrams = [
   class S1,S2,S3,S4 bad
   class ESC wait`,
   },
+  {
+    file: "15-retrieval-as-built",
+    num: "15",
+    lane: "E4.6 · ruled 2026-09-12, server side built",
+    title: "Retrieval: the drop and the bottom door",
+    purpose:
+      "The half of the design that was never built. An item enters the upper compartment through main_door; the actuator's extend stroke drops it into the lower compartment; the owner rescans the QR and collects it through bottom_door. Five triggers lead here and every one passes the same guarded decision.",
+    source:
+      "services/retrievalPolicy.ts (pure, 37 tests) · services/retrievalService.ts · faceVerificationService.ts resolveFaceSubject + resolveKioskFlow · index.ts hourly sweep · adminController DEFAULT_CONFIG.retrieval",
+    code: `flowchart TB
+  subgraph TRIG["The five release triggers — R1 to R5"]
+    direction LR
+    T1["R1 · renter never collected<br/>DEPOSITED past the grace period<br/>admin-set, default 1 hour"]
+    T2["R2 · owner collecting a return<br/>VERIFICATION"]
+    T3["R3 · cancelled or refunded<br/>with the item still in a bay"]
+    T4["R4 · deposit rejected<br/>by item verification"]
+    T5["R5 · return rejected<br/>the dispute case"]
+  end
+
+  DEC{"decideRelease — pure, unit-tested<br/>every guard lives here"}
+  T1 --> DEC
+  T2 --> DEC
+  T3 --> DEC
+  T4 --> DEC
+  T5 --> DEC
+
+  subgraph GUARD["Refusals — each one mutation-checked"]
+    direction LR
+    G1["F1 already requested<br/>the actuator fires once"]
+    G2["F2 live session or open door<br/>a hand may be inside"]
+    G4["F4 lower compartment full<br/>never stack two students' items"]
+    G7["F7 bay not operational"]
+    G10["F10 outside the release window<br/>the admin-set hours of the day"]
+  end
+  DEC -->|"refused"| GUARD
+
+  subgraph EXEC["The drop"]
+    direction TB
+    E1["releaseRequestedAt written FIRST<br/>this is the idempotency guard"]
+    E2["bay becomes AWAITING_RETRIEVAL<br/>nothing new may be assigned here"]
+    E3["drop_item to the Pi — NO durations sent.<br/>The Pi reads its own calibrated 17-23s"]
+    E4["actuator extends: item falls to the<br/>LOWER compartment · then retracts"]
+    E5["releasedAt written ONLY on the Pi's ack<br/>requested-but-not-acked is the F3 state"]
+    E1 --> E2 --> E3 --> E4 --> E5
+  end
+  DEC -->|"released"| EXEC
+
+  subgraph COLLECT["The owner collects"]
+    direction TB
+    C1["Owner notified · rental:released"]
+    C2["Owner rescans the kiosk QR"]
+    C3{"resolveFaceSubject<br/>a released item is the OWNER'S,<br/>whatever the rental status says — F5"}
+    C4{"Was the drop acknowledged?"}
+    C5["open_door, door = bottom_door<br/>the ONLY bottom_door command<br/>in the whole server"]
+    C6(["retrievedAt set · bay returns to AVAILABLE"])
+    C1 --> C2 --> C3 --> C4
+    C4 -->|"no — item may still be upstairs"| C7(["refused, fails closed"])
+    C4 -->|"yes"| C5 --> C6
+  end
+  E5 --> COLLECT
+
+  ESC["F6 · nobody collects within the deadline<br/>raises an admin escalation and nothing else.<br/>An unclaimed physical object is a human decision"]
+  C1 -.->|"deadline passes"| ESC
+
+  class T1,T2,T3,T4,T5 wait
+  class G1,G2,G4,G7,G10 warn
+  class E1,E2,E3,E4,E5 ok
+  class C5,C6 ok
+  class C7 bad
+  class ESC warn
+  class DEC,C3,C4 wait`,
+  },
 ];
 
 /* ───────────────────────────────────────────────────────────────────────────

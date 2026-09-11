@@ -37,6 +37,11 @@ import {
   mlUnreachableResult,
   verificationEvidenceFields,
 } from "./services/verificationEvidence";
+import {
+  requestRelease,
+  confirmRelease,
+  rentalForCommand,
+} from "./services/retrievalService";
 import { openKioskSession } from "./services/kioskSessionStore";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
@@ -369,6 +374,15 @@ io.on("connection", (socket: Socket) => {
     }) => {
       if (!isKiosk(socket)) return;
       const { kiosk_id, command_id, action, status, message } = data;
+
+      // E4.6 / F3 — `releasedAt` is written ONLY here, on a real acknowledgement
+      // from the Pi. Until this fires the item is not known to have changed
+      // compartments, and the retrieval flow refuses to open a bottom door.
+      if (action === "drop_item" && status === "ok") {
+        const rentalId = rentalForCommand(command_id);
+        if (rentalId) void confirmRelease(rentalId);
+      }
+
       if (status === "ok") {
         logger.info(
           `\n┌─────────────────────────────────────────────\n` +
@@ -548,14 +562,15 @@ io.on("connection", (socket: Socket) => {
                 verificationStatus: "REJECTED",
               },
             });
-            if (locker) {
-              await prisma.locker.update({
-                where: { id: locker.id },
-                data: { status: "AVAILABLE", currentRentalId: null },
-              });
-              // D-53: the bay just went back to AVAILABLE. Tell the kiosk.
-              await emitLockerOccupancy(io, locker.kioskId);
-            }
+            // E4.6 / R4 (was D-67a). The bay used to be set AVAILABLE here
+            // while the owner's item was still physically inside it, and no
+            // door was reopened — so the item was sealed in a bay the database
+            // called empty, and the next deposit could be assigned to it.
+            // Release it to the owner instead: the actuator drops it into the
+            // lower compartment and the bay becomes AWAITING_RETRIEVAL.
+            await requestRelease(io, rental_id, {
+              reasonOverride: "DEPOSIT_REJECTED",
+            });
             await prisma.notification.create({
               data: {
                 userId: rental.renterId,
@@ -750,14 +765,13 @@ io.on("connection", (socket: Socket) => {
                 actualReturnDate: new Date(),
               },
             });
-            if (locker) {
-              await prisma.locker.update({
-                where: { id: locker.id },
-                data: { status: "AVAILABLE", currentRentalId: null },
-              });
-              // D-53: disputed return still frees the bay.
-              await emitLockerOccupancy(io, locker.kioskId);
-            }
+            // E4.6 / R5 (was D-67b). Same defect as R4 and worse: the
+            // disputed item — the object the dispute is about — was sealed in
+            // a bay marked AVAILABLE. Release it to the owner pending
+            // settlement.
+            await requestRelease(io, rental_id, {
+              reasonOverride: "RETURN_DISPUTED",
+            });
             await prisma.notification.create({
               data: {
                 userId: rental.ownerId,
@@ -1391,6 +1405,43 @@ const LATE_FEE_RATE_BY_CATEGORY: Record<string, number> = {
   AUDIO_VISUAL: 45, // avg of Headphones ₱10, Camera ₱80
 };
 const DEFAULT_LATE_FEE_RATE_PER_DAY = 50; // SPORTS_EQUIPMENT, OTHER — no doc data
+
+/**
+ * E4.6 / R1 — release items the renter never collected.
+ *
+ * Runs HOURLY, not daily like the late-fee job, because the grace period is
+ * configurable down to an hour and a daily tick would make a 1-hour setting
+ * mean "some time tomorrow". The policy itself decides whether each candidate
+ * may actually move — including the admin-configured release window, so this
+ * firing at 03:00 does not mean anything drops at 03:00.
+ */
+cron.schedule("5 * * * *", async () => {
+  try {
+    const uncollected = await prisma.rental.findMany({
+      where: {
+        status: "DEPOSITED",
+        releaseRequestedAt: null,
+        depositedAt: { not: null },
+      },
+      select: { id: true },
+    });
+    if (uncollected.length === 0) return;
+
+    let released = 0;
+    for (const rental of uncollected) {
+      // Every guard lives in the policy: grace period, release window, bay
+      // busy, bay out of service, lower compartment already full. This loop
+      // deliberately knows none of them.
+      const outcome = await requestRelease(io, rental.id);
+      if (outcome.released) released += 1;
+    }
+    logger.info(
+      `[CRON] E4.6 collection sweep — ${uncollected.length} uncollected deposit(s) considered, ${released} released`,
+    );
+  } catch (err) {
+    logger.error(`[CRON] E4.6 collection sweep failed: ${(err as Error).message}`);
+  }
+});
 
 cron.schedule("0 1 * * *", async () => {
   logger.info("[CRON] Running late fee check…");

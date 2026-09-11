@@ -1,6 +1,6 @@
 # docs/diagrams — the EngiRent process diagrams
 
-Fifteen sheets covering every process in the system.
+Sixteen sheets covering every process in the system.
 
 **Use the SVG for anything you will zoom into or print.** It is vector, so it
 stays sharp at any magnification; the PNGs are raster and will soften. Sheet 13
@@ -34,6 +34,7 @@ each stage reads left to right.
 | 12 | `12-notifications` | Four transports, each with a different job |
 | **13** | **`13-everything`** | **All of the above in one flowchart** |
 | **14** | **`14-physical-layer-and-dead-ends`** | **The audit sheet: two doors and an actuator, what the server actually drives, and the four states where an item is physically unreachable (D-67, D-68, D-71)** |
+| **15** | **`15-retrieval-as-built`** | **E4.6 as built: the five release triggers, the guarded decision, the actuator drop, and the owner collecting through the bottom door** |
 
 ## These were read out of the code, not out of the specification
 

@@ -68,19 +68,36 @@ export interface FaceSubject {
  * step (claim, return) is the **renter**. Getting this backwards would let the
  * wrong party open the locker, so it is derived from rental status rather than
  * from anything the caller sends.
+ *
+ * E4.6 adds a third case, and it is the reason this function takes the
+ * retrieval fields as well as the status. Once an item has been **released**
+ * into the lower compartment it belongs to the **owner** again — whatever the
+ * rental status says. A DISPUTED or CANCELLED rental still has a renter, and
+ * without this check that renter would face-match their way into a bottom door
+ * holding an item the system just took back off them (failure mode F5).
+ *
+ * The retrieval state is read from the rental's own columns rather than from
+ * anything the kiosk or phone sends, exactly like the original rule.
  */
 export function resolveFaceSubject(rental: {
   status: string;
   ownerId: string;
   renterId: string | null;
+  releaseRequestedAt?: Date | null;
+  retrievedAt?: Date | null;
   owner?: { profileImage: string | null; faceEncoding: unknown } | null;
   renter?: { profileImage: string | null; faceEncoding: unknown } | null;
 }): FaceSubject {
-  const isDeposit = rental.status === "AWAITING_DEPOSIT";
-  const party = isDeposit ? rental.owner : rental.renter;
+  // E4.6 / F5 — an item in (or on its way to) the lower compartment is the
+  // owner's to collect. Checked FIRST so it wins over the status rule.
+  const awaitingRetrieval =
+    rental.releaseRequestedAt != null && rental.retrievedAt == null;
+
+  const isOwner = awaitingRetrieval || rental.status === "AWAITING_DEPOSIT";
+  const party = isOwner ? rental.owner : rental.renter;
 
   return {
-    userId: (isDeposit ? rental.ownerId : rental.renterId) ?? "",
+    userId: (isOwner ? rental.ownerId : rental.renterId) ?? "",
     storedEncoding: decryptFaceEncoding(party?.faceEncoding ?? null),
     referenceFaceUrl: signedMediaUrl(party?.profileImage) ?? "",
   };
@@ -211,7 +228,10 @@ export async function applyFaceVerificationOutcome(params: {
   rentalId: string;
   kioskId: string;
   confidence: number;
-}): Promise<{ action: "claim" | "return" | "deposit" | "none"; error?: string }> {
+}): Promise<{
+  action: "claim" | "return" | "deposit" | "retrieve" | "none";
+  error?: string;
+}> {
   const { io, rentalId, kioskId, confidence } = params;
 
   const rental = await prisma.rental.findUnique({
@@ -219,11 +239,70 @@ export async function applyFaceVerificationOutcome(params: {
     include: {
       item: true,
       depositLocker: { select: { id: true, lockerNumber: true } },
+      retrievalLocker: { select: { id: true, lockerNumber: true, kioskId: true } },
     },
   });
   if (!rental) return { action: "none", error: "Rental not found" };
 
   const kioskRoom = `kiosk:${kioskId}`;
+
+  // ── Retrieve: E4.6, and it is checked FIRST because it outranks the status.
+  //
+  // The user's ruling: once the actuator has dropped an item into the lower
+  // compartment, "the owner can then rescan the QR code for retrieving the item
+  // in the bottom door". That is true whether the rental is DISPUTED, CANCELLED
+  // or VERIFICATION — the item is the owner's to collect, so the status-based
+  // branches below must not get a look at it.
+  //
+  // This opens **bottom_door**, the only place in the server that does. Every
+  // other door command in this codebase is main_door.
+  if (rental.releaseRequestedAt && !rental.retrievedAt) {
+    if (!rental.retrievalLocker) {
+      logger.error(
+        `Retrieval for rental ${rentalId} has no retrievalLocker — cannot open`,
+      );
+      return { action: "none", error: "No retrieval bay on record" };
+    }
+
+    // Fail closed if the drop was never acknowledged: the item may still be in
+    // the UPPER compartment, and opening the bottom door would show the owner
+    // an empty box and mark their item collected (failure mode F3).
+    if (!rental.releasedAt) {
+      logger.warn(
+        `Retrieval for rental ${rentalId} requested but the drop was never acknowledged`,
+      );
+      return { action: "none", error: "Item release not confirmed yet" };
+    }
+
+    await prisma.rental.update({
+      where: { id: rentalId },
+      data: { retrievedAt: new Date() },
+    });
+
+    io.to(kioskRoom).emit("kiosk:command", {
+      action: "open_door",
+      locker_id: parseInt(rental.retrievalLocker.lockerNumber, 10),
+      door: "bottom_door",
+      rental_id: rentalId,
+    });
+
+    // The lower compartment is empty again, so the whole bay returns to service.
+    await prisma.locker.update({
+      where: { id: rental.retrievalLocker.id },
+      data: { status: "AVAILABLE", currentRentalId: null },
+    });
+    await emitOccupancyForLockerId(io, rental.retrievalLocker.id);
+
+    io.to(`user:${rental.ownerId}`).emit("face:verified", {
+      rentalId,
+      action: "retrieve",
+      kioskId,
+    });
+    logger.info(
+      `Retrieval approved for rental ${rentalId}, bay ${rental.retrievalLocker.lockerNumber} bottom door`,
+    );
+    return { action: "retrieve" };
+  }
 
   // ── Deposit: owner is dropping the item off. Assign a locker now — none
   // exists yet at this stage, unlike claim below.
