@@ -59,9 +59,22 @@ This is pure verification and can start immediately.
 - [ ] Prove the ML service **actually fetched and decoded** the frames, rather
       than scoring a fetch failure as a low score. Fail-closed must be
       distinguishable from fail-quietly in the logs
-- [ ] Confirm all 5 cameras are enumerated and which locker each maps to —
+      — **HALF ANSWERED, and the other half is D-65.** `mlVerificationService`
+      *does* distinguish them, returning `unavailable: true` +
+      `unavailableReason`, with a unit test for it. **But the flag is read
+      nowhere and persisted nowhere**, so in the database a fetch failure is
+      byte-identical to a genuine zero-confidence comparison — which is exactly
+      why A-3's two rows cannot be interpreted. Needs a schema change; blocks
+      E4.5c.
+- [x] ~~Confirm all 5 cameras are enumerated and which locker each maps to —
       `seedKioskConfig` listed 3 where there are 5 (D-54), so the mapping has
-      been wrong in writing before
+      been wrong in writing before~~ — **DONE 2026-09-11, and the bullet itself
+      was wrong: there are FOUR, one per locker.** Both numbers in D-54's note
+      (3, and 5) are wrong. All four by-path devices resolve, to exactly the
+      four capture nodes: L1→video4, L2→video6, L3→video2, L4→video0. The
+      scrambled order is why `USB_DEVICE_MAP` uses stable by-path names instead
+      of raw indices — see `docs/PROGRESS.md` → E4.5a, including the false
+      alarm I raised and corrected.
 - [ ] Capture the deposit frames and the listing photos **side by side** for
       one real item, at the resolution the model actually receives
 

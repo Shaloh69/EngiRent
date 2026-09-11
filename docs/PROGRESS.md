@@ -807,6 +807,73 @@ after the cleanup the identical compile took **15.6 seconds**.
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
 
+## E4.5a — first findings, 2026-09-11. No hardware driven.
+
+### The camera layer is HEALTHY, and two written claims about it were wrong
+
+Checked on the live Pi without driving anything:
+
+| Locker | `camera_index` | by-path device | resolves to |
+|---|---|---|---|
+| 1 | 0 | `platform-xhci-hcd.0-usb-0:1.2:1.0` | `/dev/video4` |
+| 2 | 1 | `platform-xhci-hcd.0-usb-0:1.3:1.0` | `/dev/video6` |
+| 3 | 2 | `platform-xhci-hcd.0-usb-0:2:1.0` | `/dev/video2` |
+| 4 | 3 | `platform-xhci-hcd.1-usb-0:2:1.0` | `/dev/video0` |
+
+All four resolve, and they resolve to **exactly** the four nodes `udev` reports
+as `ID_V4L_CAPABILITIES=:capture:` — the other four (`video1/3/5/7`) are UVC
+metadata nodes with no capture. All four are held open by the kiosk service
+(one PID), which is why no second consumer can open them.
+
+**Two corrections, both mine or the docs':**
+1. **There are FOUR cameras, one per locker.** D-54's note (inherited from the
+   obsolete seed) says *"3 cameras where there are really 5"*. **Both numbers
+   are wrong.** The device tree and `config.py` agree on four.
+2. **I raised a false alarm and am recording it.** Seeing `camera_index: 0,1,2,3`
+   against capture nodes at `video0,2,4,6`, I concluded lockers 2 and 4 were
+   pointed at metadata nodes. **Wrong** — `camera_manager.USB_DEVICE_MAP` maps
+   the index to a *stable by-path* device, precisely because raw index order is
+   unstable. The scrambled resolution (4,6,2,0) is the proof that design is
+   earning its keep. The code comment even warns against editing it from a
+   topology diagram; I nearly did the equivalent from a device listing.
+
+### D-65 — "no evidence" and "evidence of no match" are the same row in the database. FOUND 2026-09-11. NOT FIXED (needs a schema change).
+
+`mlVerificationService` **already** distinguishes them. When reference or kiosk
+images cannot be downloaded or decoded it returns
+`{decision: "PENDING", confidence: 0, unavailable: true, unavailableReason:
+"reference_images_unavailable" | "kiosk_images_unavailable"}`, and there is a
+unit test asserting exactly that.
+
+**And then the flag is thrown away.** `grep` for `unavailable` across
+`server/node_server/src` finds it produced in that one module, asserted in its
+own test, and **read nowhere else**. `prisma.verification.create` writes
+`decision`, `confidenceScore`, `attemptNumber`, the three method scores and
+`status`. The `Verification` model has no field for it.
+
+**So an ML fetch failure persists as a row identical to a genuine
+zero-confidence comparison.**
+
+**This is why A-3's two rows are uninterpretable.** Both are
+`confidenceScore: 0, decision: PENDING, status: MANUAL_REVIEW`. Nothing in the
+database can say whether that means the ML service was unreachable, the images
+could not be fetched, or the items genuinely did not match. Same family as
+D-38 (a number stated without the evidence for it) and D-39 (a guarantee the
+control flow does not implement).
+
+**It blocks the user's actual goal.** An auto-approval threshold calibrated on
+a score distribution that silently mixes *"no evidence"* with *"evidence of no
+match"* is calibrated on noise. **These must be separable before any threshold
+work**, which makes D-65 a prerequisite of E4.5c alongside A-3.
+
+**Fix shape (NOT applied — it is a migration against the live database, and
+that is the user's call):** add `unavailable Boolean @default(false)` and
+`unavailableReason String?` to `Verification`, write them from the existing
+result object, and exclude `unavailable` rows from any calibration set. The
+service-layer work is already done; only persistence is missing.
+
+---
+
 ## A-3 — MEASURED 2026-09-11. The answer is that there is nothing to measure.
 
 **`CAPABILITY-GAPS.md` A-3 is the prerequisite for every threshold change, and
