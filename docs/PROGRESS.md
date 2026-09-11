@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2: loading primitives DONE + VERIFIED ON SCREEN on BOTH surfaces (kiosk 1080×1920, phone on device) · REMAINING IN E3.2: socket_client duration_seconds + §1.1 mirrored phone progress (both Pi-blocked) · G1 debt 1 (D-53 kiosk half, BLOCKED: Pi offline) · gates G1-G9 · P-1 EXECUTED (E0/E1/E2/E3 files reconciled) · D-53 NODE HALF DEPLOYED+PROVEN · D-54 RULED+EXECUTED · D-55/D-56 NEW · defects 14/56 · screens 0/69 PASS · ⚠ C: 98% FULL]
+[PHASE E3 · E3.1 COMPLETE · E3.2 loading primitives DONE+VERIFIED (kiosk+phone) · E3.3 MOTION DONE+VERIFIED (D-57 tokens, D-58 framer reduced-motion, all 3 web surfaces with controls) · REMAINING IN E3: contrast re-measure, locker model, socket_client duration_seconds — all Pi-blocked · G1 debt 1 (D-53 kiosk half) · BLOCKER: kiosk SSH needs Tailscale re-auth · gates G1-G10 · defects 16/58 · phases 73/167 (44%) · screens 0/69 PASS · ⚠ C: 98% FULL]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -178,6 +178,18 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-11 (E3.3 close) — G5 six-symptom check at the E3.3 boundary.
+ONE SYMPTOM, and it is symptom 4, which has not fired before.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it reframed the work.** The E3.3 bullet reads as "build motion tokens"; the repo said they already existed and three of five outputs already emitted them. The actual work was two-fifths of a generator and a framer config, not a token system. |
+| 2 vaguer summaries | Absent |
+| 3 trusting a tool over the artifact | **PRESENT, twice, both caught by reading the numbers instead of the verdict.** The probe printed **FAIL** on the website and again on the admin, and both times the code was correct and the metric was wrong. Also assumed the admin dev server was on :3002 (it is :3001) and read `HTTP=000` as "server down". |
+| 4 **drifting toward the answer I wanted** | **PRESENT — and this is the finding.** I revised the probe's success criterion **three times**, each revision making a FAIL into a PASS. That is exactly the shape of tuning a metric until it agrees. Two mitigations were applied and they are the only reason this is acceptable: **(a)** the third criterion was written down *before* it was run, and **(b)** every run requires the control to move, so a criterion that quietly stopped measuring anything reports "measured nothing" rather than PASS — which is what caught revision 2. **The corrective for next time: when a probe fails, first ask whether the probe is wrong, and write the answer down before changing it.** |
+| 5 batching | Absent — survey committed before any edit, implementation and verification in one commit with the phase boxes ticked (G9). |
+| 6 skipping verification | Absent. Three surfaces, three controls. Flutter was checked and found already correct, so no change was made rather than a change being made to look thorough. |
 
 **2026-09-11 (E3.2 phone half verified on device) — G5 six-symptom check at
 the E3.2 close boundary. ONE SYMPTOM, twice, both caught before reporting.**
@@ -2484,6 +2496,72 @@ a source edit is a hypothesis until the browser agrees (E3.1's lesson).
 ---
 
 ### New defects found in E3
+
+**D-57 — the admin and website CSS generators emitted no motion tokens.
+FOUND AND FIXED 2026-09-11 (E3.3).** `tokens.json` → `scale.motion`
+(`fast:160, base:260, slow:420, ease:cubic-bezier(0.16,1,0.3,1)`) has existed
+throughout, and `buildFlutter`, `buildAdminTs` and `buildKioskCss` all emitted
+it. **`buildAdminCss` and `buildWebCss` emitted none.** Same two generators,
+same partial-emission shape, as E3.1's `borderStrong` finding — which is the
+second time those two have been the pair that missed something, and worth
+watching a third time. Fixed with one shared `motionVars()` emitting into a
+bare `:root`, because a duration does not vary with the colour scheme. The
+regenerate rewrote **exactly** the two stale files and `build.mjs --check` is
+clean. Low user impact today (the website had one hardcoded duration, the
+admin none) — this is drift prevention, not a visible bug.
+
+**D-58 — every framer-motion animation on every web surface ignored
+`prefers-reduced-motion`. FOUND AND FIXED 2026-09-11 (E3.3), verified in a
+browser on all three.**
+
+**The mechanism, because it is the whole point:** framer-motion animates by
+writing inline styles from JavaScript, and its default `reducedMotion` is
+`"never"`. A CSS `@media (prefers-reduced-motion: reduce)` block **cannot
+touch it**. So every surface had a reduced-motion block that *looked* like
+coverage while the things that actually moved kept moving.
+
+| Surface | framer | components | consulted the setting? |
+|---|---|---|---|
+| Kiosk | 13.0.0 | **9** | no |
+| Admin | 11.18.2 | 3 files | no — **and its CSS block is a blanket `*` rule**, which made it look the most covered of the three and was equally powerless |
+| Website | 11.18.2 | several | no — and its CSS block named a single selector |
+
+**Fixed with one `<MotionConfig reducedMotion="user">` per surface root**,
+not per-component `useReducedMotion()`, because E3's job is to define a thing
+once. The website's CSS block was also broadened to the blanket rule.
+
+**Verified with a control experiment on each surface**, distinct transform
+values on a single element, control → reduced:
+
+| Surface | control | reduced | elements that tweened |
+|---|---|---|---|
+| Kiosk | **26** | 2 | 4 → **0** |
+| Admin | **11** | 2 | 2 → **0** |
+| Website | **12** | 2 | 10 → **0** |
+
+(2 distinct is the correct suppressed result, not 1: `reducedMotion: "user"`
+is *defined* to snap to the final value, so an element legitimately shows its
+initial and its final transform and nothing between.)
+
+**Flutter needed no change** — `disableAnimations` is genuinely consulted in
+`animated_auth_background.dart`, `face_verify_screen.dart:83` and
+`kiosk_scan_screen.dart:74`. Checked before assuming.
+
+**The probe needed three criteria, and the two wrong ones are the useful
+part** (`design/tools/probe-reduced-motion.mjs`, all three commented in the
+file):
+1. *"is the element transformed?"* → **false FAIL on the website.** Seven
+   `whileInView` nodes below the fold rest at a legitimate static
+   `translateY(16px)`. A static offset is not an animation.
+2. *"did the transform change?"* → **false FAIL on the admin.** A suppressed
+   element still changes exactly once, initial → final, because snapping is
+   what the setting is supposed to do.
+3. *"did it TWEEN?"* — distinct transforms per element: ≤2 snapped, ≥3
+   animated. **This one was written down before it was run**, precisely
+   because revising a metric twice is how you end up tuning it until it
+   agrees with you.
+
+
 
 **D-41 — status chips failed the text-contrast floor across the admin console.
 FOUND AND FIXED 2026-09-08 (E3.1). Verified by measurement, both directions.**
