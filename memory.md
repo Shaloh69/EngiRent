@@ -1638,3 +1638,59 @@ manual edit: change to `--window-size=1080,1920` and optionally add
 **Latent, not fixed:** there are **2 browser supervisor loops** running, not 1.
 Harmless while the `pgrep` guard matches, but if that guard ever fails both
 loops would launch a Chromium. Worth collapsing to one.
+
+## 2026-09-11 (later) — Where the live database actually is, and the `db push` ordering trap
+
+**The `DATABASE_URL` in this repo's `server/node_server/.env` is DEAD.** It
+points at `engirent-3a5ee9e7-…a.aivencloud.com:18738`, which now returns
+**NXDOMAIN** — not a timeout, a non-existent domain. Do not conclude from that
+that production is gone.
+
+**The real database is MySQL `engirent` at `127.0.0.1:3307`, local to
+`desktop-gklhcri`.** `prisma db push` prints it in as many words
+(`Datasource "db": MySQL database "engirent" at "127.0.0.1:3307"`). Consequence:
+**nothing can reach the production database from the dev PC.** Every schema
+change, every data query, every calibration read runs over
+`ssh transfer@desktop-gklhcri`, from `D:\ENG\EngiRent\server\node_server`.
+
+Reading the server's `.env` directly is refused by the auto-mode classifier
+(*Production Reads*), so let Prisma print the datasource rather than trying to
+read the file — it tells you what you need and exposes no credential.
+
+**The ordering trap, hit on D-65's migration.** `prisma db push` runs
+`prisma generate` automatically at the end, and that generate **fails with
+`EPERM` on `query_engine-windows.dll.node`** while the API is running — the
+live process holds the DLL open. The push itself had *already succeeded*, so
+the command looks half-broken while the database is fine and the **client is
+stale**. A stale client throws at runtime on the first write that uses a new
+field, which means the discovery happens at a locker, not at a terminal.
+
+Order that works:
+
+```powershell
+# 1. push (generate will fail; that is expected and harmless)
+Set-Location D:\ENG\EngiRent\server\node_server; npx prisma db push
+# 2. take the API down so the DLL unlocks
+Stop-ScheduledTask -TaskName EngiRentNode; Stop-Process -Id <pid> -Force
+# 3. NOW generate + compile
+npm run build
+# 4. back up, and prove it by the PID CHANGING
+Start-ScheduledTask -TaskName EngiRentNode
+Get-NetTCPConnection -LocalPort 5000 -State Listen   # new PID, ~30s
+```
+
+**Two checks that matter more than they look.** `Get-NetTCPConnection` on port
+5000 is the restart proof (`is-active`-style checks report the *old* process as
+healthy). And an open port is not a working API: hit a **real route** —
+the router is mounted at **`/api/v1`**, so `/health`, `/`, and `/items` all
+return 404 and prove nothing. `GET /api/v1/items?limit=1` returning item JSON
+is the check.
+
+**There is no hardware-free way to create a `Verification` row.**
+`POST /kiosk/deposit` drives the real Pi (door unlock + camera capture) — the
+e2e lifecycle suite says so itself. The only alternative forges a
+`kiosk:images` socket event, which needs the kiosk shared secret *and* a rental
+in `AWAITING_DEPOSIT`. To prove a persistence change without a door, import the
+**deployed** helper out of `dist/` and write inside a `$transaction` you
+deliberately throw out of — the row never survives, and `verification.count()`
+before and after proves it.

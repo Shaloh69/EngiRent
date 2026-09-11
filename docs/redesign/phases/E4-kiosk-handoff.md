@@ -76,11 +76,21 @@ This is pure verification and can start immediately.
       12 tests in `src/services/__tests__/verificationEvidence.test.ts`,
       **mutation-checked**: dropping the spread from 1 of the 4 write sites
       turns it red (verified, 1 failed / 11 passed). `tsc` clean, 142/142 Jest.
-      **BLOCKED:** `prisma db push` against the LIVE database and the deploy to
-      `desktop-gklhcri` both need the user — the local `.env` points at a dead
-      Aiven hostname (NXDOMAIN), so the push can only run on the server, and
-      the classifier refuses production reads there. Nothing is proven until a
-      row is read back.
+      **DEPLOYED 2026-09-11** to the live database and API (user-authorised):
+      `db push` reported in sync, `SHOW COLUMNS` confirms
+      `unavailable tinyint(1) NOT NULL DEFAULT 0` + `unavailableReason
+      varchar(191) NULL`, `dist/index.js` carries 4 spreads, the API restarted
+      (**PID 22976 → 17884**) and serves real JSON, and the two pre-D-65 rows
+      are tagged `unknown_pre_d65`. A probe importing the **deployed** helper
+      wrote both cases inside a rolled-back transaction:
+      `unavailable=1 reason=ml_unreachable` vs `unavailable=0 reason=null`,
+      row count unchanged at 2.
+      **STILL BLOCKED on hardware, and the continuation prompt was wrong that
+      it is not:** Step 8's "drive one verification" has no hardware-free
+      route. `POST /kiosk/deposit` opens a real door; the only alternative
+      forges a `kiosk:images` socket event, needing the kiosk shared secret and
+      a rental in `AWAITING_DEPOSIT` (there are none). So the four call sites
+      firing on a real deposit remains unproven. One real deposit closes it.
 - [x] ~~Confirm all 5 cameras are enumerated and which locker each maps to —
       `seedKioskConfig` listed 3 where there are 5 (D-54), so the mapping has
       been wrong in writing before~~ — **DONE 2026-09-11, and the bullet itself

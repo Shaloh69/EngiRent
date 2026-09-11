@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.5a · G2 table dated 2026-09-11 · A-3 MEASURED (N=2, both 0 — no distribution, E4.5c stays shut) · D-65 FIX BUILT + mutation-checked, NOT LIVE · D-66 NEW: the server runs a pre-E3.2 index.ts · G1 debt 2 (D-63 admin card branches; D-65 undeployed) · gates G1-G10 · defects 21/66 · phases 76/181 (42%) · screens 0/69 PASS]
+[PHASE E4 · E4.5a · A-3 MEASURED (N=2, both 0 — no distribution, E4.5c stays shut) · D-65 DEPLOYED to the live DB + API (columns live, PID 22976→17884, rolled-back probe proves the deployed client persists both fields) — NOT CLOSED: the 4 call sites need one real deposit · D-66 NEW: the server runs a pre-E3.2 index.ts · G1 debt 2 (D-63 admin card branches; D-65's write path) · gates G1-G10 · defects 21/66 · phases 76/181 (42%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -859,6 +859,91 @@ and the failure named the write site. Restored (`grep -c` → 4 again) and green
 suites. **That is necessary and nowhere near sufficient** — no row has been
 written or read back, so D-65 is **built, not fixed**.
 
+### D-65 — DEPLOYED AND PROVEN AS FAR AS IT CAN BE WITHOUT A DOOR, 2026-09-11
+
+Authorised by the user, then executed on `desktop-gklhcri`. Backups taken first
+(`src/index.ts.bak-20260911-d65`, `prisma/schema.prisma.bak-20260911-d65`).
+
+| Step | Evidence |
+|---|---|
+| Remote `schema.prisma` not diverged | fetched + diffed vs branch HEAD, **byte-identical** (CRLF-normalised), so copying this branch's version added D-65 and nothing else |
+| Remote `index.ts` **is** diverged | D-65 applied **onto the remote file**; delta vs the untouched remote diffed and confirmed **D-65 only** (1 import, 2 catch blocks, 4 spreads) |
+| Files on the server | `index.ts spreads=4`, `mlUnreachableResult=2`, `services/verificationEvidence.ts exists=True`, `schema unavailableReason=1` |
+| `prisma db push` | **"Your database is now in sync with your Prisma schema. Done in 2.29s"** |
+| Columns exist | `unavailable tinyint(1) NOT NULL DEFAULT 0`, `unavailableReason varchar(191) NULL` — read from `SHOW COLUMNS` |
+| Rebuild | `prisma generate` + `tsc` clean. `dist/index.js` (21:26:37) → `verificationEvidenceFields` **4 hits**, `mlUnreachableResult` **2 hits**, `dist/services/verificationEvidence.js` present |
+| Restart proven by **PID**, not `is-active` | **22976 → 17884** on port 5000 |
+| API actually serving | `GET /api/v1/items?limit=1` → **HTTP 200** with real item JSON |
+| Step 9 — the two pre-D-65 rows | both tagged `unavailableReason = 'unknown_pre_d65'`, read back |
+
+**`prisma generate` failed the first time with `EPERM` on
+`query_engine-windows.dll.node` — the running API held it open.** The push
+itself had already succeeded. The fix is ordering: stop the API, *then*
+generate. Worth keeping: a `db push` that reports success can still leave the
+client ungenerated, and the failure surfaces at runtime on the next write.
+
+### Where the live database actually is — the local `.env` is dead, and this cost a detour
+
+`server/node_server/.env` in this repo points at
+`engirent-…a.aivencloud.com:18738`, which returns **NXDOMAIN**. The real
+database is **MySQL `engirent` at `127.0.0.1:3307`, local to the server box**
+(printed by `prisma db push` itself). Nothing can reach the production database
+from the dev PC; every schema or data operation runs on `desktop-gklhcri`.
+
+### Step 8 — what was proven, and the part of the continuation prompt that was wrong
+
+**The prompt said Step 8 could be proven without hardware** — point
+`ML_SERVICE_URL` at a dead port, "drive one verification", read the row. **It
+cannot.** The only two routes to a `Verification` row are:
+
+1. `POST /kiosk/deposit`, which `e2e-full-lifecycle.mjs` documents as *"genuine
+   hardware commands to the real Pi (door unlock + camera capture), not a DB
+   shortcut"* — a real door opening in a corridor; or
+2. forging a `kiosk:images` socket event, which needs the kiosk shared secret
+   (a production secret read) **and** a rental sitting in `AWAITING_DEPOSIT`,
+   of which there are none.
+
+`.env` was therefore **never edited** — no `ML_SERVICE_URL` change, so nothing
+to restore, and one live-config risk avoided entirely.
+
+**What WAS proven instead, and it is the risk that actually mattered:** that the
+*deployed* Prisma client accepts the new fields. If `prisma generate` had not
+taken, `verification.create` would throw at runtime and the discovery would be a
+student standing at a locker. A probe imported the **deployed**
+`dist/services/verificationEvidence.js` and wrote both cases inside a
+transaction that was **deliberately rolled back**:
+
+```
+DEPLOYED_HELPER:        {"unavailable":true,"unavailableReason":"ml_unreachable"}
+DEPLOYED_HELPER_SCORED: {"unavailable":false,"unavailableReason":null}
+PERSISTED score=91.5 unavailable=0 reason=null
+PERSISTED score=0     unavailable=1 reason=ml_unreachable
+ROLLED_BACK: ok   COUNT_BEFORE: 2   COUNT_AFTER: 2   NO_ROW_SURVIVED: ok
+```
+
+All three temporary scripts were deleted from the server afterwards.
+
+**What remains unproven, stated plainly:** that `index.ts`'s four call sites
+fire correctly on a real deposit. That needs a door driven and an item placed —
+the same human-gated thing E4.4 and E4.5a already wait on. **D-65 is deployed,
+not closed.**
+
+### The calibration filter that E4.5c must use
+
+The two 2026-09-03 rows now carry `unavailable = 0` **with a non-NULL reason**
+(`unknown_pre_d65`), because nobody knows why they scored zero and defaulting
+them to "genuine no-match" would be a guess dressed as data. So the exclusion
+filter for any calibration set is:
+
+```sql
+WHERE unavailable = 0 AND unavailableReason IS NULL
+```
+
+not `WHERE unavailable = 0` alone. Writing the narrower filter would silently
+readmit exactly the ambiguity D-65 exists to remove.
+
+---
+
 ### The two things that need the user, and one of them moved
 
 **1. The live `db push` cannot be run from this machine, and the reason is not
@@ -958,7 +1043,7 @@ metadata nodes with no capture. All four are held open by the kiosk service
    earning its keep. The code comment even warns against editing it from a
    topology diagram; I nearly did the equivalent from a device listing.
 
-### D-65 — "no evidence" and "evidence of no match" are the same row in the database. FOUND 2026-09-11. FIX BUILT 2026-09-11, **NOT LIVE** — see the session entry at the top of this file.
+### D-65 — "no evidence" and "evidence of no match" are the same row in the database. FOUND 2026-09-11. **FIX DEPLOYED 2026-09-11 to the live DB and API; NOT CLOSED** — the four call sites still need one real deposit. See the session entry at the top of this file.
 
 `mlVerificationService` **already** distinguishes them. When reference or kiosk
 images cannot be downloaded or decoded it returns
