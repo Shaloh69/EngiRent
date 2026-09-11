@@ -315,6 +315,51 @@ its own.
 
 ---
 
+### G11 — NEVER DRIVE THE HARDWARE WITHOUT TELLING THE HUMAN FIRST
+
+**Added 2026-09-12, by the user.** The rule in their words: *"Notify me first
+when doing a physical test so that I can know always."*
+
+**Why this is a gate and not a courtesy.** The locker bank is a Raspberry Pi
+driving 8 solenoids and 4 linear actuators, mounted in a **public corridor and
+normally unattended**. Every physical action has a consequence that outlives the
+command:
+
+- A door driven open with nobody there is a **bay standing open**, possibly with
+  a student's property in it, until someone walks past.
+- An actuator stroke is 17-23 seconds of travel that can close on a hand, or
+  push an item onto another item. E4.6's F2 guard exists for exactly this, and a
+  guard in the server is not a substitute for a person knowing it is about to
+  happen.
+- A bay left `RESERVED` or `AWAITING_RETRIEVAL` by a half-finished test is
+  capacity removed from a four-bay bank until someone notices.
+
+**What counts as physical.** Anything that reaches the GPIO layer, whatever it
+is called on the way in:
+
+| | |
+|---|---|
+| Kiosk commands | `open_door` (either door), `drop_item`, `actuator_extend`, `actuator_retract`, `lock_all`, `self_test` |
+| API routes that command them | `POST /kiosk/deposit`, `/claim`, `/return`, `POST /admin/kiosks/:kioskId/command` |
+| Scripts that do it indirectly | **`scripts/e2e-full-lifecycle.mjs`** — it calls `POST /kiosk/deposit` and its own output says *"real locker N door should be unlocking on the physical kiosk right now"* |
+| Anything driving the release path | requesting a release, or anything that makes the hourly sweep act |
+
+**`self_test` is not exempt, and is the one most likely to be treated as
+harmless** — it pulses *every* solenoid and *every* actuator and opens every
+camera.
+
+**The gate.** Before any of the above: stop, and say **what will physically
+move, which bay, and for how long**, then wait for an explicit go-ahead. Not "I
+am about to…" folded into a paragraph of other work — a stop, with an answer
+required. A blanket approval earlier in a session does not carry to a later
+action: the human may have walked away from the bank since.
+
+*Check:* any physical command in the transcript with no immediately preceding
+announcement **and** an explicit human yes is a violation, regardless of how the
+test turned out.
+
+---
+
 ### G7 — Ending a session
 
 Do not end or clear until: PROGRESS.md's registers are current, the degradation

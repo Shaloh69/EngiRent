@@ -37,6 +37,13 @@ the phase file. Re-reading everything is itself a context-filling mistake.
 - **Never change `server/kiosk/kiosk_config.json`'s per-locker timings.**
   They are hand-calibrated against real hardware and verified twice. If an
   animation and a timing value disagree, the hardware is right.
+- **Never drive the hardware without telling the human first (G11).** Any door,
+  actuator, `self_test`, `POST /kiosk/deposit|claim|return`, admin kiosk
+  command, or a run of `e2e-full-lifecycle.mjs` (which opens a real door). Say
+  what will move, which bay, and for how long, then **wait for an explicit
+  yes** — the bank is unattended in a public corridor, so a door opened with
+  nobody there stays open. An approval given earlier in a session does not
+  carry to a later action.
 - **UI work does not reach the GPIO layer.** The kiosk drives 8 solenoids and
   4 linear actuators through active-LOW relays. Don't touch the autostart
   supervisor script as part of UI work — it has bitten twice in production.

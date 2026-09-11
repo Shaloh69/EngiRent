@@ -1,3 +1,10 @@
+> # SUPERSEDED 2026-09-12 by `CONTINUE-E4-SESSION-3.md`. Kept per REPO-HYGIENE.
+> **Out of date in six places.** Since it was written: E4.6 (the actuator drop,
+> AWAITING_RETRIEVAL and the bottom-door retrieval) was ruled, built, migrated
+> and deployed; D-72 was found and fixed; D-67..D-71 were addressed in code;
+> `main` now tracks this branch and pushing is authorised; and **G11 was added —
+> never drive the hardware without telling the human first.** Use session 3.
+
 # CONTINUE-E4-SESSION-2.md — paste into a fresh Claude Code session
 
 > Supersedes `CONTINUE-E4-SESSION-1.md` (bannered as superseded).

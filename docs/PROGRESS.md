@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.6 SCHEMA + CODE DEPLOYED to the live server 2026-09-12 (PID 17884→12860), NO HARDWARE EXERCISED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G10 · defects 21/72 · phases 83/192 (43%) · screens 0/69 PASS]
+[PHASE E4 · E4.6 SCHEMA + CODE DEPLOYED to the live server 2026-09-12 (PID 17884→12860), NO HARDWARE EXERCISED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G11 · defects 21/72 · phases 84/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -147,7 +147,7 @@ corrected in the same session — and that strength masked the weakness, because
 "I am catching doc errors" felt like evidence of sharpness. It was not evidence
 about verification debt.
 
-**The TEN gates now in force (`CLAUDE-CODE-PLAYBOOK.md` §2d), in one line
+**The ELEVEN gates now in force (`CLAUDE-CODE-PLAYBOOK.md` §2d), in one line
 each:**
 
 - **G1** — at most **one** unverified chunk at a time. Blocked verification
@@ -171,6 +171,12 @@ each:**
   with evidence. Deferred stays unticked carrying its ruling; blocked stays
   unticked carrying its blocker. Never bulk-tick. Added by the user after P-1
   found 63 boxes unticked across three completed phases.
+- **G11** — **never drive the hardware without telling the human first.** Any
+  door, actuator, `self_test`, `POST /kiosk/deposit|claim|return`, admin kiosk
+  command, or `e2e-full-lifecycle.mjs` run. Say what will move, which bay, and
+  for how long, then **wait for an explicit yes**. The bank is unattended in a
+  public corridor; a door opened with nobody there stays open. Earlier approval
+  does not carry forward. Added by the user 2026-09-12.
 - **G10** — **show the phase report at every session end** (`npm run report`
   → `design/tools/phase-report.mjs`). It counts the phase files rather than
   summarising from memory. Read `BLOCKED` before `todo`: that column is the
