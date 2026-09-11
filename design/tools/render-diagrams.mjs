@@ -111,14 +111,23 @@ const SHELL = (d) => `<!doctype html>
 </script>
 </body></html>`;
 
+/* DIAGRAM_SCALE lowers the device scale factor, and DIAGRAM_SUFFIX renames the
+   output. Sheet 13 at 2x is 3806x9286, which is past what some upload paths
+   accept, so a 1x copy is generated for sharing:
+     DIAGRAM_SCALE=1 DIAGRAM_SUFFIX=@1x DIAGRAM_ONLY=13 node render-diagrams.mjs */
+const SCALE = Number(process.env.DIAGRAM_SCALE ?? 2);
+const SUFFIX = process.env.DIAGRAM_SUFFIX ?? "";
+const ONLY = process.env.DIAGRAM_ONLY ?? "";
+
 const browser = await chromium.launch();
 const page = await browser.newPage({
   viewport: { width: 7000, height: 2400 },
-  deviceScaleFactor: 2,
+  deviceScaleFactor: SCALE,
 });
 
 const results = [];
 for (const d of all) {
+  if (ONLY && !d.file.includes(ONLY)) continue;
   await page.setContent(SHELL(d), { waitUntil: "load" });
   try {
     await page.waitForFunction(() => window.__rendered || window.__error, null, { timeout: 45000 });
@@ -140,18 +149,18 @@ for (const d of all) {
   });
   await page.waitForTimeout(120);
 
-  const png = join(OUT, `${d.file}.png`);
+  const png = join(OUT, `${d.file}${SUFFIX}.png`);
   await plate.screenshot({ path: png, scale: "device" });
 
   const svg = await page.evaluate(() => {
     const s = document.querySelector(".mermaid svg");
     return s ? s.outerHTML : null;
   });
-  if (svg) writeFileSync(join(OUT, `${d.file}.svg`), svg, "utf8");
+  if (svg && !SUFFIX) writeFileSync(join(OUT, `${d.file}.svg`), svg, "utf8");
 
   const final = await plate.boundingBox();
   console.log(
-    `OK    ${d.file}.png  ${Math.round(final.width)}x${Math.round(final.height)} css · 2x`,
+    `OK    ${d.file}${SUFFIX}.png  ${Math.round(final.width)}x${Math.round(final.height)} css · ${SCALE}x`,
   );
   results.push({ file: d.file, ok: true, w: final.width, h: final.height });
 }
