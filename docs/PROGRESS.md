@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2 + E3.3 DONE+VERIFIED · **D-53 CLOSED: both halves deployed and VERIFIED ON THE LIVE KIOSK with the distinguishing test** · **G1 debt 0** · gates G1-G10 · D-54 RULED+EXECUTED · D-57/D-58 fixed+verified · D-59 (rotation does not survive reboot) + D-60 (out-of-service icon) NEW, D-60 fixed+deployed · defects 19/60 · phases 73/167 (44%) · screens 0/69 PASS · ⚠ C: 98% FULL]
+[PHASE E3 · E3.1/E3.2/E3.3 DONE · **kiosk contrast re-measured against the REDESIGNED build: 137 nodes 0 failing + physical 6.34–17.82:1** · D-53 CLOSED · G1 debt 0 · gates G1-G10 · D-61 fixed+deployed (live text in the DISABLED colour) · D-62 NEW (the documented kiosk pkill kills the supervisor too) · defects 21/62 · phases 75/167 (45%) · screens 0/69 PASS · ⚠ C: 98% FULL]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -178,6 +178,25 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-11 (kiosk contrast closed) — G5 six-symptom check. TWO SYMPTOMS,
+one of them a live-system mistake I made and had to repair.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it is the reason this work happened at all.** The two contrast boxes were re-read rather than assumed done; they were HALF MET for one specific reason (measured against the pre-redesign build) and that reason had just expired. |
+| 2 vaguer summaries | Absent |
+| 3 **trusting a tool over the artifact** | **PRESENT, twice.** (a) I measured a crop of the panel and got "text `#FEDBA1` on ground `#FEC37C`, 1.19:1" — orange, on a navy kiosk. **I had measured a region without looking at the image.** Opening it showed the panel was displaying the *Raspberry Pi desktop*. (b) `pgrep` over SSH matched my own command line and reported 2 browsers where there were 0. |
+| 4 drifting to agreement | Absent. When the first sweep passed on 4 screens it was widened to 11 rather than banked — which is what found the 8 failures in my own `StagedProgress`. |
+| 5 batching | Absent — fix, rebuild, deploy, re-sweep, three times over. |
+| 6 skipping verification | Absent, and it cost time in the right way: three sweep rounds, each finding something the previous one had not covered. |
+
+**The live-system mistake, recorded plainly.** Following `memory.md`'s
+documented reload step killed the browser **and its supervisor**, leaving a
+public kiosk showing a desktop wallpaper. It was diagnosed and restored in the
+same session, the cause is now **D-62**, and `memory.md` is corrected. The
+general lesson is the one this track keeps paying for: **a documented command
+is still a claim, and this one was wrong.**
 
 **2026-09-11 (D-53 CLOSED on live hardware) — G5 six-symptom check at the
 D-53 boundary. ONE SYMPTOM, and it nearly aborted a correct deploy.**
@@ -2516,6 +2535,72 @@ a source edit is a hypothesis until the browser agrees (E3.1's lesson).
 ---
 
 ### New defects found in E3
+
+**D-61 — the kiosk painted live informational text in the DISABLED-text
+colour. FOUND, FIXED AND DEPLOYED 2026-09-11**, by re-measuring contrast
+against the redesigned build now that it is on the device.
+
+`--ink3` is generated from `semantic.dark.textDisabled` (`#5B7A96`). WCAG
+exempts disabled text from contrast floors precisely because nobody is meant
+to read it. `screens.css` used it in **18** places for content people must
+read: the kiosk subtitle, the stat labels (Lockers / Link / Time), the clock,
+*"Code rotates every 90 seconds for security"*, catalogue category, price and
+deposit, the return-home countdown, `"of 4"` on the bay screen.
+
+| | on `#050F1A` | on `#0B1A2A` | |
+|---|---|---|---|
+| `--ink3` `#5B7A96` | **4.28:1** | **3.91:1** | fails 4.5 |
+| `--ink2` `#93AEC9` | 8.39:1 | 7.64:1 | passes |
+
+**Same shape as D-46** (the admin's inputs rendering a dependency's default
+grey): a colour used for something it does not mean. All 18 moved to `--ink2`,
+plus `.asm-sub` in `theme.css`. `--ink3` now has **no `color:` consumer** on
+the kiosk, which is correct rather than an oversight — a fixed public panel
+has no disabled text.
+
+**Eight of the failures were mine, written hours earlier**, and only turned up
+because the sweep was widened past the four click-reachable screens to the
+`?demo=` ones: `StagedProgress`'s pending stage names and its explanatory note
+were on `--ink3`. The stage *dot* already carries pending/done/active, so
+state is not conveyed by text colour and nothing was lost by making the labels
+readable.
+
+**One element is changed but NOT measured, and that is stated rather than
+blurred:** `.asm-sub` belongs to the BlockAssembly boot overlay, which the
+capture flag `notetris=1` skips. It was changed on the same principle, not on
+a measurement.
+
+**D-62 — the documented kiosk browser-reload command kills the SUPERVISOR too,
+and the kiosk does not come back. FOUND THE HARD WAY 2026-09-11.**
+`memory.md` documents the UI deploy step as:
+`pkill -f "chromium.*--app=http://localhost:8080"` — *"the supervisor
+relaunches in ~25s"*. **It does not, because that pattern matches the
+supervisor's own command line**: the autostart Exec is a `bash -c` whose body
+contains the literal chromium command, so `pkill -f` kills the watchdog and
+the browser together. **The panel sat on the Raspberry Pi desktop until it was
+relaunched by hand.**
+
+*Two further traps in the same incident:*
+- `pgrep -f "chromium.*--app=http://localhost:8080"` run over SSH **matches
+  the SSH session's own command line**, so it reported `2` while there were
+  **zero** browsers. Anchor it: `pgrep -f "^/usr/lib/chromium/chromium"` — the
+  supervisor itself does exactly that, and `Implemented.md` §5.3 already
+  records a self-matching `pgrep` biting production once.
+- Relaunching chromium over SSH fails with `Missing X server or $DISPLAY`
+  unless the session type is supplied: `XDG_RUNTIME_DIR=/run/user/1000
+  WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland` **and**
+  `--ozone-platform=wayland` rather than the autostart's
+  `--ozone-platform-hint=auto`, which resolves to X11 outside the desktop
+  session.
+
+**Safe reload instead:** restart the kiosk service
+(`sudo systemctl restart engirent-kiosk`), which the supervisor survives, or
+kill only the browser with the anchored pattern
+`pkill -f "^/usr/lib/chromium/chromium"`. `memory.md` corrected.
+
+**Also observed:** the autostart now carries `--window-size=1080,1920` and
+`--hide-scrollbars`, i.e. the change `memory.md` records as BLOCKED on a
+user-side edit **has been made**. That entry is stale.
 
 **D-59 — the kiosk's screen rotation does NOT survive a reboot, and this file
 said it did. FOUND 2026-09-11.** `memory.md` records for 2026-09-10:

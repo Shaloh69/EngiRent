@@ -228,7 +228,13 @@ body {
   font-size: var(--t-xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--ink3);
+  /* D-61: was --ink3 (disabled text, 4.28:1). Changed for the same reason as
+     the 18 in screens.css. NOTE: this is the ONE element the contrast sweep
+     does not cover -- the capture passes `notetris=1`, which skips the
+     BlockAssembly overlay this belongs to -- so it is changed on the same
+     principle rather than on a measurement, and that distinction is stated
+     rather than blurred. */
+  color: var(--ink2);
 }
 
 .asm-quote {

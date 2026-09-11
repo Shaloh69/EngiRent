@@ -38,9 +38,21 @@ One design system across four stacks that share nothing technically
       the surface→theme matrix follows E0.2b: **Flutter and admin both themes,
       kiosk dark-only, website light-only**. Verified on the Flutter reference
       screen in both themes 2026-09-09.
-- [ ] WCAG AA contrast on every pairing, **computed separately per theme** —
+- [x] ~~WCAG AA contrast on every pairing, **computed separately per theme** —
       passing light proves nothing about dark; kiosk verified at standing
-      distance in real corridor lighting
+      distance in real corridor lighting~~ — **DONE 2026-09-11, BOTH HALVES,
+      against the REDESIGNED build on the real device.**
+      *Computed*: found **D-41** (25 of 28 admin chips under 4.5:1) and
+      **D-46** (admin inputs at 1.42:1, never on a token at all); 1.4.11 swept
+      on all four surfaces. *Kiosk, re-measured now that the redesigned build
+      is deployed*: **137 text nodes across 11 screens, 0 failing**, floors
+      applied per size (3:1 large / 4.5:1 normal). Lowest normal-text 6.46:1.
+      That sweep found **D-61** — 18 selectors painting live content in
+      `--ink3`, the DISABLED-text colour, at 4.28/3.91:1. Fixed and redeployed.
+      *Physically, off the panel* (`grim`, 1080×1920): H1 **17.82:1**, step
+      title 16.83:1, step body **7.99:1**, subtitle 7.50:1, eyebrow 6.34:1 —
+      and the panel renders the tokens **exactly** (`#EEF6FF`, `#4DA3E8`,
+      `#93AEC9`) or one unit off, so it is faithful, not merely passing.
       — **HALF MET.** *Computed per theme*: **done**, and it found **D-41**
       (25 of 28 admin chips under 4.5:1) and **D-46** (admin inputs at 1.42:1,
       never on a token at all); re-measured off the rendered DOM, 0 failing.
@@ -175,7 +187,10 @@ One design system across four stacks that share nothing technically
       own documented invocation was a no-op — `bool.fromEnvironment` accepts
       only `"true"`/`"false"`, so the `=1` the repo told you to use silently
       booted past it.
-- [ ] Contrast verified computationally; kiosk verified physically
-      — **HALF MET**, same split as the E3.1 contrast row: computed is done and
-      found D-41 and D-46; physical was measured on the real panel but against
-      the **pre-redesign** build. **Pi-blocked (B-2).**
+- [x] ~~Contrast verified computationally; kiosk verified physically~~
+      — **DONE 2026-09-11.** The half that was missing was *physical against
+      the redesigned build* — the 2026-09-10 measurement was taken while the Pi
+      still ran `main@1546cd6`. The redesigned build is now deployed and both
+      halves are measured: 137 nodes computed with 0 failing, and 6 elements
+      sampled off the glass at 6.34:1–17.82:1 with the tokens rendered
+      faithfully. See the E3.1 contrast row for the numbers and **D-61**.

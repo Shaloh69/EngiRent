@@ -1,3 +1,20 @@
+/* D-61. Every `color: var(--ink3)` in this file became `--ink2` on 2026-09-11.
+   --ink3 is generated from semantic.dark.textDisabled, i.e. the DISABLED-text
+   colour, which WCAG exempts from contrast floors precisely because nobody is
+   meant to be reading it. This file was using it for live content: the kiosk
+   subtitle, the stat labels (Lockers/Link/Time), the clock, "Code rotates
+   every 90 seconds for security", catalogue prices and deposits, the
+   return-home countdown, "of 4".
+
+   Measured on the deployed build at 1080x1920:
+     --ink3 #5B7A96  ->  4.28:1 on #050F1A, 3.91:1 on #0B1A2A   FAILS 4.5
+     --ink2 #93AEC9  ->  8.39:1 on #050F1A, 7.64:1 on #0B1A2A   passes
+
+   Same shape as D-46, where the admin's inputs rendered a dependency's default
+   grey: a colour used for something it does not mean. A fixed public panel
+   read at standing distance has no disabled text at all, so --ink3 now has no
+   `color:` consumer here, and that is correct rather than an oversight. */
+
 /* EngiRent Kiosk — screen layouts. Full rebuild, portrait-first.
    docs/planning/02-design-mandate.md §1 and §4.
 
@@ -102,7 +119,7 @@ h3 {
   font-size: var(--t-xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .idle-lock-mini {
@@ -265,7 +282,7 @@ h3 {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   margin-bottom: var(--sp-1);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .idle-compare-cell.with .idle-compare-tag {
@@ -317,7 +334,7 @@ h3 {
 
 .idle-directions-foot {
   font-size: var(--t-sm);
-  color: var(--ink3);
+  color: var(--ink2);
   line-height: 1.45;
 }
 
@@ -443,7 +460,7 @@ h3 {
   font-size: var(--t-xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .tb-k-fields {
@@ -467,7 +484,7 @@ h3 {
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .tb-k-field dd {
@@ -621,7 +638,7 @@ h3 {
 .qr-refresh,
 .qr-hero-refresh {
   font-size: var(--t-xs);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .session-qr-spinner {
@@ -705,7 +722,7 @@ h3 {
   font-size: var(--t-xs);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .locker-pills {
@@ -753,7 +770,7 @@ h3 {
   border-top: 1px solid var(--border);
   background: var(--surf);
   font-size: var(--t-xs);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .bot-time {
@@ -835,7 +852,7 @@ h3 {
   padding-top: var(--sp-3);
   border-top: 1px solid var(--border);
   font-size: var(--t-sm);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .info-empty {
@@ -964,7 +981,7 @@ h3 {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: var(--t-2xl);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .cat-body {
@@ -979,7 +996,7 @@ h3 {
   font-size: var(--t-xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .cat-title {
@@ -1007,12 +1024,12 @@ h3 {
 
 .cat-per {
   font-size: var(--t-xs);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .cat-dep {
   font-size: var(--t-xs);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 /* lockers */
@@ -1045,7 +1062,7 @@ h3 {
 .lockers-count-of {
   font-family: var(--font-mono);
   font-size: var(--t-md);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .lockers-count-label {
@@ -1175,7 +1192,7 @@ h3 {
 
 .flow-foot-hint {
   font-size: var(--t-sm);
-  color: var(--ink3);
+  color: var(--ink2);
   text-align: center;
 }
 
@@ -1290,7 +1307,7 @@ h3 {
   font-size: var(--t-xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .field-val {
@@ -1349,7 +1366,7 @@ h3 {
   display: grid;
   place-items: center;
   background: var(--surf2);
-  color: var(--ink3);
+  color: var(--ink2);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
 }
@@ -1513,7 +1530,7 @@ h3 {
 .countdown-label {
   font-family: var(--font-mono);
   font-size: var(--t-sm);
-  color: var(--ink3);
+  color: var(--ink2);
 }
 
 .error-btns {

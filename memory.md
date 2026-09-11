@@ -1544,8 +1544,25 @@ scp /tmp/d.tgz engirent@engirent-kiosk:/tmp/
 ssh … 'cd ~/Desktop/EngiRent/server/kiosk/kiosk_ui_react &&
         cp -r dist dist.bak-<date> && rm -rf dist && mkdir dist &&
         tar -xzf /tmp/d.tgz -C dist'
-ssh … 'pkill -f "chromium.*--app=http://localhost:8080"'   # supervisor relaunches
+ssh … 'pkill -f "^/usr/lib/chromium/chromium"'   # ANCHORED -- see the D-62 warning
 ```
+**CORRECTED 2026-09-11 (D-62). The unanchored
+`pkill -f "chromium.*--app=http://localhost:8080"` printed above for months
+KILLS THE SUPERVISOR TOO** — the autostart Exec is a `bash -c` whose body
+contains that literal chromium command, so `pkill -f` matches the watchdog as
+well as the browser and nothing relaunches. It left the panel showing the
+Raspberry Pi desktop until chromium was started by hand. Use the anchored
+pattern above, or simply restart the service
+(`sudo systemctl restart engirent-kiosk`), which the supervisor survives.
+
+Two companion traps from the same incident: `pgrep -f "chromium.*--app=…"` run
+over SSH **matches the SSH session's own command line** and will report
+browsers that do not exist (anchor it, as the supervisor itself does); and
+relaunching chromium over SSH needs `XDG_SESSION_TYPE=wayland` plus
+`--ozone-platform=wayland`, because the autostart's `--ozone-platform-hint=auto`
+resolves to X11 outside the desktop session and dies with *"Missing X server or
+$DISPLAY"*.
+
 The browser supervisor relaunches Chromium within ~25s and its `pgrep` guard
 keeps it to exactly one instance (verified: 1 after relaunch).
 
