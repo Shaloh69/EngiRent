@@ -155,48 +155,156 @@ re-identification and texture-matching patents; conformal abstention and
 cost-sensitive selective prediction literature (arXiv 2607.27143, 2502.07255;
 Nature Sci. Rep. 2026).*
 
-## E4.6 — The physical layer: retrieval, rejection and lateness
+## E4.6 — Retrieval: the drop, the bottom door, and lateness
 
-**Added 2026-09-12 after the user asked what the happy-path sheets do not
-answer.** Audited against the code; findings and evidence in `docs/PROGRESS.md`
-under the 2026-09-12 entry. **Every box here is OPEN and needs a RULING before
-it is code — none of them is a UI change, so none is inside this track's scope
-boundary without an explicit instruction.**
+**Added 2026-09-12 from the physical-layer audit (D-67…D-71). RULED by the user
+the same day, and the ruling closes all three open questions.** This section is
+a specification, not a sketch — it exists because the audit found that the
+two-door design is half-built and every recovery path is missing.
 
-- [ ] **OPEN — D-69. Decide what `bottom_door` is for.** It is wired to BCM
-      6/7/8/9, calibrated per bay (15s; bay 2 is 5s), named *"retrieval door at
-      the base"* in `gpio_controller.py`, and **never commanded** — Node sends
-      `main_door` at all six call sites. The user's reading is that it is the
-      retrieval path for disputed and uncollected items. That is a design
-      intent the code does not implement. **BLOCKED on a ruling.**
-- [ ] **OPEN — D-70. Decide whether the automated flow drives the actuator.**
-      `place_item` (extend to push the item in, retract to return the platform,
-      17-23s per bay) has exactly one caller, and Node never sends `drop_item`.
-      Today the student places the item by hand through the top door, so four
-      calibrated timings are unexercised and the kiosk's `dropping` state —
-      built in E3.2 — is unreachable in a real rental. Either wire it, or
-      record the actuator as descoped. **BLOCKED on a ruling.**
-- [ ] **OPEN — D-67. A rejected deposit or return seals the item in a bay the
-      database calls empty.** Both branches set the locker `AVAILABLE` and emit
-      no `open_door`, so the next deposit can be assigned a bay with someone
-      else's item in it. The RETRY branch already reopens the door, so the
-      mechanism exists. Needs the D-69 ruling first, because the fix is
-      "which door opens, and when". **BLOCKED.**
-- [ ] **OPEN — D-68. There is no owner-retrieval flow.** `resolveKioskFlow`
-      branches on `AWAITING_DEPOSIT`/`DEPOSITED`/`ACTIVE` and returns
-      `action: "none"` for everything else — so a correctly returned item sits
-      in an `OCCUPIED` bay that the owner cannot open. `kioskRoutes.ts` has
-      `/deposit`, `/claim`, `/return` and no fourth flow. This is the answer to
-      *"how does the owner retrieve the item during a dispute"*: **they
-      cannot.** **BLOCKED on the same ruling.**
-- [ ] **OPEN — D-71. Late COLLECTION is not modelled; only late RETURN is.**
-      The single cron (`index.ts:1395`) queries `ACTIVE` past `endDate` and
-      charges a per-day fee. Nothing ages `DEPOSITED` (renter never collects),
-      `VERIFICATION` (owner never collects) or `DISPUTED`. `CLAIM_REMINDER` and
-      `DEPOSIT_REMINDER` exist in the enum and **nothing emits them** — the
-      D-38/D-39 shape, a vocabulary promising behaviour the control flow does
-      not implement. **BLOCKED on a ruling: deadline, fee, admin action, or
-      nothing by design.**
+### The ruling, in the user's words and what it means mechanically
+
+> *"Actuator activates when a user is late getting their item… admin
+> configurable."*
+> *"[The bottom door is] for retrieving those items."*
+> *"When the owner wants to retrieve, or a user did not get the item on the
+> desired time, or the user cancelled and refunded while the item is in the
+> kiosk — the actuator will activate, dropping the item. The owner can then
+> rescan the QR code for retrieving the item in the bottom door."*
+
+**The bay is two compartments, not one.** That is the thing the old model got
+wrong and it explains every dead end in the audit:
+
+| Compartment | Door | Holds |
+|---|---|---|
+| Upper | `main_door` — **insertion** | the item during a normal rental |
+| Lower | `bottom_door` — **retrieval** | an item the system has **released back to its owner** |
+
+**The actuator is the transfer between them.** `place_item` extends — which
+drops the item from the upper compartment into the lower — then retracts to
+return the platform. So a "drop" is not part of a deposit; **it is the act of
+giving an item back**, and it is the missing half of the whole design.
+
+### The release triggers — every path into the lower compartment
+
+A release fires on exactly these, and nothing else:
+
+| # | Trigger | Rental status at the time | Why |
+|---|---|---|---|
+| R1 | **Renter never collected** | `DEPOSITED`, and now > `depositedAt` + grace | The user's first ruling. Grace is admin-configurable, default **1 hour** |
+| R2 | **Owner retrieving a completed return** | `VERIFICATION` | D-68. The owner asks; no waiting period |
+| R3 | **Cancelled or refunded while the item is in a bay** | `CANCELLED` with a bay still holding it | The user's third ruling |
+| R4 | **Deposit rejected by item verification** | `CANCELLED` via D-67a | The item is not what was listed; it goes back |
+| R5 | **Return rejected — a dispute** | `DISPUTED` via D-67b | The owner retrieves pending settlement |
+
+R4 and R5 are the audit's two "sealed in a bay the database calls empty" cases.
+**They are the same operation as R1-R3**, which is why this section replaces
+D-67's separate fix: there is one release path, not five.
+
+### The state machine this adds
+
+**`LockerStatus` gains `AWAITING_RETRIEVAL`.** A bay whose lower compartment
+holds an item **is not `AVAILABLE`** — a second drop onto an un-retrieved item
+would stack two students' property in one compartment. This is the single most
+important invariant here.
+
+```
+AVAILABLE ──deposit──► OCCUPIED ──release──► AWAITING_RETRIEVAL ──owner collects──► AVAILABLE
+```
+
+**`Rental` gains a retrieval record**, so the drop is idempotent and auditable:
+
+| Field | Purpose |
+|---|---|
+| `releaseReason` | which of R1-R5 fired. Without it, an ops person cannot tell a late-collection drop from a dispute drop |
+| `releaseRequestedAt` | set **before** the command goes out |
+| `releasedAt` | set **only on the Pi's ack**. The gap between the two is how a power failure mid-drop is detected |
+| `retrievalLockerId` | which bay to open the bottom door of |
+| `retrievedAt` | the owner took it |
+
+### Admin-configurable policy
+
+Stored in the existing `KioskConfig` JSON (`GET`/`PUT /admin/kiosks/:kioskId/config`),
+under a new `retrieval` key, so it uses the mechanism that already exists:
+
+```json
+"retrieval": {
+  "auto_release_enabled": true,
+  "collection_grace_hours": 1,
+  "release_window_start_hour": 7,
+  "release_window_end_hour": 21,
+  "owner_retrieval_deadline_hours": 72
+}
+```
+
+**`collection_grace_hours` is the user's "late for an hour or more".**
+**`release_window_*` is the user's "specific hour of the day"** — an item is
+never dropped outside opening hours, because a drop puts a student's property
+into a compartment that is then unattended until they arrive. An overdue
+rental at 03:00 waits until the window opens.
+
+### Foolproofing — the failure modes, each with its guard
+
+This is the part the user asked for. Each row is a way the naive version breaks.
+
+| # | Failure mode | Guard |
+|---|---|---|
+| F1 | The drop fires twice — the actuator cycles onto an empty platform, or worse, onto a bay reused in between | **Idempotency:** refuse if `releaseRequestedAt` is already set. The DB row, not an in-memory flag |
+| F2 | Someone is at the bay with the door open and a hand inside when the actuator fires | **Never release a bay with a live kiosk session or an open door.** Check the session store and the kiosk's own door state before commanding |
+| F3 | Power or network fails mid-drop; the row says released, the item is still in the upper compartment | `releasedAt` is written **only on the Pi's ack** (`_run_with_ack` already exists). On kiosk reconnect, reconcile every rental with `releaseRequestedAt` and no `releasedAt` |
+| F4 | A drop is attempted into a bay whose lower compartment is already full | The `AWAITING_RETRIEVAL` invariant above, checked in the same transaction that assigns |
+| F5 | The wrong person collects — a renter retrieves an item released to the owner | `resolveFaceSubject` must return the **owner** for a retrieval flow. It currently derives subject from `AWAITING_DEPOSIT` only; retrieval is a third case |
+| F6 | The owner never comes; the bay is dead capacity forever | `owner_retrieval_deadline_hours` raises an admin escalation. **It does not auto-anything** — an unclaimed physical object is a human decision |
+| F7 | An auto-release fires on a bay taken out of service | Skip `MAINTENANCE` / `OUT_OF_SERVICE` |
+| F8 | The actuator is commanded but the bay has no calibrated timing | Read from `kiosk_config.json` via the Pi's own default path; never invent a duration server-side (**see D-72**) |
+| F9 | Nobody can tell why an item was dropped | `releaseReason` + an audit-log row per release |
+| F10 | The drop happens at 3am and the item sits in an unattended open-ish compartment overnight | `release_window_*` |
+
+### D-72 — and it must be fixed BEFORE any of this ships
+
+**A single admin config save destroys the hand-calibrated door and actuator
+timings.** `updateKioskConfig` stores whatever it is given and pushes it to the
+Pi; the Pi's `on_config` **replaces `kiosk_config.json` wholesale** whenever the
+payload has a `lockers` key. `DEFAULT_CONFIG` in `adminController.ts` carries
+invented values — `15 / 15 / 5 / 5` for all four bays — against the real
+calibration:
+
+| Bay | main | bottom | extend | retract |
+|---|---|---|---|---|
+| 1 | 15s | 15s | 22s | 22s |
+| 2 | **5s** | **5s** | 21s | 21s |
+| 3 | 15s | 15s | 17s | 17s |
+| 4 | 15s | 15s | 23s | 23s |
+
+Bay 2's door would triple; every actuator would be cut to a fraction of its
+calibrated travel time and would stop mid-stroke. `CLAUDE.md`'s hardest rule —
+*never change those timings, the hardware is right* — is violable from a button
+in the admin console, and **this feature gives admins a new reason to press it.**
+
+### The boxes
+
+- [ ] **OPEN — D-72 first.** Server-side: `DEFAULT_CONFIG` must not carry
+      invented per-bay timings, and `updateKioskConfig` must deep-merge onto the
+      stored config rather than replace it. Pi-side merge-per-key recorded as a
+      follow-up, not done in the same change (it is the hardware layer)
+- [ ] **OPEN — schema:** `LockerStatus.AWAITING_RETRIEVAL`; `Rental.releaseReason`,
+      `releaseRequestedAt`, `releasedAt`, `retrievalLockerId`, `retrievedAt`
+- [ ] **OPEN — the release policy service.** Pure, unit-testable: given a
+      rental, a bay, a clock and the config, decide release / do not release /
+      why. Every guard F1-F10 lives here, not in the cron
+- [ ] **OPEN — the release executor.** Sends `drop_item`, writes
+      `releasedAt` only on ack, sets the bay `AWAITING_RETRIEVAL`, audit row
+- [ ] **OPEN — extend the nightly cron to R1**, and make it window-aware.
+      Today it queries `ACTIVE` past `endDate` only (`index.ts:1395`)
+- [ ] **OPEN — the retrieval flow.** `resolveKioskFlow` gains a fourth branch:
+      a rental in retrieval → open **`bottom_door`**, subject = the **owner**
+- [ ] **OPEN — `resolveFaceSubject` gains the retrieval case** (F5)
+- [ ] **OPEN — reconnect reconciliation** for F3
+- [ ] **OPEN — admin surface:** the `retrieval` policy on the kiosk config page,
+      and the F6 escalation queue
+- [ ] **BLOCKED — verify on real hardware.** Needs the Pi, a real deposit, and a
+      drop driven into the lower compartment. No part of this is proven until an
+      item physically moves between compartments and a bottom door opens
 
 ## Definition of done
 - [ ] Every beat implemented on both screens, verified on real hardware

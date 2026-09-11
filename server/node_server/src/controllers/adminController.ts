@@ -1041,26 +1041,73 @@ export const settleDispute = async (
 // No actuator_speed_percent — actuators are relay-driven on/off (no PWM
 // speed-control circuit exists on the current hardware), so a "speed"
 // setting here would be silently ignored by the Pi's actuator controller.
-const DEFAULT_LOCKER_CONFIG = {
-  main_door_open_seconds: 15,
-  bottom_door_open_seconds: 15,
-  actuator_extend_seconds: 5,
-  actuator_retract_seconds: 5,
-};
-
+/**
+ * D-72. THESE DEFAULTS USED TO BE A LOADED GUN.
+ *
+ * The Pi's `on_config` handler REPLACES `kiosk_config.json` wholesale whenever
+ * the pushed payload contains a `lockers` key. The old defaults here were
+ * invented — 15/15/5/5 for all four bays — against the real, twice-verified
+ * calibration (bay 1: 15/15/22/22, bay 2: 5/5/21/21, bay 3: 15/15/17/17,
+ * bay 4: 15/15/23/23). So an admin opening the kiosk config page and pressing
+ * save would have tripled bay 2's door time and cut every actuator to a
+ * fraction of its travel, stopping it mid-stroke — violating CLAUDE.md's
+ * hardest rule ("never change those timings; the hardware is right") from a
+ * button in the console.
+ *
+ * Two changes make that unreachable:
+ *   1. There are no per-bay timing defaults here any more. The Pi's own
+ *      `kiosk_config.json` is the sole source of truth for door and actuator
+ *      durations, and the server never invents one.
+ *   2. `updateKioskConfig` deep-merges onto what is stored instead of
+ *      replacing it, so editing an unrelated key cannot drop the timings.
+ */
 const DEFAULT_CONFIG = {
-  lockers: {
-    "1": { ...DEFAULT_LOCKER_CONFIG },
-    "2": { ...DEFAULT_LOCKER_CONFIG },
-    "3": { ...DEFAULT_LOCKER_CONFIG },
-    "4": { ...DEFAULT_LOCKER_CONFIG },
-  },
+  // NO `lockers` key. Sending one makes the Pi overwrite its calibration file;
+  // omitting it makes the Pi keep its local values (its handler says so in as
+  // many words: "no 'lockers' key — keeping local kiosk_config.json").
   face_recognition: {
     confidence_threshold: 0.6,
     capture_attempts: 3,
     capture_timeout_seconds: 30,
   },
+  // E4.6 — the release/retrieval policy the user ruled on 2026-09-12. Server-
+  // side only; the Pi never reads it.
+  retrieval: {
+    auto_release_enabled: true,
+    collection_grace_hours: 1,
+    release_window_start_hour: 7,
+    release_window_end_hour: 21,
+    owner_retrieval_deadline_hours: 72,
+  },
 };
+
+/**
+ * Deep-merge for plain objects. Arrays and scalars replace; nested objects
+ * merge. Used so a config PUT that touches `retrieval` cannot silently drop a
+ * `lockers` block that is already stored (D-72).
+ */
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    const prev = out[k];
+    const bothPlainObjects =
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      prev !== null &&
+      typeof prev === "object" &&
+      !Array.isArray(prev);
+    out[k] = bothPlainObjects
+      ? deepMerge(prev as Record<string, unknown>, v as Record<string, unknown>)
+      : v;
+  }
+  return out;
+}
+
+export const __testables = { deepMerge, DEFAULT_CONFIG };
 
 export const getKioskConfig = async (
   req: AuthRequest,
@@ -1092,16 +1139,33 @@ export const updateKioskConfig = async (
       throw new ValidationError("config object is required");
     }
 
+    // D-72: merge onto what is already stored rather than replacing it, so a
+    // PUT that only changes the retrieval policy cannot drop a `lockers` block
+    // — which the Pi would then treat as an instruction to rewrite its
+    // calibration file.
+    const existing = await prisma.kioskConfig.findUnique({ where: { kioskId } });
+    const merged = deepMerge(
+      (existing?.config as Record<string, unknown>) ?? {},
+      config as Record<string, unknown>,
+    );
+
     const record = await prisma.kioskConfig.upsert({
       where: { kioskId },
-      update: { config, updatedBy: req.user?.userId },
-      create: { kioskId, config, updatedBy: req.user?.userId },
+      update: {
+        config: merged as Prisma.InputJsonObject,
+        updatedBy: req.user?.userId,
+      },
+      create: {
+        kioskId,
+        config: merged as Prisma.InputJsonObject,
+        updatedBy: req.user?.userId,
+      },
     });
 
     // Push config to connected Pi via Socket.io (io is attached to req.app)
     const io = req.app.get("io");
     if (io) {
-      io.to(`kiosk:${kioskId}`).emit("kiosk:config", config);
+      io.to(`kiosk:${kioskId}`).emit("kiosk:config", merged);
       logger.info(`Pushed kiosk:config to kiosk:${kioskId}`);
     }
 
