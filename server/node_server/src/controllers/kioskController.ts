@@ -307,6 +307,53 @@ export const uploadKioskImages = async (
   }
 };
 
+/**
+ * D-63. Every locker with its CANONICAL state, for the admin console.
+ *
+ * This did not exist, and its absence is the root of two defects.
+ * `getAvailableLockers` hard-filters `status: AVAILABLE, isOperational: true`
+ * and returns only those rows, so **no endpoint carried `Locker.status` to any
+ * client at all**. The kiosk admin page therefore offers "Release Locker" —
+ * which clears the occupied state and detaches a rental — while showing only
+ * door lock state, which cannot answer whether the bay is genuinely stuck.
+ * The operator was deciding blind.
+ *
+ * Deliberately NOT a change to `getAvailableLockers`: the Flutter booking flow
+ * and `assignLockerAndOpen` both depend on that filter meaning exactly what it
+ * says, and widening it would quietly change which lockers the system offers.
+ *
+ * `currentRentalId` is included because it is the other half of the question:
+ * a bay marked OCCUPIED with no rental attached is precisely the "stuck"
+ * case this page's support action exists for. The renter's identity is NOT
+ * included — an admin deciding whether hardware is stuck does not need it.
+ */
+export const listAllLockers = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { kioskId } = req.query;
+    const lockers = await prisma.locker.findMany({
+      where: kioskId ? { kioskId: kioskId as string } : {},
+      orderBy: { lockerNumber: "asc" },
+      select: {
+        id: true,
+        lockerNumber: true,
+        kioskId: true,
+        size: true,
+        status: true,
+        isOperational: true,
+        currentRentalId: true,
+        lastUsedAt: true,
+      },
+    });
+    res.json({ success: true, data: { lockers } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const releaseLocker = async (
   req: AuthRequest,
   res: Response,

@@ -169,6 +169,17 @@ export default function KioskPage() {
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [snapLoading, setSnapLoading] = useState<Record<string, boolean>>({});
   const [releasing, setReleasing] = useState<Record<string, boolean>>({});
+  // D-63. The CANONICAL locker model, which this page has never had. The
+  // `lockers` field above is DOOR state (main/bottom, locked/unlocked) and is
+  // the right model for the hardware controls -- but it cannot answer "is this
+  // bay actually holding something", which is exactly what Release Locker
+  // asks the operator to decide.
+  const [bays, setBays] = useState<
+    Record<
+      string,
+      { status: string; isOperational: boolean; currentRentalId: string | null }
+    >
+  >({});
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeTab, setActiveTab] = useState("locker-1");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -187,10 +198,24 @@ export default function KioskPage() {
         setTiming({ ...DEMO_STATE.timing });
         return;
       }
-      const [kioskRes, configRes] = await Promise.allSettled([
+      const [kioskRes, configRes, bayRes] = await Promise.allSettled([
         api.get("/admin/kiosks"),
         api.get(`/admin/kiosks/${FALLBACK_KIOSK_ID}/config`),
+        // D-63: the only endpoint that carries Locker.status to a client.
+        api.get("/admin/kiosks/lockers"),
       ]);
+      if (bayRes.status === "fulfilled") {
+        const rows = bayRes.value.data?.data?.lockers ?? [];
+        const next: Record<string, { status: string; isOperational: boolean; currentRentalId: string | null }> = {};
+        for (const r of rows) {
+          next[String(r.lockerNumber)] = {
+            status: r.status,
+            isOperational: r.isOperational,
+            currentRentalId: r.currentRentalId ?? null,
+          };
+        }
+        setBays(next);
+      }
       const kioskId =
         kioskRes.status === "fulfilled"
           ? (kioskRes.value.data.data?.kiosks?.[0]?.id ?? FALLBACK_KIOSK_ID)
@@ -409,9 +434,23 @@ export default function KioskPage() {
   // even if the kiosk itself is unreachable.
   const releaseLockerByNumber = async (lockerNumber: number) => {
     const sid = String(lockerNumber);
+    // D-63: state the ACTUAL state in the prompt. This used to ask the
+    // operator whether the locker was "genuinely stuck" while showing them
+    // only door state, which cannot answer that.
+    const bay = bays[sid];
+    const known = bay
+      ? `It is currently ${bay.status}${bay.isOperational ? "" : " and NOT operational"}` +
+        (bay.currentRentalId
+          ? `, with rental ${bay.currentRentalId.slice(0, 8)}… attached.`
+          : ", with NO rental attached.")
+      : "Its current state could not be read, so this cannot tell you whether it is stuck.";
     if (
       !window.confirm(
-        `Release Locker ${sid.padStart(2, "0")}? This clears its occupied state and detaches any rental — only do this if the locker is genuinely stuck.`,
+        `Release Locker ${sid.padStart(2, "0")}?
+
+${known}
+
+Releasing clears the occupied state and detaches any rental — only do this if the locker is genuinely stuck.`,
       )
     ) {
       return;
@@ -450,6 +489,10 @@ export default function KioskPage() {
   function LockerTab({ id }: { id: number }) {
     const sid = String(id);
     const doors = kiosk?.lockers?.[sid] ?? { main: "locked", bottom: "locked" };
+    // D-63: canonical state, shown ALONGSIDE door state rather than instead of
+    // it — the two answer different questions and this page legitimately needs
+    // both. Absent renders as "unknown", never as a guess (D-53's rule).
+    const bay = bays[sid];
     const t = timing[sid] ?? { ...DEFAULT_TIMING };
     const snap = snapshots[sid];
     const cmdKey = (cmd: string, extra = {}) =>
@@ -457,6 +500,56 @@ export default function KioskPage() {
 
     return (
       <Stack gap="md">
+        {/* D-63 — the canonical bay state. This page could RELEASE a locker
+            (clearing its occupied state and detaching a rental) while showing
+            only door lock state, which cannot tell you whether a bay holds
+            anything. Shown alongside the door controls, not instead of them:
+            "is the door open right now" and "does this bay hold an item" are
+            different questions and a hardware page needs both. */}
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
+            <ThemeIcon variant="light" color={roleColor.review} size="sm">
+              <Activity size={13} />
+            </ThemeIcon>
+            <Text fw={600} size="sm">
+              Bay state (server)
+            </Text>
+          </Group>
+          {bay ? (
+            <Group gap="sm" wrap="wrap">
+              <Badge
+                variant="light"
+                color={
+                  !bay.isOperational
+                    ? roleColor.warning
+                    : bay.status === "AVAILABLE"
+                      ? roleColor.success
+                      : bay.status === "OCCUPIED" || bay.status === "RESERVED"
+                        ? roleColor.review
+                        : roleColor.warning
+                }
+              >
+                {bay.isOperational ? bay.status : `${bay.status} · NOT OPERATIONAL`}
+              </Badge>
+              <Text size="sm" c="dimmed">
+                {bay.currentRentalId
+                  ? `Rental ${bay.currentRentalId.slice(0, 8)}… attached`
+                  : "No rental attached"}
+              </Text>
+              {bay.status === "OCCUPIED" && !bay.currentRentalId ? (
+                <Badge variant="light" color={roleColor.warning}>
+                  Occupied with no rental — this is the “stuck” case
+                </Badge>
+              ) : null}
+            </Group>
+          ) : (
+            <Text size="sm" c="dimmed">
+              Unknown — the server’s locker state could not be read. Releasing
+              this bay would be a guess.
+            </Text>
+          )}
+        </Card>
+
         {/* Camera snapshot */}
         <Card withBorder radius="md" padding="lg">
           <Group gap="xs" mb="sm">

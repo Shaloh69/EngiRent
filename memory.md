@@ -1382,6 +1382,67 @@ ADMIN — password reset 2026-09-09, stored in `client/admin/.env.local`, which
 is gitignored), and two REAL people whose rows must not be treated as fixtures:
 the repo owner and one other student.
 
+## 2026-09-11 — Stack restart after a BLACKOUT, and the port map in my head was wrong
+
+Power cut took the server PC down entirely — not just the services. Tailscale
+showed it `offline, last seen 1h ago` and SSH timed out **by IP as well as by
+MagicDNS**, which is the tell that the machine is off rather than the tasks
+being down. Nothing remote can fix that; it needs someone to power it on.
+
+When it came back, Tailscale took **~20s** to re-register. Worth knowing: the
+first `tailscale status` after boot can still say "offline, last seen 1h ago"
+while the machine is already powering up, so poll rather than conclude.
+
+**Tunnel hostnames this run** (they rotate on EVERY restart — re-read
+`D:\ENG\startbat-logs\tunnel-*.log`, do not trust these later):
+
+| Surface | URL |
+|---|---|
+| API | `https://engaging-investors-frequently-programming.trycloudflare.com` |
+| Admin | `https://ave-gravity-web-funeral.trycloudflare.com` |
+| Web | `https://option-marcus-production-involvement.trycloudflare.com` |
+
+**THE REAL PORT MAP, because I checked the wrong ports and nearly reported two
+healthy services as down:**
+
+| Service | Port |
+|---|---|
+| Node API | **5000** |
+| ML (uvicorn) | **8001** — *not* 5001 |
+| Admin console | **3001** |
+| Website | **3000** |
+
+`Get-ScheduledTask` said all seven were `Running` while my probe said 5001 and
+3002 were dead. The tasks were right. **Check what a service actually binds
+before calling it down** — the ML log says `Uvicorn running on
+http://0.0.0.0:8001` in as many words.
+
+**Gotcha 2 fired again** — all three `CLIENT_*_URL` values in the API's `.env`
+still pointed at the 2026-09-10 tunnels. Re-pointed to the three above.
+
+**Gotcha 3 did NOT need the Stop-Process cycle this time, and the reason is
+worth keeping:** the `.env` edit landed *during* Node's ~160s
+`npm run build`, so the process read the new values when it finally started.
+That is luck, not method. **The check is what matters, not the timing:** an
+`OPTIONS` preflight from the NEW admin origin returned **204** with
+`Access-Control-Allow-Origin: https://ave-gravity-web-funeral.trycloudflare.com`.
+A stale process would have echoed the dead hostname. Always run that check
+rather than assuming either way.
+
+**Verified with real responses, not open ports:** API real JSON, ML its service
+banner, admin `<title>EngiRent Admin Console</title>`, web
+`<title>EngiRent Hub</title>` — locally *and* through all three tunnels.
+
+**The kiosk recovered entirely on its own, and it validated D-53 end to end.**
+After the server came back the Pi reconnected with no intervention, and
+`/api/state` carried
+`occupancy: {"1":"AVAILABLE","2":"AVAILABLE","3":"AVAILABLE","4":"AVAILABLE"}` —
+i.e. Node emitted on `kiosk:register`, the relay stored it, the panel had real
+state. A full cold boot is a better test of that path than anything that could
+have been staged. **While the server was down the kiosk showed
+"Something went wrong — Cannot reach server" with Try Again / Back to Home** —
+a recoverable message with a way out, not a dump back to idle.
+
 ## 2026-09-10 — Full stack restart after a server reboot (runbook followed, all three gotchas hit)
 
 Server rebooted; all seven `EngiRent*` tasks were down again — the known

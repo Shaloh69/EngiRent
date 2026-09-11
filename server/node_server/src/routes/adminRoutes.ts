@@ -35,7 +35,11 @@ import {
   bulkModerateItems,
 } from "../controllers/adminController";
 import { getConversationForAdmin } from "../controllers/messageController";
-import { releaseLocker, releaseLockerByNumber } from "../controllers/kioskController";
+import {
+  listAllLockers,
+  releaseLocker,
+  releaseLockerByNumber,
+} from "../controllers/kioskController";
 
 const router = Router();
 
@@ -246,6 +250,12 @@ router.get("/health", requireAdmin, getSystemHealth);
 // ── Kiosk management ──────────────────────────────────────────────────────
 router.get("/kiosks/events", requireAdmin, kioskEventStream); // SSE — must be before :kioskId routes
 router.get("/kiosks", requireAdmin, listKiosks);
+
+// D-63. The console could release a locker but never see its state: no
+// endpoint carried Locker.status to any client. Mounted BEFORE the
+// /kiosks/lockers/:id/release routes for the same reason the SSE route is
+// mounted before :kioskId — a literal path must not be shadowed by a param.
+router.get("/kiosks/lockers", requireAdmin, listAllLockers);
 
 // Checklist Stage 9 — the release endpoint itself already existed
 // (kioskController.ts's releaseLocker, POST /kiosk/lockers/:id/release,

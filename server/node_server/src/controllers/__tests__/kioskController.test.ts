@@ -14,7 +14,7 @@ jest.mock("../../config/database", () => ({
 }));
 
 import prisma from "../../config/database";
-import { releaseLocker } from "../kioskController";
+import { listAllLockers, releaseLocker } from "../kioskController";
 import { AuthRequest } from "../../middleware/auth";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -120,5 +120,57 @@ describe("releaseLocker — ownership/admin check (Phase 0)", () => {
     // Admin bypasses the rental lookup entirely.
     expect(prismaMock.rental.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.locker.update).toHaveBeenCalled();
+  });
+});
+
+
+describe("listAllLockers — D-63: the admin must be able to SEE locker state", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+  });
+
+  it("does NOT filter by status or isOperational", async () => {
+    // The whole point. getAvailableLockers hard-filters
+    // `status: AVAILABLE, isOperational: true`, which is why no client could
+    // ever see an OCCUPIED or out-of-service bay. If this endpoint ever grows
+    // the same filter it stops answering the question it exists for, and the
+    // admin goes back to releasing lockers blind.
+    prismaMock.locker.findMany.mockResolvedValue([] as never);
+
+    const req = { query: {}, user: { role: "ADMIN" } } as unknown as AuthRequest;
+    await listAllLockers(req, makeRes(), jest.fn());
+
+    const arg = prismaMock.locker.findMany.mock.calls[0][0] as Record<string, unknown>;
+    // Scoped to `where` deliberately. An earlier version of this assertion
+    // searched the WHOLE argument for "isOperational" and failed -- because
+    // the field is legitimately in `select`, which is the point: return it,
+    // never filter on it.
+    expect(arg.where).toEqual({});
+    expect(JSON.stringify(arg.where)).not.toContain("isOperational");
+    expect(JSON.stringify(arg.where)).not.toContain("status");
+  });
+
+  it("returns the fields an operator needs to judge a stuck locker", async () => {
+    prismaMock.locker.findMany.mockResolvedValue([] as never);
+    const req = { query: {}, user: { role: "ADMIN" } } as unknown as AuthRequest;
+    await listAllLockers(req, makeRes(), jest.fn());
+
+    const arg = prismaMock.locker.findMany.mock.calls[0][0] as {
+      select: Record<string, boolean>;
+    };
+    // status alone is not enough: "OCCUPIED with no rental attached" IS the
+    // stuck case the release action exists for.
+    expect(arg.select.status).toBe(true);
+    expect(arg.select.currentRentalId).toBe(true);
+    expect(arg.select.isOperational).toBe(true);
+    expect(arg.select.lockerNumber).toBe(true);
+  });
+
+  it("scopes to one kiosk when asked", async () => {
+    prismaMock.locker.findMany.mockResolvedValue([] as never);
+    const req = { query: { kioskId: "KIOSK-001" }, user: { role: "ADMIN" } } as unknown as AuthRequest;
+    await listAllLockers(req, makeRes(), jest.fn());
+    const arg = prismaMock.locker.findMany.mock.calls[0][0] as Record<string, unknown>;
+    expect(arg.where).toEqual({ kioskId: "KIOSK-001" });
   });
 });

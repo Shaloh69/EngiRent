@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1/E3.2/E3.3 DONE · **kiosk contrast re-measured against the REDESIGNED build: 137 nodes 0 failing + physical 6.34–17.82:1** · D-53 CLOSED · G1 debt 0 · gates G1-G10 · D-61 fixed+deployed (live text in the DISABLED colour) · D-62 NEW (the documented kiosk pkill kills the supervisor too) · defects 21/62 · phases 75/167 (45%) · screens 0/69 PASS · ⚠ C: 98% FULL]
+[PHASE E3 · E3.1/E3.2/E3.3 DONE · D-53 CLOSED (re-validated through a full cold boot) · D-63 endpoint DEPLOYED+VERIFIED LIVE (unfiltered), admin UI card renders real state but its OCCUPIED/stuck branches NOT yet seen · G1 debt 1 · gates G1-G10 · stack restarted after a blackout, all 4 services verified via tunnels · defects 21/64 · phases 75/167 (45%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -2583,6 +2583,40 @@ canonical model to the console. This needs a read endpoint first.
 **Not a security finding** — the release is `requireAdmin`-gated and audited
 (`recordAudit`, `kiosk.releaseLocker`). It is an *informed-consent* defect:
 the right people can do it, with the wrong information.
+
+**D-63 — PARTIALLY FIXED 2026-09-11: the endpoint exists, is deployed and is
+verified live; the admin UI's interesting branches are NOT yet confirmed.**
+
+**Server half — DONE and VERIFIED against the live API.** New
+`GET /admin/kiosks/lockers` (`listAllLockers`, `requireAdmin`) returns every
+locker with `status`, `isOperational`, `currentRentalId` and `lastUsedAt`.
+Deliberately **not** a change to `getAvailableLockers`: the Flutter booking
+flow and `assignLockerAndOpen` both depend on that filter meaning exactly what
+it says, and widening it would quietly change which lockers the system offers.
+
+*Verified with a mutation, because all-AVAILABLE proves nothing* — a filtered
+endpoint returns the identical four rows in that state. With locker 2 flipped
+to `OCCUPIED` and locker 3 to `isOperational: false`, the endpoint returned
+**all four**, including both; the old `/kiosk/lockers` would have returned two.
+Re-verified live after the blackout reboot. 3 Jest tests, mutation-checked:
+reintroducing the `AVAILABLE`/`isOperational` filter turns **2 red**. 130/130.
+
+**Admin UI — built, and honestly only half seen.** `kiosk/page.tsx` now fetches
+that endpoint and renders a "Bay state (server)" card beside the door
+controls — deliberately *beside*, since "is the door open" and "does this bay
+hold an item" are different questions and a hardware page needs both. The
+release confirmation now states the actual state instead of asking the
+operator to guess.
+
+**What is NOT verified, and it is the interesting part:** the card was seen
+rendering **real live state** (all four `AVAILABLE`, matching the database),
+but the `OCCUPIED`, non-operational and *"occupied with no rental — the stuck
+case"* branches have **not** been seen. The Playwright route interception
+written to force them did not fire — the page reached the real API instead,
+which is why the values matched the database — and the browser cannot easily
+be pointed at a flipped database because the API's CORS allowlist is built
+from `CLIENT_ADMIN_URL`, so `localhost` is rejected (PROGRESS records that
+same obstacle in E2). **Left as unverified rather than described as done.**
 
 **D-64 — the app tells a student "all lockers are occupied" when they may be
 out of service. FOUND 2026-09-11 (same survey). NOT YET FIXED.**
