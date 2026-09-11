@@ -135,3 +135,6 @@ coverage.xml
 # Compiled binaries — distribute via GitHub Releases, not git
 *.apk
 AI_SYSTEM_DOCUMENTATION.pdf
+
+# Mermaid bundle cached for design/tools/render-diagrams.mjs (~3MB, re-fetchable)
+design/tools/.cache/

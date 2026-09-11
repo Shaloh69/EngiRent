@@ -5,7 +5,8 @@
   "description": "Playwright visual-evidence gate for the EngiRent redesign track (docs/redesign/VISUAL-EVIDENCE.md). Not an application package \u2014 the four surfaces have their own.",
   "scripts": {
     "capture:kiosk": "node design/tools/capture-kiosk.mjs",
-    "report": "node design/tools/phase-report.mjs"
+    "report": "node design/tools/phase-report.mjs",
+    "render:diagrams": "node design/tools/render-diagrams.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1"
