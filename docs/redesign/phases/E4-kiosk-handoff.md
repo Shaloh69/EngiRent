@@ -337,9 +337,16 @@ in the admin console, and **this feature gives admins a new reason to press it.*
       and a blind second stroke could push a second item onto the first.
 - [ ] **OPEN — admin surface:** the `retrieval` policy on the kiosk config page,
       and the F6 escalation queue
+- [x] **DEPLOYED 2026-09-12** — schema migrated and code built and running on
+      `desktop-gklhcri` (PID 17884 → 12860, `GET /api/v1/items` HTTP 200,
+      no errors). `index.ts` was **patched onto the remote file** rather than
+      copied, and the guard was checked after the build: `dist/index.js` still
+      has `expiresAt` = 0 hits, so D-66 did not ride along.
 - [ ] **BLOCKED — verify on real hardware.** Needs the Pi, a real deposit, and a
-      drop driven into the lower compartment. No part of this is proven until an
-      item physically moves between compartments and a bottom door opens
+      drop driven into the lower compartment. **Deploying is not verifying:** no
+      actuator has moved, no bottom door has opened, and the hourly sweep has
+      had no candidate (all 5 rentals PENDING/CANCELLED, all 4 bays AVAILABLE).
+      No part of this is proven until an item physically changes compartments.
 
 ## Definition of done
 - [ ] Every beat implemented on both screens, verified on real hardware

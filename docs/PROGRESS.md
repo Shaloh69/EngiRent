@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.6 SCHEMA MIGRATED to the live DB 2026-09-12, CODE NOT DEPLOYED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G10 · defects 21/72 · phases 83/192 (43%) · screens 0/69 PASS]
+[PHASE E4 · E4.6 SCHEMA + CODE DEPLOYED to the live server 2026-09-12 (PID 17884→12860), NO HARDWARE EXERCISED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G10 · defects 21/72 · phases 83/192 (43%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -838,6 +838,54 @@ extend stroke is the **transfer**, `bottom_door` is retrieval. A drop is not
 part of a deposit — **it is the act of giving an item back**, which is why every
 dead end in the audit was the same missing feature wearing five different
 symptoms.
+
+### The E4.6 CODE is deployed too, 2026-09-12. Still not one actuator stroke.
+
+Deployed onto `desktop-gklhcri` the careful way, because the remote tree is
+diverged. **Every file was diffed before it was touched**, and the diff decided
+the method:
+
+| File | Divergence | Method |
+|---|---|---|
+| `faceVerificationService.ts` | 4 remote-only lines, and they were **exactly the lines E4.6 replaces** | copied the branch version — safe, because remote + my change *is* the branch file |
+| `adminController.ts` | 16 remote-only lines, likewise exactly what D-72 replaces | copied the branch version |
+| `index.ts` | **27 remote-only lines that are NOT mine** — D-37(b)'s four `notifyAdmins` emits and the pre-E3.2 `openKioskSession` | **patched onto the remote file**; copying would have deployed D-66, which the user ruled gets its own trip |
+| `retrievalPolicy.ts`, `retrievalService.ts` | new | copied |
+
+**The D-66 guard held, and was checked rather than trusted:** after the build,
+`dist/index.js` still has **`expiresAt` = 0 hits** and `notifyAdmins` = 6. E4.6
+went out; D-66 did not ride along.
+
+**Verified live:**
+
+```
+npm run build            prisma generate OK, tsc silent
+dist/index.js  07:04     requestRelease 3 · confirmRelease 1 · cron "5 * * * *" 1 · expiresAt 0
+dist/services/retrievalService.js + retrievalPolicy.js   present
+faceVerificationService.js   bottom_door 1
+PID 17884 -> 12860       GET /api/v1/items?limit=1 -> HTTP 200, real JSON
+error.log                last write 2026-09-11 17:10 — nothing today
+```
+
+### D-72 was a loaded gun that had never been fired
+
+`SELECT ... FROM kiosk_configs` returns **0 rows**. No kiosk config has ever
+been stored, so none has ever been pushed, so the Pi still holds its original
+hand calibration — and `DEFAULT_CONFIG` (no `lockers`, with `retrieval`) is now
+what applies the first time an admin saves. The hazard was real and latent; it
+would have fired on the first save. It cannot now.
+
+### What is deployed and what is still unproven — the distinction matters
+
+**Deployed and running:** the schema, the policy, the executor, the hourly
+sweep, the R4/R5 rejection paths, the retrieval flow and the F5 subject rule.
+
+**Unproven, and no amount of deploying changes it:** **not one actuator has
+moved and no bottom door has opened.** The hourly sweep has had no candidate to
+act on — all 5 rentals are PENDING or CANCELLED and no bay is OCCUPIED. The
+admin retrieval policy has not been exercised through the API. **G1 debt stays
+at 3.** Deploying code is not the same as seeing it work, and on this project
+that distinction has been wrong three times.
 
 ### The migration RAN on the live database, 2026-09-12 — code did not
 
