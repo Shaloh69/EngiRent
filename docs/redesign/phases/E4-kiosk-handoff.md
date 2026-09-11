@@ -155,6 +155,49 @@ re-identification and texture-matching patents; conformal abstention and
 cost-sensitive selective prediction literature (arXiv 2607.27143, 2502.07255;
 Nature Sci. Rep. 2026).*
 
+## E4.6 — The physical layer: retrieval, rejection and lateness
+
+**Added 2026-09-12 after the user asked what the happy-path sheets do not
+answer.** Audited against the code; findings and evidence in `docs/PROGRESS.md`
+under the 2026-09-12 entry. **Every box here is OPEN and needs a RULING before
+it is code — none of them is a UI change, so none is inside this track's scope
+boundary without an explicit instruction.**
+
+- [ ] **OPEN — D-69. Decide what `bottom_door` is for.** It is wired to BCM
+      6/7/8/9, calibrated per bay (15s; bay 2 is 5s), named *"retrieval door at
+      the base"* in `gpio_controller.py`, and **never commanded** — Node sends
+      `main_door` at all six call sites. The user's reading is that it is the
+      retrieval path for disputed and uncollected items. That is a design
+      intent the code does not implement. **BLOCKED on a ruling.**
+- [ ] **OPEN — D-70. Decide whether the automated flow drives the actuator.**
+      `place_item` (extend to push the item in, retract to return the platform,
+      17-23s per bay) has exactly one caller, and Node never sends `drop_item`.
+      Today the student places the item by hand through the top door, so four
+      calibrated timings are unexercised and the kiosk's `dropping` state —
+      built in E3.2 — is unreachable in a real rental. Either wire it, or
+      record the actuator as descoped. **BLOCKED on a ruling.**
+- [ ] **OPEN — D-67. A rejected deposit or return seals the item in a bay the
+      database calls empty.** Both branches set the locker `AVAILABLE` and emit
+      no `open_door`, so the next deposit can be assigned a bay with someone
+      else's item in it. The RETRY branch already reopens the door, so the
+      mechanism exists. Needs the D-69 ruling first, because the fix is
+      "which door opens, and when". **BLOCKED.**
+- [ ] **OPEN — D-68. There is no owner-retrieval flow.** `resolveKioskFlow`
+      branches on `AWAITING_DEPOSIT`/`DEPOSITED`/`ACTIVE` and returns
+      `action: "none"` for everything else — so a correctly returned item sits
+      in an `OCCUPIED` bay that the owner cannot open. `kioskRoutes.ts` has
+      `/deposit`, `/claim`, `/return` and no fourth flow. This is the answer to
+      *"how does the owner retrieve the item during a dispute"*: **they
+      cannot.** **BLOCKED on the same ruling.**
+- [ ] **OPEN — D-71. Late COLLECTION is not modelled; only late RETURN is.**
+      The single cron (`index.ts:1395`) queries `ACTIVE` past `endDate` and
+      charges a per-day fee. Nothing ages `DEPOSITED` (renter never collects),
+      `VERIFICATION` (owner never collects) or `DISPUTED`. `CLAIM_REMINDER` and
+      `DEPOSIT_REMINDER` exist in the enum and **nothing emits them** — the
+      D-38/D-39 shape, a vocabulary promising behaviour the control flow does
+      not implement. **BLOCKED on a ruling: deadline, fee, admin action, or
+      nothing by design.**
+
 ## Definition of done
 - [ ] Every beat implemented on both screens, verified on real hardware
 - [ ] Screenshot pairs on disk for every beat, both screens

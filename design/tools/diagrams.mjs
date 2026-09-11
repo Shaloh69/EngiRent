@@ -398,6 +398,62 @@ export const diagrams = [
   B --> H["Both: the durable list, read later"]
   class C,E wait`,
   },
+  {
+    file: "14-physical-layer-and-dead-ends",
+    num: "14",
+    lane: "Hardware · the questions the happy path does not answer",
+    title: "The physical layer, and where an item gets stuck",
+    purpose:
+      "Each bay has two solenoid doors and one linear actuator. The server drives exactly one of the three. This sheet is the audit of what the hardware can do, what is actually commanded, and the four states in which a real item ends up physically unreachable.",
+    source:
+      "kiosk/config.py:79-136 · hardware/gpio_controller.py:19 · hardware/actuator_controller.py:113 · services/socket_client.py:303-315 · node src/index.ts · services/faceVerificationService.ts:214-330 · adminController.ts:1121",
+    code: `flowchart TB
+  subgraph HW["What every bay physically has — config.py, kiosk_config.json"]
+    direction LR
+    H1["main_door<br/>TOP insertion door<br/>solenoid · 15s, bay 2 is 5s"]
+    H2["linear actuator<br/>extend pushes the item in,<br/>retract returns the platform<br/>17-23s per bay"]
+    H3["bottom_door<br/>RETRIEVAL door at the base<br/>solenoid · 15s, bay 2 is 5s"]
+  end
+
+  subgraph DRIVEN["What the server actually commands"]
+    direction LR
+    D1["open_door, door = main_door<br/>all SIX call sites"]
+    D2["capture_image"]
+    D3["verification_done · flow_error<br/>await_phone_verification · face_failed"]
+  end
+
+  subgraph DEAD["Built on the Pi, NEVER commanded by the server"]
+    direction LR
+    N1["drop_item — the actuator.<br/>place_item has exactly ONE caller,<br/>and nothing sends the command"]
+    N2["open_door, door = bottom_door.<br/>Wired to BCM 6/7/8/9, calibrated,<br/>and Node only ever sends main_door"]
+    N3["actuator_extend · actuator_retract"]
+  end
+
+  subgraph STUCK["Where a real item ends up physically unreachable"]
+    direction TB
+    S1["D-67a · Deposit REJECTED<br/>rental CANCELLED, bay set AVAILABLE,<br/>NO door reopened — the owner's item is<br/>sealed in a bay the database calls empty"]
+    S2["D-67b · Return REJECTED<br/>rental DISPUTED, bay set AVAILABLE,<br/>NO door reopened — same, with a disputed item"]
+    S3["D-68 · Return ACCEPTED, status VERIFICATION<br/>bay set OCCUPIED. The owner scans and<br/>resolveKioskFlow returns action 'none'.<br/>No owner-retrieval flow exists at all"]
+    S4["D-71 · DEPOSITED and never collected<br/>The nightly cron only looks at ACTIVE past endDate.<br/>Late COLLECTION is not modelled anywhere"]
+  end
+
+  ESC["The only physical recovery that exists:<br/>POST /admin/kiosks/:kioskId/command<br/>It CAN send drop_item, bottom_door and the actuator —<br/>but it is a raw hardware command, rental-unaware,<br/>and there is no UI for it"]
+
+  H1 --> D1
+  H2 -.->|"never reached"| N1
+  H3 -.->|"never reached"| N2
+  DRIVEN --> STUCK
+  S1 --> ESC
+  S2 --> ESC
+  S3 --> ESC
+  S4 --> ESC
+
+  class H1,H2,H3 hw
+  class D1,D2,D3 ok
+  class N1,N2,N3 warn
+  class S1,S2,S3,S4 bad
+  class ESC wait`,
+  },
 ];
 
 /* ───────────────────────────────────────────────────────────────────────────

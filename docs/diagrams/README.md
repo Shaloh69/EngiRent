@@ -1,6 +1,6 @@
 # docs/diagrams — the EngiRent process diagrams
 
-Fourteen sheets covering every process in the system.
+Fifteen sheets covering every process in the system.
 
 **Use the SVG for anything you will zoom into or print.** It is vector, so it
 stays sharp at any magnification; the PNGs are raster and will soften. Sheet 13
@@ -33,6 +33,7 @@ each stage reads left to right.
 | 11 | `11-disputes-and-settlement` | What happens when the returned item does not match |
 | 12 | `12-notifications` | Four transports, each with a different job |
 | **13** | **`13-everything`** | **All of the above in one flowchart** |
+| **14** | **`14-physical-layer-and-dead-ends`** | **The audit sheet: two doors and an actuator, what the server actually drives, and the four states where an item is physically unreachable (D-67, D-68, D-71)** |
 
 ## These were read out of the code, not out of the specification
 
@@ -49,6 +50,10 @@ endpoint, threshold and timing on these sheets was derived from source on
 | Whose face the kiosk waits for | `src/services/faceVerificationService.ts:74-110` |
 | Per-bay door and actuator timings | `server/kiosk/kiosk_config.json` (read only — never edited) |
 | The palette | `design/tokens/tokens.json` |
+| Which doors and commands the server actually sends | `grep 'door: "'` and `action: "` across `src/`, tests excluded |
+| What the kiosk can be told to do | `kiosk/services/socket_client.py:303-315` |
+| Which rental statuses have a kiosk flow | `services/faceVerificationService.ts:214-330` |
+| Late handling | the single `cron.schedule` at `src/index.ts:1395` |
 
 The plates are drawn on `#050F1A` because that is the ground the physical
 kiosk panel renders. `PENDING` is review-cyan rather than warning-yellow,

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.5a · A-3 MEASURED (N=2, both 0 — no distribution, E4.5c stays shut) · D-65 DEPLOYED to the live DB + API (columns live, PID 22976→17884, rolled-back probe proves the deployed client persists both fields) — NOT CLOSED: the 4 call sites need one real deposit · D-66 NEW: the server runs a pre-E3.2 index.ts · G1 debt 2 (D-63 admin card branches; D-65's write path) · gates G1-G10 · defects 21/66 · phases 76/181 (42%) · screens 0/69 PASS]
+[PHASE E4 · E4.5a + E4.6 · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED, not closed · D-66 server runs a pre-E3.2 index.ts · **PHYSICAL-LAYER AUDIT 2026-09-12: D-67..D-71 — bottom_door and the actuator are NEVER commanded; a rejected deposit/return seals the item in a bay marked AVAILABLE; no owner-retrieval flow; late COLLECTION unmodelled** · G1 debt 2 · gates G1-G10 · defects 21/71 · phases 76/181 (42%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -825,6 +825,119 @@ after the cleanup the identical compile took **15.6 seconds**.
   belongs in E3's shared-component pass), **D-38** (admin dashboard confident
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
+
+## 2026-09-12 — PHYSICAL-LAYER AUDIT, prompted by the user. Five defects, and the two-door design is half-built.
+
+The user asked the questions the happy-path diagrams do not answer: *when does
+the actuator fire, is the bottom door for late or disputed items, how does an
+owner get their item back during a dispute, what happens when a renter is late
+collecting.* Audited against the code rather than the design documents. **Every
+answer below is worse than the documents imply, and none of it was known.**
+
+### The hardware exists; the server drives one third of it
+
+| Per bay | Defined where | Commanded by the server? |
+|---|---|---|
+| `main_door` — **TOP insertion door**, solenoid | `config.py:79-111`, `gpio_controller.py:19` | **Yes** — `door: "main_door"` at **all six** call sites |
+| `bottom_door` — **RETRIEVAL door at the base**, solenoid, BCM 6/7/8/9, calibrated 15s (bay 2: 5s) | same | **NEVER.** `grep` for `door: "` across `src/` returns `main_door` six times and nothing else |
+| linear actuator — `place_item`: extend pushes the item in, retract returns the platform, 17-23s per bay | `actuator_controller.py:113` | **NEVER.** `place_item` has exactly **one** caller, `_cmd_drop_item`, and Node never sends `drop_item` |
+
+The kiosk accepts **11** commands (`socket_client.py:303-315`). Node sends four
+of them. **`drop_item`, `actuator_extend`, `actuator_retract` and any
+`bottom_door` open are reachable only through `POST /admin/kiosks/:kioskId/command`**
+(`adminController.ts:1121`), which validates against exactly that list — a raw,
+rental-unaware hardware channel with no UI.
+
+**So the intended design — insert at the top, machine places the item, retrieve
+from the base — is half-built.** The kiosk's own `dropping` UI state, built in
+E3.2 and consumed by `WorkingScreen`, is **unreachable through a real rental**.
+
+### D-67 — A rejected deposit or return seals the item inside a bay the database calls empty. FOUND 2026-09-12. NOT FIXED.
+
+Both rejection branches in `src/index.ts` do the same three things: set the
+rental terminal, set the locker `AVAILABLE, currentRentalId: null`, and emit
+`verification_done`. **Neither emits `open_door`.**
+
+- **D-67a, deposit** (`index.ts` ~535-560): rental → `CANCELLED`, bay →
+  `AVAILABLE`. The owner's item is physically inside.
+- **D-67b, return** (`index.ts` ~736-760): rental → `DISPUTED`, bay →
+  `AVAILABLE`. The disputed item — the very object the dispute is about — is
+  physically inside.
+
+**The bay is then free to be assigned to the next deposit**, because
+`assignLockerAndOpen` picks on `status: AVAILABLE`. The next student's door
+opens onto someone else's item. Compare the RETRY branch, which *does* reopen
+the door: the code knows how, it just does not do it when the verdict is final.
+
+### D-68 — There is no owner-retrieval flow. A correctly returned item is locked in the bay. FOUND 2026-09-12. NOT FIXED.
+
+`resolveKioskFlow` (`faceVerificationService.ts:214-330`) branches on exactly
+three statuses — `AWAITING_DEPOSIT` → deposit, `DEPOSITED` → claim, `ACTIVE` →
+return — and ends `return { action: "none" }`.
+
+A successful return sets the rental to **`VERIFICATION`** and the bay to
+**`OCCUPIED`** with `returnLockerId` (`index.ts` ~832-860). The owner then walks
+to the kiosk, scans, is face-matched — and the flow resolver returns **`none`**.
+**Nothing opens.** `kioskRoutes.ts` has `/deposit`, `/claim`, `/return` and no
+fourth flow.
+
+This is the direct answer to *"how does the owner retrieve the item"*: **they
+cannot.** Only `POST /admin/kiosks/lockers/:id/release` or the raw command
+channel gets it out, and `release` only edits the database row — it opens no door.
+
+### D-69 — `bottom_door` is wired, calibrated, and never commanded. FOUND 2026-09-12. NOT FIXED.
+
+Evidence in the table above. The user's instinct — that the bottom door is
+*for* the disputed and uncollected items — is a **design intent the code does
+not implement**. It is a decision to make, not a bug to fix, and it is the
+natural home for D-67 and D-68's recovery paths: retrieval at the base, separate
+from the insertion door, so a recovery cannot be confused with a deposit.
+
+### D-70 — The actuator never runs in a real rental. FOUND 2026-09-12. NOT FIXED.
+
+Also above. Worth separating from D-69 because the consequence differs: today
+the item is **placed by the student's own hand** through the top door, so the
+actuator's per-bay 17-23s calibration is unexercised, and the `dropping`
+animation cannot appear. Either the automated flow should send `drop_item`, or
+the actuator and its four calibrated timings should be recorded as descoped.
+
+### D-71 — Late COLLECTION is not modelled. Only late RETURN is. FOUND 2026-09-12. NOT FIXED.
+
+There is exactly one scheduled job (`index.ts:1395`, `cron.schedule("0 1 * * *")`).
+Its query is `status: "ACTIVE", endDate: { lt: now }` — a renter who has the
+item and has not brought it back. It charges a per-day late fee by category
+(₱10-50, `LATE_FEE_RATE_BY_CATEGORY`).
+
+**Nothing ages any other state:**
+
+| Situation | Rental status | Bay | Handled? |
+|---|---|---|---|
+| Renter never collects | `DEPOSITED` | `OCCUPIED` | **No.** No timeout, no reminder fires, no fee. The owner's item sits in a bay indefinitely and the bay is out of service |
+| Owner never collects a return | `VERIFICATION` | `OCCUPIED` | **No** — and D-68 means they could not collect it even if reminded |
+| Dispute unresolved | `DISPUTED` | `AVAILABLE` (D-67b) | **No** |
+
+`CLAIM_REMINDER` and `DEPOSIT_REMINDER` exist in `enum NotificationType` and
+**nothing emits them** — the same shape as D-38 and D-39: a vocabulary that
+promises a behaviour the control flow never implements.
+
+### What this changes about E4
+
+E4's definition of done says *"every beat implemented on both screens, verified
+on real hardware."* **Four of the beats above have no implementation to verify.**
+Recorded as **E4.6** in the phase file, unticked, carrying their blockers —
+they need a ruling from the user before any of them is code:
+
+1. Is the bottom door the retrieval path for D-67/D-68, or is retrieval through
+   the main door with a different flow?
+2. Should the automated deposit send `drop_item`, or is the actuator descoped?
+3. What happens to an uncollected `DEPOSITED` item — a deadline, a fee, an
+   admin action, or nothing by design?
+
+**None of these is a UI change**, so none is inside this track's scope boundary
+without an explicit instruction. They are recorded here and surfaced rather
+than built.
+
+---
 
 ## 2026-09-11 (E4.5a, session 2) — D-65's fix is BUILT and mutation-checked; the live half needs the user. And D-66: the server is running a pre-E3.2 `index.ts`.
 
