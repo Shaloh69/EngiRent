@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1 COMPLETE · E3.2 loading primitives DONE+VERIFIED (kiosk+phone) · E3.3 MOTION DONE+VERIFIED (D-57 tokens, D-58 framer reduced-motion, all 3 web surfaces with controls) · REMAINING IN E3: contrast re-measure, locker model, socket_client duration_seconds — all Pi-blocked · G1 debt 1 (D-53 kiosk half) · BLOCKER: kiosk SSH needs Tailscale re-auth · gates G1-G10 · defects 16/58 · phases 73/167 (44%) · screens 0/69 PASS · ⚠ C: 98% FULL]
+[PHASE E3 · E3.1 COMPLETE · E3.2 + E3.3 DONE+VERIFIED · **D-53 CLOSED: both halves deployed and VERIFIED ON THE LIVE KIOSK with the distinguishing test** · **G1 debt 0** · gates G1-G10 · D-54 RULED+EXECUTED · D-57/D-58 fixed+verified · D-59 (rotation does not survive reboot) + D-60 (out-of-service icon) NEW, D-60 fixed+deployed · defects 19/60 · phases 73/167 (44%) · screens 0/69 PASS · ⚠ C: 98% FULL]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -178,6 +178,26 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-11 (D-53 CLOSED on live hardware) — G5 six-symptom check at the
+D-53 boundary. ONE SYMPTOM, and it nearly aborted a correct deploy.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it paid twice.** Both remote files were diffed before being overwritten. That is how it is known the repo's locker timings ARE the Pi's (the file differs by one trailing newline) rather than assumed. |
+| 2 vaguer summaries | Absent |
+| 3 **trusting a tool over the artifact** | **PRESENT, and this was the sharpest instance yet.** `diff` on the deployed relay reported **711 added / 680 removed** and **22 added lines calling `_solenoid`/`_actuator`/`_camera`** — on a change that is a pure data relay. Taken at face value that reads as *"I just shipped GPIO code to a live locker bank"*, and the honest response would have been to roll back a correct deploy. It was **CRLF-vs-LF noise**: the Windows checkout is CRLF, the Pi is LF, so every line reads as changed. Normalised, the truth is **31 added, 0 removed, 0 new GPIO calls**. Second instance the same day: `systemctl is-active` said `active` after a `sudo` failure, and only the **unchanged PID** revealed the restart had not happened. |
+| 4 drifting to agreement | **Absent, and deliberately so at the moment it would have been easiest.** The first live capture showed "4 of 4 — every bay empty", which *looks* like a pass. It was stated at the time that this state **cannot distinguish the old code from the new** (all doors locked + all AVAILABLE render identically), and the DB flip was insisted on instead. |
+| 5 batching | Absent — dist, then relay, then restart, each checked before the next; D-60 fixed, deployed and re-verified as its own cycle. |
+| 6 skipping verification | **Absent, and it found D-60.** The DOM assertions all passed on a screen whose out-of-service bay was drawing a *free* padlock. Only opening the picture caught it. |
+
+**Live-state hygiene, recorded because it is the risky part:** the verification
+required writing to the production database. The flip was restored immediately,
+the restore was **verified by reading the rows back** rather than assumed, the
+kiosk was restarted so it holds truth rather than test state, and the helper
+script was deleted from the server. The sudo password was passed over **stdin,
+never argv** — the `tailscaled be-child` line in an earlier `pgrep` output
+proved remote command lines are visible in `ps` on the Pi.
 
 **2026-09-11 (E3.3 close) — G5 six-symptom check at the E3.3 boundary.
 ONE SYMPTOM, and it is symptom 4, which has not fired before.**
@@ -2497,6 +2517,34 @@ a source edit is a hypothesis until the browser agrees (E3.1's lesson).
 
 ### New defects found in E3
 
+**D-59 — the kiosk's screen rotation does NOT survive a reboot, and this file
+said it did. FOUND 2026-09-11.** `memory.md` records for 2026-09-10:
+*"Rotation now persists"* via `~/.config/autostart/engirent-rotate.desktop`.
+**The device disagrees.** After this reboot (uptime 27 min) `wlr-randr`
+reported `Transform: normal` and `grim` captured **1920×1080 landscape** —
+while the autostart entry was still present and dated Sep 10 20:04. Re-applied
+manually (`wlr-randr --output HDMI-A-1 --transform 90`), after which `grim`
+captured 1080×1920.
+**Why it matters more than it looks:** landscape silently renders
+`screens.css`'s "landscape safety net", a layout the kiosk never displays and
+which looks perfectly designed — the trap that already cost 12 re-captures in
+E0.5. **Any session that finds the Pi rebooted must check `wlr-randr` before
+trusting a capture.** Not fixed: the autostart entry exists and did not work,
+so the cause is unknown and diagnosing it is device work, not UI work.
+
+**D-60 — an out-of-service bay drew the same OPEN padlock as a free one.
+FOUND AND FIXED AND DEPLOYED 2026-09-11.** `LockersScreen`'s icon ternary
+keyed on `occupied` alone, so `MAINTENANCE`/`OUT_OF_SERVICE` fell through to
+the else branch and got the unlocked icon — **the icon contradicting the label
+and the colour on the one screen whose entire job is saying which bays you can
+use**. Now `occupied || unusable`.
+**Found by opening the capture, and it could not have been found any other
+way:** both branches are individually correct, so every DOM assertion passed —
+the bay's text really did read "Out of service". Same family as the duplicated
+label in E3.2's `WorkingScreen`. Fixed, rebuilt, redeployed and re-verified on
+the live kiosk with the bay flipped out of service: bay 03 now shows the
+closed padlock, 01 and 04 keep the open one.
+
 **D-57 — the admin and website CSS generators emitted no motion tokens.
 FOUND AND FIXED 2026-09-11 (E3.3).** `tokens.json` → `scale.motion`
 (`fast:160, base:260, slow:420, ease:cubic-bezier(0.16,1,0.3,1)`) has existed
@@ -2725,6 +2773,63 @@ fix.** The panel has not been looked at.
 name and `100.78.42.89` times out. The kiosk half deploys as a file copy into
 `kiosk_ui_react/dist` **plus** `services/socket_client.py`, and neither can be
 copied to a machine that is down.
+
+### ✅ D-53 CLOSED — BOTH HALVES DEPLOYED AND VERIFIED ON THE LIVE KIOSK, 2026-09-11
+
+**The Pi came back and the kiosk half shipped.** The full chain now runs end to
+end: Node's `emitLockerOccupancy` → socket → the Pi's relay → `_ui_state` →
+`/api/state` → the panel.
+
+**Deployed, in order, each checked before the next:**
+1. `dist/` (built UI), with `dist.bak-20260911` kept. The D-53 string is
+   present in the bundle **on the Pi**, not just locally.
+2. `services/socket_client.py`, with a `.bak-20260911`.
+3. Service restarted — **PID 1153 → 7711**. That number is the evidence:
+   `systemctl is-active` reported `active` *before* the restart too, because
+   the first `sudo` attempt failed for want of a password and the old process
+   kept running. **"active" is not "restarted".**
+
+**Two pre-flight diffs, and both mattered:**
+- The Pi's `kiosk_config.json` differs from the repo by **a trailing newline
+  and nothing else** — so the timings recorded in this file (15s/5s doors,
+  17–23s actuators) ARE the real ones. Its `M` in `git status` is that newline.
+- The Pi's `socket_client.py` was byte-identical to the version D-53 was
+  written against, so nothing Pi-only was clobbered.
+
+**THE VERIFICATION, and the reason it needed a mutation.** With all four bays
+`AVAILABLE` and all doors locked, **the old buggy code and the fixed code
+render exactly the same screen** — "4 of 4 free". That state proves nothing,
+and it was said so at the time rather than accepted as a pass. So one bay was
+flipped in the live DB (`2 → OCCUPIED`, `3 → isOperational:false`) and the
+kiosk reconnected:
+
+| | Old code (door state) | Fixed code | Observed on the live kiosk |
+|---|---|---|---|
+| Count | "4 of 4" | "2 of 4" | **"2 of 4"** ✅ |
+| Bay 02 | Free | In use | **In use** ✅ |
+| Bay 03 | Free | Out of service | **Out of service** ✅ |
+
+Occupancy on the Pi read
+`{"1":"AVAILABLE","2":"OCCUPIED","3":"OUT_OF_SERVICE","4":"AVAILABLE"}` —
+**locker 3 folding to OUT_OF_SERVICE proves the server-side `isOperational`
+fold is executing live**, not just in unit tests.
+
+**Captured at 1080×1920 PORTRAIT against the real bundle on the Pi**
+(`design/tools/capture-kiosk-live.mjs`, driving `http://engirent-kiosk:8080`
+over Tailscale — the real `/api/state`, not demo mode, which short-circuits
+the socket and would show no occupancy at all).
+
+**The live DB was restored immediately afterwards and verified restored**, and
+the kiosk was restarted again so it holds the truth rather than the test state.
+
+**Not claimed:** the *physical glass* showing the Lockers screen. The panel
+sits on the idle attract loop, there is no `ydotool`/`wtype`/`xdotool` on the
+Pi, and no remote-debugging port on the kiosk Chromium, so it cannot be
+navigated without a human touching it. The panel WAS captured after the deploy
+and renders the redesigned idle screen correctly in portrait, which proves the
+deploy did not break the device.
+
+---
 
 ### D-53 NODE HALF: DEPLOYED AND PROVEN LIVE — 2026-09-11
 

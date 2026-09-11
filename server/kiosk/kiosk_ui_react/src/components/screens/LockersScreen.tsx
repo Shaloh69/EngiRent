@@ -121,8 +121,18 @@ export function LockersScreen({
                 <span className="bay-hinge" aria-hidden />
                 <span className="bay-state">{label}</span>
                 <span className="bay-icon" aria-hidden>
+                  {/* D-60. This keyed on `occupied` alone, so a MAINTENANCE or
+                      OUT_OF_SERVICE bay drew the OPEN padlock -- the same icon
+                      as FREE -- while its label and colour said out of
+                      service. The icon contradicted the text on the one
+                      screen whose whole job is saying which bays you can use.
+                      Found by opening the panel capture, not by reading: both
+                      branches are individually correct, so nothing in the DOM
+                      assertions could have caught it. A bay withdrawn for
+                      maintenance is emphatically not openable, so it takes the
+                      closed padlock. */}
                   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    {occupied ? (
+                    {occupied || unusable ? (
                       <>
                         <rect x="5" y="11" width="14" height="10" rx="1.5" strokeWidth="1.7" />
                         <path d="M8 11V7.5a4 4 0 0 1 8 0V11" strokeWidth="1.7" strokeLinecap="round" />

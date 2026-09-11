@@ -81,14 +81,18 @@ One design system across four stacks that share nothing technically
       over the doc, which is the rule.
 - [ ] Locker representation — appears in app, admin, and kiosk; same model,
       numbering, states
-      — **OPEN, and partly delivered as D-53.** The kiosk half is done: it now
-      receives the server's canonical `LockerStatus`
+      — **OPEN, but D-53 is now CLOSED on live hardware.** The kiosk receives
+      the server's canonical `LockerStatus`
       (`AVAILABLE | OCCUPIED | RESERVED | MAINTENANCE | OUT_OF_SERVICE`)
-      instead of inferring availability from door-lock state, and **absent
-      renders as UNKNOWN, never as free**. Node emits `kiosk:occupancy`
-      (deployed and proven live 2026-09-11). **Still open:** the kiosk half is
-      not deployed (Pi offline, B-2), and app/admin have not been brought onto
-      one shared locker model.
+      instead of inferring availability from door locks; **absent renders as
+      UNKNOWN, never as free**. Both halves are deployed and were **verified on
+      the live kiosk with a mutation**: one bay flipped to OCCUPIED and one to
+      non-operational made the panel read **"2 of 4"**, `02 In use`,
+      `03 Out of service` — where the old door-state code would still have said
+      4 of 4. **D-60** (out-of-service bays drew the FREE padlock) was found in
+      that capture, fixed and redeployed.
+      **This box stays open for the REST of its scope:** the app and admin have
+      not been brought onto one shared locker model, numbering and states.
 - [x] ~~**Toast/snackbar** — E2.3 already built this working. **Restyle onto
       tokens and promote to a shared component; do not rebuild its behaviour**~~
       — **DONE, behaviour untouched as instructed.** Restyled onto tokens, and
