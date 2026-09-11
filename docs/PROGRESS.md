@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.6 BUILT (server side), NOT DEPLOYED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G10 · defects 21/72 · phases 83/192 (43%) · screens 0/69 PASS]
+[PHASE E4 · E4.6 SCHEMA MIGRATED to the live DB 2026-09-12, CODE NOT DEPLOYED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G10 · defects 21/72 · phases 83/192 (43%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -838,6 +838,38 @@ extend stroke is the **transfer**, `bottom_door` is retrieval. A drop is not
 part of a deposit — **it is the act of giving an item back**, which is why every
 dead end in the audit was the same missing feature wearing five different
 symptoms.
+
+### The migration RAN on the live database, 2026-09-12 — code did not
+
+User-authorised and executed on `desktop-gklhcri`. Backup taken
+(`prisma/schema.prisma.bak-20260912-e46`), remote schema diffed first: the delta
+was **purely additive**, every line an addition, nothing on the remote lost.
+D-65's columns were already present, which re-confirms that earlier deploy.
+
+```
+Datasource "db": MySQL database "engirent" at "127.0.0.1:3307"
+Your database is now in sync with your Prisma schema. Done in 7.86s
+
+RENTAL COLUMNS FOUND: 5 of 5
+  releaseReason      enum('LATE_COLLECTION','OWNER_RETURN_PICKUP','CANCELLED_WITH_ITEM','DEPOSIT_REJECTED','RETURN_DISPUTED')
+  releaseRequestedAt / releasedAt / retrievedAt  datetime(3)   retrievalLockerId varchar(191)
+LOCKER status: enum(...,'OUT_OF_SERVICE','AWAITING_RETRIEVAL')
+INDEX rentals_releaseRequestedAt_releasedAt_idx  +  retrievalLockerId FK
+RENTALS BY STATUS: PENDING=1, CANCELLED=4      LOCKERS BY STATUS: AVAILABLE=4
+ROWS WITH A RELEASE REQUESTED: 0
+```
+
+**The `prisma generate` that `db push` runs at the end failed `EPERM` again** —
+the live API holds the query-engine DLL. Expected, and this time **deliberately
+not corrected**, because the deployed code predates these columns: regenerating
+without deploying would be churn. The API was **not restarted** (PID 17884,
+unchanged) and still returns real item JSON.
+
+**Why migrating ahead of the code is safe here, stated rather than assumed:**
+every new column is nullable, nothing writes them, and no row can hold
+`AWAITING_RETRIEVAL` because the code that sets it is not deployed. The old
+Prisma client selects an explicit column list that simply does not include the
+new ones.
 
 ### Built, with evidence
 

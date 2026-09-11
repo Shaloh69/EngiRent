@@ -293,8 +293,18 @@ in the admin console, and **this feature gives admins a new reason to press it.*
 - [x] **DONE 2026-09-12.** `prisma/schema.prisma`: `LockerStatus.AWAITING_RETRIEVAL`,
       enum `ReleaseReason` (R1-R5), and the five `Rental` retrieval columns plus a
       `retrievalLocker` relation and a `[releaseRequestedAt, releasedAt]` index.
-      **NOT YET PUSHED TO THE LIVE DATABASE** — `prisma db push` runs on the
-      server and is a separate, deliberate step.
+      **PUSHED TO THE LIVE DATABASE 2026-09-12**, user-authorised, after diffing
+      the remote schema to confirm the delta was purely additive (every line an
+      addition; nothing on the remote would be lost). `db push` reported *"Your
+      database is now in sync… Done in 7.86s"* and the columns were read back:
+      5 of 5 on `rentals`, `releaseReason` carrying all five R1-R5 values,
+      `lockers.status` now
+      `enum(...,'OUT_OF_SERVICE','AWAITING_RETRIEVAL')`, plus
+      `rentals_releaseRequestedAt_releasedAt_idx` and the `retrievalLockerId`
+      FK. Existing data untouched (5 rentals, 4 bays all AVAILABLE, 0 rows with
+      a release requested). The API was **not** restarted and still serves —
+      safe because the deployed code predates these columns and nothing can yet
+      write `AWAITING_RETRIEVAL`.
 - [x] **DONE 2026-09-12.** `services/retrievalPolicy.ts` — pure, no Prisma, no
       socket, no clock of its own. **37 tests**, and F1/F2/F4/F10 plus the grace
       boundary were each individually mutation-checked (guard removed, suite
