@@ -179,6 +179,25 @@ each:**
 
 ### Session entries
 
+**2026-09-11 (E4 opened, A-3 measured, E4.5a first pass) — G5 six-symptom
+check at the E4.5a boundary. ONE SYMPTOM, three times, and one of those was a
+near-miss on a claim about live hardware.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it is the whole value of this stretch.** A-3 was *measured* rather than assumed — and the measurement overturned the premise of the user's request. The camera mapping was read out of `camera_manager.py` rather than inferred from a device listing. |
+| 2 vaguer summaries | Absent |
+| 3 **trusting a tool / an inference over the artifact** | **PRESENT ×3, all caught.** (a) From `camera_index: 0,1,2,3` against capture nodes at `video0,2,4,6` I concluded **lockers 2 and 4 have broken cameras** — a serious claim about live hardware, and wrong: `USB_DEVICE_MAP` resolves by stable by-path. (b) `fuser -v` output showed 2 holders; there were **4** — truncation, not fact. (c) My OpenCV probe reported *every* index unopenable, which I nearly read as broken cameras; the service holds all four open, and I am in the `video` group. |
+| 4 drifting toward the user's answer | **ABSENT, and this is the one worth noting.** The request was an auto-approve bar at 90%. I did not produce one. A-3 says `N=2, max=0`, so I reported that the bar **cannot be set yet** and why. Giving a number would have been the easy, agreeable, wrong answer. |
+| 5 batching | Absent — G2 table, A-3, and E4.5a committed separately as each completed. |
+| 6 skipping verification | Absent; this stretch was almost entirely verification, and it produced D-65. |
+
+**The pattern in symptom 3 is now specific enough to name:** every instance
+this session came from reading *system state* (a device listing, a `pgrep`, a
+`diff`, a `fuser`) and inferring what the *code* does. The cure each time was
+opening the code. **On this repo, system state is a hypothesis about the code,
+never a conclusion about it.**
+
 **2026-09-11 (kiosk contrast closed) — G5 six-symptom check. TWO SYMPTOMS,
 one of them a live-system mistake I made and had to repair.**
 
