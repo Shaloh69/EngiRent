@@ -52,7 +52,15 @@ if (-not $env:KIOSK_SHARED_SECRET) {
 
 $env:API_BASE_URL = 'http://localhost:5000/api/v1'
 if (-not $env:ADMIN_EMAIL)    { $env:ADMIN_EMAIL    = 'admin@engirent.edu.ph' }
-if (-not $env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD = 'EngiRent@2025!' }
+# S-3 family: this used to default to a literal admin password. The repository is
+# PUBLIC, so a credential-shaped literal in a tracked file is published the moment
+# it is pushed -- which is exactly how S-3 and S-4 leaked. The literal that was
+# here is dead (the admin password was reset 2026-09-07), but the pattern is not.
+# Read it from client/admin/.env.local, which is gitignored.
+if (-not $env:ADMIN_PASSWORD) {
+  Write-Error "ADMIN_PASSWORD is not set. Put it in the environment before running the suite - it is deliberately not defaulted here. See client/admin/.env.local."
+  exit 1
+}
 
 Set-Location $root
 node scripts\e2e-all.mjs @SuiteArgs

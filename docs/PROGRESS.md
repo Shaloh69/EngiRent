@@ -1863,7 +1863,7 @@ the live pair before it is ever used.
 
 ## Security findings
 
-### S-3 — **LIVE AND UNFIXED. The administrator password is published on public GitHub.** Found 2026-09-06 (E2)
+### S-3 — **EXPOSURE NEUTRALISED BY ROTATION (verified 2026-09-12), entry kept for the record.** The published literal no longer matches the live credential — the console's `ADMIN_PASSWORD` is 24 characters and differs. The password *text* remains in public git history and always will; rotation, not redaction, is the fix, and it was done 2026-09-07. Found 2026-09-06 (E2)
 
 **`github.com/Shaloh69/EngiRent` is a public repository** — verified by an
 anonymous `git ls-remote` with the credential helper explicitly disabled, which
@@ -2071,6 +2071,26 @@ semi-public. What changed is that it is now known to be *published*.
 reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
+
+### S-7 — FOUND AND FIXED 2026-09-12, by the G6 sweep that gated the push to `main`. An admin password literal in a tracked script.
+
+`server/node_server/scripts/run-e2e-all.ps1:55` defaulted `ADMIN_PASSWORD` to a
+literal. The file is **new to `main`**, so the push the user asked for would
+have published it — the same mechanism that leaked S-3 and S-4.
+
+**The literal is dead, and that was verified rather than assumed.** Compared
+against the live `ADMIN_PASSWORD` in `client/admin/.env.local` **without
+printing either value** (a length and a boolean only): the live credential is
+24 characters and does not match. It is the pre-reset password from before
+2026-09-07.
+
+**Fixed in the same session:** the fallback is gone; the script now fails with
+a message pointing at the gitignored `.env.local`. Re-swept: clean.
+
+**Why this is recorded rather than waved through.** A dead credential in a
+public repository is not an incident, but the pattern is exactly the one that
+produced two live leaks on this track, and the sweep caught it only because
+pushing forced one. **G6 has now found something on every session it has run.**
 
 ### S-6 — LOW. A fixture password published in a demo-seed script. Found 2026-09-08 (E3.1, G6 sweep)
 
