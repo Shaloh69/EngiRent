@@ -2534,7 +2534,75 @@ a source edit is a hypothesis until the browser agrees (E3.1's lesson).
 
 ---
 
+## E3.2 LOCKER REPRESENTATION — repo survey, 2026-09-11 (G2). Done BEFORE any edit.
+
+The box reads *"Locker representation — appears in app, admin, and kiosk; same
+model, numbering, states."* Surveyed rather than assumed, and the gap is
+sharper and smaller than "make three surfaces match".
+
+| Surface | What it has today | Verdict |
+|---|---|---|
+| **Kiosk** | The canonical `LockerStatus`, all five states, `01`–`04` numbering. D-53, closed on live hardware 2026-09-11 | ✅ done |
+| **Admin** | `kiosk/page.tsx:58` types lockers as `Record<string, {main, bottom}>` — **door state**, the model D-53 removed from the kiosk | **correct for what that page IS**, and a real gap for what it DOES — see D-63 |
+| **Flutter** | `create_rental_screen.dart` fetches `/kiosk/lockers` and counts `status == 'AVAILABLE'` | works by accident — see D-64 |
+
+**The admin's door-state rendering is NOT a defect in itself, and saying so
+matters.** `kiosk/page.tsx` is a hardware control panel: it opens doors,
+captures snapshots and edits timings. Door state (`main`/`bottom`,
+locked/unlocked, with Lock/LockOpen icons) is exactly the right model for
+that, and forcing occupancy onto it would be the ×4-surfaces mistake in
+reverse. What is wrong is narrower and worse.
+
+**No API exposes locker status at all.** `GET /kiosk/lockers`
+(`getAvailableLockers`) hard-filters `status: "AVAILABLE", isOperational: true`
+and returns only those rows. There is no endpoint that lists lockers **with**
+their state. So the admin console could not show occupancy even if its UI
+wanted to.
+
 ### New defects found in E3
+
+**D-63 — an admin can clear a locker's occupied state but cannot SEE it, and
+no endpoint would let them. FOUND 2026-09-11 (E3.2 locker survey). NOT YET
+FIXED.**
+
+`kiosk/page.tsx:410` offers **Release Locker**, and its own confirmation text
+reads: *"Release Locker NN? This clears its occupied state and detaches any
+rental — **only do this if the locker is genuinely stuck**."*
+
+**The page never fetches `Locker.status`.** It renders door lock state, which
+says nothing about whether a bay holds an item — that is the whole of D-53,
+one surface over. So the operator is asked to judge *"is this genuinely
+stuck?"* — a question only `status` + `currentRentalId` can answer — while
+being shown a field that cannot answer it. **The destructive action is taken
+blind**, and it detaches a real rental.
+
+**And it cannot be fixed in the UI alone**: `GET /kiosk/lockers` returns only
+`AVAILABLE` + operational rows, so there is no API surface carrying the
+canonical model to the console. This needs a read endpoint first.
+
+**Not a security finding** — the release is `requireAdmin`-gated and audited
+(`recordAudit`, `kiosk.releaseLocker`). It is an *informed-consent* defect:
+the right people can do it, with the wrong information.
+
+**D-64 — the app tells a student "all lockers are occupied" when they may be
+out of service. FOUND 2026-09-11 (same survey). NOT YET FIXED.**
+
+`create_rental_screen.dart` fetches `/kiosk/lockers`, whose server-side filter
+is already `status: AVAILABLE, isOperational: true`. So an empty list means
+*"none available"*, for any reason. The app renders:
+
+> **"No lockers available — All kiosk lockers are currently occupied. Try
+> again later."**
+
+A bay in `MAINTENANCE` or `OUT_OF_SERVICE` is not occupied, and "try again
+later" is the wrong advice when a locker is withdrawn for repair. Same family
+as D-53 and D-38: **a confident sentence the system does not have the evidence
+for.** Two smaller tells in the same block: it re-filters
+`(l['status'] ?? l['state']) == 'AVAILABLE'` over a list the server already
+filtered — the `??` fallback is a guess at the field name — and the count is
+therefore always just `_lockers.length`.
+
+
 
 **D-61 — the kiosk painted live informational text in the DISABLED-text
 colour. FOUND, FIXED AND DEPLOYED 2026-09-11**, by re-measuring contrast
