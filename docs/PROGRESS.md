@@ -807,6 +807,54 @@ after the cleanup the identical compile took **15.6 seconds**.
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
 
+## A-3 — MEASURED 2026-09-11. The answer is that there is nothing to measure.
+
+**`CAPABILITY-GAPS.md` A-3 is the prerequisite for every threshold change, and
+it was run against the live database today. The result is decisive and it is
+not a distribution.**
+
+| Query | Result |
+|---|---|
+| `Verification` rows, all time | **2** |
+| Their confidence scores | **0 and 0** |
+| Their decision / status | `PENDING` / `MANUAL_REVIEW`, both |
+| `ocrMatch` | `null`, both |
+| Ever reviewed by a human | **0** |
+| Rentals, all time | **5** — 4 `CANCELLED`, 1 `PENDING` |
+| Rentals that reached `DEPOSITED`/`ACTIVE`/`VERIFICATION`/`COMPLETED`/`DISPUTED` | **0** |
+| Rentals carrying a `verificationScore` | **0** |
+
+**What this does and does not say.** It does **not** say the pipeline has never
+worked — `memory.md` records a full-lifecycle run on 2026-09-03 that reached
+`DEPOSITED` through real hardware and the real ML service, and those rows are
+not in the database now. What it says is narrower and still serious: **the live
+database today contains no successful item verification at all**, and the only
+two attempts ever persisted scored zero and were parked for a human who never
+came.
+
+**Three consequences, and they reorder E4:**
+
+1. **The ≥90% auto-approval the user asked for cannot be built yet, and the
+   blocker is not process.** There is no confidence data: `N = 2`, `max = 0`.
+   A threshold calibrated on that is not a threshold, it is a guess wearing a
+   number. Conformal calibration needs a held-out score distribution; there
+   isn't one.
+2. **E4.5a is not a formality.** "Prove the media pipeline works end to end"
+   was written as verification of something presumed working. The database
+   says its end-to-end success is **unevidenced today**. That moves it from a
+   checkbox to the most important item in E4.
+3. **Two verifications have been sitting in `MANUAL_REVIEW` since 2026-09-03
+   with nobody reviewing them.** That is the human-approval queue the user
+   wants to shrink — and it is currently a queue of two that nobody drains.
+   Shrinking it by auto-approval would be solving the wrong half.
+
+**What unblocks this: real deposits.** Not code. Each one needs a door driven
+and an item physically placed, which is GPIO actuation and a human at the
+kiosk. **Until a body of real verifications exists, A-3 stays unanswerable and
+E4.5c stays shut.**
+
+---
+
 ## E4 — section-by-section state, derived from the repo 2026-09-11 (G2 gate)
 
 **No E4 implementation edit until this table exists — it now does.** Derived by
