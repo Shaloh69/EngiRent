@@ -1,8 +1,17 @@
 # docs/diagrams — the EngiRent process diagrams
 
-Fourteen sheets covering every process in the system. **PNG at 2× device scale
-for slides and print; SVG alongside each one for anything that will be scaled**
-(a thesis figure should use the SVG).
+Fourteen sheets covering every process in the system.
+
+**Use the SVG for anything you will zoom into or print.** It is vector, so it
+stays sharp at any magnification; the PNGs are raster and will soften. Sheet 13
+is also shipped at three raster scales because it is large:
+
+| File | Pixels | Use |
+|---|---|---|
+| `13-everything.svg` | vector | **zoom, print, thesis figure** |
+| `13-everything.png` | 4246x10182 | archival raster, too large for most upload paths |
+| `13-everything@1.5x.png` | 3185x7637 | sharp and still shareable |
+| `13-everything@1x.png` | 2123x5091 | quick preview |
 
 **Sheet 13 is the one that answers "show me everything":** all of sheets 00–12
 in a single flowchart, laid out as stacked bands — stages run down the page,
@@ -60,8 +69,29 @@ generated files. Rendering uses Playwright plus a cached Mermaid bundle at
 node -e "require('https').get('https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js',r=>r.pipe(require('fs').createWriteStream('design/tools/.cache/mermaid.min.js')))"
 ```
 
-**One rendering trap worth keeping.** Mermaid sets `max-width` on the SVG to
-its container, so a diagram silently shrinks to the width of the *heading
-text* — the numbers still look right while the drawing is illegible. The
-renderer pins each SVG to its own `viewBox` size after `mermaid.run()`. If a
-future sheet comes out suspiciously small, that is the cause.
+## Two rendering traps worth keeping
+
+**1. Mermaid shrinks the drawing to its container.** It sets `max-width` on the
+SVG, so a diagram silently scales down to the width of the *heading text* — the
+file looks fine and the drawing is illegible. Six sheets came out at an
+identical 978px wide, which was the giveaway. The renderer now pins each SVG to
+its own `viewBox` after `mermaid.run()`.
+
+**2. Mermaid's default labels are HTML, not SVG text.** With `htmlLabels: true`
+every label is a `<foreignObject>` wrapping an HTML `<div>`. That renders in a
+browser and comes out **blank in Word, LaTeX, Inkscape and most viewers** — so
+the vector copy, the whole point of which is to be the portable sharp one, was
+useless everywhere it mattered. The renderer now sets `htmlLabels: false`, and
+also paints the plate ground into the SVG, because mermaid's output is
+transparent and light edge-label text vanishes on white paper.
+
+Both are guarded:
+
+```bash
+node design/tools/verify-diagram-svg.mjs docs/diagrams/13-everything.svg out.png
+```
+
+It loads the `.svg` **directly** — no wrapper page, no injected CSS — and
+reports `foreignObjects` (must be 0), the native `<text>` count, the background
+fill, and explicit width/height, then screenshots it so the result can be
+looked at rather than inferred.

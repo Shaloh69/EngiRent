@@ -78,7 +78,13 @@ const SHELL = (d) => `<!doctype html>
     securityLevel: "loose",
     theme: "base",
     fontFamily: '"IBM Plex Sans", system-ui, sans-serif',
-    flowchart: { htmlLabels: true, curve: "basis", nodeSpacing: 46, rankSpacing: 58, padding: 14 },
+    /* htmlLabels:false emits native SVG <text> instead of <foreignObject>.
+       With foreignObject the SVG renders ONLY in a browser -- blank in Word,
+       LaTeX, Inkscape and most viewers -- which made the vector copy useless
+       as the sharp alternative to a raster. Native text is portable AND stays
+       crisp at any zoom, which is the whole point of shipping an SVG. */
+    htmlLabels: false,
+    flowchart: { htmlLabels: false, curve: "basis", nodeSpacing: 50, rankSpacing: 64, padding: 16 },
     themeVariables: {
       background: "#050F1A",
       primaryColor: "#10293D",
@@ -91,7 +97,7 @@ const SHELL = (d) => `<!doctype html>
       clusterBorder: "#26445E",
       edgeLabelBackground: "#0A1B29",
       titleColor: "#8FB6D6",
-      fontSize: "15px"
+      fontSize: "17px"
     }
   });
   (async () => {
@@ -152,9 +158,27 @@ for (const d of all) {
   const png = join(OUT, `${d.file}${SUFFIX}.png`);
   await plate.screenshot({ path: png, scale: "device" });
 
+  /* Export a SELF-CONTAINED svg: the mermaid output is transparent, so light
+     edge-label text disappears on white paper. Paint the plate ground into the
+     file and pin explicit dimensions, so the vector copy is correct wherever it
+     is opened rather than only inside this page. Runs after the PNG so it
+     cannot affect the raster. */
   const svg = await page.evaluate(() => {
     const s = document.querySelector(".mermaid svg");
-    return s ? s.outerHTML : null;
+    if (!s) return null;
+    const vb = s.viewBox.baseVal;
+    const NS = "http://www.w3.org/2000/svg";
+    const bg = document.createElementNS(NS, "rect");
+    bg.setAttribute("x", vb.x);
+    bg.setAttribute("y", vb.y);
+    bg.setAttribute("width", vb.width);
+    bg.setAttribute("height", vb.height);
+    bg.setAttribute("fill", "#050F1A");
+    s.insertBefore(bg, s.firstChild);
+    s.setAttribute("width", vb.width);
+    s.setAttribute("height", vb.height);
+    s.removeAttribute("style");
+    return '<?xml version="1.0" encoding="UTF-8"?>' + String.fromCharCode(10) + s.outerHTML;
   });
   if (svg && !SUFFIX) writeFileSync(join(OUT, `${d.file}.svg`), svg, "utf8");
 
