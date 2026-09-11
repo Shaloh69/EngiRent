@@ -33,6 +33,94 @@ phone screen for each beat designed **in the same sitting**, never separately.
       only shows up across two different durations
 - [ ] Capture both screens at every beat
 
+## E4.5 — The media pipeline, end to end, and fewer human approvals
+
+**Added 2026-09-11 on the user's instruction.** Two asks: *prove the whole
+media path for object-reference detection actually works*, and *stop sending
+so much to a human — auto-approve above a confidence bar*.
+
+> **SEQUENCING, and it is not negotiable by this phase.** `ENGIRENT-CLAUDE.md`
+> §1 puts the item-comparison pipeline **in scope** but makes **`CAPABILITY-GAPS.md`
+> A-3 a prerequisite, not a companion**, and says the 85/60 thresholds *stay
+> put* unless A-3's measured distribution says otherwise: *"nobody can say
+> which of the documented failure modes is real and which is theoretical...
+> Measure, then change."*
+>
+> So **"auto-approve at 90%" is not a number this phase may pick.** 90 is a
+> guess until the distribution is measured, and a guessed auto-approve bar
+> converts a human review into a wrong outcome silently. A-3 first.
+
+### E4.5a — Prove the media path works end to end (no threshold change)
+This is pure verification and can start immediately.
+- [ ] Trace ONE real deposit through every hop and show the artifact at each:
+      Pi camera → `kiosk:images` → stored file → signed URL → ML fetch →
+      `runMlVerification` → verdict → rental transition. **A hop that returns
+      200 is not a hop that did something** — D-39 was exactly that
+- [ ] Prove the ML service **actually fetched and decoded** the frames, rather
+      than scoring a fetch failure as a low score. Fail-closed must be
+      distinguishable from fail-quietly in the logs
+- [ ] Confirm all 5 cameras are enumerated and which locker each maps to —
+      `seedKioskConfig` listed 3 where there are 5 (D-54), so the mapping has
+      been wrong in writing before
+- [ ] Capture the deposit frames and the listing photos **side by side** for
+      one real item, at the resolution the model actually receives
+
+### E4.5b — A-3, the measurement that unlocks everything else
+- [ ] Confidence histogram over real verifications, banded at 85 / 60
+- [ ] Automated-vs-human fraction as it stands today
+- [ ] Admin override rate, and **which direction** overrides go
+- [ ] How often the OCR bonus actually changes a verdict
+- [ ] Per-locker breakdown — `ITEM-VERIFICATION-PIPELINE-GAPS.md`'s core claim
+      is that every kiosk frame shares one locker interior while listing photos
+      do not, so background agreement is being scored as object agreement
+
+### E4.5c — Then, and only then, the auto-approval bar
+**Frame it as selective prediction, not as a threshold.** The literature calls
+this *selective classification with abstention*: the system may decline to
+decide and defer to a human, and the abstention rate is the thing you measure.
+The principled way to set the bar is **conformal prediction** — calibrate on
+A-3's held-out scores to a **target error rate**, which gives distribution-free
+finite-sample coverage, rather than eyeballing 90.
+- [ ] State the **cost asymmetry explicitly** before choosing anything. A false
+      auto-approve accepts the wrong item back and releases a deposit; a false
+      deferral costs an admin thirty seconds. These are not symmetric and the
+      bar must not be set as if they were
+- [ ] Choose a **target error rate**, then derive the threshold from A-3's
+      distribution. Record the achieved automation rate that follows from it
+- [ ] Keep the abstain path first-class — PENDING is a real outcome here
+      (§3), not a failure
+- [ ] Re-measure after any pipeline change: a threshold calibrated on old
+      evidence is invalid the moment the evidence changes
+
+### E4.5d — Techniques worth evaluating (from a 2026-09-11 literature scan)
+Recorded as candidates **to evaluate against A-3's data**, not as decisions:
+- **Instance-level, not class-level, matching.** The real question is "is this
+  the same calculator", not "is this a calculator". Micro-texture /
+  surface-signature approaches (*SketchPrint*, SPIE/EUSIPCO 2015) identify a
+  specific physical object from a phone camera and are the closest published
+  match to this problem
+- **Foreground segmentation against a per-locker background plate**, already
+  proposed in `ITEM-VERIFICATION-PIPELINE-GAPS.md`. The patent literature on
+  re-identification does the same thing: segment into estimated foreground and
+  background before comparing
+- **Geometric verification as a gate, not a score.** SIFT/RANSAC inlier count
+  under a consistent homography is a much stronger identity signal than a
+  global descriptor distance, and it is already partly in the pipeline
+- **Agreement across independent signal families** rather than one weighted
+  sum — so a single inflated signal cannot carry a verdict
+- **Presentation-attack resistance.** A printed photo currently passes. Any
+  auto-approval bar makes that strictly worse, because it removes the human
+  who might have noticed
+
+*Sources consulted 2026-09-11: SketchPrint (SPIE 2015 / EUSIPCO 2015); USPTO
+re-identification and texture-matching patents; conformal abstention and
+cost-sensitive selective prediction literature (arXiv 2607.27143, 2502.07255;
+Nature Sci. Rep. 2026).*
+
 ## Definition of done
 - [ ] Every beat implemented on both screens, verified on real hardware
 - [ ] Screenshot pairs on disk for every beat, both screens
+- [ ] **E4.5a proven** — one real deposit traced hop by hop, with an artifact
+      at each hop rather than a 200
+- [ ] **A-3 measured and written into `docs/PROGRESS.md`**, before any
+      threshold moves

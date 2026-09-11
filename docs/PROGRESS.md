@@ -807,6 +807,40 @@ after the cleanup the identical compile took **15.6 seconds**.
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
 
+## E4 — section-by-section state, derived from the repo 2026-09-11 (G2 gate)
+
+**No E4 implementation edit until this table exists — it now does.** Derived by
+reading the kiosk screens, `useKioskState`, the Flutter kiosk feature and the
+ML service, not from the phase file.
+
+**E4 starts further along than 0/16 suggests**, because E3's work landed several
+beats already. It also starts with two things the phase file does not mention
+at all, added on the user's instruction 2026-09-11 — see E4.5.
+
+| E4.1 beat | Repo state today | What E4 must do |
+|---|---|---|
+| Idle / QR ↔ viewfinder | Kiosk `IdleScreen` (attract loop, D-52 flicker fixed) + `MainScreen`'s QR; phone `kiosk_scan_screen` | Choreograph as one beat; neither was designed against the other |
+| Scan detected | `kiosk_session_started` → `sessionQrConnected`/`sessionQrUser` exists | **Kiosk must react visibly in the same beat.** Verify the latency, do not assume it |
+| Verification needed | `FaceScreen` says *"Check your phone"* + `faceInstr`, whose default is *"Look directly at the camera"* | **Does NOT name WHO it waits for.** Spec wants owner-for-deposit / renter-otherwise, `resolveFaceSubject`'s real rule. The kiosk cannot currently say it because the Pi is never told |
+| Verifying | **Largely DONE in E3.2.** Phone has the indeterminate indicator, the **120s countdown driven by the server's absolute `expiresAt`**, and "Attempt N of 4"; kiosk `FaceScreen` is a passive alive state, which is what §2 asks of it | Choreograph the pair; capture both |
+| Success | Kiosk `SuccessScreen` (5s auto-return) | **D-55**: it says *"Locker NN is now open — collect your item"* then returns to the menu after 5s while a **15s** door is still cycling on lockers 1/3/4 |
+| Opening | **`WorkingScreen` built in E3.2** and consumes `door_open`/`dropping`/`capturing`; joins `verifying` in the inactivity carve-out | Needs `socket_client.py` to send `duration_seconds` or it renders indeterminate. **Also needs E0.3's measured durations**, still blank |
+| Failure | Kiosk `ErrorScreen` — **seen live 2026-09-11** during the blackout: *"Something went wrong — Cannot reach server"* with Try Again / Back to Home | Mirror on the phone; in-place, not a reset |
+
+| Other section | Repo state today | What E4 must do |
+|---|---|---|
+| **E4.2** QR freshness | `MainScreen` holds a real `ttl` from the Pi and renders *"Code rotates every N seconds for security"* — **text only** | §2 asks for a **ring/bar**: legible across a corridor, informative not urgent. The number exists; the visual does not |
+| **E4.3** face screen | `_Phase.framing/captured/uploading/exhausted`, an oval guide, `attemptsRemaining`, in-place retry | **No live framing feedback.** The file says so itself: no on-device detector, so "framed" is simplified to "camera ready". "Too dark / hold still" is unbuilt |
+| **E4.4** real hardware | Kiosk reachable; D-53 validated end-to-end through a full cold boot 2026-09-11 | **Needs actuation** — driving doors. Pair **locker 2 (5s) with any other (15s)**; any other pair passes a sync test that proves nothing |
+| **E4.5** media pipeline + auto-approval | **NEW, added by the user 2026-09-11.** See the phase file | Prerequisite: **A-3** |
+
+**The binding constraint on E4.4 and E4.5 is not code.** Both need the doors
+actually driven, which is GPIO actuation on a machine in a corridor, and
+`CLAUDE.md` keeps UI work out of that layer. **That is a human decision, not a
+model one**, and it is the single thing gating E4's definition of done.
+
+---
+
 ## E3 — section-by-section state, derived from the repo 2026-09-08 (G2 gate)
 
 **No E3 implementation edit until this table exists — it now does.** Derived by
