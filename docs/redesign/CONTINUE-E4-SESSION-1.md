@@ -1,3 +1,10 @@
+> # SUPERSEDED 2026-09-11 by `CONTINUE-E4-SESSION-2.md`. Kept per REPO-HYGIENE.
+> **Two of its instructions are now known WRONG and are corrected in session 2:**
+> Step 2's `db push` cannot run from the dev PC (the repo .env points at a dead
+> Aiven host; the real DB is local to the server), and **Step 8 is NOT provable
+> without hardware** — `POST /kiosk/deposit` drives a real door. D-65 itself is
+> DONE and DEPLOYED; do not re-run the step-by-step below.
+
 # CONTINUE-E4-SESSION-1.md — paste into a fresh Claude Code session
 
 > Supersedes `CONTINUE-E3-SESSION-2.md` (bannered as superseded).
