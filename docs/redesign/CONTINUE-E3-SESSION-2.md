@@ -1,3 +1,13 @@
+> # ⛔ SUPERSEDED 2026-09-11 — do not resume from this file.
+> **Use `docs/redesign/CONTINUE-E4-SESSION-1.md`.**
+>
+> Kept for the record. What changed since: D-53 was CLOSED on live hardware,
+> E3.2 and E3.3 completed, the kiosk contrast boxes closed against the
+> redesigned build, **E4 opened with its G2 table**, and **A-3 was measured** —
+> which found there is no confidence distribution at all. Gates G9 and G10 were
+> added. `memory.md`'s kiosk-reload step is now known to kill the supervisor
+> (D-62).
+
 # CONTINUE-E3-SESSION-2.md — paste into a fresh Claude Code session
 
 > Supersedes `CONTINUE-E3-SESSION-1.md` (which is bannered as superseded).
