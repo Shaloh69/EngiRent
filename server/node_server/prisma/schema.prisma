@@ -355,6 +355,13 @@ model Verification {
   reviewedBy  String? // Admin ID if manually reviewed
   reviewNotes String?            @db.Text
 
+  /// D-65. Why a zero score is zero. Without these, an ML fetch failure and a
+  /// genuine no-match are the same row, and A-3 cannot be interpreted. Rows
+  /// with `unavailable = true` carry NO evidence and must be excluded from any
+  /// threshold calibration set (E4.5c).
+  unavailable       Boolean @default(false)
+  unavailableReason String?
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

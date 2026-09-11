@@ -66,6 +66,21 @@ This is pure verification and can start immediately.
       byte-identical to a genuine zero-confidence comparison — which is exactly
       why A-3's two rows cannot be interpreted. Needs a schema change; blocks
       E4.5c.
+      — **OPEN. The persistence half is BUILT 2026-09-11 and NOT YET LIVE.**
+      `Verification` gains `unavailable Boolean @default(false)` +
+      `unavailableReason String?` (`prisma/schema.prisma`); all **four**
+      `prisma.verification.create` sites in `src/index.ts` spread
+      `verificationEvidenceFields(mlResult)`; both ML-unreachable catch blocks
+      now build `mlUnreachableResult()` (`unavailableReason: "ml_unreachable"`
+      — the third case the service cannot tag itself, because it never ran).
+      12 tests in `src/services/__tests__/verificationEvidence.test.ts`,
+      **mutation-checked**: dropping the spread from 1 of the 4 write sites
+      turns it red (verified, 1 failed / 11 passed). `tsc` clean, 142/142 Jest.
+      **BLOCKED:** `prisma db push` against the LIVE database and the deploy to
+      `desktop-gklhcri` both need the user — the local `.env` points at a dead
+      Aiven hostname (NXDOMAIN), so the push can only run on the server, and
+      the classifier refuses production reads there. Nothing is proven until a
+      row is read back.
 - [x] ~~Confirm all 5 cameras are enumerated and which locker each maps to —
       `seedKioskConfig` listed 3 where there are 5 (D-54), so the mapping has
       been wrong in writing before~~ — **DONE 2026-09-11, and the bullet itself

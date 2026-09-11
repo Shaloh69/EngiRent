@@ -33,6 +33,10 @@ import { verifyAccessToken } from "./utils/jwt";
 // the biometric never leaves this process. See faceVerificationService.
 import { resolveFaceSubject } from "./services/faceVerificationService";
 import { runMlVerification } from "./services/mlVerificationService";
+import {
+  mlUnreachableResult,
+  verificationEvidenceFields,
+} from "./services/verificationEvidence";
 import { openKioskSession } from "./services/kioskSessionStore";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
@@ -481,12 +485,9 @@ io.on("connection", (socket: Socket) => {
             );
           } catch (err) {
             mlError = (err as Error).message;
-            mlResult = {
-              decision: "PENDING",
-              confidence: 0,
-              method_scores: {},
-              ocr: null,
-            };
+            // D-65: the ML service itself was unreachable. Tag it, or this
+            // row is indistinguishable from a genuine zero-confidence match.
+            mlResult = mlUnreachableResult();
           }
 
           const { decision, confidence, method_scores } = mlResult;
@@ -535,6 +536,7 @@ io.on("connection", (socket: Socket) => {
                 siftScore: method_scores?.sift_combined,
                 deepLearningScore: method_scores?.deep_learning_aggregated,
                 status: "REJECTED",
+                ...verificationEvidenceFields(mlResult), // D-65
               },
             });
             await prisma.rental.update({
@@ -590,6 +592,7 @@ io.on("connection", (socket: Socket) => {
               siftScore: method_scores?.sift_combined,
               deepLearningScore: method_scores?.deep_learning_aggregated,
               status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
+              ...verificationEvidenceFields(mlResult), // D-65
               ...(mlError && { reviewNotes: `ML error: ${mlError}` }),
             },
           });
@@ -687,12 +690,9 @@ io.on("connection", (socket: Socket) => {
             );
           } catch (err) {
             mlError = (err as Error).message;
-            mlResult = {
-              decision: "PENDING",
-              confidence: 0,
-              method_scores: {},
-              ocr: null,
-            };
+            // D-65: the ML service itself was unreachable. Tag it, or this
+            // row is indistinguishable from a genuine zero-confidence match.
+            mlResult = mlUnreachableResult();
           }
 
           const { decision, confidence, method_scores } = mlResult;
@@ -736,6 +736,7 @@ io.on("connection", (socket: Socket) => {
                 siftScore: method_scores?.sift_combined,
                 deepLearningScore: method_scores?.deep_learning_aggregated,
                 status: "REJECTED",
+                ...verificationEvidenceFields(mlResult), // D-65
               },
             });
             await prisma.rental.update({
@@ -817,6 +818,7 @@ io.on("connection", (socket: Socket) => {
               siftScore: method_scores?.sift_combined,
               deepLearningScore: method_scores?.deep_learning_aggregated,
               status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
+              ...verificationEvidenceFields(mlResult), // D-65
               ...(mlError && { reviewNotes: `ML error: ${mlError}` }),
             },
           });

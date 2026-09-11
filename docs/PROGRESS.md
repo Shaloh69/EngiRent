@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E3 · E3.1/E3.2/E3.3 DONE · D-53 CLOSED (re-validated through a full cold boot) · D-63 endpoint DEPLOYED+VERIFIED LIVE (unfiltered), admin UI card renders real state but its OCCUPIED/stuck branches NOT yet seen · G1 debt 1 · gates G1-G10 · stack restarted after a blackout, all 4 services verified via tunnels · defects 21/64 · phases 75/167 (45%) · screens 0/69 PASS]
+[PHASE E4 · E4.5a · G2 table dated 2026-09-11 · A-3 MEASURED (N=2, both 0 — no distribution, E4.5c stays shut) · D-65 FIX BUILT + mutation-checked, NOT LIVE · D-66 NEW: the server runs a pre-E3.2 index.ts · G1 debt 2 (D-63 admin card branches; D-65 undeployed) · gates G1-G10 · defects 21/66 · phases 76/181 (42%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -826,6 +826,108 @@ after the cleanup the identical compile took **15.6 seconds**.
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
 
+## 2026-09-11 (E4.5a, session 2) — D-65's fix is BUILT and mutation-checked; the live half needs the user. And D-66: the server is running a pre-E3.2 `index.ts`.
+
+### D-65 — built, typechecked, mutation-checked. Nothing proven until a row is read back.
+
+**What landed in the repo** (branch `e0-e1-audit-tests-and-evidence`):
+
+| Piece | Where |
+|---|---|
+| `unavailable Boolean @default(false)` + `unavailableReason String?` | `server/node_server/prisma/schema.prisma`, `model Verification` — both additive, so no existing row breaks |
+| One place the two fields are produced | **new** `src/services/verificationEvidence.ts` — `mlUnreachableResult()` and `verificationEvidenceFields()` |
+| The ML-unreachable case tagged | both catch blocks in `src/index.ts` now build `mlUnreachableResult()` → `unavailableReason: "ml_unreachable"`. That is the third case `mlVerificationService` **cannot** tag itself, because the throw happens before it can return |
+| The fields written at **all four** `prisma.verification.create` sites | `src/index.ts` — one `...verificationEvidenceFields(mlResult)` spread each |
+| Tests | `src/services/__tests__/verificationEvidence.test.ts`, **12 tests** |
+
+**Deviation from the continuation prompt's Step 4-5, and why.** The prompt said
+to destructure `unavailable`/`unavailableReason` alongside `decision` and repeat
+two literal lines at each of the four write sites. I used a single shared
+`verificationEvidenceFields(mlResult)` spread instead. Same four call sites,
+same persisted values — but the prompt's own warning ("missing one leaves a path
+that still writes an uninterpretable row, and it will be the path nobody
+exercises until it matters") becomes **structurally testable**: the fields are
+derived in exactly one function, and a test walks `index.ts` and asserts every
+`prisma.verification.create` payload spreads it. The existing payload lines were
+not touched, so the diff on the live-server file is purely additive.
+
+**MUTATION-CHECKED, because a test that never failed proves nothing.** Dropped
+the spread from **1 of the 4** write sites and re-ran: **1 failed / 11 passed**,
+and the failure named the write site. Restored (`grep -c` → 4 again) and green.
+
+**Verification status:** `npx tsc --noEmit` exit 0; **142/142 Jest** across 15
+suites. **That is necessary and nowhere near sufficient** — no row has been
+written or read back, so D-65 is **built, not fixed**.
+
+### The two things that need the user, and one of them moved
+
+**1. The live `db push` cannot be run from this machine, and the reason is not
+what the continuation prompt assumed.** Step 2 said `cd server/node_server &&
+npx prisma db push`. The local `server/node_server/.env` (dated Aug 6) points at
+`engirent-…a.aivencloud.com:18738`, which now returns **NXDOMAIN** — not a
+timeout, a non-existent domain. Applying this session's own lesson: that is a
+hypothesis about a stale local file, **not** a conclusion that the database is
+gone, because A-3 was measured against a live database today. The push has to
+run on the server, where the real `DATABASE_URL` lives.
+
+**2. Reading the server's `.env` is refused** by the auto-mode classifier
+(*Production Reads*), so the real `DATABASE_URL` host was never established.
+`ssh transfer@desktop-gklhcri 'hostname'` works — SSH itself is not blocked.
+
+**What IS prepared, so the deploy is a copy and not a re-derivation:**
+- Remote `prisma/schema.prisma` was fetched and diffed against this branch's
+  HEAD: **byte-identical** (CRLF-normalised). It is *not* one of the diverged
+  files, so copying this branch's version adds D-65 and nothing else.
+- Remote `src/index.ts` **is** diverged, so it was fetched and the D-65 edits
+  applied **onto it**. The delta against the untouched remote file was diffed
+  and is **D-65 only**: 1 import, 2 catch blocks, 4 spreads.
+- `src/services/verificationEvidence.ts` is a new file; it just needs copying.
+
+### D-66 — the server is running an `index.ts` that predates E3.2 and D-37(b). FOUND 2026-09-11.
+
+Found while diffing the remote `index.ts` for D-65's deploy, and **confirmed
+against the built artifact rather than the source**, because source on disk is
+not proof of what is running:
+
+```
+D:\ENG\EngiRent\server\node_server\dist\index.js   (built 2026-09-11 19:47)
+  expiresAt                   0 hits
+  admin:kiosk_online          1 hit
+  verificationEvidenceFields  0 hits
+```
+
+- **`expiresAt` 0 hits.** E3.2 sends the 120s session deadline as an
+  **absolute epoch-ms** value on `kiosk_session_started`, specifically so the
+  phone's countdown cannot drift. It is not in the deployed build. The E4 G2
+  table lists that beat under *"Done already"* — true **of the repo**, and a
+  reader would reasonably take it as true of the product. It is not.
+- **`admin:kiosk_online` 1 hit.** D-37(b) removed the admin socket's kiosk
+  telemetry in favour of the SSE stream. Also not deployed.
+
+**Same family as D-32** — a change recorded as done here that never reached the
+server. This is not a new code defect; it is the deployment gap, and it means
+**E4's Verifying beat is unverifiable on real hardware until the server is
+brought up to the branch.**
+
+### G5 six-symptom check — E4.5a section boundary. ONE SYMPTOM, caught by the gate that exists for it.
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent. Step 0's greps were re-run rather than trusted: 4 create sites, 2 catch blocks, 2 destructures — the prompt's line numbers had drifted by 1-2 and content-matching absorbed it. |
+| 2 vaguer summaries | Absent. |
+| 3 **trusting a tool / an inference over the artifact** | **PRESENT ×1, caught.** The Aiven host returning NXDOMAIN reads as *"the production database has been deleted"*. It is a stale local `.env`. Named as a hypothesis before acting on it, per this track's own rule. |
+| 4 drifting toward the user's answer | Absent. The continuation prompt's Step 4-5 was not followed literally; the deviation is written down above with its reason rather than silently applied. |
+| 5 batching | Absent — one commit for D-65 with its phase-file box (G9). |
+| 6 skipping verification | **Absent, and it is the point.** Mutation check run and watched go red; `tsc` and 142 tests green; and the work is still recorded as **built, not fixed**, because no row has been read back. |
+
+**The CRLF trap from the last session fired again and was caught by a failing
+assertion, not by luck.** The first patch attempt against `index.ts` matched 0
+of 2 catch blocks because the file is CRLF and the patterns were LF. Patched by
+normalising on read and restoring CRLF on write — the diff is 14 insertions /
+12 deletions, not a whole-file rewrite.
+
+---
+
 ## E4.5a — first findings, 2026-09-11. No hardware driven.
 
 ### The camera layer is HEALTHY, and two written claims about it were wrong
@@ -856,7 +958,7 @@ metadata nodes with no capture. All four are held open by the kiosk service
    earning its keep. The code comment even warns against editing it from a
    topology diagram; I nearly did the equivalent from a device listing.
 
-### D-65 — "no evidence" and "evidence of no match" are the same row in the database. FOUND 2026-09-11. NOT FIXED (needs a schema change).
+### D-65 — "no evidence" and "evidence of no match" are the same row in the database. FOUND 2026-09-11. FIX BUILT 2026-09-11, **NOT LIVE** — see the session entry at the top of this file.
 
 `mlVerificationService` **already** distinguishes them. When reference or kiosk
 images cannot be downloaded or decoded it returns
