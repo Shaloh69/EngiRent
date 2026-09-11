@@ -179,6 +179,38 @@ each:**
 
 ### Session entries
 
+**2026-09-12 (the long one) — G5 check run because THE USER ASKED, which is
+itself the finding. ONE SYMPTOM, three occurrences, all caught.**
+
+**Scope of this single session, which is the headline:** D-65's live deploy →
+the 16-sheet diagram set (three re-render rounds) → the physical-layer audit
+(D-67…D-71) → D-72 found and fixed → E4.6 designed, ruled and built → the live
+schema migration → the live code deploy. **That is four or five sessions' work
+in one.** The playbook's cadence is one phase per session with a `/clear`
+between, and this ran far past it.
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, repeatedly load-bearing.** The command table, the door literals, the flow branches, the cron query, the config-merge path and every remote file before deploying were all read from source, and most overturned something written down. |
+| 2 vaguer summaries | Absent. |
+| 3 trusting a tool over the artifact | Absent. |
+| 4 drifting toward the user's answer | **Absent, and tested twice.** The phase file said extend the *nightly* cron; an hourly sweep was built instead and the deviation written on the box. And D-72 was fixed *before* the requested feature rather than after, because the feature increases the chance of triggering it. |
+| 5 batching | Absent — D-72, schema+policy, wiring, migration and deploy were five separate commits. |
+| 6 **skipping verification** | **PRESENT ×3.** Three mutation checks reported `Tests: 0 total` — the suite had failed to **compile**, which is neither a pass nor a fail. At face value each reads as "the guard is covered". All three were re-run properly (F2 → 3 failed, F4 → 1 failed, F5 → 5 failed). **`Tests: 0 total` is the mutation-check equivalent of trusting an exit code**, and it is now a named instance of G8's pattern. |
+
+**The honest part: the human asked for this check.** G5 exists precisely so they
+never have to, and this is the third time in the track's history that the
+prompt came from their side rather than mine. The check itself came back
+defensible — but *who ran it* is the signal, and it says the session is long
+enough to clear.
+
+**Recommendation recorded: `/clear` after this.** Not because anything has gone
+wrong yet, but because occurrence #2 in this log "looked like productive,
+well-tested work, not like confusion", which is exactly what the last several
+hours look like.
+
+
+
 **2026-09-11 (E4 opened, A-3 measured, E4.5a first pass) — G5 six-symptom
 check at the E4.5a boundary. ONE SYMPTOM, three times, and one of those was a
 near-miss on a claim about live hardware.**
