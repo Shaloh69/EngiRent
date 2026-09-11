@@ -214,6 +214,17 @@ model Rental {
   claimLockerId   String?
   returnLockerId  String?
 
+  /// E4.6 — the retrieval record. `releaseRequestedAt` is set BEFORE the
+  /// drop command goes out and `releasedAt` only on the Pi's ack, so a power
+  /// or network failure mid-drop is visible as a row with the first set and
+  /// the second null (failure mode F3). `releaseRequestedAt` is also the
+  /// idempotency guard (F1): a release is refused if it is already set.
+  releaseReason      ReleaseReason?
+  releaseRequestedAt DateTime?
+  releasedAt         DateTime?
+  retrievalLockerId  String?
+  retrievedAt        DateTime?
+
   // Verification
   depositVerificationId String?             @unique
   verificationId        String?             @unique
@@ -243,6 +254,7 @@ model Rental {
   depositLocker       Locker?       @relation("DepositLocker", fields: [depositLockerId], references: [id])
   claimLocker         Locker?       @relation("ClaimLocker", fields: [claimLockerId], references: [id])
   returnLocker        Locker?       @relation("ReturnLocker", fields: [returnLockerId], references: [id])
+  retrievalLocker     Locker?       @relation("RetrievalLocker", fields: [retrievalLockerId], references: [id])
   conversation        Conversation?
 
   @@index([itemId])
@@ -253,6 +265,9 @@ model Rental {
   // scan (index.ts) — a single-column index on `status` alone still requires
   // a filtered scan across every ACTIVE rental to compare endDate.
   @@index([status, endDate])
+  /// E4.6 — serves the release scan, which looks for rentals already released
+  /// and not yet collected (the F6 escalation) and for un-acked drops (F3).
+  @@index([releaseRequestedAt, releasedAt])
   @@map("rentals")
 }
 
@@ -402,6 +417,7 @@ model Locker {
   depositRentals Rental[] @relation("DepositLocker")
   claimRentals   Rental[] @relation("ClaimLocker")
   returnRentals  Rental[] @relation("ReturnLocker")
+  retrievalRentals Rental[] @relation("RetrievalLocker")
 
   @@index([kioskId])
   @@index([status])
@@ -718,6 +734,29 @@ enum LockerStatus {
   RESERVED
   MAINTENANCE
   OUT_OF_SERVICE
+
+  /// E4.6. The bay's LOWER compartment holds an item that has been released
+  /// back to its owner and is waiting to be collected through `bottom_door`.
+  /// It is deliberately NOT `AVAILABLE`: dropping a second item onto an
+  /// un-retrieved one would stack two students' property in one compartment.
+  /// This is the single most important invariant in the retrieval design.
+  AWAITING_RETRIEVAL
+}
+
+/// E4.6. Why an item was dropped into the lower compartment. Without this an
+/// operator cannot tell a late-collection release from a dispute release, and
+/// the two need very different conversations with the student.
+enum ReleaseReason {
+  /// R1 — the renter never collected within the configured grace period.
+  LATE_COLLECTION
+  /// R2 — a return passed verification; the owner is collecting it.
+  OWNER_RETURN_PICKUP
+  /// R3 — cancelled or refunded while the item was still in a bay.
+  CANCELLED_WITH_ITEM
+  /// R4 — item verification rejected the deposit (was D-67a).
+  DEPOSIT_REJECTED
+  /// R5 — a return was rejected and the rental is disputed (was D-67b).
+  RETURN_DISPUTED
 }
 
 enum NotificationType {
