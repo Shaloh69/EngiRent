@@ -66,3 +66,11 @@
   --glow-a: rgba(77, 163, 232, 0.22);
   --glow-b: rgba(245, 184, 92, 0.14);
 }
+
+/* Motion — theme-independent, emitted once. */
+:root {
+  --motion-fast: 160ms;
+  --motion-base: 260ms;
+  --motion-slow: 420ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}

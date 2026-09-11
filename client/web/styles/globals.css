@@ -75,7 +75,28 @@
 }
 
 /* Anyone who prefers reduced motion gets the gradient without the drift. */
+/* E3.3. This block used to name ONE selector -- the aurora background -- which
+   left every other transition and keyframe on the site running. Broadened to
+   the blanket rule the admin console already uses, so a new component cannot
+   silently opt itself out by being written after this line.
+
+   The near-zero duration rather than `none` is deliberate and is the standard
+   form: it lets transitionend/animationend still fire, so JS that waits on
+   those events does not hang forever on a reduced-motion machine.
+
+   Framer-motion is NOT covered by any of this -- it animates inline styles
+   from JS. That is handled by <MotionConfig reducedMotion="user"> in
+   app/providers.tsx (D-58). */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
   [data-slot="aurora-background"] > * {
     animation: none !important;
   }

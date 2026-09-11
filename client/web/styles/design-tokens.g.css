@@ -63,3 +63,11 @@
   --brand-selected-overlay: 0.12;
   --brand-disabled-opacity: 0.45;
 }
+
+/* Motion — theme-independent, emitted once. */
+:root {
+  --motion-fast: 160ms;
+  --motion-base: 260ms;
+  --motion-slow: 420ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}

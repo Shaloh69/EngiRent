@@ -12,6 +12,11 @@
 // and means a token change is a regenerate rather than a rewrite.
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+
+/** A literal newline, named so a generator body never has to embed an
+ *  escape that an editing tool can mangle — which is exactly what happened
+ *  writing motionVars() below. */
+const NEWLINE = String.fromCharCode(10);
 import { join, dirname } from "node:path";
 import {
   loadTokens,
@@ -420,6 +425,28 @@ export const shadowHairline = "0 1px 2px rgba(${tokens.scale.elevation.shadowRgb
 `;
 }
 
+/**
+ * Motion custom properties. THEME-INDEPENDENT, so this is emitted once into a
+ * bare `:root` rather than duplicated into the light and dark blocks — a
+ * duration does not change with the colour scheme.
+ *
+ * D-57: the kiosk CSS and both non-CSS surfaces have had these all along;
+ * `buildAdminCss` and `buildWebCss` emitted none. That is the same pair of
+ * generators, and the same partial-emission bug, as E3.1's `borderStrong`.
+ */
+function motionVars() {
+  const m = tokens.scale.motion;
+  return [
+    "/* Motion — theme-independent, emitted once. */",
+    ":root {",
+    `  --motion-fast: ${m.fast}ms;`,
+    `  --motion-base: ${m.base}ms;`,
+    `  --motion-slow: ${m.slow}ms;`,
+    `  --motion-ease: ${m.ease};`,
+    "}",
+  ].join(NEWLINE);
+}
+
 function buildAdminCss() {
   // Admin drives dark mode off Mantine's own attribute — never a bare media
   // query. Both systems key off the same signal or they desynchronise, which
@@ -467,6 +494,8 @@ ${vars(dark)}
   --glow-a: ${rgba(dark.brand, 0.22)};
   --glow-b: ${rgba(dark.accent, 0.14)};
 }
+
+${motionVars()}
 `;
 }
 
@@ -635,6 +664,8 @@ ${vars(light)}
 .dark {
 ${vars(dark)}
 }
+
+${motionVars()}
 `;
 }
 

@@ -133,9 +133,35 @@ One design system across four stacks that share nothing technically
       rendering but not yet driven by a real session.
 
 ## E3.3 — Motion vocabulary
-- [ ] Durations/easing as shared tokens
-- [ ] Reduced-motion per surface (`prefers-reduced-motion`; Flutter's
-      `MediaQuery.disableAnimations`)
+- [x] ~~Durations/easing as shared tokens~~ — **DONE 2026-09-11.**
+      `tokens.json` → `scale.motion` already held them and three of five
+      generated outputs emitted them; **`buildAdminCss` and `buildWebCss`
+      emitted none** (**D-57** — the same two generators, and the same
+      partial-emission bug, as E3.1's `borderStrong`). Both now emit
+      `--motion-fast/base/slow/ease` from one shared `motionVars()` helper,
+      into a bare `:root` because a duration is theme-independent. Drift guard
+      (`build.mjs --check`) clean, and the regenerate touched exactly the two
+      stale files.
+- [x] ~~Reduced-motion per surface (`prefers-reduced-motion`; Flutter's
+      `MediaQuery.disableAnimations`)~~ — **DONE AND VERIFIED IN A BROWSER
+      2026-09-11 (D-58).** The finding: a CSS `@media (prefers-reduced-motion)`
+      block **cannot stop framer-motion**, which animates JS-driven inline
+      styles and defaults to `reducedMotion: "never"`. The kiosk had **9**
+      framer components, the admin 3 files, the website more, and **none**
+      consulted the setting — so all three surfaces had a block that looked
+      like coverage and did not cover what actually moved. The admin's was a
+      blanket `*` rule, which made it look the most covered and was equally
+      powerless. Fixed with **one** `<MotionConfig reducedMotion="user">` per
+      surface root rather than per-component hooks, because E3's job is to
+      define a thing once. The website's CSS block was also broadened from a
+      single selector to the blanket rule.
+      **Verified with a control experiment on all three surfaces**
+      (`design/tools/probe-reduced-motion.mjs`): distinct transform values on
+      one element, control → reduced — kiosk **26 → 2**, admin **11 → 2**,
+      website **12 → 2**, and elements that tweened **4/2/10 → 0/0/0**.
+      **Flutter needed nothing**: `disableAnimations` is genuinely consulted
+      in `animated_auth_background.dart`, `face_verify_screen.dart:83` and
+      `kiosk_scan_screen.dart:74`.
 
 ## Definition of done
 - [x] ~~Tokens generate into all four stacks~~ — **DONE**, all four verified
