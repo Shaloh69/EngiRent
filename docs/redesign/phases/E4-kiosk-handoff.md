@@ -19,7 +19,19 @@ phone screen for each beat designed **in the same sitting**, never separately.
 - [ ] Failure — recoverable in place, both screens
 
 ## E4.2 — QR freshness
-- [ ] 90s TTL visualised, legible across a corridor, informative not urgent
+- [x] **DONE 2026-09-13, verified on screen.** An arc tracing the QR card's own
+  border, floated 16px clear of it over a dim track, driven by the **real
+  remaining seconds** — `/api/qr-token` has always returned `expires_in` and
+  the client read only the 90s `ttl`, rendering a constant that was true of
+  every code and informative about none. Held as an absolute deadline (E3.2's
+  shape) so it cannot drift from the server between polls. **Informative, not
+  urgent: one colour the whole way down**, no amber, no red, no end-of-life
+  pulse. Evidence at 1080x1920 portrait: `design/after/e4-2/ring-90s.png`,
+  `ring-45s.png`, `ring-20s.png`, `full-45s.png`.
+  **Found and fixed in the doing: D-73** — the kiosk displayed a dead code for
+  up to 30s, because tokens mint lazily and nothing asked between expiry and
+  the next poll. The countdown hitting zero is now the trigger. D-73 stays
+  **open** until a live kiosk is watched through one rotation.
 
 ## E4.3 — Face verify screen (phone)
 - [ ] Live framing feedback (too dark / hold still) **before** upload

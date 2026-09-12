@@ -536,14 +536,71 @@ h3 {
   font-size: var(--t-xl);
 }
 
+/* E4.2 — the ring has to sit ON the white card's edge, and the card clips its
+   own children so the scan sweep cannot escape it. So the ring is a sibling
+   overlaying the card, and this frame is what they share. The card's vertical
+   margin moves up here, or the overlay's `inset: 0` would be off by it. */
+.qr-frame {
+  position: relative;
+  margin: var(--sp-2) 0;
+}
+
 .qr-canvas-wrap {
   position: relative;
   padding: var(--sp-3);
-  margin: var(--sp-2) 0;
   background: #fff;
   border-radius: var(--r-lg);
   line-height: 0;
   overflow: hidden;
+}
+
+.qr-freshness {
+  position: absolute;
+  /* Floated OFF the card, not drawn on its edge. Sitting flush, half the
+     stroke landed on white and half on the panel, which made the dim track
+     invisible against the card and left only the lit arc readable -- a
+     growing bracket rather than a gauge. Out here both halves sit on the
+     same dark ground and the ratio is the thing you see. */
+  inset: -16px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qr-freshness rect {
+  fill: none;
+  /* User units, not pixels, and deliberately so. `vector-effect:
+     non-scaling-stroke` was tried first and is a trap here: it applies the
+     dash pattern in SCREEN space, which silently bypasses `pathLength="100"`
+     normalisation. Measured, the rect's real perimeter is 396.5 user units
+     over a 360.7px box -- so a 100-unit dash became 100 *pixels*, and the
+     ring rendered as seven evenly spaced dashes that never depleted. It
+     looked like a designed detail rather than a bug.
+
+     At the kiosk's fixed 1080x1920 this is ~7px, and it scales with the
+     card rather than against it. */
+  stroke-width: 2.6;
+}
+
+/* The unspent remainder. Present enough to give the lit arc something to be
+   a fraction OF, quiet enough that it is never mistaken for the arc. */
+.qr-fresh-track {
+  stroke: var(--border);
+}
+
+.qr-fresh-arc {
+  stroke: var(--teal);
+  stroke-linecap: butt;
+  /* Both halves named: with `pathLength="100"` the path is exactly 100 long,
+     so "100 100" is one full dash and one full gap and cannot repeat. */
+  stroke-dasharray: 100 100;
+  /* Linear, and exactly one tick long, so the arc glides between the 1s
+     samples instead of stepping. On rollover it sweeps back to full in the
+     same second, which is what "the code just changed" should look like. */
+  transition: stroke-dashoffset 1s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-fresh-arc { transition: none; }
 }
 
 .qr-canvas-wrap canvas {

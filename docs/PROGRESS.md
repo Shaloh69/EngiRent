@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.6 SCHEMA + CODE DEPLOYED to the live server 2026-09-12 (PID 17884→12860), NO HARDWARE EXERCISED · retrieval: actuator drop → AWAITING_RETRIEVAL → owner rescans → bottom_door · D-67..D-71 addressed in code, D-72 FIXED · A-3 MEASURED (N=2, both 0) · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G11 · defects 21/72 · phases 84/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · E4.2 QR FRESHNESS DONE + SEEN ON SCREEN 2026-09-13 · KIOSK PI OFFLINE (last seen 9h, tailscale) so the physical run could not be attempted · server live, PID 12860, /api/v1/items 200 · E4.6 deployed 2026-09-12, NO HARDWARE EXERCISED · D-73 FOUND+FIXED (dead QR shown up to 30s), open until one live rotation · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G11 · defects 22/73 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -184,6 +184,24 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-13 (E4.2 boundary) — G5 six-symptom check, run unprompted. ONE
+SYMPTOM, caught by looking at the picture rather than the numbers.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and load-bearing twice.** The branch, the live PID, the phase report's 84/193, the E4 G2 table's existence and `expires_in`'s presence in `server.py` were all read from source this session. The Pi being offline was established from `tailscale status`, not assumed from the memory note that says it often is. |
+| 2 vaguer summaries | Absent. |
+| 3 trusting a tool / an inference over the artifact | **Absent, and this is the one the session turned on.** The dash bug was *theorised* first, then **measured** in the browser (`getTotalLength`, the computed dasharray, the box width) before a line was changed. The 2026-09-11 rule — "system state is a hypothesis about the code, never a conclusion about it" — held in the other direction too. |
+| 4 drifting toward the user's answer | Absent. No instruction was given this session beyond "continue"; the work was picked by G1's own rule about blocked verification. |
+| 5 batching | Absent — one section, E4.2, and it is the only implementation touched. |
+| 6 **skipping verification** | **PRESENT ×1, caught.** `npx tsc --noEmit` came back clean on a ring that rendered as seven dashes. The typecheck was reported as "clean, which proves nothing" in the same breath, and the PNG was opened immediately — but the gap is real and it is the same gap as 2026-09-12's `Tests: 0 total`: **a green signal that is not about the thing being claimed.** Here the claim was visual and the evidence was a compiler. |
+
+**The specific lesson, because it is sharper than "look at the screen":** the
+first capture attempt photographed the `BlockAssembly` transition wall, not the
+screen, and reported a found `.qr-frame` while doing it. A screenshot is not
+automatically evidence of what you think it shows. The capture now waits for
+`.asm-layer` to detach before it fires.
 
 **2026-09-12 (the long one) — G5 check run because THE USER ASKED, which is
 itself the finding. ONE SYMPTOM, three occurrences, all caught.**
@@ -863,6 +881,86 @@ after the cleanup the identical compile took **15.6 seconds**.
   belongs in E3's shared-component pass), **D-38** (admin dashboard confident
   zeros), **D-39** (profile completes without a real face). Admin login was
   reset non-destructively (no DB wipe); real data preserved.
+
+## 2026-09-13 — E4.2 DONE and SEEN ON SCREEN. The kiosk Pi is offline, so the physical run did not happen.
+
+**The bank is off the network.** `tailscale status` says `engirent-kiosk …
+offline, last seen 9h ago, tx 780 rx 0`. There was no G11 approval to ask for:
+the one physical run cannot be attempted until the Pi is powered back on. The
+server side is fine — PID **12860** still on 5000, `GET /api/v1/items?limit=1`
+→ 200, matching 2026-09-12's deploy record exactly.
+
+**G1 debt is unchanged at 3.** Per G1's own instruction ("pick work whose
+verification is not blocked"), this session took E4.2, which runs entirely in
+Vite dev mode and was verified on screen before being recorded.
+
+### E4.2 — QR freshness. The data was already on the wire and being thrown away.
+
+`kiosk_ui/server.py:111-116` has always returned **`expires_in`** — the real
+remaining seconds — alongside `ttl`, the 90s lifetime. `MainScreen.tsx` read
+only `ttl` and rendered *"Code rotates every 90 seconds for security"*: a
+constant, true of every code ever minted and therefore informative about none
+of them. The live number existed and was discarded at the client.
+
+**Built:** the remaining life is held as an **absolute deadline**
+(`Date.now() + expires_in * 1000`), not a counter — the same shape E3.2 used
+for the phone's 120s countdown, so the ring cannot drift away from the server
+between polls. It is derived off the clock tick the screen already runs, so
+there is one heartbeat on this screen and not two racing.
+
+**The visual:** an arc tracing the QR card's own border, floated 16px clear of
+it, over a dim track that completes the loop. Mandate §2 asks for *informative,
+not urgent*, so it is **one colour the whole way down** — no amber, no red, no
+pulse at the end. The person it serves is deciding whether to pull their phone
+out now or wait two seconds for the next code; a ring that turns red teaches
+them the kiosk is about to punish them for being slow, and it is not.
+
+**Verified on screen** at the real 1080x1920 portrait viewport, three states —
+`design/after/e4-2/ring-90s.png`, `ring-45s.png`, `ring-20s.png`, and
+`full-45s.png` for the whole panel. Captions read "This code refreshes in 85s
+/ 40s / 15s" with the arc at the matching fraction.
+
+### Two defects found in the doing, and the first one is the instructive one
+
+**The ring shipped a bug that typechecked, rendered, and looked designed.**
+The first build used `vector-effect: non-scaling-stroke` to keep the stroke
+weight constant across displays. Measured in the browser:
+`getTotalLength() = 396.5` user units in a **360.7px** box, with
+`pathLength="100"` set. `non-scaling-stroke` applies the dash pattern in
+**screen** space, which silently bypasses `pathLength` normalisation — so
+`stroke-dasharray: 100` became 100 *pixels* against a ~1428px perimeter, and
+the ring rendered as **seven evenly spaced dashes that never depleted**.
+
+It typechecked clean. `strokeDashoffset` read back 1.6 → 51.5 → 88.1 → 98.1
+across the four seeds, tracking the countdown perfectly. **Every number was
+right and the thing on screen was wrong**, and it did not look broken — it
+looked like a deliberate dashed frame. Only opening the PNG caught it.
+`CLAUDE.md`'s "a green test is not a fix" and G8 both apply: the
+distinguishing signal was never a number, it was the picture.
+
+### D-73 — the kiosk displays a dead QR code for up to 30 seconds. FOUND 2026-09-13. FIXED in the client, unverified on hardware.
+
+`get_qr_token()` mints a replacement **lazily**: `if _active_qr_token is None
+or now >= _qr_token_expiry`. Nothing else mints one — a repo-wide grep for
+`/api/qr-token` returns exactly one product caller, `MainScreen.tsx`, which
+polled on a bare `setInterval(refresh, 30_000)`.
+
+The token lives 90s. 90 is a multiple of 30, so on paper the poll lands on the
+rotation; in practice the expiry clock starts at the **first response**, so
+every subsequent poll lands slightly *before* the boundary, reads
+`expires_in: 0`, and returns the **old** token. The successor is not minted
+until the next tick. For up to a full poll interval the kiosk displays a code
+that `validate_qr_token_internal` rejects on `now < _qr_token_expiry` — a
+student scans a perfectly visible code and is told no.
+
+**Fixed:** the countdown reaching zero is now itself the trigger to fetch the
+successor, with an in-flight guard so a slow response cannot stack requests.
+**E4.2's ring is what makes this visible at all** — a ring parked at empty is
+obvious where a static caption was not.
+
+**Not closed.** Verified only against the demo path; the Pi is offline, so the
+real mint-on-expiry round trip has not been exercised. It needs one look at a
+live kiosk sitting through a rotation.
 
 ## 2026-09-12 (later) — E4.6 BUILT on the server side. The two-compartment design finally exists in code.
 
