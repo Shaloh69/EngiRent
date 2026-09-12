@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.2 QR FRESHNESS DONE + SEEN ON SCREEN 2026-09-13 · KIOSK PI OFFLINE (last seen 9h, tailscale) so the physical run could not be attempted · server live, PID 12860, /api/v1/items 200 · E4.6 deployed 2026-09-12, NO HARDWARE EXERCISED · D-73 FOUND+FIXED (dead QR shown up to 30s), open until one live rotation · D-65 DEPLOYED not closed · D-66 open · G1 debt 3 (D-63, D-65 write path, ALL of E4.6 — needs hardware) · gates G1-G11 · defects 22/73 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · E4.2 QR FRESHNESS DONE + SEEN ON SCREEN 2026-09-13 · **D-63 CLOSED** — all four bay-state branches + all four release confirmations verified on screen, it was never hardware-blocked, the PROBE was broken · KIOSK PI OFFLINE (last seen 9h, tailscale) · server live, PID 12860, /api/v1/items 200 · E4.6 deployed 2026-09-12, NO HARDWARE EXERCISED · D-73 FOUND+FIXED (dead QR shown up to 30s), open until one live rotation · D-65 DEPLOYED not closed · D-66 open · **G1 debt 2** (D-65 write path, ALL of E4.6 — both need hardware) · gates G1-G11 · defects 22/73 (tally is hand-maintained and NOT derivable from the register — see 2026-09-13) · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -937,6 +937,34 @@ right and the thing on screen was wrong**, and it did not look broken — it
 looked like a deliberate dashed frame. Only opening the PNG caught it.
 `CLAUDE.md`'s "a green test is not a fix" and G8 both apply: the
 distinguishing signal was never a number, it was the picture.
+
+### D-63 CLOSED the same day, and the lesson is about the word "blocked"
+
+Full detail in the D-63 register entry. The short version belongs here because
+it changes how the BLOCKED column should be read: **D-63 was recorded as
+blocked on CORS and the user's tunnel URL, and it was blocked on neither.**
+Route interception was already the correct technique and was already in the
+tool; it failed because the CORS *preflight* went unanswered and because the
+DOM read was not scoped to the visible Mantine tab panel. Both are mine.
+
+**The cost of the mislabel:** two sessions of G1 debt carried as "needs the
+human", and a request made of the user that did not need making.
+
+**The check this earns:** before recording anything as blocked on the user,
+name the exact call that fails and why the model cannot make it. "CORS rejects
+localhost" was true and irrelevant — the browser was never going to reach that
+origin.
+
+### A caution on the status line's defect tally
+
+`defects 22/73` is **hand-maintained and not derivable from the register.**
+Counting `D-\d+` headings gives 72 distinct numbers with no machine-readable
+fixed/open state, so the fraction cannot be checked against the artifact. It
+was deliberately **left unchanged** when D-63 closed rather than advanced on a
+guess, because a tally that cannot be re-derived is exactly the P-1 failure
+(E0 reading "complete" at 0 of 37 ticked). **The phase report is the number to
+trust; this fraction is not.** Worth either deriving it from the register or
+dropping it.
 
 ### D-73 — the kiosk displays a dead QR code for up to 30 seconds. FOUND 2026-09-13. FIXED in the client, unverified on hardware.
 
@@ -3390,6 +3418,63 @@ which is why the values matched the database — and the browser cannot easily
 be pointed at a flipped database because the API's CORS allowlist is built
 from `CLIENT_ADMIN_URL`, so `localhost` is rejected (PROGRESS records that
 same obstacle in E2). **Left as unverified rather than described as done.**
+
+**D-63 — CLOSED 2026-09-13. All four branches verified on screen. It was never
+hardware-blocked; the probe was broken, in two independent ways.**
+
+The 2026-09-11 note above says the browser "cannot easily be pointed at a
+flipped database because the API's CORS allowlist is built from
+`CLIENT_ADMIN_URL`". That framing made it look like a blocker needing the
+user's tunnel URL. **It is not, and interception was already the right
+answer** — route interception means the browser never reaches the real API, so
+CORS is irrelevant by construction. Two bugs in the probe hid that:
+
+1. **The preflight was never answered.** `lib/api.ts` attaches an
+   `Authorization` header, which makes every call non-simple, so the browser
+   sends `OPTIONS` first. The handler fulfilled it with a JSON body and no
+   `Access-Control-Allow-*` headers, the browser rejected it, and the real GET
+   was never issued.
+2. **The DOM read was not scoped to the visible tab.** Measured: Mantine keeps
+   **all 4** `Tabs.Panel`s mounted, none carrying `hidden`, **8** elements
+   matching the heading "Bay state (server)", exactly one panel with an
+   `offsetParent`. A document-wide query therefore returned **locker 1's card
+   on every iteration**. The previous session read the four identical rows as
+   the component failing to follow the selected tab. **It was the probe.**
+
+Both fixed in `design/tools/probe-admin-bays.mjs`, which now **counts the
+interceptions and exits non-zero if the stub never fired**, and asserts the
+four cards differ. A probe that cannot distinguish "rendered" from "never ran"
+is not evidence — the same class as `Tests: 0 total` reading as a pass.
+
+**What is now on screen** — the probe writes to
+`design/screenshots/` (gitignored, `design/.gitignore:4`), so the four
+captures are committed to **`design/after/d63/`** alongside E4.2's, where
+tracked evidence lives and can still be opened months from now:
+
+| Bay | Stub state | Card renders |
+|---|---|---|
+| 01 | AVAILABLE, no rental | `AVAILABLE` · "No rental attached" |
+| 02 | OCCUPIED, no rental | `OCCUPIED` + amber **"OCCUPIED WITH NO RENTAL — THIS IS THE 'STUCK' CASE"** |
+| 03 | `isOperational: false` | amber `AVAILABLE · NOT OPERATIONAL` |
+| 04 | OCCUPIED + rental | `OCCUPIED` · "Rental 7f3c9a11… attached" |
+
+**And the informed-consent half, which is why the defect was filed.** The
+release confirmation is a native `window.confirm`, so it never appears in a
+screenshot; captured via the dialog event and **always dismissed, never
+accepted**. All four state the real bay state before the destructive action:
+
+```
+Release Locker 02?
+It is currently OCCUPIED, with NO rental attached.
+Release Locker 03?
+It is currently AVAILABLE and NOT operational, with NO rental attached.
+Release Locker 04?
+It is currently OCCUPIED, with rental 7f3c9a11… attached.
+```
+
+The operator is no longer asked "is this genuinely stuck?" while being shown
+only door state. **G1 debt 3 → 2.** Both remaining items genuinely need the
+bank.
 
 **D-64 — the app tells a student "all lockers are occupied" when they may be
 out of service. FOUND 2026-09-11 (same survey). NOT YET FIXED.**
