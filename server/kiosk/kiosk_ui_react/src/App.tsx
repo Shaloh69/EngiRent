@@ -96,6 +96,7 @@ export default function App() {
       {k.screen === "error" && (
         <ErrorScreen
           message={k.errorMsg}
+          tone={k.errorTone}
           onRetry={k.actions.retry}
           onHome={k.actions.errHome}
         />

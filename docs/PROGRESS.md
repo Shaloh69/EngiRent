@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **APP 1.9.1 (build 20) PUBLISHED 2026-09-14 02:14 — D-79 fixed in the app, NOT YET SEEN ON A PHONE** · 3 stuck real rentals CANCELLED on the user's ruling (fees kept as FAILED) · physical run to restart from a fresh rental in 1.9.1 · UNRESOLVED: user reports white-on-white payment numbers — not found in code, screen not yet identified · D-80 OPEN (manual deposits never refunded) · D-79b latent · D-78 OPEN · 429 outage mitigated (limit 1000) · kiosk ONLINE · S-11 MITIGATED · E4.6 NO HARDWARE EXERCISED · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **D-78 CONFIRMED ON HARDWARE AND FIXED: the door and the photo are now taps** (Open Kiosk Now / Item is placed, server-side bay grant) — BUILT, NOT DEPLOYED, NOT EXERCISED · D-79 fix CONFIRMED IN REAL USE (2 rentals reached AWAITING_DEPOSIT with both payments) · kiosk retry screen no longer jumps to the QR screen · bay 4 still RESERVED from the failed run · UNRESOLVED: white prices on the phone — app bundles NO fonts, prices are the only MonoText (google_fonts fetched at runtime); needs a screenshot · D-82 (countdown is a server guess) · D-80 · D-79b · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1461,6 +1461,57 @@ emits `payment:approved`.
 
 **Proper fix (app 1.9.1):** pay whichever type is still owed, fee first, then
 deposit, with the label saying which. Or ask for both in one sheet.
+
+### D-78 — CONFIRMED ON HARDWARE 2026-09-14 02:24, and fixed by making both steps taps. BUILT, NOT YET EXERCISED.
+
+**Seen, not inferred.** The user ran the deposit from the app on real accounts:
+`02:23:36 Deposit face-verified for rental 0a03df9a…, locker 4` →
+`02:24:12 verification_done | result: retry` → **nothing further**. The rental
+is still `AWAITING_DEPOSIT`, `depositAttemptCount = 1`, bay 4 is still
+`RESERVED`, and no `Verification` row was written (the two in the DB are from
+09:45 and 12:36, both `unknown_pre_d65`). Exactly the dead end predicted from
+the code read.
+
+**The kiosk half of what the user reported ("the UI keeps repeating after a
+failure"):** `useKioskState.ts:263` mapped `item_retry` to `goTo("main")`. The
+kiosk threw away the "reposition the item" message and showed the QR start
+screen, which reads as the machine looping.
+
+**Fixed, on the user's design:**
+1. **The door is no longer opened by the server on a timer.** Face verification
+   now issues a server-side **bay grant** (`kioskBayAccessStore.ts`: one rental,
+   one user, one kiosk, one bay, one door, 6-minute TTL, ≤12 opens and ≤12
+   captures) and the phone opens the door with **"Open Kiosk Now"**
+   (`POST /kiosk/open-bay`). Nothing about the bay or the door comes from the
+   request — same trust shape as the QR session it follows.
+2. **The 20s blind capture timer is deleted.** The person taps **"Item is
+   placed"** (`POST /kiosk/item-placed`) when the item is in and the door is
+   shut, and that is what asks for the 3 frames. **This is what makes a retry
+   work at all**: re-open, reposition, tap again.
+3. **The phone screen** shows the bay number, a **countdown while the door is
+   unlocked**, the physical instruction the kiosk cannot give — *"PUSH the door
+   of the locker that lights up; the lock only holds it shut"* — and, on a
+   RETRY, the attempt number with the same two buttons.
+4. **The kiosk screen** shows a retry as amber *"Try that again"* with the
+   message and what to do next, instead of jumping to the QR screen.
+
+**Applies to deposit, claim, return and retrieve.** Retrieve still opens the
+bottom door immediately (the item is already in the lower compartment and the
+owner is at it); its grant exists so the door can be re-opened if it relocks.
+
+**Verified:** 9 new store tests (server suite 209 passed, 20 suites), Flutter 48
+passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:**
+ignoring expiry → red; removing the open cap → red; restored byte-identical.
+**Not exercised on hardware** — that is the next physical run.
+
+### D-82 — the door countdown on the phone is a server guess, not the kiosk's real timing. FOUND 2026-09-14. NOT FIXED.
+`POST /kiosk/open-bay` returns `doorOpenSeconds: 15`, a constant in
+`kioskController.ts`. The real per-bay values are in the Pi's hand-calibrated
+`kiosk_config.json`: **15s for bays 1, 3 and 4, but 5s for bay 2**, and the
+kiosk does not report them over the socket. So on bay 2 the phone over-states
+the window by 10s — the safe direction (it can say "relocked" late, never
+early), but still a number the product invented. Fix: have the Pi return its
+own duration with the door ack, and pass it through.
 
 ### D-78 — a RETRY verdict is a dead end: the door re-opens and nothing ever captures again. FOUND 2026-09-14 BY CODE READ (both sides). NOT SEEN ON HARDWARE. NOT FIXED.
 

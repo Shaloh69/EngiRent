@@ -9,6 +9,8 @@ import {
   startKioskSession,
   uploadKioskImages,
   verifyFaceFromApp,
+  openBay,
+  itemPlaced,
 } from "../controllers/kioskController";
 import { authenticate } from "../middleware/auth";
 import { requireKioskSecret } from "../middleware/kioskAuth";
@@ -30,6 +32,24 @@ router.post(
     body("lockerId").optional().isUUID().withMessage("lockerId must be a valid UUID if provided"),
   ]),
   depositItem,
+);
+
+// The two taps that drive a bay once a face has verified (2026-09-14).
+// Neither takes a kiosk, a bay or a door from the request: those come from the
+// server-side grant made by the verification itself (kioskBayAccessStore.ts),
+// which is the same trust shape as the QR session it follows.
+router.post(
+  "/open-bay",
+  authenticate,
+  validate([body("rentalId").isUUID().withMessage("Valid rental ID is required")]),
+  openBay,
+);
+
+router.post(
+  "/item-placed",
+  authenticate,
+  validate([body("rentalId").isUUID().withMessage("Valid rental ID is required")]),
+  itemPlaced,
 );
 
 // Claim item (protected)

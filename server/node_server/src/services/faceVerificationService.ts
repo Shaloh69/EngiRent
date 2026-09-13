@@ -33,6 +33,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import env from "../config/env";
 import { decryptFaceEncoding } from "../utils/crypto";
+import { grantBayAccess } from "./kioskBayAccessStore";
 import { signedMediaUrl } from "./storageService";
 import {
   emitLockerOccupancy,
@@ -46,11 +47,11 @@ export const KIOSK_ACTIONABLE_STATUSES = [
   "ACTIVE",
 ] as const;
 
-/** How long the owner/renter gets to place or retrieve the item once the
- *  door is open, before the kiosk is asked to photograph the locker for
- *  item-comparison. Matches the delay the old REST deposit/return handlers
- *  used. */
-const ITEM_PLACEMENT_GRACE_MS = 20_000;
+/* The 20s placement grace that used to live here is gone. It was a blind
+ * timer: the server opened a door, counted to twenty and photographed the bay
+ * whatever had happened in between. A person still reading their phone missed
+ * it, and a RETRY verdict re-opened the door with no second photo ever
+ * scheduled (D-78). Both steps are now taps — see kioskBayAccessStore.ts. */
 
 export interface FaceSubject {
   /** The user who must prove their identity for this step. */
@@ -168,7 +169,7 @@ export async function compareFaceWithMl(
  * picked "any AVAILABLE locker" with no kiosk filter — harmless with the
  * single deployed kiosk, but wrong in general).
  */
-async function assignLockerAndOpen(
+async function assignLocker(
   io: SocketIOServer,
   kioskId: string,
   rentalId: string,
@@ -183,28 +184,9 @@ async function assignLockerAndOpen(
     data: { status: "RESERVED", currentRentalId: rentalId, lastUsedAt: new Date() },
   });
 
-  // D-53: RESERVED means "spoken for", not free. Pushed before the door
-  // command so the panel is already correct when the bay physically opens.
+  // D-53: RESERVED means "spoken for", not free. Pushed before anything can
+  // physically open, so the panel is never a step behind the hardware.
   await emitLockerOccupancy(io, kioskId);
-
-  const lockerNumber = parseInt(locker.lockerNumber, 10);
-  const kioskRoom = `kiosk:${kioskId}`;
-
-  io.to(kioskRoom).emit("kiosk:command", {
-    action: "open_door",
-    locker_id: lockerNumber,
-    door: "main_door",
-    rental_id: rentalId,
-  });
-
-  setTimeout(() => {
-    io.to(kioskRoom).emit("kiosk:command", {
-      action: "capture_image",
-      locker_id: lockerNumber,
-      num_frames: 3,
-      rental_id: rentalId,
-    });
-  }, ITEM_PLACEMENT_GRACE_MS);
 
   return { lockerId: locker.id, lockerNumber: locker.lockerNumber };
 }
@@ -293,10 +275,23 @@ export async function applyFaceVerificationOutcome(params: {
     });
     await emitOccupancyForLockerId(io, rental.retrievalLocker.id);
 
+    // The bottom door opens straight away here, unchanged: by this point the
+    // item is already in the lower compartment and the owner is standing at
+    // it. The grant exists so "Open Kiosk Now" can re-open it if it relocks.
+    grantBayAccess({
+      rentalId,
+      userId: rental.ownerId,
+      kioskId,
+      action: "retrieve",
+      lockerNumber: rental.retrievalLocker.lockerNumber,
+      door: "bottom_door",
+    });
+
     io.to(`user:${rental.ownerId}`).emit("face:verified", {
       rentalId,
       action: "retrieve",
       kioskId,
+      lockerNumber: rental.retrievalLocker.lockerNumber,
     });
     logger.info(
       `Retrieval approved for rental ${rentalId}, bay ${rental.retrievalLocker.lockerNumber} bottom door`,
@@ -307,7 +302,7 @@ export async function applyFaceVerificationOutcome(params: {
   // ── Deposit: owner is dropping the item off. Assign a locker now — none
   // exists yet at this stage, unlike claim below.
   if (rental.status === "AWAITING_DEPOSIT") {
-    const assigned = await assignLockerAndOpen(io, kioskId, rentalId);
+    const assigned = await assignLocker(io, kioskId, rentalId);
     if (!assigned) {
       io.to(`user:${rental.ownerId}`).emit("face:failed", {
         rentalId,
@@ -318,12 +313,30 @@ export async function applyFaceVerificationOutcome(params: {
       return { action: "none", error: "No available locker" };
     }
 
+    // The door does NOT open here any more. The owner taps "Open Kiosk Now",
+    // which is what lets them be standing at the bay with a hand free when it
+    // unlocks, and what makes a RETRY recoverable at all (D-78): the same tap
+    // re-opens it, and "Item is placed" is what asks for the photos.
+    const grant = grantBayAccess({
+      rentalId,
+      userId: rental.ownerId,
+      kioskId,
+      action: "deposit",
+      lockerNumber: assigned.lockerNumber,
+      door: "main_door",
+    });
+
     io.to(`user:${rental.ownerId}`).emit("face:verified", {
       rentalId,
       action: "deposit",
       kioskId,
+      lockerNumber: assigned.lockerNumber,
+      grantExpiresAt: grant.expiresAt,
     });
-    logger.info(`Deposit face-verified for rental ${rentalId}, locker ${assigned.lockerNumber}`);
+    logger.info(
+      `Deposit face-verified for rental ${rentalId}, bay ${assigned.lockerNumber} reserved; ` +
+        `awaiting the owner's open-bay tap`,
+    );
     return { action: "deposit" };
   }
 
@@ -341,11 +354,16 @@ export async function applyFaceVerificationOutcome(params: {
       data: { status: "ACTIVE", claimedAt: new Date() },
     });
 
-    io.to(kioskRoom).emit("kiosk:command", {
-      action: "open_door",
-      locker_id: parseInt(rental.depositLocker.lockerNumber, 10),
+    // Granted, not opened: the renter taps "Open Kiosk Now" when they are in
+    // front of the bay with a hand free, and can tap it again if the door
+    // relocks before they have the item out.
+    const claimGrant = grantBayAccess({
+      rentalId,
+      userId: rental.renterId,
+      kioskId,
+      action: "claim",
+      lockerNumber: rental.depositLocker.lockerNumber,
       door: "main_door",
-      rental_id: rentalId,
     });
 
     await prisma.locker.update({
@@ -376,6 +394,8 @@ export async function applyFaceVerificationOutcome(params: {
       rentalId,
       action: "claim",
       kioskId,
+      lockerNumber: rental.depositLocker.lockerNumber,
+      grantExpiresAt: claimGrant.expiresAt,
     });
     io.to(`user:${rental.ownerId}`).emit("rental:active", { rentalId });
     logger.info(`Claim approved for rental ${rentalId}`);
@@ -385,7 +405,7 @@ export async function applyFaceVerificationOutcome(params: {
   // ── Return: renter is bringing the item back. Assign a (possibly
   // different) locker, same as deposit.
   if (rental.status === "ACTIVE") {
-    const assigned = await assignLockerAndOpen(io, kioskId, rentalId);
+    const assigned = await assignLocker(io, kioskId, rentalId);
     if (!assigned) {
       io.to(`user:${rental.renterId}`).emit("face:failed", {
         rentalId,
@@ -396,11 +416,26 @@ export async function applyFaceVerificationOutcome(params: {
       return { action: "none", error: "No available locker" };
     }
 
+    const returnGrant = grantBayAccess({
+      rentalId,
+      userId: rental.renterId,
+      kioskId,
+      action: "return",
+      lockerNumber: assigned.lockerNumber,
+      door: "main_door",
+    });
+
     io.to(`user:${rental.renterId}`).emit("face:verified", {
       rentalId,
       action: "return",
       kioskId,
+      lockerNumber: assigned.lockerNumber,
+      grantExpiresAt: returnGrant.expiresAt,
     });
+    logger.info(
+      `Return face-verified for rental ${rentalId}, bay ${assigned.lockerNumber} reserved; ` +
+        `awaiting the renter's open-bay tap`,
+    );
     return { action: "return" };
   }
 

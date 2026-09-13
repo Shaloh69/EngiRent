@@ -12,6 +12,11 @@ import kioskEventBus from "../utils/kioskEventBus";
 import { recordAudit } from "../services/auditLogService";
 import { emitLockerOccupancy } from "../services/lockerOccupancyService";
 import {
+  getBayAccess,
+  noteOpen,
+  noteCapture,
+} from "../services/kioskBayAccessStore";
+import {
   signedMediaUrl,
   saveBuffer,
   verificationImagePath,
@@ -624,6 +629,156 @@ export const verifyFaceFromApp = async (
         action,
       },
       message: outcomeError ?? "Identity confirmed",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * The number the phone counts down while a door is open.
+ *
+ * NOT authoritative, and deliberately marked so: the real value is per bay in
+ * the Pi's hand-calibrated `kiosk_config.json` (15s for bays 1, 3 and 4; **5s
+ * for bay 2**), and the kiosk does not report it over the socket. 15 is
+ * therefore right for three bays of four and a visible over-estimate for the
+ * fourth, which is the safe direction — the phone can say "the door has
+ * relocked" a little late, never early. Closing this properly means the Pi
+ * sending its own duration back; recorded as D-82.
+ */
+const DOOR_OPEN_SECONDS_HINT = 15;
+
+/** Shared by both handlers: the grant IS the authorisation. Nothing about the
+ *  bay, the door or the kiosk is taken from the request body. */
+function requireGrant(rentalId: string | undefined, userId: string) {
+  if (!rentalId) throw new ValidationError("rentalId is required");
+  const grant = getBayAccess(rentalId);
+  if (!grant) {
+    throw new ValidationError(
+      "This kiosk session has ended — scan the kiosk QR code again",
+    );
+  }
+  if (grant.userId !== userId) {
+    throw new ForbiddenError("This kiosk session belongs to someone else");
+  }
+  return grant;
+}
+
+/**
+ * POST /kiosk/open-bay — "Open Kiosk Now".
+ *
+ * Before 2026-09-14 the server opened the door itself the instant a face
+ * verified, then photographed the bay 20s later on a timer. Someone still
+ * reading their phone missed the window, and a RETRY re-opened the door with
+ * no second photo ever scheduled (D-78, seen on hardware 02:24). The door is
+ * now opened by the person standing at the bay, as many times as the grant
+ * allows.
+ */
+export const openBay = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+    const { rentalId } = req.body as { rentalId?: string };
+    const grant = requireGrant(rentalId, req.user.userId);
+
+    const noted = noteOpen(grant.rentalId);
+    if (!noted.ok) {
+      throw new ValidationError(
+        noted.reason === "too_many_opens"
+          ? "The door has been opened too many times for this session — scan the QR code again"
+          : "This kiosk session has ended — scan the kiosk QR code again",
+      );
+    }
+
+    const io = req.app.get("io");
+    if (!io) throw new ValidationError("Realtime channel unavailable");
+
+    io.to(`kiosk:${grant.kioskId}`).emit("kiosk:command", {
+      action: "open_door",
+      locker_id: parseInt(grant.lockerNumber, 10),
+      door: grant.door,
+      rental_id: grant.rentalId,
+    });
+
+    logger.info(
+      `[BAY-OPEN] rental=${grant.rentalId} user=${req.user.userId} bay=${grant.lockerNumber} ` +
+        `door=${grant.door} action=${grant.action} open#${noted.grant.opens}`,
+    );
+
+    res.json({
+      success: true,
+      message: `Locker ${grant.lockerNumber} is unlocking`,
+      data: {
+        lockerNumber: grant.lockerNumber,
+        door: grant.door,
+        doorOpenSeconds: DOOR_OPEN_SECONDS_HINT,
+        opensRemaining: Math.max(0, 12 - noted.grant.opens),
+        expiresAt: noted.grant.expiresAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /kiosk/item-placed — "Item is placed".
+ *
+ * Asks the kiosk to photograph the bay NOW, because the person says the item
+ * is in and the door is shut. This is what makes a retry work: the verdict
+ * re-opens the door, they reposition the item, tap again, and a fresh set of
+ * frames is taken.
+ *
+ * Only a deposit or a return has anything to photograph. A claim or a
+ * retrieval is someone taking an item OUT, and there is nothing to compare.
+ */
+export const itemPlaced = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+    const { rentalId } = req.body as { rentalId?: string };
+    const grant = requireGrant(rentalId, req.user.userId);
+
+    if (grant.action !== "deposit" && grant.action !== "return") {
+      throw new ValidationError(
+        "There is nothing to photograph for this step — just take your item and close the door",
+      );
+    }
+
+    const noted = noteCapture(grant.rentalId);
+    if (!noted.ok) {
+      throw new ValidationError(
+        noted.reason === "too_many_captures"
+          ? "Too many checks for this session — scan the QR code again"
+          : "This kiosk session has ended — scan the kiosk QR code again",
+      );
+    }
+
+    const io = req.app.get("io");
+    if (!io) throw new ValidationError("Realtime channel unavailable");
+
+    io.to(`kiosk:${grant.kioskId}`).emit("kiosk:command", {
+      action: "capture_image",
+      locker_id: parseInt(grant.lockerNumber, 10),
+      num_frames: 3,
+      rental_id: grant.rentalId,
+    });
+
+    logger.info(
+      `[BAY-CAPTURE] rental=${grant.rentalId} user=${req.user.userId} bay=${grant.lockerNumber} ` +
+        `action=${grant.action} capture#${noted.grant.captures}`,
+    );
+
+    res.json({
+      success: true,
+      message: "Checking the locker — keep the door closed",
+      data: { lockerNumber: grant.lockerNumber, captureNumber: noted.grant.captures },
     });
   } catch (error) {
     next(error);

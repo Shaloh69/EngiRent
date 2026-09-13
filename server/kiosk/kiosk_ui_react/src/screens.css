@@ -1563,6 +1563,17 @@ h3 {
 .error-icon { color: var(--danger); }
 .offline-icon { color: var(--warn); }
 
+/* A retry verdict is a normal second attempt, not a fault. Amber, not red:
+   red taught people that the kiosk had broken when it had simply not been
+   sure about the item yet. */
+.screen-error-retry .error-icon { color: var(--warn); }
+.screen-error-retry .error-title { color: var(--warn); }
+.error-msg-sub {
+  margin-top: var(--sp-2);
+  opacity: 0.85;
+  max-width: 44ch;
+}
+
 .countdown-wrap {
   width: min(70%, 460px);
   display: flex;

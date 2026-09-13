@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/socket_service.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/utils/error_utils.dart';
 import '../../../core/theme/tokens.dart';
 import 'face_verify_screen.dart';
 
-enum _Phase { scanning, waiting, success, failed }
+enum _Phase { scanning, waiting, bay, checking, success, failed }
 
 /// Kiosk hand-off — mandate §2.2.
 ///
@@ -55,12 +58,32 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   late final AnimationController _sweep;
   bool _torchOn = false;
 
+  // ── The bay step (2026-09-14) ──────────────────────────────────────────
+  // The door used to open by itself the instant a face verified, and the
+  // kiosk photographed the bay 20s later on a timer. Someone still reading
+  // their phone missed the window, and a RETRY re-opened the door with no
+  // second photo ever scheduled (D-78, seen on hardware). Both steps are
+  // now taps, so the person is at the bay with a hand free when it unlocks.
+  final _api = ApiService();
+  String? _bayNumber;
+  int _doorSeconds = 0;
+  Timer? _doorTicker;
+  bool _busy = false;
+  String? _bayError;
+  int _attempt = 0;
+
   @override
   void initState() {
     super.initState();
     final sock = SocketService.instance;
     _subs.add(sock.onFaceVerified.listen(_onFaceVerified));
     _subs.add(sock.onFaceFailed.listen(_onFaceFailed));
+    // The item-check verdicts. A deposit and a return each have their own
+    // retry event, and this screen is the one place a person can act on it.
+    _subs.add(sock.onDepositRetry.listen(_onItemRetry));
+    _subs.add(sock.onReturnRetry.listen(_onItemRetry));
+    _subs.add(sock.onDepositApproved.listen(_onItemApproved));
+    _subs.add(sock.onDepositRejected.listen(_onItemRejected));
     _subs.add(sock.onKioskScanError.listen(_onScanError));
     _subs.add(sock.onKioskFaceRequired.listen(_onFaceRequired));
 
@@ -84,7 +107,205 @@ class _KioskScanScreenState extends State<KioskScanScreen>
       s.cancel();
     }
     _timeout?.cancel();
+    _doorTicker?.cancel();
     super.dispose();
+  }
+
+  /// Deliberately has no button. The verdict arrives by socket a few seconds
+  /// later and moves this screen on by itself — offering "Done" here would
+  /// invite people to walk away from a check that can still say "try again".
+  Widget _buildChecking() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.info),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              _bayNumber == null
+                  ? 'Checking the locker'
+                  : 'Checking locker ${_bayNumber!.padLeft(2, '0')}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Keep the door closed. The kiosk is photographing the inside of the '
+              'locker and comparing it with the listing photo. This takes a few '
+              'seconds — do not leave yet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13.5, height: 1.5, color: Colors.white70),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── The bay step ─────────────────────────────────────────────────────────
+
+  bool get _needsPhoto => widget.mode == 'place' || widget.mode == 'return';
+
+  Widget _buildBay() {
+    final bay = _bayNumber == null ? 'Your locker' : 'Locker ${_bayNumber!.padLeft(2, '0')}';
+    final open = _doorSeconds > 0;
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Icon(
+              open ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+              size: 56,
+              color: open ? AppColors.success : Colors.white,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              bay,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _attempt > 1
+                  ? 'Attempt $_attempt — reposition the item so the whole of it is visible, then check it again.'
+                  : 'You are verified. Open the locker when you are standing in front of it.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, height: 1.45, color: Colors.white70),
+            ),
+            const SizedBox(height: 24),
+
+            // The countdown only exists while a door is actually unlocked.
+            if (open) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.45)),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '$_doorSeconds',
+                      style: const TextStyle(
+                        fontSize: 44,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    const Text(
+                      'seconds to open the door',
+                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+
+            // The physical instruction the kiosk cannot give: the door is
+            // unlocked, not opened, and the lit bay is the one to push.
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_rounded, size: 18, color: AppColors.warning),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'PUSH the door of the locker that lights up — a light turns on '
+                      'when it unlocks. The lock only holds it shut; it does not swing '
+                      'open by itself.',
+                      style: TextStyle(fontSize: 13, height: 1.45, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (_bayError != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                _bayError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: AppColors.error),
+              ),
+            ],
+
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: _busy ? null : _openBay,
+              icon: const Icon(Icons.lock_open_rounded),
+              label: Text(open ? 'Open Kiosk Again' : 'Open Kiosk Now'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (_needsPhoto)
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _itemPlaced,
+                icon: const Icon(Icons.check_circle_outline_rounded),
+                label: Text(widget.mode == 'return'
+                    ? 'Item is back inside — check it'
+                    : 'Item is placed — check it'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white54),
+                ),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.done_rounded),
+                label: const Text('I have my item — done'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white54),
+                ),
+              ),
+
+            if (_needsPhoto) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Close the door before checking. The kiosk photographs the inside '
+                'of the locker and compares it with the listing photo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, height: 1.4, color: Colors.white60),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Scanner callback ────────────────────────────────────────────────────────
@@ -176,7 +397,95 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   void _onFaceVerified(Map<String, dynamic> data) {
     if (data['rentalId'] != widget.rentalId) return;
     _timeout?.cancel();
-    if (mounted) setState(() => _phase = _Phase.success);
+    if (!mounted) return;
+    setState(() {
+      _bayNumber = data['lockerNumber']?.toString();
+      // 'retrieve' opens the bottom door server-side the moment the face
+      // verifies, because the item is already sitting in the lower
+      // compartment and the owner is standing at it. Everything else waits
+      // for the tap below.
+      _phase = _Phase.bay;
+      _bayError = null;
+    });
+  }
+
+  /// "Open Kiosk Now". The server decides which bay and which door from the
+  /// grant its own verification made; this sends nothing but the rental.
+  Future<void> _openBay() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _bayError = null;
+    });
+    try {
+      final resp = await _api.post('/kiosk/open-bay', {'rentalId': widget.rentalId});
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (resp.statusCode == 200) {
+        final data = (body['data'] as Map<String, dynamic>?) ?? const {};
+        final secs = (data['doorOpenSeconds'] as num?)?.toInt() ?? 15;
+        if (!mounted) return;
+        setState(() {
+          _bayNumber = data['lockerNumber']?.toString() ?? _bayNumber;
+          _doorSeconds = secs;
+        });
+        _doorTicker?.cancel();
+        _doorTicker = Timer.periodic(const Duration(seconds: 1), (t) {
+          if (!mounted) return t.cancel();
+          setState(() => _doorSeconds = _doorSeconds > 0 ? _doorSeconds - 1 : 0);
+          if (_doorSeconds == 0) t.cancel();
+        });
+      } else {
+        if (!mounted) return;
+        setState(() => _bayError = body['message'] as String? ??
+            'The kiosk could not open that locker.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _bayError = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// "Item is placed" — asks the kiosk to photograph the bay NOW, instead of
+  /// a blind timer deciding when to look.
+  Future<void> _itemPlaced() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _bayError = null;
+    });
+    try {
+      final resp = await _api.post('/kiosk/item-placed', {'rentalId': widget.rentalId});
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        _doorTicker?.cancel();
+        setState(() {
+          _doorSeconds = 0;
+          _phase = _Phase.checking;
+        });
+      } else {
+        setState(() => _bayError = body['message'] as String? ??
+            'The kiosk could not check that locker.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _bayError = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// A RETRY verdict is the case this whole screen exists for: the door is
+  /// re-opened by the server, the person repositions the item, and taps
+  /// "Item is placed" again. Before D-78's fix nothing ever looked again.
+  void _onItemRetry(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (!mounted) return;
+    setState(() {
+      _attempt = (data['attemptNumber'] as num?)?.toInt() ?? (_attempt + 1);
+      _phase = _Phase.bay;
+      _bayError = null;
+    });
   }
 
   /// Verification itself is fully handled on FaceVerifyScreen now (design
@@ -187,6 +496,22 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   /// complete the rest of the step (e.g. no free locker at this kiosk right
   /// now) — always carries its own `message`, so that's shown verbatim
   /// rather than a canned "face not recognised" line that would be wrong.
+  void _onItemApproved(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (mounted) setState(() => _phase = _Phase.success);
+  }
+
+  void _onItemRejected(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (!mounted) return;
+    setState(() {
+      _phase = _Phase.failed;
+      _errorMessage =
+          'The kiosk could not match this item to the listing photo after several tries. '
+          'An admin has been notified — take your item back out if the door is open.';
+    });
+  }
+
   void _onFaceFailed(Map<String, dynamic> data) {
     if (data['rentalId'] != widget.rentalId) return;
     _timeout?.cancel();
@@ -319,6 +644,8 @@ class _KioskScanScreenState extends State<KioskScanScreen>
       body: switch (_phase) {
         _Phase.scanning => _buildScanning(),
         _Phase.waiting => _buildWaiting(),
+        _Phase.bay => _buildBay(),
+        _Phase.checking => _buildChecking(),
         _Phase.success => _buildResult(
             icon: Icons.lock_open_rounded,
             color: AppColors.success,

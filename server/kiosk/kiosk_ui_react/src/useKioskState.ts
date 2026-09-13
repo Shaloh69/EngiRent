@@ -56,6 +56,10 @@ export function useKioskState() {
   const [errorMsg, setErrorMsg] = useState(
     "Please try again or contact staff for assistance.",
   );
+  // A retry verdict is not a fault: the kiosk looked, was not sure, and the
+  // door is open again. Rendering it as a red error taught people that a
+  // normal second attempt was a breakage.
+  const [errorTone, setErrorTone] = useState<"error" | "retry">("error");
   // E3.2 / spec 1.2. Was "This takes about 15 seconds." -- an invented
   // number on the one wait the spec explicitly classifies as UNKNOWN
   // duration, sitting directly above a stage list whose entire point is
@@ -261,9 +265,16 @@ export function useKioskState() {
       setSuccessInstr(`${lockerNum} — you're all set.`);
       goTo("success");
     } else if (s.status === "item_retry") {
-      goTo("main");
+      // Was `goTo("main")`: the kiosk silently returned to the QR screen, so a
+      // person who had just been told to reposition their item saw the start
+      // screen instead and read it as the kiosk looping. The message is the
+      // whole point of this status.
+      setErrorMsg(s.message || "The kiosk could not match the item yet.");
+      setErrorTone("retry");
+      if (cur !== "error") goTo("error");
     } else if (s.status === "error") {
       setErrorMsg(s.message || "An error occurred. Please try again.");
+      setErrorTone("error");
       if (cur !== "error") goTo("error");
     }
   }
@@ -335,6 +346,7 @@ export function useKioskState() {
     successInstr,
     countdown,
     errorMsg,
+    errorTone,
     verifyingSub,
     workingKind,
     workingLabel,
