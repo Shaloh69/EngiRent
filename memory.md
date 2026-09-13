@@ -327,6 +327,54 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-14 — v1.9.0 (Prerelease19) shipped, because the published app could not log in
+
+**Found, not assumed:** the only published APK, Prerelease18 (1.8.0,
+2026-09-04), has `mpg-clothing-maui-chicago.trycloudflare.com/api/v1` baked
+into `libapp.so`. That host answers nothing: curl exit 000. The live API is
+`perl-gamecube-loving-quotes`. **Anyone downloading the app since the
+2026-09-13 tunnel rotation got an app that cannot sign in.** Sixteen Flutter
+commits (D-40, E2's payment flow, E2.1/E2.2/E2.4, E3.1 tokens, E3.2) had also
+never shipped. The user chose to build and publish.
+
+**Built:** `pubspec.yaml` `1.9.0+19`, `flutter build apk --release
+--dart-define=API_BASE_URL=https://perl-gamecube-loving-quotes.trycloudflare.com/api/v1`.
+It took about 9 minutes. The Gradle wrapper is 8.14 now, so 1.8.0's
+`--android-skip-build-dependency-validation` was not needed. The Kotlin 2.2.20
+"support will be dropped" line is a warning.
+
+**Verified on the artifact, not the build message:**
+- mtime 01:17:32, after the 01:08:42 start. **An old `app-release.apk` from
+  Sep 7 sits in the output dir**: never ship by filename.
+- `aapt2 dump badging` reports `com.engirent.app versionCode=19 versionName=1.9.0`.
+- `apksigner` reports `CN=EngiRent, OU=Engineering, O=UCLM`, the release key.
+- `libapp.so` contains only `perl-gamecube-loving-quotes.../api/v1` (×3).
+- 90,861,895 bytes, sha256 `2ff53aac…`, **identical on the server**.
+
+**Published to all three places** (the list the 1.8.0 entry says was nearly
+missed):
+1. `client/web/public/downloads/Engirent_Prerelease19…apk`.
+2. `client/web/config/release.ts` and `changelog.ts`, both diffed against the
+   server first (identical to repo HEAD), copied, `EngiRentWeb` restarted.
+   New changelog entries: 1.9.0 (2026-09-14) and the kiosk QR fix
+   (2026-09-13, E4.2/D-73).
+3. `AppRelease` row `1.9.0` (build 19, 3 highlights, read back), and
+   `LATEST_APP_VERSION` 1.8.0 → 1.9.0 in the server `.env`, replaced in place
+   (48 → 48 lines) with a `.bak-release19-*` backup. `EngiRentNode` restarted
+   after the E4.6 pre-restart guard (0 DEPOSITED, 0 pending releases, 4 bays
+   AVAILABLE).
+
+**New ops script:** `scripts/ops/restart-service.ps1 -Port <p> -Task <t>`, the
+same three gotchas as `restart-node-admin.ps1` for a single service.
+
+**Quoting traps hit, both harmless because nothing ran:** `|` inside a
+`node --% -e "…"` string is still a PowerShell pipe (write `;`), and `\$N` in a
+bash-to-ssh double-quoted string arrives as a literal `$N`.
+
+**Still true and unsolved:** this build breaks at the next tunnel restart,
+exactly like 1.8.0. The fix is a stable public hostname (a named Cloudflare
+tunnel), not another rebuild.
+
 ### 2026-09-13 — SECOND BROWNOUT. Standing instruction added by the user: ALWAYS document an outage where it survives a `/clear`.
 
 **The user's instruction, verbatim in effect: "whenever this happens in the

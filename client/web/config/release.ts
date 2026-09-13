@@ -28,16 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.8.0",
-  buildNumber: 18,
-  fileName: "Engirent_Prerelease18.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-09-03",
-  sizeMb: 85.6,
+  version: "1.9.0",
+  buildNumber: 19,
+  fileName: "Engirent_Prerelease19.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-09-14",
+  sizeMb: 86.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Identity verification for claiming, depositing, or returning an item now happens on your own phone, not a kiosk camera",
-    "Fixed the API address baked into the app — a build from before today silently pointed at a decommissioned server, so login failed for anyone who downloaded it",
-    "The kiosk's QR hand-off actually completes now, instead of stalling after the connection banner turns green",
+    "Live updates finally arrive — chat, rental status, deposit and return results, and payment confirmations had never reached the app in real time",
+    "Pay Now shows exactly where to send the money and tells you when an admin confirms it, instead of doing nothing",
+    "Fixed sign-in: build 18 still pointed at a server address that no longer exists",
   ],
 };
 

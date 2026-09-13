@@ -16,6 +16,30 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-09-14",
+    version: "1.9.0",
+    tag: "release",
+    title: "Live updates that actually arrive, a payment screen that tells you what to do, and a redesign",
+    bullets: [
+      "Live updates finally work. A crash while connecting meant chat messages, rental status changes, deposit and return results and payment confirmations had never arrived in real time, since April — you only saw them after reopening a screen",
+      "After a dropped connection the app catches up on what it missed, and your Profile updates the moment an admin approves your ID instead of still saying \"Under review\"",
+      "Tapping Pay Now used to do nothing. It now shows exactly where to send the money, with a copyable number and reference, tells you an admin confirms it within 24 hours, and notifies you when they do",
+      "Owners viewing their own listing now see \"Manage your listing\" rather than a button to rent their own item",
+      "Verifying your face for a kiosk handoff now shows how long the session has left and which attempt you're on, instead of a bare \"Verifying…\"",
+      "A new colour system across the app: text fields and outlined buttons now meet accessibility contrast guidelines, the dark sign-in screen is no longer tinted brown, and \"Connecting…\" no longer appears in warning amber",
+      "Rebuilt against the current server — build 18 could no longer sign in after the server's address changed",
+    ],
+  },
+  {
+    date: "2026-09-13",
+    tag: "fix",
+    title: "The kiosk's QR code shows how fresh it is, and never shows a dead one",
+    bullets: [
+      "A ring around the kiosk's QR code now empties as the code ages, with the real number of seconds left beside it",
+      "Fixed the kiosk displaying an already-expired code for up to 30 seconds — scanning it was refused even though it looked valid. The kiosk now fetches the next code the moment the old one runs out",
+    ],
+  },
+  {
     date: "2026-09-03",
     version: "1.8.0",
     tag: "feature",
