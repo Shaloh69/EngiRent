@@ -1018,6 +1018,34 @@ engirent-wifi-setup.service`; the SSH link then dropped and the Pi left the LAN
 (server: ping false, neighbour Stale) — consistent with the hotspot taking the
 radio. **Not confirmed on screen or phone; no route to the Pi to check.**
 
+### Captive-portal auto-open for setup mode — BUILT 2026-09-13, NOT DEPLOYED, NOT SEEN ON A PHONE.
+
+Asked for by the user after typing `http://192.168.4.1` by hand. Phones check
+a known plain-HTTP URL right after joining a network and surface a sign-in page
+when the answer is wrong. `setup_mode.py` now:
+
+- writes `address=/#/192.168.4.1` to
+  `/etc/NetworkManager/dnsmasq-shared.d/engirent-captive-portal.conf` **before**
+  raising the hotspot (NetworkManager's hotspot dnsmasq reads that directory at
+  launch), and removes it on teardown, on exit, and before each start;
+- redirects every platform's probe (`/generate_204`, `/hotspot-detect.html`,
+  `/connecttest.txt`, …) and any unknown path on any Host to the setup page,
+  leaving the portal's own `/`, `/connect` and `/api/*` untouched;
+- degrades rather than fails if the dnsmasq directory is missing.
+
+`ap_portal.py` is not modified — the routes attach to its app from
+`setup_mode.py`, so no un-diffed Pi file is overwritten.
+
+**Tests:** 19 in `tests/test_setup_mode.py` (Flask test client, real HTTP
+semantics), 74 in the kiosk suite. Mutation-checked: answering probes with 204,
+removing the catch-all, and dropping the DNS line each turn it red.
+
+**Honest limits, stated to the user:** iOS opens its captive sheet by itself;
+most Android builds show a "Sign in to Wi-Fi network" notification to tap.
+**Unverified on hardware:** whether the Pi has `dnsmasq-shared.d` (the start
+script now prints it), and whether a real phone opens the page. Ships with the
+next `kiosk-start-wifi-setup.sh` run, which copies `setup_mode.py` each time.
+
 ### RULING 2026-09-13 (user): automatic setup mode after repeated failed checks
 
 *"If a single Wi-Fi does not have any internet in many attempts of checking, it

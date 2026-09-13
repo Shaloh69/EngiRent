@@ -53,6 +53,9 @@ echo "safety gate: $VERDICT"
 scp -q -o HostKeyAlias=engirent-kiosk -o StrictHostKeyChecking=yes "${SCP_ROUTE[@]}" \
   server/kiosk/provisioning/setup_mode.py "$DEST:$D/provisioning/setup_mode.py"
 "${TARGET[@]}" "cd $D && venv/bin/python -m py_compile provisioning/setup_mode.py && echo 'setup_mode.py compiles on the Pi'"
+# Captive-portal auto-open needs NetworkManager's shared-mode dnsmasq directory.
+# Without it setup mode still works, but the phone won't open the page by itself.
+"${TARGET[@]}" "test -d /etc/NetworkManager/dnsmasq-shared.d && echo 'captive auto-open: dnsmasq-shared.d present' || echo 'captive auto-open: /etc/NetworkManager/dnsmasq-shared.d MISSING — phone must open http://192.168.4.1 by hand'"
 
 PW=$(grep '^KIOSK_SUDO_PASSWORD=' .env.local | head -1 | cut -d= -f2- | tr -d '\r' \
       | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")

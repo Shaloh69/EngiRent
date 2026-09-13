@@ -29,6 +29,7 @@ running beside it with every relay claimed at the locked level.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import subprocess
@@ -39,17 +40,104 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from .ap_portal import AP_IP, AP_SSID, run_portal, start_ap_mode  # noqa: E402
+from .ap_portal import AP_IP, AP_SSID, portal, run_portal, start_ap_mode  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
 log = logging.getLogger("kiosk.setup_mode")
 
 
+# ── Captive portal: make the phone open the setup page by itself ──────────────
+#
+# Asked for by the user 2026-09-13 after typing http://192.168.4.1 by hand.
+# Phones decide whether a network needs a sign-in page by fetching a known URL
+# right after joining and checking for an exact answer (Android: HTTP 204 from
+# generate_204; Apple: a page whose body is "Success"). Anything else means
+# "captive portal", and the phone surfaces the page. Two parts:
+#
+#   1. DNS — every name must resolve to this kiosk, or the probe never reaches
+#      us. NetworkManager's shared (hotspot) mode runs dnsmasq and reads
+#      /etc/NetworkManager/dnsmasq-shared.d/ at start, so a wildcard `address=`
+#      line goes there BEFORE the hotspot is raised.
+#   2. HTTP — the probe paths, and any unknown path on any Host, redirect to the
+#      setup page.
+#
+# Honest limits: iOS opens its captive sheet automatically; most Android builds
+# show a "Sign in to Wi-Fi network" notification the user taps. HTTPS probes
+# cannot be answered without a certificate warning, which is why phones use
+# plain-HTTP ones for exactly this.
+
+DNSMASQ_SHARED_DIR = "/etc/NetworkManager/dnsmasq-shared.d"
+DNS_HIJACK_NAME = "engirent-captive-portal.conf"
+
+#: Probe paths used by the major platforms' captive-portal checks.
+CAPTIVE_PROBE_PATHS = (
+    "/generate_204", "/gen_204",                       # Android / Chrome
+    "/hotspot-detect.html", "/library/test/success.html",  # Apple
+    "/connecttest.txt", "/ncsi.txt", "/redirect",      # Windows
+    "/success.txt", "/canonical.html",                 # Firefox
+)
+
+
+def captive_dns_conf(ip: str) -> str:
+    return (
+        "# Written by EngiRent provisioning/setup_mode.py while in Wi-Fi setup mode.\n"
+        "# Resolves EVERY name to the kiosk so phones find the setup page (captive portal).\n"
+        "# Removed when setup mode ends; a stale copy only affects NetworkManager hotspots.\n"
+        f"address=/#/{ip}\n"
+    )
+
+
+def install_dns_hijack(ip: str, directory: str = DNSMASQ_SHARED_DIR) -> str | None:
+    """Write the wildcard DNS rule. Returns the path, or None if the directory
+    does not exist (setup mode still works; the phone just won't auto-open)."""
+    if not os.path.isdir(directory):
+        log.warning("%s missing — captive auto-open disabled, portal still at http://%s", directory, ip)
+        return None
+    path = os.path.join(directory, DNS_HIJACK_NAME)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(captive_dns_conf(ip))
+    return path
+
+
+def remove_dns_hijack(directory: str = DNSMASQ_SHARED_DIR) -> bool:
+    path = os.path.join(directory, DNS_HIJACK_NAME)
+    try:
+        os.remove(path)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def install_captive_routes(app, ip: str) -> None:
+    """Probe paths and unknown paths redirect to the setup page. The portal's own
+    routes (`/`, `/connect`, `/api/*`) are untouched, so the page itself and its
+    form still work. Idempotent per app."""
+    from flask import redirect
+
+    if getattr(app, "_engirent_captive", False):
+        return
+    target = f"http://{ip}/"
+
+    def _to_portal(**_kwargs):
+        return redirect(target, code=302)
+
+    for i, path in enumerate(CAPTIVE_PROBE_PATHS):
+        app.add_url_rule(path, endpoint=f"captive_probe_{i}", view_func=_to_portal)
+
+    @app.errorhandler(404)
+    def _unknown_path_to_portal(_e):
+        return redirect(target, code=302)
+
+    app._engirent_captive = True
+
+
 def teardown_hotspot(ssid: str) -> None:
     """Remove the hotspot profile so NetworkManager falls back to saved client
-    networks. Best-effort: both commands are harmless if it is already gone."""
+    networks, and the captive DNS rule with it. Best-effort: every step is
+    harmless if it is already gone."""
     for args in (["nmcli", "con", "down", ssid], ["nmcli", "con", "delete", ssid]):
         subprocess.run(args, capture_output=True, text=True, timeout=15)
+    remove_dns_hijack()
 
 
 def main() -> int:
@@ -68,8 +156,17 @@ def main() -> int:
 
     timeout_min = max(1, int(os.getenv("SETUP_MODE_TIMEOUT_MIN", "20")))
 
+    # Captive portal: DNS rule must exist BEFORE the hotspot starts, because
+    # NetworkManager's dnsmasq reads its config directory at launch.
+    remove_dns_hijack()                       # clear any stale copy first
+    dns_path = install_dns_hijack(ip)
+    if dns_path:
+        atexit.register(remove_dns_hijack)
+    install_captive_routes(portal, ip)
+
     if not start_ap_mode(ssid=ssid, password=password, ip=ip):
         log.error("hotspot failed to start")
+        remove_dns_hijack()
         return 4
 
     def _give_up():
@@ -81,7 +178,9 @@ def main() -> int:
     timer.daemon = True
     timer.start()
 
-    log.info("SETUP MODE: join Wi-Fi '%s' and open http://%s  (gives up in %d min)", ssid, ip, timeout_min)
+    log.info("SETUP MODE: join Wi-Fi '%s' — the setup page should open by itself (captive portal %s); "
+             "if not, open http://%s  (gives up in %d min)",
+             ssid, "on" if dns_path else "OFF", ip, timeout_min)
     run_portal(host="0.0.0.0", port=80)   # blocks; a successful save reboots the Pi
     return 0
 
