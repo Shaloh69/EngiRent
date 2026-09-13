@@ -481,6 +481,61 @@ log. Its `SERVER_URL` is `http://desktop-gklhcri:5000` — Tailscale, not a
 tunnel — so tunnel rotation does not affect it, but it cannot connect while it
 is off the tailnet. It may well be powered on; it is not on the network.
 
+**KIOSK, diagnosed ~15:15 from a photo the user sent of its screen.** The
+screen showed a bare text console: `Debian GNU/Linux 13 engirent-kiosk tty4 …
+My IP address is 192.168.1.65 … login:`. Everything below is read-only.
+
+**How to reach the Pi when Tailscale is down on it — reusable.** The dev PC
+cannot reach it, but **the server PC's Ethernet (`192.168.1.18`) is on the
+kiosk's LAN** (MAC `2C-CF-67-…`, a Raspberry Pi prefix). Jump through it, and
+check the host against the key already trusted for the tailnet name rather than
+disabling verification:
+
+```
+ssh -o HostKeyAlias=engirent-kiosk -o StrictHostKeyChecking=yes     -J transfer@desktop-gklhcri engirent@192.168.1.65 '<read-only command>'
+```
+
+**Root cause: the kiosk's router, `192.168.1.1`, has no internet after the
+brownout.** Measured two independent ways:
+
+- On the Pi: `ping 1.1.1.1` 100% loss; DNS through `192.168.1.1`, `1.1.1.1`
+  and `8.8.8.8` all empty. LAN works.
+- From the server, forced out of its Ethernet on that router:
+  `ping -S 192.168.1.18 1.1.1.1` 100% loss, and `Resolve-DnsName … -Server
+  192.168.1.1` → **"DNS operation refused"**. The server itself stays online
+  only because it reaches the internet through its *other* Wi-Fi
+  (`192.168.254.254`).
+
+**Everything else on the kiosk follows from that one fault:**
+
+| Symptom | State | Cause |
+|---|---|---|
+| Tailscale offline | `BackendState: NoState`, **`HaveNodeKey: true`**, no `AuthURL` | Cannot reach the control plane. It still holds its identity, so it should rejoin **with no re-login** once the internet is back |
+| Controller cannot reach the API | `engirent-kiosk.service` active, retrying `http://desktop-gklhcri:5000` every 5s | That name only resolves over Tailscale |
+| Clock 2 days behind | reads 2026-09-11 22:4x, `System clock synchronized: no` | Brownout reset it; NTP needs the internet |
+| Screen shows a login prompt | active VT **tty4**; the kiosk UI (`labwc -m` + Chromium, running 45 min) is on the tty1 session | Unknown what switched to VT4. **The kiosk UI was running the whole time, on a console nobody was looking at** |
+| `engirent-kiosk-browser.service` "dead" | not a fault | it exits after handing off: *"Opening in existing browser session"* |
+
+No filesystem errors in `dmesg` this boot (worth checking after every power
+loss — SD corruption risk).
+
+**Two false leads of mine, recorded so the next session does not repeat them:**
+
+1. **Windows `ping` counts `Destination host unreachable` as a received
+   reply.** From the dev PC, `ping 192.168.1.65` printed *"Received = 2, Lost =
+   0 (0% loss)"* — every reply was from **my own PC** saying the host was
+   unreachable. Reading only the summary line, I concluded the Pi was reachable
+   and then built a firewall theory on top of it. **Read the reply lines, not
+   the statistics.**
+2. **"The server has internet" does not mean the server's LAN router does.**
+   The server is dual-homed. Check `Find-NetRoute -RemoteIPAddress 1.1.1.1` to
+   see which interface actually carries the traffic.
+
+**What would fix it, none of it done at time of writing:** the router or the
+modem behind it needs to come back online, which is physical; Tailscale, the
+clock and the controller link should then recover on their own. The screen
+needs a VT switch back to the kiosk session (`chvt 1`, root).
+
 
 ### 2026-09-03 (same day, latest) — Brownout recovery: full stack restored, and it exposed two more real startup bugs
 
