@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **D-73 CLOSED 2026-09-14** (live kiosk, 3 off-grid rotations, dead window 0s; the plain watch proved nothing) · **S-11 OPEN, MEDIUM: production MySQL published on 0.0.0.0:3307, reachable over Tailscale — fix put to the user** · S-10 FIXED IN CODE (published AP default + PSK on argv), not on the Pi · S-9 not on the Pi · E4.2 on the physical screen · D-74 verified both ways · D-76/D-77 fixed, captive portal never seen on a phone · E4.6 deployed, NO HARDWARE EXERCISED · D-65 deployed not closed · D-66 open · **RULING PENDING BUILD: automatic setup mode** · KIOSK + SERVER healthy 2026-09-13 23:37 · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
+[PHASE E4 · **D-73 CLOSED 2026-09-14** (live kiosk, 3 off-grid rotations, dead window 0s; the plain watch proved nothing) · **S-11 MITIGATED** (prod MySQL was on 0.0.0.0:3307; firewall block verified from Tailscale + LAN, loopback intact; container rebind still owed) · S-10 FIXED IN CODE (published AP default + PSK on argv), not on the Pi · S-9 not on the Pi · E4.2 on the physical screen · D-74 verified both ways · D-76/D-77 fixed, captive portal never seen on a phone · E4.6 deployed, NO HARDWARE EXERCISED · D-65 deployed not closed · D-66 open · **RULING PENDING BUILD: automatic setup mode** · KIOSK + SERVER healthy 2026-09-13 23:37 · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -184,6 +184,26 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-14 (D-73 closed, S-10 fixed, S-11 found and mitigated): G5 check.
+ONE SYMPTOM, and it is the one this log keeps naming.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent.** Branch, both machines' liveness (kiosk `/api/state` 23:37, Node PID 5452 plus `/items` 200), the E4 G2 table (line 1934) and the 85/193 report were all read, not carried from the continuation prompt. |
+| 2 vaguer summaries | Absent. |
+| 3 **trusting evidence adjacent to proof** | **PRESENT ×2, both caught before being written down.** (a) The first D-73 run *rotated*, and I nearly banked it. The expiry trigger and the 30s poll coincide by construction, so the old code passes that test too. Replaced with a probe that moves the zero off the grid. (b) The first "verified" screenshot was the BlockAssembly wall, the E4.2 entry's exact trap, repeated within a day of being written. |
+| 4 drifting toward the user's answer | Absent. The continuation prompt pointed at E4.6's admin surface. G1 debt was over the ceiling, so the session retired D-73 instead. S-11's fix was put to the user as a choice with its data-loss risk stated, not taken on "continue". |
+| 5 batching | Absent. D-73's closure and S-10/S-11 are separate commits; S-11's mitigation is its own. |
+| 6 skipping verification | Absent. S-10 was mutation-checked and its untestable `main.py` guard was executed. S-11 was verified from two networks with a control on each, plus fresh loopback connections, because a 200 could have been a pooled connection. |
+
+**The reusable lesson from (a): a test the old code also passes is not a test.**
+Before accepting a pass, ask what the *unfixed* code would have done under the
+same conditions. Here it was "exactly the same thing", and only a changed
+setup could separate them.
+
+**Not pushed while S-11 was open**, because this is a public repo and the entry
+described an unmitigated exposure of the production database.
 
 **2026-09-13 (late: the kiosk stretch — D-76, D-77, setup mode, E4.2 on
 hardware) — G5 check. ONE SYMPTOM, and the hardware kept catching me.**
@@ -2926,7 +2946,7 @@ reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
 
-### S-11 — MEDIUM. FOUND 2026-09-14. **NOT FIXED: the fix is a change to the live server and was put to the user.** The production MySQL is published on every interface of the server.
+### S-11 — MEDIUM. FOUND AND MITIGATED 2026-09-14 (firewall rule, the user's choice). The production MySQL was published on every interface of the server. The container rebind is still owed.
 
 Found by G6's sweep, following up `MYSQL_PASSWORD: engirent123` in the tracked
 `server/node_server/docker-compose.yml`. Every value was checked **server-side,
@@ -2959,6 +2979,28 @@ production machine that also hosts EcoCharge:
    DB outage, and the data is in an **anonymous** volume
    (`6cea54aa…`). A careless `docker rm -v` or a fresh `docker run` without
    naming that volume would lose the production database.
+
+**MITIGATED 2026-09-14: option 1, chosen by the user.** Rule `EngiRent S-11 block
+remote MySQL 3307` added on `desktop-gklhcri` (Inbound · TCP 3307 · Block · all
+profiles), read back `Enabled: True`. **Signal named before looking:** remote
+connect fails, loopback still works.
+
+| Check after the rule | Result | Control |
+|---|---|---|
+| dev PC → `100.122.239.125:3307` (Tailscale) | **timeout, 8.0s** (was OPEN) | `desktop-gklhcri:5000/api/v1/items` → **200** over the same path |
+| dev PC → `desktop-gklhcri:3307` | **timeout, 8.0s** (was OPEN) | same |
+| kiosk Pi (`192.168.254.124`) → server LAN `192.168.254.101:3307` | **closed/filtered** | `:5000` from the Pi → **OPEN** |
+| server → **new** connections to `127.0.0.1:3307` and `::1:3307` | **OPEN**, so Node is unaffected, not just riding a pooled connection | — |
+
+**Honest limits:** the LAN path was not probed before the rule, so it is proven
+blocked now, not proven to have been exposed. The server's other LAN
+(`Ethernet 192.168.1.18`) has no host to probe from. The rule covers all
+interfaces.
+
+**Still owed, not urgent now:** rebind the container to `127.0.0.1:3307`, so
+the fix does not depend on a firewall rule surviving. Take a `mysqldump` first,
+and re-attach the anonymous volume **by name**. **Undo the mitigation:**
+`Remove-NetFirewallRule -DisplayName "EngiRent S-11 block remote MySQL 3307"`.
 
 ### S-10 — LOW. FOUND AND FIXED IN CODE 2026-09-14, NOT DEPLOYED. The kiosk's first-boot hotspot fell back to a password committed to this public repo.
 
