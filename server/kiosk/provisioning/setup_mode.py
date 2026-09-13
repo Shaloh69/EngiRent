@@ -32,7 +32,6 @@ from __future__ import annotations
 import atexit
 import logging
 import os
-import subprocess
 import sys
 import threading
 
@@ -40,7 +39,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from .ap_portal import AP_IP, AP_SSID, portal, run_portal, start_ap_mode  # noqa: E402
+from .ap_portal import AP_IP, AP_SSID, portal, run_portal  # noqa: E402
+# NOT ap_portal.start_ap_mode: it could never set the address and ran no DHCP (D-77).
+from .hotspot import HotspotError, start_hotspot, stop_hotspot  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
 log = logging.getLogger("kiosk.setup_mode")
@@ -135,8 +136,10 @@ def teardown_hotspot(ssid: str) -> None:
     """Remove the hotspot profile so NetworkManager falls back to saved client
     networks, and the captive DNS rule with it. Best-effort: every step is
     harmless if it is already gone."""
-    for args in (["nmcli", "con", "down", ssid], ["nmcli", "con", "delete", ssid]):
-        subprocess.run(args, capture_output=True, text=True, timeout=15)
+    # By the hotspot's EXPLICIT connection id. The first version deleted by SSID,
+    # but the old code's connection was named "Hotspot", so the 20-minute
+    # give-up could not bring it down (D-77).
+    stop_hotspot(ssid)
     remove_dns_hijack()
 
 
@@ -162,12 +165,18 @@ def main() -> int:
     dns_path = install_dns_hijack(ip)
     if dns_path:
         atexit.register(remove_dns_hijack)
-    install_captive_routes(portal, ip)
 
-    if not start_ap_mode(ssid=ssid, password=password, ip=ip):
-        log.error("hotspot failed to start")
+    try:
+        actual_ip = start_hotspot(ssid=ssid, psk=password, ip=ip)
+    except HotspotError as e:
+        log.error("hotspot failed to start: %s", e)
         remove_dns_hijack()
         return 4
+    # If the process dies any way other than a reboot, do not leave the kiosk
+    # stranded on its own hotspot.
+    atexit.register(teardown_hotspot, ssid)
+    # Redirect to the address that is REALLY on wlan0, not the one requested.
+    install_captive_routes(portal, actual_ip)
 
     def _give_up():
         log.warning("no network chosen within %d min — removing hotspot, reconnecting to saved Wi-Fi", timeout_min)
@@ -180,7 +189,7 @@ def main() -> int:
 
     log.info("SETUP MODE: join Wi-Fi '%s' — the setup page should open by itself (captive portal %s); "
              "if not, open http://%s  (gives up in %d min)",
-             ssid, "on" if dns_path else "OFF", ip, timeout_min)
+             ssid, "on" if dns_path else "OFF", actual_ip, timeout_min)
     run_portal(host="0.0.0.0", port=80)   # blocks; a successful save reboots the Pi
     return 0
 

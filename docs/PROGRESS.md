@@ -992,6 +992,46 @@ guess, because a tally that cannot be re-derived is exactly the P-1 failure
 trust; this fraction is not.** Worth either deriving it from the register or
 dropping it.
 
+### D-77 — the setup hotspot was never at the advertised address, ran no DHCP, and could not be torn down. FOUND 2026-09-13 ON HARDWARE. FIXED IN CODE, NOT DEPLOYED.
+
+Found the only way it could be: the user joined `EngiRent-Kiosk-Setup` on an
+Android phone and got **ERR_ADDRESS_UNREACHABLE** for `http://192.168.4.1`.
+Three bugs in `ap_portal.start_ap_mode()`, all silent because **every return
+code was discarded** (`capture_output=True`, result never read):
+
+1. **The address was set on a connection that does not exist.**
+   `nmcli dev wifi hotspot ... ssid X` names the profile **`Hotspot`**, not `X`.
+   The follow-up `con modify X` / `con up X` therefore did nothing, and the
+   hotspot stayed on NetworkManager's default **10.42.0.1** — while the log
+   line said `AP hotspot started: IP=192.168.4.1`. **A log that states an
+   intention as a fact.**
+2. **`ipv4.method manual`** — no DHCP server, no DNS. Phones cannot get an
+   address, and the captive-portal dnsmasq rule would never be read. Must be
+   `shared`.
+3. **Teardown by SSID**, inherited by `setup_mode`'s 20-minute give-up, so it
+   could not remove a connection named `Hotspot`. **Confirmed on hardware:** the
+   session started ~20:12 and the kiosk was still off the LAN at 20:34, past its
+   20:32 give-up. **The kiosk was left stranded on its own hotspot until
+   power-cycled** — the exact failure the give-up existed to prevent.
+
+**Fixed** in a new `provisioning/hotspot.py`, used by `setup_mode`: the
+connection is written as a root-only (0600) NetworkManager keyfile with an
+explicit id (`engirent-setup-hotspot`), `mode=ap`, **`method=shared`**,
+`address1=192.168.4.1/24`, `autoconnect=false`; **the PSK never touches nmcli's
+argv** (world-readable via /proc); every return code is checked; and the address
+**actually on wlan0 is read back** and used for the log and the captive
+redirects. Teardown targets the explicit id and also removes a legacy `Hotspot`
+profile — but only when its SSID is ours, so a real one is never deleted.
+
+**22 tests** in `tests/test_hotspot.py` (nmcli replaced by a recorder), 96 in
+the kiosk suite. Mutation-checked: restoring `manual`, restoring the default
+connection name, or tearing down by SSID each turns it red.
+
+**`ap_portal.start_ap_mode()` is still the broken version** — it is dead code on
+this Pi (D-76: the service user cannot bind :80 or create a hotspot) and is not
+shipped by the ops script. It should delegate to `hotspot.start_hotspot` when
+next touched.
+
 ### D-76 — the Wi-Fi setup portal could NEVER have run on the deployed kiosk. FOUND 2026-09-13. WORKED AROUND (root unit); the automatic path is NOT built.
 
 Found when the user asked why the setup Wi-Fi never appeared on their phone.
