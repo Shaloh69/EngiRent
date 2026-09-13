@@ -15,30 +15,32 @@ log = logging.getLogger("kiosk.wifi")
 
 
 def is_wifi_connected() -> bool:
-    """Return True if the Pi has an active WiFi connection."""
-    try:
-        # Primary: check NetworkManager connectivity (full or limited = connected)
-        result = subprocess.run(
-            ["nmcli", "-t", "networking", "connectivity"],
-            capture_output=True, text=True, timeout=5,
-        )
-        state = result.stdout.strip().lower()
-        if state in ("full", "limited", "portal"):
-            return True
+    """Return True if the Pi is ASSOCIATED with a WiFi network.
 
-        # Fallback: check if any wifi-type connection is activated
-        result2 = subprocess.run(
-            ["nmcli", "-t", "-f", "TYPE,STATE", "con", "show", "--active"],
-            capture_output=True, text=True, timeout=5,
-        )
-        for line in result2.stdout.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 2 and parts[0].lower() == "wifi" and "activated" in parts[1].lower():
-                return True
-        return False
-    except Exception as e:
-        log.error("nmcli check failed: %s", e)
-        return False
+    **This says nothing about whether that network works** — see D-74. It used
+    to ask NetworkManager for `connectivity` and accept `full`, `limited` or
+    `portal`. Two things were wrong with that, both measured on the live Pi on
+    2026-09-13 during a brownout:
+
+      * `limited` means "on a network, no internet" and was being counted as
+        connected, which is defensible for *association* and useless for
+        *reachability* -- but the name promised reachability.
+      * It does not even measure that here. `ConnectivityCheckAvailable` and
+        `ConnectivityCheckEnabled` are both **false** on this Pi and no
+        `[connectivity] uri` is configured, so NetworkManager answered `full`
+        while `ping 1.1.1.1` lost 100% of packets and DNS resolved nothing.
+
+    The connectivity call is therefore gone rather than reinterpreted: a check
+    that is disabled cannot be made honest by reading its answer differently.
+    For "can the kiosk actually reach the server", use
+    `provisioning.uplink.classify()`, which probes it directly.
+    """
+    # Delegates, so there is exactly one implementation of this question. The
+    # copy that used to live here matched the literal type `wifi` against
+    # CONNECTION output, which says `802-11-wireless` -- it never matched. See
+    # uplink.parse_wifi_associated.
+    from .uplink import probe_wifi_associated
+    return probe_wifi_associated()
 
 
 def get_available_networks() -> list[dict]:

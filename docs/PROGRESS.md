@@ -992,7 +992,82 @@ guess, because a tally that cannot be re-derived is exactly the P-1 failure
 trust; this fraction is not.** Worth either deriving it from the register or
 dropping it.
 
-### D-74 — Wi-Fi provisioning cannot see "connected but no internet", which is the failure that actually happens. FOUND 2026-09-13. NOT FIXED.
+### D-75 — the Wi-Fi association check NEVER matched, so the only working branch was the one that lies. FOUND AND FIXED 2026-09-13.
+
+Found by running the new probe on the real Pi (G3: on the artifact, not the
+docs) — it reported `wifi_associated=False` for a healthy, connected `wlan0`.
+
+`wifi_manager.is_wifi_connected()`'s fallback scanned
+`nmcli -t -f TYPE,STATE con show --active` for the literal type **`wifi`**.
+For a *connection* nmcli says **`802-11-wireless`**; only a *device* says
+`wifi`. Captured from the Pi:
+
+```
+con show --active :  802-11-wireless:activated
+device            :  wlan0:wifi:connected
+```
+
+So that branch could never return True, and the function's only live path was
+the `connectivity` call that answers `full` on a dead uplink (D-74). **The
+latent failure: had connectivity ever answered `none`, the kiosk would have
+raised its setup hotspot while perfectly connected to Wi-Fi** — dropping the
+radio, and with it the LAN path that is the only remote access when Tailscale
+is down.
+
+**Fixed:** `uplink.parse_wifi_associated()` — a pure parser accepting both
+shapes and excluding `wifi-p2p` (`p2p-dev-wlan0` exists regardless of any
+network). `wifi_manager` now delegates to it, so there is one implementation.
+5 tests against output captured verbatim from the Pi; mutation-checked —
+restoring the `wifi`-only tuple turns 1 red, counting `wifi-p2p` turns 2 red.
+
+### D-74 — Wi-Fi provisioning cannot see "connected but no internet", which is the failure that actually happens. FOUND 2026-09-13. **FIXED IN CODE AND VERIFIED ON THE LIVE PI; NOT DEPLOYED.**
+
+**Built** (`server/kiosk/provisioning/`):
+
+- **`uplink.py`** — separates four failures behind one symptom:
+  `NO_WIFI` / `NO_INTERNET` / `NO_DNS` / `SERVER_UNREACHABLE`, each with its
+  own honest on-screen message. Probes are split from the decision so the
+  decision is testable with no network.
+- **`classify()` short-circuits on `server_ok`** — reaching the server beats
+  every other signal, because a LAN or Tailscale server with no public
+  internet is a *working* kiosk.
+- **`watchdog.py`** — runs it on a timer (default 60s) and announces **only on
+  change**. Startup-only checking was the core defect: the kiosk retried for
+  hours with nothing on screen saying why.
+- **`UplinkPolicy`** — hysteresis plus safety gates. **Auto-AP is OFF by
+  default**, `SERVER_UNREACHABLE` can never trigger it, a missing
+  `safe_to_disrupt` callback is treated as *unsafe*, and a degraded link must
+  persist `UPLINK_GRACE_SECONDS` (900) first.
+- Config knobs in `config.py`; `main.py` wiring is 20 lines placed after the
+  UI server, **holding no hardware reference and touching no GPIO**.
+
+**Why auto-AP defaults to off, recorded so it is not "simplified" later:** the
+Pi has one radio. Raising the hotspot drops the Wi-Fi it is on — on
+2026-09-13 that was the only remaining way to reach the kiosk. A kiosk that
+hides itself behind its own hotspot because a router rebooted is worse than one
+that says plainly that it cannot reach the server.
+
+**Verified on the live Pi, in the real failure state** (read-only, service not
+restarted — the module was copied to `/tmp`, run, and deleted):
+
+```
+probe : wifi_associated=True internet_ok=False dns_ok=False server_ok=False
+state : no_internet
+screen: "Wi-Fi is connected but has no internet. Staff have been alerted."
+```
+
+The old check called that exact state "connected".
+
+**Tests:** 29 in `tests/test_uplink.py`, 44 in the kiosk suite, all passing.
+Mutation-checked — removing the `server_ok` short-circuit, forcing the safety
+gate true, letting `SERVER_UNREACHABLE` start the AP, or defaulting auto-AP on
+each turn the suite red. (A collection error is **not** a pass; one was hit and
+re-run properly.)
+
+**NOT DEPLOYED, and the watchdog thread has never run.** Deploying means
+restarting `engirent-kiosk.service`, which re-runs `init_hardware()` — G11.
+The classification is proven on the Pi; the timer, the announcements and the
+UI message are not. **Needs the user's go-ahead.**
 
 **Asked by the user during the brownout: does the kiosk have Wi-Fi
 provisioning?** It does — `server/kiosk/provisioning/` (`ap_portal.py`,

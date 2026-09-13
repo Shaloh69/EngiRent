@@ -70,6 +70,18 @@ AP_SSID = os.getenv("AP_SSID", "EngiRent-Kiosk-Setup")
 AP_PASSWORD = os.getenv("AP_PASSWORD", "engirent2026")
 AP_IP = os.getenv("AP_IP", "192.168.4.1")
 
+# ── Uplink watchdog (D-74) ────────────────────────────────────────────
+# Startup-only "is there WiFi" could not see the failure that actually happens:
+# associated, DHCP fine, router with no uplink. See provisioning/uplink.py.
+UPLINK_WATCHDOG_ENABLED = os.getenv("UPLINK_WATCHDOG_ENABLED", "true").lower() != "false"
+UPLINK_CHECK_INTERVAL = int(os.getenv("UPLINK_CHECK_INTERVAL", "60"))
+# How long a fixable fault must persist before provisioning is even considered.
+UPLINK_GRACE_SECONDS = int(os.getenv("UPLINK_GRACE_SECONDS", "900"))
+# OFF by default and that is deliberate: the Pi has ONE radio, so raising the
+# setup hotspot drops the WiFi it is on -- which on 2026-09-13 was the only
+# remaining way to reach the kiosk at all. Opt in per site, never by default.
+UPLINK_AUTO_AP = os.getenv("UPLINK_AUTO_AP", "false").lower() == "true"
+
 # ── GPIO behaviour ─────────────────────────────────────────────────────────────
 RELAY_ACTIVE_LOW = os.getenv("RELAY_ACTIVE_LEVEL", "active_low") == "active_low"
 MOCK_GPIO = os.getenv("MOCK_GPIO", "False").lower() == "true"

@@ -148,6 +148,8 @@ def _banner():
 
 # ── Imports (after logging is configured) ─────────────────────────────────────
 from provisioning.wifi_manager import is_wifi_connected
+from provisioning.watchdog import UplinkWatchdog
+from provisioning.uplink import PolicyConfig, UplinkPolicy
 from provisioning.ap_portal import AP_SSID, AP_PASSWORD, AP_IP, run_portal, start_ap_mode
 from kiosk_ui.server import start_ui_server_thread
 from services.socket_client import init_hardware, connect_to_server
@@ -233,6 +235,30 @@ def main():
     log.info("[UI]     Starting HDMI UI server on port %s…", os.getenv("UI_PORT", "8080"))
     start_ui_server_thread()
     log.info("[UI]     UI server started ✓  → http://localhost:%s", os.getenv("UI_PORT", "8080"))
+
+    # 3b. Uplink watchdog (D-74). Startup-only provisioning could not see the
+    # failure that actually happens: associated to WiFi, router with no uplink.
+    # Reports only unless UPLINK_AUTO_AP is set; holds no hardware reference
+    # and never touches GPIO.
+    if os.getenv("UPLINK_WATCHDOG_ENABLED", "true").lower() != "false":
+        from services.socket_client import sio, _set_ui
+        _uplink_watchdog = UplinkWatchdog(
+            server_url=os.getenv("SERVER_URL", "http://localhost:5000"),
+            interval=int(os.getenv("UPLINK_CHECK_INTERVAL", "60")),
+            policy=UplinkPolicy(PolicyConfig(
+                grace_seconds=int(os.getenv("UPLINK_GRACE_SECONDS", "900")),
+                auto_ap_enabled=os.getenv("UPLINK_AUTO_AP", "false").lower() == "true",
+            )),
+            # An open socket is better evidence than any probe we could invent.
+            server_ok_fn=lambda: sio.connected,
+            # Say WHY on screen. The socket client already shows "offline"; this
+            # replaces "Disconnected from server – retrying…" with the actual cause.
+            on_state=lambda state, msg: _set_ui("offline", msg) if state.value != "ok" else None,
+            # No safety oracle is wired yet, so this stays None and the policy
+            # refuses to disrupt — deliberate: a bay may be open with a
+            # student's property in it. Auto-AP is off by default anyway.
+            safe_to_disrupt=None,
+        ).start()
 
     # 4. Socket.io event loop
     log.info("[SOCKET] Starting Socket.io client loop…")
