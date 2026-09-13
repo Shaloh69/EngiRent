@@ -327,7 +327,7 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
-### 2026-09-14 ~01:05 — KIOSK OUTAGE: the Pi lost Wi-Fi, and no setup screen appeared. OPEN.
+### 2026-09-14 ~01:05 — KIOSK OUTAGE: the Pi lost Wi-Fi, and no setup screen appeared. RESOLVED ~01:35 by a reboot.
 
 **Reported by the user, ~01:35.** Measured, not assumed:
 
@@ -353,6 +353,18 @@ SSID on a phone at the kiosk; then a keyboard on console 1 (it asks for a
 password since S-8) with `sudo nmtui` or `sudo reboot`; then setup mode from the
 console; power-cycling only as a last resort, with someone watching the doors.
 There is no record of how the active-LOW relays behave during boot.
+
+**RESOLVED ~01:35.** The user rebooted the Pi. The network was up throughout.
+Checked at 01:36, not assumed:
+- uptime 1 min, rejoined `GFiber_2.4_Coverage_e3280` (signal 70) at
+  `192.168.254.124`
+- Tailscale up; `engirent-kiosk` service active
+- `/api/state` reads "Kiosk online – Ready": all 8 doors locked, 4 bays
+  AVAILABLE, no active locker
+
+**Root cause unknown.** The journal is volatile, so the reboot erased whatever
+the Pi logged about the drop. The next session should look at persisting the
+journal, or at logging NetworkManager state changes to `/home/engirent/`.
 
 ### 2026-09-14 — v1.9.0 (Prerelease19) shipped, because the published app could not log in
 
