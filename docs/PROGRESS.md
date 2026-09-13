@@ -2498,6 +2498,46 @@ reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
 
+### S-8 — FOUND 2026-09-13, NOT YET FIXED (fix ready, awaiting the user's go-ahead on a live kiosk). The kiosk's physical console 1 is a logged-in shell with no password, as a user who can drive the door relays.
+
+**Found because the user photographed the kiosk screen after the brownout** and
+it showed `engirent-kiosk login: engirent (automatic login)` followed by an
+open prompt, `engirent@engirent-kiosk:~ $`.
+
+**Verified read-only on the Pi:**
+
+- `/etc/systemd/system/getty@tty1.service.d/autologin.conf` →
+  `ExecStart=-/sbin/agetty --autologin engirent --noclear %I $TERM`
+  (file dated 2026-04-23).
+- `engirent` is in **`gpio`**, `i2c`, `spi`, `dialout`, `input`, `video` and
+  `sudo`. `sudo -n true` fails, so root still needs a password — **but the
+  `gpio` group alone is enough to drive the relays**, and the relays are the
+  8 solenoids and 4 actuators.
+- The kiosk sits in a public corridor, normally unattended. Anyone who plugs a
+  USB keyboard in and presses Ctrl+Alt+F1 gets that shell. Restarting the
+  shell does not help: `agetty --autologin` logs straight back in.
+
+**Why it is safe to remove, established before proposing it:**
+
+- The kiosk UI does **not** come from console 1. It is lightdm's autologin
+  Wayland session on **VT 7** (`service=lightdm-autologin type=wayland`,
+  labwc `XDG_VTNR=7`); Chromium starts from
+  `~/.config/autostart/engirent-browser.desktop` inside it.
+- The repo only ever asks for **desktop** autologin: `setup.sh:371` and
+  `SETUP.md:209`, `raspi-config nonint do_boot_behaviour B4`.
+- No login script on the Pi (`~/.bash_profile`, `~/.profile`, `~/.bash_login`,
+  `~/.bashrc`, `/etc/profile.d/*.sh`) reacts to tty1.
+
+**The fix (reversible, touches no GPIO, no controller, no autostart):** move the
+drop-in to a dated backup, `systemctl daemon-reload`, `systemctl restart
+getty@tty1`. Console 1 then asks for a password; console 7 is untouched.
+**Watch for:** re-running `setup.sh`'s `B4` step may recreate the drop-in —
+check after any re-provisioning.
+
+**Not a replacement for physical security.** Someone with the enclosure open
+can take the SD card. What this closes is the zero-tool path: a keyboard and a
+key chord.
+
 ### S-7 — FOUND AND FIXED 2026-09-12, by the G6 sweep that gated the push to `main`. An admin password literal in a tracked script.
 
 `server/node_server/scripts/run-e2e-all.ps1:55` defaulted `ADMIN_PASSWORD` to a
