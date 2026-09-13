@@ -126,4 +126,60 @@ void main() {
       expect(rental.pendingPaymentOfType('RENTAL_PAYMENT'), isNull);
     });
   });
+
+  /// D-79, found by a real user on 2026-09-14: the server needs BOTH the fee
+  /// and the deposit COMPLETED before a rental reaches AWAITING_DEPOSIT, and
+  /// Pay Now hardcoded the fee. The live rental sat with one COMPLETED fee and
+  /// no deposit row at all, offering the renter a fee the server refuses.
+  group('nextPaymentType — D-79', () {
+    test('nothing paid yet: the rental fee comes first', () {
+      final rental = RentalModel.fromJson(rentalJson(transactions: []));
+      expect(rental.nextPaymentType, 'RENTAL_PAYMENT');
+    });
+
+    test('fee sent but not confirmed: details reopen the FEE, and the deposit can start alongside', () {
+      final rental = RentalModel.fromJson(rentalJson(transactions: [txn()]));
+      expect(rental.nextPaymentType, 'SECURITY_DEPOSIT');
+      expect(rental.awaitingPaymentType, 'RENTAL_PAYMENT');
+    });
+
+    test('the live dead end: fee COMPLETED, no deposit row -> the DEPOSIT is owed', () {
+      final rental = RentalModel.fromJson(
+        rentalJson(transactions: [txn(status: 'COMPLETED')]),
+      );
+      expect(rental.nextPaymentType, 'SECURITY_DEPOSIT');
+      expect(rental.awaitingPaymentType, isNull);
+    });
+
+    test('deposit sent: details reopen the DEPOSIT, not the fee', () {
+      final rental = RentalModel.fromJson(rentalJson(transactions: [
+        txn(status: 'COMPLETED'),
+        txn(id: 'txn-2', type: 'SECURITY_DEPOSIT', amount: 500),
+      ]));
+      expect(rental.nextPaymentType, isNull);
+      expect(rental.awaitingPaymentType, 'SECURITY_DEPOSIT');
+    });
+
+    test('both confirmed: nothing owed', () {
+      final rental = RentalModel.fromJson(rentalJson(transactions: [
+        txn(status: 'COMPLETED'),
+        txn(id: 'txn-2', type: 'SECURITY_DEPOSIT', status: 'COMPLETED', amount: 500),
+      ]));
+      expect(rental.nextPaymentType, isNull);
+    });
+
+    test('a rejected deposit is owed again', () {
+      final rental = RentalModel.fromJson(rentalJson(transactions: [
+        txn(status: 'COMPLETED'),
+        txn(id: 'txn-2', type: 'SECURITY_DEPOSIT', status: 'FAILED', amount: 500),
+      ]));
+      expect(rental.nextPaymentType, 'SECURITY_DEPOSIT');
+    });
+
+    test('no positive deposit on the rental: no deposit row is owed', () {
+      final json = rentalJson(transactions: [txn(status: 'COMPLETED')])
+        ..['securityDeposit'] = 0;
+      expect(RentalModel.fromJson(json).nextPaymentType, isNull);
+    });
+  });
 }

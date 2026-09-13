@@ -75,6 +75,40 @@ class RentalModel {
   bool get awaitingPaymentConfirmation =>
       transactions.any((t) => t.status == 'PENDING' || t.status == 'PROCESSING');
 
+  /// D-79. The payment the renter still has to START, in the order the flow
+  /// asks for them: the rental fee, then the security deposit. `null` once
+  /// both exist as sent-or-confirmed.
+  ///
+  /// The server only moves a rental to AWAITING_DEPOSIT when BOTH types are
+  /// COMPLETED (`adminDecidePayment`), but Pay Now used to hardcode
+  /// RENTAL_PAYMENT — so after the fee was confirmed the renter was offered
+  /// the fee again (refused) and the deposit never, and no rental made in the
+  /// app could ever reach the kiosk.
+  ///
+  /// FAILED and REFUNDED do not count as paid: a rejected payment must be
+  /// payable again. A rental with no positive deposit owes no deposit row.
+  String? get nextPaymentType {
+    bool started(String type) => transactions.any((t) =>
+        t.type == type &&
+        (t.status == 'PENDING' ||
+            t.status == 'PROCESSING' ||
+            t.status == 'COMPLETED'));
+    if (!started('RENTAL_PAYMENT')) return 'RENTAL_PAYMENT';
+    if (securityDeposit > 0 && !started('SECURITY_DEPOSIT')) {
+      return 'SECURITY_DEPOSIT';
+    }
+    return null;
+  }
+
+  /// The type of the payment an admin is currently checking, if any — what
+  /// "View payment details" must re-open, rather than a hardcoded fee.
+  String? get awaitingPaymentType {
+    for (final t in transactions) {
+      if (t.status == 'PENDING' || t.status == 'PROCESSING') return t.type;
+    }
+    return null;
+  }
+
   bool get isActive => status == 'ACTIVE';
   bool get isCompleted => status == 'COMPLETED';
   bool get isPending => status == 'PENDING';

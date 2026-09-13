@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/rental_widgets.dart';
@@ -13,6 +14,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../kiosk/screens/kiosk_scan_screen.dart';
 import '../../messages/screens/conversation_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
@@ -62,6 +64,22 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   bool get _iAmOwner =>
       _rental?.renter != null &&
       _rental!.renter!.id != SocketService.instance.currentUserId;
+
+  /// Who is looking at this rental, for deciding which ACTIONS to offer.
+  /// `null` when it cannot be known yet, in which case every action is shown,
+  /// the pre-D-79 behaviour, rather than hiding a renter's only way to pay.
+  ///
+  /// Deliberately not `_iAmOwner`: that reads the SOCKET's user id, which is
+  /// null until the socket connects, and `renter.id != null` then reads as
+  /// "I am the owner" — which would hide Pay from the very person who owes it.
+  /// AuthProvider holds the signed-in user from login onward.
+  bool? get _viewerIsOwner {
+    final ownerId = _rental?.item.owner?.id;
+    final myId = context.read<AuthProvider>().user?.id ??
+        SocketService.instance.currentUserId;
+    if (ownerId == null || myId == null) return null;
+    return ownerId == myId;
+  }
 
   Future<void> _loadRenterReputation() async {
     final renter = _rental?.renter;
@@ -170,7 +188,10 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     }
   }
 
-  Future<void> _initiatePayment() async {
+  /// [type] is the payment to start or re-open. D-79: this used to hardcode
+  /// RENTAL_PAYMENT, so the deposit — which the server requires before a
+  /// rental can reach the kiosk — could never be paid from the app.
+  Future<void> _initiatePayment(String type) async {
     if (_rental == null || _startingPayment) return;
     setState(() => _startingPayment = true);
     AppToast.info(context, 'Preparing payment…');
@@ -179,9 +200,12 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       // /payments (not /payments/create-checkout, which doesn't exist), and
       // { transaction, paymentUrl } (not checkoutUrl/sessionId — the
       // transaction's own id doubles as the "session" id for status polling).
+      // Re-posting a type that is already PENDING returns that same row
+      // (paymentController reuses the live transaction), which is what makes
+      // "View payment details" safe.
       final resp = await _api.post('/payments', {
         'rentalId': _rental!.id,
-        'type': 'RENTAL_PAYMENT',
+        'type': type,
       });
       if (resp.statusCode == 201 || resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
@@ -760,39 +784,83 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                         // manual payments: nothing sent yet, or sent and
                         // waiting on a human. Offering "Pay Now" in the second
                         // case invites paying twice.
-                        if (_rental!.status == 'PENDING') ...[
-                          if (_rental!.awaitingPaymentConfirmation) ...[
+                        // D-79 follow-up: the owner was shown the renter's
+                        // pay buttons and no word about what happens next.
+                        if (_rental!.status == 'PENDING' && _viewerIsOwner == true)
+                          _NextStepNote(
+                            text: '${_rental!.renter?.firstName ?? 'The renter'} still has to pay the '
+                                'rental fee and the security deposit, and an admin has to '
+                                'confirm both. You will be notified when it is time to '
+                                'place the item in the kiosk.',
+                          ),
+                        if (_rental!.status == 'PENDING' && _viewerIsOwner != true) ...[
+                          if (_rental!.awaitingPaymentType != null) ...[
                             _AwaitingPaymentPanel(rental: _rental!),
                             const SizedBox(height: 12),
                             _ActionButton(
                               icon: Icons.receipt_long_rounded,
                               label: 'View payment details',
                               gradient: AppColors.accentGradient,
-                              onTap: _initiatePayment,
+                              onTap: () =>
+                                  _initiatePayment(_rental!.awaitingPaymentType!),
                             ),
-                          ] else
+                          ],
+                          // D-79. Offered alongside a payment under review
+                          // too: the renter should not have to wait for an
+                          // admin between sending the fee and the deposit.
+                          if (_rental!.nextPaymentType != null) ...[
+                            if (_rental!.awaitingPaymentType != null)
+                              const SizedBox(height: 12),
                             _ActionButton(
                               icon: Icons.payment_rounded,
-                              label: 'Pay Now to Confirm',
+                              label: _rental!.nextPaymentType == 'SECURITY_DEPOSIT'
+                                  ? 'Pay security deposit · PHP ${_rental!.securityDeposit.toStringAsFixed(2)}'
+                                  : 'Pay rental fee · PHP ${_rental!.totalPrice.toStringAsFixed(2)}',
                               gradient: AppColors.accentGradient,
-                              onTap: _initiatePayment,
+                              onTap: () =>
+                                  _initiatePayment(_rental!.nextPaymentType!),
                             ),
+                            if (_rental!.nextPaymentType == 'SECURITY_DEPOSIT') ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                'Both the rental fee and the security deposit '
+                                'must be confirmed before the owner can place '
+                                'the item in the kiosk. The deposit is held '
+                                'and returned after the item comes back, minus '
+                                'any damage or late fees.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: AppPalette.of(context).muted,
+                                ),
+                              ),
+                            ],
+                          ],
                         ],
-                        if (_rental!.status == 'AWAITING_DEPOSIT')
+                        if (_rental!.status == 'AWAITING_DEPOSIT' && _viewerIsOwner == false)
+                          const _NextStepNote(
+                            text: 'Payment confirmed. The owner now places the item in the '
+                                'kiosk — you will be notified when it is ready to pick up.',
+                          ),
+                        if (_rental!.status == 'AWAITING_DEPOSIT' && _viewerIsOwner != false)
                           _ActionButton(
                             icon: Icons.lock_open_rounded,
                             label: 'Place Item at Kiosk',
                             gradient: AppColors.primaryGradient,
                             onTap: () => _openKioskScan('place'),
                           ),
-                        if (_rental!.status == 'DEPOSITED')
+                        if (_rental!.status == 'DEPOSITED' && _viewerIsOwner == true)
+                          const _NextStepNote(
+                            text: 'The item is in the kiosk. The renter picks it up next.',
+                          ),
+                        if (_rental!.status == 'DEPOSITED' && _viewerIsOwner != true)
                           _ActionButton(
                             icon: Icons.inventory_2_rounded,
                             label: 'Pick Up Item from Kiosk',
                             gradient: AppColors.primaryGradient,
                             onTap: () => _openKioskScan('retrieve'),
                           ),
-                        if (_rental!.status == 'ACTIVE')
+                        if (_rental!.status == 'ACTIVE' && _viewerIsOwner != true)
                           _ActionButton(
                             icon: Icons.assignment_return_rounded,
                             label: 'Return Item to Kiosk',
@@ -1227,6 +1295,37 @@ class _PayLine extends StatelessWidget {
 /// it arrived. This state did not exist before the manual-payments ruling —
 /// PayMongo either confirmed or did not, within seconds. Now the honest
 /// answer is "someone is checking", and saying nothing reads as a failure.
+/// A plain statement of whose turn it is, for the party who has nothing to
+/// press. Token colours only, so it reads in both themes.
+class _NextStepNote extends StatelessWidget {
+  final String text;
+  const _NextStepNote({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 16, color: p.muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 12.5, height: 1.4, color: p.ink)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AwaitingPaymentPanel extends StatelessWidget {
   final RentalModel rental;
   const _AwaitingPaymentPanel({required this.rental});
@@ -1269,7 +1368,7 @@ class _AwaitingPaymentPanel extends StatelessWidget {
                 Text(
                   'PHP ${total.toStringAsFixed(2)} is recorded as sent. An '
                   'admin checks the money arrived before your rental is '
-                  'confirmed — you do not need to pay again.',
+                  'confirmed — you do not need to send this again.',
                   style: TextStyle(fontSize: 12.5, height: 1.4, color: p.muted),
                 ),
                 if (pending.any((t) => t.paymentReferenceNo != null)) ...[

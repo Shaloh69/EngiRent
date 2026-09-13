@@ -1374,7 +1374,52 @@ sign in on it, the claim is "published and correct on the artifact", not "works
 on a device".
 **Will break again** at the next tunnel restart, like every build before it.
 
-### D-79 — no rental created in the app can ever be fully paid. FOUND 2026-09-14 BY A REAL USER DURING THE PHYSICAL RUN. NOT FIXED.
+### D-79 — no rental created in the app can ever be fully paid. FOUND 2026-09-14 BY A REAL USER DURING THE PHYSICAL RUN. FIXED IN THE APP (1.9.1, build 20); NOT YET ON A DEVICE.
+
+**Fix, on the user's instruction to update the app:**
+- `RentalModel.nextPaymentType`: the fee first, then the deposit. FAILED or
+  REFUNDED counts as owed again; no deposit is owed when the rental's deposit is
+  not positive.
+- `RentalModel.awaitingPaymentType`: what "View payment details" re-opens.
+- `_initiatePayment(type)` no longer hardcodes the fee.
+- The button says what it pays: "Pay security deposit · PHP 100.00". It is
+  offered alongside a payment under review, so the renter need not wait for an
+  admin in between.
+- A note explains that both payments must be confirmed and that the deposit is
+  returned, minus fees.
+
+**The owner half, reported in the same message ("the owner did not show what's
+next"):** the Actions card had no role check at all. The owner was shown the
+renter's pay buttons, and the renter would have been shown "Place Item at Kiosk".
+- Now gated per status by `_viewerIsOwner`, which reads `AuthProvider.user`
+  with the socket as fallback. It is **not** `_iAmOwner`: that compares against
+  the socket id, which is null before connect, and would then class the renter
+  as the owner and hide Pay.
+- When the viewer is unknown, everything is shown, as before.
+- The waiting party gets a plain "whose turn it is" note (`_NextStepNote`) for
+  PENDING, AWAITING_DEPOSIT and DEPOSITED.
+
+**Verified:** 7 new model tests; the full Flutter suite is 48 passed;
+`flutter analyze` is clean. **Mutation check:** restoring the hardcoded
+`RENTAL_PAYMENT` turned 6 of 7 red (the seventh, "nothing paid → fee first", is
+correct under both). Restored byte-identical. **Not seen on a phone yet.**
+
+### D-79b — a ₱0-deposit listing would dead-end the same way, server-side. FOUND 2026-09-14. LATENT (0 of 15 live items). NOT FIXED.
+`itemRoutes.ts:43` accepts `securityDeposit` `min: 0`. `createPayment` refuses
+to create a non-positive payment. `adminDecidePayment` still requires a COMPLETED
+`SECURITY_DEPOSIT` before AWAITING_DEPOSIT. So a ₱0-deposit rental can never
+advance. Fix server-side: treat a non-positive deposit as satisfied.
+
+### D-80 — under manual payments, a renter's security deposit is never refunded, and nobody is told. FOUND 2026-09-14 BY CODE READ. NOT FIXED.
+`rentalSettlementService.ts` refunds only when
+`env.PAYMONGO_SECRET_KEY && depositTxn.paymongoPaymentId`. A manual (GCash)
+deposit has no `paymongoPaymentId`, so the refund branch is skipped **silently**:
+no DEPOSIT_REFUND row, no notification, no admin task. Every deposit paid under
+the live manual mode is held forever unless someone remembers. **Must be fixed
+before a real rental completes.** At minimum, create a PENDING DEPOSIT_REFUND
+for an admin to pay out by hand, and notify both parties.
+
+### D-79 — the original finding
 
 The user approved the renter's payment in the console, and the app stayed on
 "pending payment". The owner was shown nothing. Read from the live DB, rental
