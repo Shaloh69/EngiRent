@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.2 QR FRESHNESS DONE + SEEN ON SCREEN 2026-09-13 · **D-63 CLOSED** — all four bay-state branches + all four release confirmations verified on screen, it was never hardware-blocked, the PROBE was broken · KIOSK PI OFFLINE (last seen 9h, tailscale) · server live, PID 12860, /api/v1/items 200 · E4.6 deployed 2026-09-12, NO HARDWARE EXERCISED · D-73 FOUND+FIXED (dead QR shown up to 30s), open until one live rotation · D-65 DEPLOYED not closed · D-66 open · **G1 debt 2** (D-65 write path, ALL of E4.6 — both need hardware) · gates G1-G11 · defects 22/73 (tally is hand-maintained and NOT derivable from the register — see 2026-09-13) · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · E4.2 QR FRESHNESS DONE + SEEN ON SCREEN 2026-09-13 · **D-63 CLOSED** (probe was broken, not the component) · **BROWNOUT 2026-09-13**: server rebooted 13:23, EngiRent stack restarted 15:01, all up and verified (Node PID **11700**, API 200 local + public) — **tunnel URLs NOT re-pointed (classifier refused the .env edit), so CORS rejects the live admin/web origins**; see memory.md 2026-09-13 · KIOSK PI STILL OFF THE TAILNET (last seen 1d) · E4.6 deployed 2026-09-12, NO HARDWARE EXERCISED · D-73 FOUND+FIXED (dead QR up to 30s), open until one live rotation · D-65 DEPLOYED not closed · D-66 open · **G1 debt 2** (D-65 write path, ALL of E4.6 — both need hardware) · gates G1-G11 · defects 22/73 (hand-maintained, not derivable) · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE

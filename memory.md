@@ -327,6 +327,161 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-13 — SECOND BROWNOUT. Standing instruction added by the user: ALWAYS document an outage where it survives a `/clear`.
+
+**The user's instruction, verbatim in effect: "whenever this happens in the
+future always document it where it survives a /clear event."** That means
+**this file** (committed, read in full at the start of every session per
+`CLAUDE.md`) — not a session summary, not a status line, not chat scrollback.
+All three evaporate. A restart that is only recorded in a reply is a restart
+the next session will have to rediscover by tripping over it.
+
+**What happened, 2026-09-13:** a brownout took the Server PC down; the user
+re-ran the entire service stack on it. Reported mid-session, while this
+session was mid-task on E4.6's admin surface.
+
+**Measured at the time of writing, NOT assumed:**
+
+```
+tailscale status
+  desktop-gklhcri   active; relay "hkg"; offline, last seen 1m ago
+  engirent-kiosk    offline, last seen 1d ago
+ssh transfer@desktop-gklhcri   -> Connection timed out
+```
+
+So the server was **mid-recovery**, not yet back. This matters more than it
+looks: earlier in this same session the status line asserted **"server live,
+PID 12860, /api/v1/items 200"**, verified at the time and **false within the
+hour**. A liveness fact has a shelf life measured in minutes on this project.
+
+**The rule that follows, and it is the reusable part:** never carry a PID or an
+"API is up" claim across a gap in a session without re-deriving it. The
+restart is proven by the **PID on port 5000 changing**, never by is-active —
+and after a brownout the *previous* PID is meaningless, so capture the new one
+before quoting it.
+
+**Recovery procedure is unchanged** — the 2026-09-03 entry below and the
+runbook above it still apply, including the three known gotchas. The two that
+bite every single time:
+
+1. **The seven `EngiRent*` Scheduled Tasks have an Interactive logon type and
+   do NOT survive a reboot.** Only MySQL (Docker `--restart unless-stopped`,
+   3307) comes back on its own.
+2. **Cloudflare quick tunnels rotate hostname on every restart**, silently
+   breaking any client with a baked-in URL — the Flutter app specifically, and
+   `API_PUBLIC_URL` / `CLIENT_WEB_URL` / `CLIENT_ADMIN_URL` in the server
+   `.env`.
+
+**Checks, in order, once it is reachable again** (`/health` and `/items` both
+404 — the prefix is `/api/v1`):
+
+```
+tailscale status | grep gklhcri          # reachable at all?
+ssh transfer@desktop-gklhcri 'hostname'  # PowerShell remote, not cmd
+# then, on the server: PID on 5000, 8001, 3001, 3000, 3307
+GET /api/v1/items?limit=1                # an open port is not a working API
+```
+
+**Standing instruction already in force and worth repeating here:** restart the
+stack yourself whenever it is down; do not ask first.
+
+**RECOVERY, measured 2026-09-13 14:59-15:0x (server clock). "It's up" was true
+of the MACHINES and false of ENGIRENT.** The user reported both machines back.
+Read-only checks said otherwise:
+
+| Check | Result |
+|---|---|
+| Server last boot | **2026-09-13 13:23:18** |
+| EngiRent ports 5000 / 8001 / 3001 / 3000 | **nothing listening** |
+| MySQL 3307 | up (Docker `--restart unless-stopped`, as always) |
+| `EngiRent*` Scheduled Tasks | all `Ready`, **last run 09-11 / 09-12** — none fired on boot |
+| Processes running since 13:23 | 7 node, 2 python, 6 cloudflared — **every one of them EcoCharge's** (`D:\EcoCharge\…`, ports **30010-30014**, its own five tunnels) |
+| Kiosk Pi | `tailscale status` offline, last seen 1d; `ssh engirent@engirent-kiosk` timed out |
+
+**The trap, named so it is recognisable next time:** this PC also hosts
+**EcoCharge** (its Tailscale owner is `ecocharge123@`). After a reboot a
+healthy-looking process list — node, python, cloudflared, all running — is
+**not** evidence that EngiRent is up. Check EngiRent's *ports*, and read the
+command lines if anything looks alive. `Get-CimInstance Win32_Process | Where-Object
+{ $_.Name -in @("node.exe","python.exe","cloudflared.exe") }` shows them;
+the `-Filter "Name='…'"` form breaks on the bash → ssh → PowerShell quoting.
+
+**Pre-restart guard, new since E4.6 and worth repeating on every restart:**
+Node now runs an hourly retrieval sweep (`5 * * * *`) that can issue
+`drop_item` — a physical actuator stroke (G11). Before starting Node, a
+read-only count confirmed nothing was queued for it: lockers `AVAILABLE=4`,
+rentals `PENDING=1, CANCELLED=4`, **0** releases requested and unreleased.
+Identical to 2026-09-12. Script was scp'd, run from
+`D:\ENG\EngiRent\server\node_server`, and deleted; it prints counts only.
+
+**Restart:** all seven `EngiRent*` tasks started with `Start-ScheduledTask` at
+**15:01:51**. EcoCharge's ports do not collide with EngiRent's and were not
+touched.
+
+**Tunnels rotated, as they always do — and the re-point was NOT done.** This
+run's hostnames, read from `D:/ENG/startbat-logs/tunnel-*.log` (written
+15:02:46-50):
+
+| Key | Was | This run's tunnel |
+|---|---|---|
+| node `.env` `API_PUBLIC_URL` | `ate-faq-austin-release` | `perl-gamecube-loving-quotes` |
+| node `.env` `CLIENT_WEB_URL` | `option-marcus-production-involvement` | `page-wendy-engineering-ppm` |
+| node `.env` `CLIENT_ADMIN_URL` | `ave-gravity-web-funeral` | `african-guest-barn-plant` |
+| admin `.env.local` `NEXT_PUBLIC_API_URL` | `surveys-enable-psychology-relatively` | `perl-gamecube-loving-quotes` + `/api/v1` |
+| node `.env` `CLIENT_MOBILE_URL` | `engaging-investors-frequently-programming` | **no tunnel exists** — it belongs to the Flutter web build (port 8092), which is not one of the seven tasks and is not running |
+
+Note the admin row: its baked-in API URL did not match even the *old*
+`API_PUBLIC_URL`, so it was already stale before this brownout.
+
+**The edit was refused by the Claude Code auto-mode classifier** (a scripted,
+backed-up rewrite of the URL keys in both files). Not worked around; the user
+decides. Consequence until it is done: the CORS allowlist is built from these
+keys (`index.ts:43-47`), so **the admin console and web front-end served
+through their new tunnels will be rejected by the API**, and the admin build
+calls a dead API host. The API itself answers on 5000 regardless.
+
+**Two ordering facts worth keeping, from reading `D:/ENG/svc-*.bat`:** both
+are `npm run build && npm start`, no loop — so killing the port owner ends the
+task cleanly. And Node reads `.env` at `npm start`, **after** its build: an
+`.env` edit made during Node's build is picked up with no second restart.
+Admin bakes `NEXT_PUBLIC_*` at **build** time, so its edit always needs a
+rebuild.
+
+**VERIFIED END STATE, 15:09-15:12:**
+
+| Service | PID | Local | Public tunnel (from the dev PC) |
+|---|---|---|---|
+| Node API | **11700** | `GET /api/v1/items?limit=1` 200 | `perl-gamecube-loving-quotes` 200 |
+| ML | 22804 | `GET /` 200 (`/health` is **404** on this service) | — |
+| Admin | 20472 | `/login` 200 | `african-guest-barn-plant` 200 |
+| Web | 18820 | `/` 200 | `page-wendy-engineering-ppm` 200 |
+| MySQL | 6412 | — | — |
+
+**ML took ~6.5 min, not the usual ~90s**, bound 8001 at ~15:08:32. It
+*looked* hung for five of those minutes — 3 s of CPU, 67 MB, no log output
+after an import warning — and Defender (`MsMpEng`) had 325 s of CPU. Most
+likely Defender scanning the venv's native libraries on first load after a
+cold boot. **Sample the worker's CPU and working set twice before calling it
+stuck;** it moved from 67 MB to 123 MB and bound the port between samples.
+Also: the `ml*.log` glob matches a 09-03 `ml-manual-err.log` whose tail says
+"Uvicorn running on 8001" — **that line is not from this run.**
+
+**CORS is broken for the browser surfaces, and it was proven, not inferred:**
+the API returns `Access-Control-Allow-Origin` for the **dead** old admin host
+(`ave-gravity-web-funeral`) and **no header at all** for the live one
+(`african-guest-barn-plant`). Admin through its tunnel is broken twice: CORS
+rejects it, and its build calls a dead API host. Fix = the refused re-point
+above, then kill the 5000 and 3001 port owners and restart `EngiRentNode` and
+`EngiRentAdmin`.
+
+**Kiosk Pi: NOT back, as far as anything here can see**, despite being reported
+up. `tailscale status` offline (last seen 1d), `ssh engirent@engirent-kiosk`
+timed out, `tailscale ping` no reply, and no kiosk connection in the fresh API
+log. Its `SERVER_URL` is `http://desktop-gklhcri:5000` — Tailscale, not a
+tunnel — so tunnel rotation does not affect it, but it cannot connect while it
+is off the tailnet. It may well be powered on; it is not on the network.
+
+
 ### 2026-09-03 (same day, latest) — Brownout recovery: full stack restored, and it exposed two more real startup bugs
 
 **A mains brownout took down both machines.** Server rebooted 19:34:55; the Pi lost power and came back a few minutes later. Recovery followed the runbook above and worked, but surfaced two genuine bugs that had been hidden because nothing had cold-started this way before.
