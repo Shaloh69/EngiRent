@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **APP 1.9.0 (Prerelease19) PUBLISHED 2026-09-14** — the published 1.8.0 had a dead API baked in; verified on the artifact and live (APK bytes, /downloading requests build 19, app-config latestVersion 1.9.0) · **D-78 FOUND (code read): a RETRY verdict never re-captures — must be fixed before the daytime physical run** · physical run RESCHEDULED TO DAYTIME by the user; G11 guards added to the harness · D-73 CLOSED · S-11 MITIGATED (container rebind owed) · S-10 fixed in code, S-9 + S-10 not on the Pi · E4.6 deployed, NO HARDWARE EXERCISED · D-65 deployed not closed · D-66 open · RULING PENDING BUILD: automatic setup mode · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **PHYSICAL RUN IN PROGRESS with real accounts via the app** (payments posted 01:51) · app deposit would pick BAY 4 · **APP OUTAGE 01:46 (429, one shared public-IP bucket of 100/15min) MITIGATED 01:50: limit 1000, 0×429 after — proper fix owed (exclude /media, strict login limiter)** · kiosk Wi-Fi outage 01:05 resolved by reboot · D-78 OPEN (RETRY never re-captures) · APP 1.9.0 PUBLISHED · D-73 CLOSED · S-11 MITIGATED · S-9 + S-10 not on the Pi · E4.6 NO HARDWARE EXERCISED · D-65 not closed · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE

@@ -327,6 +327,38 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-14 ~01:46 — APP OUTAGE: "Too Many Requests" with three users. MITIGATED 01:50 (limit raised by the user).
+
+**Cause, measured:** the global limiter (`middleware/rateLimiter.ts`) keys on
+`CF-Connecting-IP`, the public IP address. It allows `RATE_LIMIT_MAX_REQUESTS=100`
+per 15 min and counts **every** request after it in `index.ts`, including
+`/media/**` image loads. Three phones on one Wi-Fi share one public IP.
+- The live store held exactly one key (`180.190.x.x`) at **100/100**.
+- The log showed `Dart/3.13` clients getting 429 on `/items`, `/rentals` and
+  `/media/.../listing-1.jpg`, the same call retried about every second.
+- The 1.9.0 app makes this likelier, because its fixed real-time layer now
+  refetches on reconnect.
+
+**Fix:** my attempt was refused by the auto-mode classifier as a production
+change, so **the user ran it themselves**: `.env` backed up to
+`.env.bak-ratelimit`, `RATE_LIMIT_MAX_REQUESTS` 100 → **1000**, Node restarted.
+
+**Verified after:**
+- the `.env` line reads 1000, with no BOM (first bytes `NOD`)
+- task last run 01:50:06; PID 20964 → **20956**
+- public `/items` 200
+- app requests since the restart: 17×200, 2×201, 13×304, **0×429**
+
+**Trade-off, and still owed:** the same limit throttles login guessing, now
+1000/15min per IP. The proper fix is code: exclude `/media` from the global
+limiter, give `/auth/login` its own strict limiter, and stop the app retrying a
+429 every second. Then the global limit can stay high safely.
+
+**Restart trap avoided by luck, not design:** the user's one-liner waits 5s
+between `Stop-ScheduledTask` and `Start-ScheduledTask`. If the task had still
+been Running, the start would have been silently ignored. `scripts/ops/restart-service.ps1`
+waits properly.
+
 ### 2026-09-14 ~01:05 — KIOSK OUTAGE: the Pi lost Wi-Fi, and no setup screen appeared. RESOLVED ~01:35 by a reboot.
 
 **Reported by the user, ~01:35.** Measured, not assumed:
