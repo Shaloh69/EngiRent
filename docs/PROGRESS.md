@@ -992,6 +992,52 @@ guess, because a tally that cannot be re-derived is exactly the P-1 failure
 trust; this fraction is not.** Worth either deriving it from the register or
 dropping it.
 
+### D-76 — the Wi-Fi setup portal could NEVER have run on the deployed kiosk. FOUND 2026-09-13. WORKED AROUND (root unit); the automatic path is NOT built.
+
+Found when the user asked why the setup Wi-Fi never appeared on their phone.
+The portal only ran inside `main.py`'s startup, as the controller's
+`User=engirent`. Measured on the live Pi as that user:
+
+| What the portal needs | Result |
+|---|---|
+| bind `:80` for the page | `[Errno 13] Permission denied` |
+| NetworkManager `wifi.share.protected` (the hotspot) | `no` |
+| `settings.modify.system` (save the new network) | `auth` — a service has no agent to answer |
+
+First-boot provisioning would have logged "Could not start AP hotspot" and sat
+there. Unnoticed only because the kiosk always had Wi-Fi at boot.
+
+**Workaround used 2026-09-13, at the user's choice ("put it in setup mode
+now"):** `provisioning/setup_mode.py` runs the same hotspot and portal as a
+transient **root** unit (`systemd-run --unit=engirent-wifi-setup`), refuses an
+AP password under 8 characters, and **gives up after 20 minutes** by removing
+the hotspot so NetworkManager reconnects to saved Wi-Fi. Started via
+`scripts/ops/kiosk-start-wifi-setup.sh`, whose gate passed (idle, no active
+locker, all 8 doors locked). systemd confirmed `Running as unit:
+engirent-wifi-setup.service`; the SSH link then dropped and the Pi left the LAN
+(server: ping false, neighbour Stale) — consistent with the hotspot taking the
+radio. **Not confirmed on screen or phone; no route to the Pi to check.**
+
+### RULING 2026-09-13 (user): automatic setup mode after repeated failed checks
+
+*"If a single Wi-Fi does not have any internet in many attempts of checking, it
+will automatically disconnect and start that."* This overrides D-74's
+auto-AP-off default. **Not yet built.** What it must keep, so the ruling is
+implemented rather than a hazard:
+
+- **Many attempts** = the existing grace (default 15 checks at 60s), not one.
+- **Never mid-handover or with a door open** — `safe_to_disrupt` wired to
+  `/api/state` (idle status, no active locker, all 8 doors locked), the same
+  gate the ops script uses. Currently `None`, which the policy treats as unsafe.
+- **Gives up**: a hotspot nobody uses must come down and the Pi must rejoin its
+  saved networks, or a router that recovers leaves the kiosk hidden forever.
+  `setup_mode.py` already does this.
+- **Needs a privileged path (D-76):** the watchdog runs as `engirent` and
+  cannot raise the hotspot. The narrowest option is a sudoers line allowing
+  exactly `systemctl start engirent-wifi-setup.service` for `engirent`, with a
+  persistent unit wrapping `setup_mode`. **That is a change to the Pi's system
+  config — needs the user's OK when built.**
+
 ### D-75 — the Wi-Fi association check NEVER matched, so the only working branch was the one that lies. FOUND AND FIXED 2026-09-13.
 
 Found by running the new probe on the real Pi (G3: on the artifact, not the
