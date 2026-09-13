@@ -2498,7 +2498,24 @@ reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
 
-### S-8 — FOUND 2026-09-13, NOT YET FIXED (fix ready, awaiting the user's go-ahead on a live kiosk). The kiosk's physical console 1 is a logged-in shell with no password, as a user who can drive the door relays.
+### S-8 — FOUND AND FIXED 2026-09-13. The kiosk's physical console 1 was a logged-in shell with no password, as a user who can drive the door relays.
+
+**FIXED, verified on the Pi (the user's "continue" after being asked).** The
+drop-in was renamed in place to
+`getty@tty1.service.d/autologin.conf.disabled-S8-20260913` (systemd reads only
+`*.conf`, so it is inert and one `mv` restores it), then `daemon-reload` and
+`restart getty@tty1`. The sudo password went over SSH stdin into `sudo -S`,
+never argv, never printed.
+
+| Check after the fix | Result |
+|---|---|
+| Effective `ExecStart` | `/sbin/agetty -o -- <user> --noreset --noclear - ${TERM}` — **no `--autologin`** |
+| `getty@tty1` | active, PID 5688 on tty1, waiting for a username |
+| The tty1 login session (was session 3) | **gone** |
+| Kiosk UI | labwc **same PID 1118**, 9 Chromium processes, `engirent-kiosk` active, lightdm active |
+
+**Not yet seen on the physical screen** — console 1 should now show a bare
+`login:` prompt. The kiosk app is on console 7 (Ctrl+Alt+F7).
 
 **Found because the user photographed the kiosk screen after the brownout** and
 it showed `engirent-kiosk login: engirent (automatic login)` followed by an
