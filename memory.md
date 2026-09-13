@@ -327,6 +327,33 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-14 ~01:05 — KIOSK OUTAGE: the Pi lost Wi-Fi, and no setup screen appeared. OPEN.
+
+**Reported by the user, ~01:35.** Measured, not assumed:
+
+| Check | Result |
+|---|---|
+| Last healthy contact | ~01:00, a read-only TCP probe run from the Pi. Nothing run this session touches the Pi's network |
+| `tailscale status` | `engirent-kiosk` offline, last seen ~01:05; `tailscale ping` gets no reply |
+| Server → Pi LAN `192.168.254.124:22` | closed; neighbour entry `2C-CF-67-64-75-F2` **Stale** |
+| The network itself | **up**: the server is still on it (`192.168.254.101`, gateway `.254` answers ping). **The Pi dropped individually**, or its coverage extender (`GFiber_2.4_Coverage_e3280`) did |
+
+**"No provisioning shown" is what the current code does, not a new fault.**
+- The automatic setup-mode ruling (2026-09-13) is **not built**.
+- `main.py`'s first-boot provisioning runs only at boot, as a user that cannot
+  bind :80 or raise a hotspot (D-76).
+- The only working path to setup mode is `scripts/ops/kiosk-start-wifi-setup.sh`,
+  **which needs SSH, which needs the Wi-Fi that is gone.**
+
+This is the exact catch-22 the ruling exists to close. It is now observed in
+the field, not hypothetical.
+
+**Recovery order given to the user, least invasive first:** check the extender
+SSID on a phone at the kiosk; then a keyboard on console 1 (it asks for a
+password since S-8) with `sudo nmtui` or `sudo reboot`; then setup mode from the
+console; power-cycling only as a last resort, with someone watching the doors.
+There is no record of how the active-LOW relays behave during boot.
+
 ### 2026-09-14 — v1.9.0 (Prerelease19) shipped, because the published app could not log in
 
 **Found, not assumed:** the only published APK, Prerelease18 (1.8.0,
