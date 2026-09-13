@@ -499,6 +499,17 @@ ACAO for DEAD admin ave-gravity-web-funeral    -> none
 **Next time the tunnels rotate, run that script** — it is the whole runbook
 step, with the safety check built in.
 
+**…but admin did NOT come back, and the script was the cause — a THIRD restart
+gotcha, now fixed in it.** After `Stop-Process` on the port owner, the scheduled
+task instance is still unwinding (cmd → npm). `Start-ScheduledTask` against a
+task still in state `Running` is **silently ignored**. Node won that one-second
+race; admin lost it — nothing on 3001 for 10 minutes, `LastTaskResult
+4294967295`, and no log written for that run. Started by hand at 20:16:52
+(`Ready` → `Running`, which confirms the diagnosis). `restart-node-admin.ps1`
+now stops the task, waits until it is really not `Running`, starts it, and
+checks the start took. **A poll that times out waiting for a port is a finding,
+not a delay** — this one would have been read as "the build is slow".
+
 **KIOSK, diagnosed ~15:15 from a photo the user sent of its screen.** The
 screen showed a bare text console: `Debian GNU/Linux 13 engirent-kiosk tty4 …
 My IP address is 192.168.1.65 … login:`. Everything below is read-only.
