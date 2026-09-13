@@ -7,8 +7,10 @@ import {
   AspectRatio,
   Badge,
   Box,
+  Alert,
   Button,
   Card,
+  Code,
   Center,
   Divider,
   Group,
@@ -26,6 +28,7 @@ import {
 } from "@mantine/core";
 import {
   Activity,
+  AlertCircle,
   Camera,
   ChevronRight,
   Clock,
@@ -127,6 +130,7 @@ function NumInput({
   unit,
   min = 1,
   max = 120,
+  disabled = false,
 }: {
   label: string;
   value: number;
@@ -134,6 +138,9 @@ function NumInput({
   unit: string;
   min?: number;
   max?: number;
+  /** Set while the form is showing placeholders rather than the kiosk's own
+   *  calibrated numbers — editing them invites saving them. */
+  disabled?: boolean;
 }) {
   return (
     <Stack gap={4}>
@@ -143,6 +150,7 @@ function NumInput({
       <Group gap="xs">
         <NumberInput
           size="xs"
+          disabled={disabled}
           min={min}
           max={max}
           value={value}
@@ -163,6 +171,21 @@ function NumInput({
 export default function KioskPage() {
   const [kiosk, setKiosk] = useState<KioskState | null>(null);
   const [timing, setTiming] = useState<Record<string, LockerTiming>>({});
+  /**
+   * Where the numbers in the timing form came from. This page used to fall
+   * back to DEMO_STATE.timing whenever the config fetch returned nothing —
+   * and there is no KioskConfig row on the live deployment, so every bay
+   * rendered the demo's 15/15/5/5 as if it were real.
+   *
+   * That was not merely a wrong display. Saving pushes `kiosk:config` to the
+   * Pi, which writes it into the hand-calibrated `kiosk_config.json`
+   * (socket_client.py's on_config → save_timing_config). One click on
+   * "Save Locker 02 Timing" would have replaced bay 2's real 5s doors and
+   * 21s actuator with the demo's 15s and 5s — and a 5s extend does not finish
+   * the stroke. CLAUDE.md's "never change per-locker timings" rule, defeated
+   * through the UI.
+   */
+  const [timingSource, setTimingSource] = useState<"kiosk" | "demo" | "unknown">("unknown");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [cmdLoading, setCmdLoading] = useState<string | null>(null);
@@ -196,6 +219,7 @@ export default function KioskPage() {
       if (isDemoMode) {
         setKiosk(DEMO_STATE);
         setTiming({ ...DEMO_STATE.timing });
+        setTimingSource("demo");
         return;
       }
       const [kioskRes, configRes, bayRes] = await Promise.allSettled([
@@ -224,15 +248,17 @@ export default function KioskPage() {
         configRes.status === "fulfilled"
           ? (configRes.value.data.data?.config ?? {})
           : {};
-      setKiosk({
-        ...DEMO_STATE,
-        id: kioskId,
-        timing: config.lockers ?? DEMO_STATE.timing,
-      });
-      setTiming(config.lockers ?? { ...DEMO_STATE.timing });
+      // No demo fallback outside demo mode: an unknown timing is shown as
+      // unknown and cannot be saved, because saving it would overwrite the
+      // real one on the Pi.
+      const lockers = config.lockers as Record<string, LockerTiming> | undefined;
+      setKiosk({ ...DEMO_STATE, id: kioskId, timing: lockers ?? {} });
+      setTiming(lockers ?? {});
+      setTimingSource(lockers ? "kiosk" : "unknown");
     } catch {
-      setKiosk(DEMO_STATE);
-      setTiming({ ...DEMO_STATE.timing });
+      setKiosk({ ...DEMO_STATE, timing: {} });
+      setTiming({});
+      setTimingSource("unknown");
     } finally {
       setLoading(false);
     }
@@ -365,8 +391,19 @@ export default function KioskPage() {
     setSaving((p) => ({ ...p, [lockerId]: true }));
     try {
       if (!isDemoMode) {
+        if (timingSource !== "kiosk") {
+          showToast(
+            "Refusing to save: these timings were never loaded from the kiosk, and saving would overwrite its calibrated values",
+            false,
+          );
+          return;
+        }
+        // ONLY the bay being saved. This used to spread `...timing`, so saving
+        // one locker pushed every other locker's currently-displayed numbers
+        // too — four bays overwritten by one click. The server deep-merges
+        // (D-72), so sending one bay leaves the rest untouched.
         await api.put(`/admin/kiosks/${kiosk?.id ?? FALLBACK_KIOSK_ID}/config`, {
-          config: { lockers: { ...timing, [lockerId]: timing[lockerId] } },
+          config: { lockers: { [lockerId]: timing[lockerId] } },
         });
       }
       showToast(`Locker ${lockerId.padStart(2, "0")} timing saved`);
@@ -494,6 +531,9 @@ Releasing clears the occupied state and detaches any rental — only do this if 
     // both. Absent renders as "unknown", never as a guess (D-53's rule).
     const bay = bays[sid];
     const t = timing[sid] ?? { ...DEFAULT_TIMING };
+    // True when the form is showing a placeholder rather than the kiosk's own
+    // numbers. Everything below reads this rather than deciding again.
+    const timingUnknown = timingSource !== "kiosk" && !isDemoMode;
     const snap = snapshots[sid];
     const cmdKey = (cmd: string, extra = {}) =>
       `${cmd}-${JSON.stringify({ locker_id: id, ...extra })}`;
@@ -703,16 +743,36 @@ Releasing clears the occupied state and detaches any rental — only do this if 
           </Group>
           <Divider />
           <Stack gap="md" pt="md">
+            {timingUnknown && (
+              <Alert
+                icon={<AlertCircle size={16} />}
+                color={roleColor.critical}
+                variant="light"
+              >
+                <Text size="sm" fw={600}>
+                  These are not this locker&apos;s real timings
+                </Text>
+                <Text size="xs" mt={2}>
+                  The kiosk has not reported its calibrated values to the server, so
+                  the boxes below show placeholders. Saving them would overwrite the
+                  Pi&apos;s hand-calibrated <Code>kiosk_config.json</Code> — bay 2, for
+                  example, really runs 5s doors and a 21s actuator stroke. Saving is
+                  disabled until the kiosk reports its own numbers.
+                </Text>
+              </Alert>
+            )}
             <SimpleGrid cols={2} spacing="md">
               <NumInput
                 label="Main Door Open"
                 unit="s"
+                disabled={timingUnknown}
                 value={t.main_door_open_seconds}
                 onChange={(v) => updateTiming(sid, "main_door_open_seconds", v)}
               />
               <NumInput
                 label="Bottom Door Open"
                 unit="s"
+                disabled={timingUnknown}
                 value={t.bottom_door_open_seconds}
                 onChange={(v) =>
                   updateTiming(sid, "bottom_door_open_seconds", v)
@@ -721,6 +781,7 @@ Releasing clears the occupied state and detaches any rental — only do this if 
               <NumInput
                 label="Actuator Extend"
                 unit="s"
+                disabled={timingUnknown}
                 value={t.actuator_extend_seconds}
                 onChange={(v) =>
                   updateTiming(sid, "actuator_extend_seconds", v)
@@ -729,6 +790,7 @@ Releasing clears the occupied state and detaches any rental — only do this if 
               <NumInput
                 label="Actuator Retract"
                 unit="s"
+                disabled={timingUnknown}
                 value={t.actuator_retract_seconds}
                 onChange={(v) =>
                   updateTiming(sid, "actuator_retract_seconds", v)
@@ -740,6 +802,7 @@ Releasing clears the occupied state and detaches any rental — only do this if 
               color="primary"
               leftSection={<Save size={14} />}
               loading={saving[sid]}
+              disabled={timingUnknown}
               onClick={() => saveTiming(sid)}
             >
               Save Locker {String(id).padStart(2, "0")} Timing

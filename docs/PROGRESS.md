@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **D-78 CONFIRMED ON HARDWARE AND FIXED: the door and the photo are now taps** (Open Kiosk Now / Item is placed, server-side bay grant) — BUILT, NOT DEPLOYED, NOT EXERCISED · D-79 fix CONFIRMED IN REAL USE (2 rentals reached AWAITING_DEPOSIT with both payments) · kiosk retry screen no longer jumps to the QR screen · bay 4 still RESERVED from the failed run · UNRESOLVED: white prices on the phone — app bundles NO fonts, prices are the only MonoText (google_fonts fetched at runtime); needs a screenshot · D-82 (countdown is a server guess) · D-80 · D-79b · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **D-83 GUARDED: the admin console could have overwritten the Pi's calibrated timings in one click** (deployed, seen on screen) · APP 1.10.0 PUBLISHED · button-driven bay flow DEPLOYED, NOT EXERCISED · **I CAUSED A 13-MIN ADMIN OUTAGE 04:45-04:58** (deployed a page against an older deployed theme) · deployed admin console is 18 files behind the repo, 6 missing · STILL OWED: real timings from the Pi (also closes D-82), live Pi logs, snapshot + auto-snapshot · white prices on the phone unresolved · D-80 · D-79b · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1503,6 +1503,58 @@ owner is at it); its grant exists so the door can be re-opened if it relocks.
 passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:**
 ignoring expiry → red; removing the open cap → red; restored byte-identical.
 **Not exercised on hardware** — that is the next physical run.
+
+### D-83 — SEVERE. The admin console could overwrite the Pi's hand-calibrated locker timings with demo numbers, in one click. FOUND 2026-09-14 FROM THE USER'S SCREENSHOT. GUARDED (deployed); the real fix is still owed.
+
+The user reported "the Saved Locker Timings don't reflect here". The display was
+the smaller half of it.
+
+**The chain, read end to end:**
+1. `client/admin/src/app/kiosk/page.tsx` fetched `/admin/kiosks/:id/config` and,
+   when it returned nothing, fell back to **`DEMO_STATE.timing` (15/15/5/5)**
+   and rendered it as if it were real.
+2. **There are no `KioskConfig` rows on the live DB** (checked), so every bay
+   showed the demo numbers. The user's screenshot shows Locker 02 at 15/15/5/5;
+   its real values are **5s doors, 21s actuator**.
+3. `saveTiming` sent `{ lockers: { ...timing, [lockerId]: … } }` — **every
+   locker's displayed numbers, not just the one being saved**.
+4. `adminController.updateKioskConfig` merges and then **pushes `kiosk:config`
+   to the Pi**, and the Pi's `on_config` calls **`save_timing_config`**, writing
+   it into `kiosk_config.json`.
+
+**So one click on "Save Locker 02 Timing" would have overwritten all four bays'
+calibrated timings with demo values** — CLAUDE.md's "never change per-locker
+timings" rule defeated through the UI, and a 5s actuator extend does not finish
+a stroke that needs 21s.
+
+**Guarded, deployed and seen on the live console:** no demo fallback outside
+demo mode; unknown timings render as a red *"These are not this locker's real
+timings"* panel naming bay 2's true values; the four inputs are disabled; all
+four Save buttons are disabled; and the save payload now carries **only the bay
+being saved** (the server deep-merges, D-72). Verified in a real browser:
+warning present, bay-2 truth present, 4/4 Save buttons disabled.
+
+**Still owed — what the user actually asked for.** The console should show the
+kiosk's *real* timings. That needs the Pi to report its own `kiosk_config.json`
+(on connect and on demand) so the server can serve it. The same report closes
+**D-82**, because the phone's door countdown could then use the real per-bay
+seconds instead of a hardcoded 15.
+
+**MY OUTAGE, recorded plainly: the admin console was down 04:45-04:58 and it was
+my fault.** I copied the repo's `kiosk/page.tsx` onto the server without checking
+the rest of the console there, and the deployed tree is **far older**: 18 files
+differ and 6 are missing (`design-tokens.g.ts`, `adminSocket.ts`,
+`useAdminSocket.ts`, `ConnectionIndicator.tsx`, `UnknownValue.tsx`,
+`design-reference/page.tsx`). The page used `roleColor.review`, which that
+theme does not have, so `next build` failed and nothing listened on 3001.
+Recovered by applying the same guard to the **server's own** page version, which
+uses only `roleColor.critical`/`success`.
+
+**The lesson, and it is the same one as the diverged server tree:** diffing the
+ONE file being deployed is not enough when the file has dependencies. E3's admin
+work and D-63's client half were never deployed; the deployed console is a
+different product from the repo's, and any further admin deploy has to reckon
+with that whole set, not one page.
 
 ### D-82 — the door countdown on the phone is a server guess, not the kiosk's real timing. FOUND 2026-09-14. NOT FIXED.
 `POST /kiosk/open-bay` returns `doorOpenSeconds: 15`, a constant in
