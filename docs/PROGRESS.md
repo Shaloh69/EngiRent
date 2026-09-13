@@ -1064,6 +1064,37 @@ gate true, letting `SERVER_UNREACHABLE` start the AP, or defaulting auto-AP on
 each turn the suite red. (A collection error is **not** a pass; one was hit and
 re-run properly.)
 
+**UPDATE 2026-09-13 (latest) — D-74 RUNNING ON THE KIOSK AND SEEN ON ITS PHYSICAL SCREEN. G1 debt 3 → 2.**
+
+The user added an exact-match permission for `scripts/ops/kiosk-restart-controller.sh`
+and said "run both". The script's own gate passed (`status='error'
+active_locker=None`). Controller PID **1232 → 7678**. From the new process's
+journal:
+
+```
+SolenoidController ready / ActuatorController ready / Hardware ready
+WiFi connected ✓                                  (D-75: now for the right reason)
+Uplink watchdog started (every 60s, auto-AP off)
+Uplink no_internet — Wi-Fi is connected but has no internet...   (4s later)
+physical actions from this PID (UNLOCK|EXTEND|RETRACT|drop_item|self_test): 0
+/api/state: all 8 doors "locked", active_locker null, status "error", the specific message
+```
+
+**Seen on the kiosk's own display**, captured read-only with `grim` over the
+labwc Wayland socket (`wayland-0`, `XDG_RUNTIME_DIR=/run/user/1000`) at
+1080x1920 portrait: *"Something went wrong — Wi-Fi is connected but has no
+internet. Staff have been alerted."* where it previously said *"Cannot reach
+server"*. **That is a reusable way to see the live kiosk screen without a
+photo.**
+
+**And looking at it exposed a false claim in my own wording.** "Staff have been
+alerted" is untrue — the watchdog only logs locally, and in these states the
+kiosk cannot reach the server to tell anyone. Reworded to *"Please let staff
+know."* across all four failure states, with a test that forbids any
+"alerted / notified / on the way" claim (mutation-checked: restoring the old
+text turns it red; 55 kiosk tests). **The corrected wording is in the repo, not
+yet on the Pi** — it needs one more copy of `uplink.py` and a controller restart.
+
 **UPDATE 2026-09-13 (later) — ON THE PI'S DISK, NOT RUNNING. The restart was refused.**
 
 The user said "yes continue". What happened, in order:

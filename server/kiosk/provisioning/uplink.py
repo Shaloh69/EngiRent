@@ -56,15 +56,20 @@ class Uplink(str, Enum):
     SERVER_UNREACHABLE = "server_unreachable"
 
 
-#: Shown on the kiosk and written to the log. Each says what is wrong and who
-#: can fix it — a student standing here can act on none of them, so they name
-#: the responsible party instead of blaming the network in the abstract.
+#: Shown on the kiosk and written to the log. Each says what is wrong and asks
+#: the one thing a student standing here can do: tell a person.
+#:
+#: **Never claim an alert was sent.** The first version said "Staff have been
+#: alerted" — seen on the live kiosk screen 2026-09-13 and it was false: the
+#: watchdog only writes a local log line, and in exactly these states the kiosk
+#: cannot reach the server to notify anyone. A public screen that promises
+#: help is coming, when none is, is worse than one that asks to be reported.
 MESSAGES: dict[Uplink, str] = {
     Uplink.OK: "Connected",
-    Uplink.NO_WIFI: "This kiosk has lost its Wi-Fi. Staff setup required.",
-    Uplink.NO_INTERNET: "Wi-Fi is connected but has no internet. Staff have been alerted.",
-    Uplink.NO_DNS: "Wi-Fi is connected but cannot look up addresses. Staff have been alerted.",
-    Uplink.SERVER_UNREACHABLE: "Cannot reach the EngiRent server. The network here is fine.",
+    Uplink.NO_WIFI: "This kiosk has lost its Wi-Fi. Please let staff know.",
+    Uplink.NO_INTERNET: "Wi-Fi is connected but has no internet. Please let staff know.",
+    Uplink.NO_DNS: "Wi-Fi is connected but cannot look up addresses. Please let staff know.",
+    Uplink.SERVER_UNREACHABLE: "Cannot reach the EngiRent server. Please let staff know.",
 }
 
 

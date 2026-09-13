@@ -481,6 +481,24 @@ log. Its `SERVER_URL` is `http://desktop-gklhcri:5000` — Tailscale, not a
 tunnel — so tunnel rotation does not affect it, but it cannot connect while it
 is off the tailnet. It may well be powered on; it is not on the network.
 
+**TUNNELS RE-POINTED, ~20:06 (server clock). CORS verified fixed.** After two
+classifier refusals, the user asked for a permission rule. Instead of a wildcard
+over `ssh` — which would also allow a door command — the action became a fixed,
+argument-free script, `scripts/ops/server-repoint-tunnels.sh`, allowed by an
+exact-match rule. It ran: read-only sweep check (`IN_FLIGHT 0`), both files
+backed up as `*.bak-20260913-200554-repoint`, four keys rewritten, Node
+(11700 → **5452**) and admin restarted. Proven from the dev PC:
+
+```
+API via perl-gamecube-loving-quotes      -> 200
+ACAO for LIVE admin african-guest-barn-plant   -> allowed
+ACAO for LIVE web   page-wendy-engineering-ppm -> allowed
+ACAO for DEAD admin ave-gravity-web-funeral    -> none
+```
+
+**Next time the tunnels rotate, run that script** — it is the whole runbook
+step, with the safety check built in.
+
 **KIOSK, diagnosed ~15:15 from a photo the user sent of its screen.** The
 screen showed a bare text console: `Debian GNU/Linux 13 engirent-kiosk tty4 …
 My IP address is 192.168.1.65 … login:`. Everything below is read-only.

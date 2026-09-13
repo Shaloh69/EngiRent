@@ -134,6 +134,16 @@ def test_no_internet_message_does_not_blame_the_student():
     assert "wi-fi" in msg and "staff" in msg
 
 
+@pytest.mark.parametrize("state", list(Uplink))
+def test_no_message_claims_an_alert_was_sent(state):
+    """Nothing sends an alert — the watchdog only logs locally, and in these
+    states the kiosk cannot reach the server anyway. The first version told
+    the public "Staff have been alerted"; seen on the live screen, and false."""
+    msg = describe(state).lower()
+    for claim in ("alerted", "notified", "have been told", "on the way", "is coming"):
+        assert claim not in msg, f"{state.value}: claims '{claim}'"
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [
