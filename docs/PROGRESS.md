@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **D-73 CLOSED 2026-09-14** (live kiosk, 3 off-grid rotations, dead window 0s; the plain watch proved nothing) · **S-11 MITIGATED** (prod MySQL was on 0.0.0.0:3307; firewall block verified from Tailscale + LAN, loopback intact; container rebind still owed) · S-10 FIXED IN CODE (published AP default + PSK on argv), not on the Pi · S-9 not on the Pi · E4.2 on the physical screen · D-74 verified both ways · D-76/D-77 fixed, captive portal never seen on a phone · E4.6 deployed, NO HARDWARE EXERCISED · D-65 deployed not closed · D-66 open · **RULING PENDING BUILD: automatic setup mode** · KIOSK + SERVER healthy 2026-09-13 23:37 · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
+[PHASE E4 · **APP 1.9.0 (Prerelease19) PUBLISHED 2026-09-14** — the published 1.8.0 had a dead API baked in; verified on the artifact and live (APK bytes, /downloading requests build 19, app-config latestVersion 1.9.0) · **D-78 FOUND (code read): a RETRY verdict never re-captures — must be fixed before the daytime physical run** · physical run RESCHEDULED TO DAYTIME by the user; G11 guards added to the harness · D-73 CLOSED · S-11 MITIGATED (container rebind owed) · S-10 fixed in code, S-9 + S-10 not on the Pi · E4.6 deployed, NO HARDWARE EXERCISED · D-65 deployed not closed · D-66 open · RULING PENDING BUILD: automatic setup mode · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1345,6 +1345,111 @@ completing it — with **"This code refreshes in 85s"** counting down from the
 real token, and `LINK ● Live`. To reach the QR screen without touching the
 kiosk, `POST /api/ui {"status":"item_retry"}` navigates to main (UI only, no
 GPIO); idle was restored afterwards.
+
+### App 1.9.0 (Prerelease19) PUBLISHED 2026-09-14, on the user's instruction. The app anyone could download could not log in.
+
+The only published build, 1.8.0+18, has `mpg-clothing-maui-chicago…/api/v1`
+baked into `libapp.so`. That host returns nothing (curl 000); the live API is
+`perl-gamecube-loving-quotes` (200). A fresh install since the 2026-09-13 tunnel
+rotation could not sign in. Sixteen Flutter commits (D-40, E2's payment flow,
+E2.1/2.2/2.4, E3.1, E3.2) had never shipped. **Build 19 contains them, and fixes
+no new defect of its own.**
+
+| Signal named before looking | Result |
+|---|---|
+| Artifact newer than the build start (an old Sep 7 `app-release.apk` is in the dir) | 01:17:32 > 01:08:42 |
+| `aapt2 dump badging` | `com.engirent.app versionCode=19 versionName=1.9.0` |
+| `apksigner verify --print-certs` | `CN=EngiRent, OU=Engineering, O=UCLM` |
+| URL in `libapp.so` | only `perl-gamecube-loving-quotes…/api/v1` |
+| Server copy | 90,861,895 bytes, sha256 `2ff53aac…`, same as local |
+| Public APK URL | 200, `application/vnd.android.package-archive`, `Content-Length: 90861895` |
+| `/download` | `1.9.0` and `86.7` rendered |
+| `/downloading` in a real browser | **requests `Engirent_Prerelease19…apk`**; fallback href the same. The HTML never contains the filename, because the fetch is client JS: the first check came back 0 and was not accepted |
+| `/changelog` | 1.9.0 entry and the 2026-09-13 kiosk-QR entry present; 1.8.0 still listed |
+| `GET /app-config` via the public tunnel | `latestVersion 1.9.0`, 3 highlights; `minVersion` left at 1.0.0 (build 18 cannot reach the server to read it anyway) |
+| Restarts | web PID 18820 → 25388, Node 5452 → 20964; E4.6 pre-restart guard: 0 DEPOSITED, 0 pending releases |
+
+**Not verified: installed on a phone.** That is the user's step. Until they
+sign in on it, the claim is "published and correct on the artifact", not "works
+on a device".
+**Will break again** at the next tunnel restart, like every build before it.
+
+### D-78 — a RETRY verdict is a dead end: the door re-opens and nothing ever captures again. FOUND 2026-09-14 BY CODE READ (both sides). NOT SEEN ON HARDWARE. NOT FIXED.
+
+Found while tracing what the physical run would move. On a `RETRY` decision the
+`kiosk:images` handler emits `verification_done: retry` and `open_door`
+(`index.ts:521-529` deposit, `:722-730` return), **and nothing else**. There is
+no `capture_image` and no timer. Every `capture_image` in the repo is accounted
+for, and none follows a retry:
+
+| Emitter | When |
+|---|---|
+| `kioskController.ts:99` | 20s after a deposit **starts** |
+| `faceVerificationService.ts:202` | `ITEM_PLACEMENT_GRACE_MS` after the phone flow opens a bay |
+| `index.ts:1043` | a return, after the face is verified |
+| `adminController.ts:1206` | an admin's manual capture |
+
+The Pi side confirms it: `_cmd_verification_done` only sets the screen to
+*"Please reposition the item and try again"* (`socket_client.py:459`), and
+`_cmd_open_door` unlocks and relocks, nothing more.
+
+**So a student who is told to reposition the item waits forever.** The bay stays
+`RESERVED` and the rental stays `AWAITING_DEPOSIT` (or `ACTIVE` for a return).
+The ML service's **10-attempt budget is unreachable**, because attempt 2 is never
+captured. The 2026-09-03 run log saw the re-open and stopped watching there.
+
+**Why it has to be fixed before the daytime physical run:** the run places a real
+item. Any score below 60% produces RETRY, and the run then strands bay 2 exactly
+as described.
+
+**Likely fix, not built:** after the retry `open_door`, schedule `capture_image`
+after the same placement grace the first attempt gets. That is cameras only, no
+extra door. It is still a change to hardware command sequencing, so it goes
+through G11 before its first real exercise.
+
+### Physical run — rescheduled to daytime by the user, 2026-09-14. Movement list for bay 2, and what the harness now enforces.
+
+The handoff said one `e2e-full-lifecycle.mjs` run "collapses E4.4/E4.5, A-3's
+first real row, D-65's write path and E4.6 at once". **Read against the code, it
+does not.** The script only deposits. On the expected verdict with a synthetic
+listing photo (RETRY), it writes **no Verification row** (the rows are written
+only on REJECTED/APPROVED/PENDING), so D-65 and A-3 get nothing. No release
+happens, so E4.6 gets nothing. Traced against the **deployed** code: the server's
+deposit handler and `depositItem` are identical to the repo apart from comment
+characters; the server's copy of the script predates D-39.
+
+**Harness changes (no hardware touched; syntax-checked; both guards exercised
+offline and refused with exit 2 before any API or DB call):**
+- `LOCKER_NUMBER` is required. Without it `depositItem` used `findFirst` with no
+  `ORDER BY`, which picked **bay 4 (15s)** on 2026-09-14.
+- `CONFIRM_AT_BANK=bay<N>` is required: set it only with a person at that bay.
+- `LISTING_PHOTO` is optional: a real photo of the item, so a real verdict and a
+  real Verification row are possible.
+- Cleanup now frees a stranded `RESERVED` bay and cancels an `AWAITING_DEPOSIT`
+  rental. It **refuses to touch** a `DEPOSITED` one (an item is in the bay, and
+  cancelling makes it a release candidate). It no longer claims to delete
+  accounts it keeps.
+
+**Movement list, bay 2** (timings read from `kiosk_config.json`, never changed):
+
+| Step | Moves | Duration | Trigger |
+|---|---|---|---|
+| 1 | main (upper) door solenoid unlocks | **5s** | `POST /kiosk/deposit` |
+| 2 | camera captures 3 frames | none | 20s after step 1 |
+| 3a | RETRY: main door unlocks again, **then D-78 strands it** | 5s | verdict <60% |
+| 3b | APPROVED/PENDING: nothing moves; Verification row written | none | verdict ≥60% |
+| 4 | E4.6 release: **actuator extends, then retracts** | **21s + 21s** | deliberate release, or the sweep after the 1h grace inside 07:00-21:00 |
+| 5 | bottom door unlocks for collection | **5s** | the owner scans the kiosk QR and passes face verification; never automatic |
+
+**Hazard, stated for whoever runs it:** after 3b, E4.6's hourly sweep
+(`5 * * * *`, defaults: auto-release on, 1h grace, 07:00-21:00, since there are
+**no `KioskConfig` rows** on the live DB) will run step 4 **by itself**. Stay
+until step 5, or resolve the rental before leaving.
+
+**Before the run:** fix D-78; get the user's face photo path and a real item
+with its photo; copy the updated script to the server (its copy is stale). Then
+**state this list again and get a fresh yes** (G11: earlier approval does not
+carry).
 
 ### D-73 — CLOSED 2026-09-14. Verified against the live kiosk, and the first attempt at verifying it proved nothing.
 

@@ -34,6 +34,25 @@ const API = process.env.API_BASE_URL ?? "http://localhost:5000/api/v1";
 const BYPASS = process.env.RATE_LIMIT_BYPASS_SECRET
   ? { "X-RateLimit-Bypass": process.env.RATE_LIMIT_BYPASS_SECRET }
   : {};
+/**
+ * G11 — this script opens a real door on an unattended kiosk in a public
+ * corridor. Two guards, both checked before anything is created:
+ *
+ *   LOCKER_NUMBER     which bay. Required. Without it `depositItem` falls back
+ *                     to `locker.findFirst({ status: AVAILABLE })` with NO
+ *                     ORDER BY, so the bay was whatever MySQL returned first —
+ *                     bay 4 on 2026-09-14 — and the door timing with it
+ *                     (bay 2 is 5s, the others 15s).
+ *   CONFIRM_AT_BANK   must equal `bay<LOCKER_NUMBER>`. Set it only when a person
+ *                     is standing at that bay, having been told what will move.
+ *
+ * LISTING_PHOTO is optional: a real photo of the item that will be placed in
+ * the bay. Without it the listing gets a synthetic 4x4 PNG, the verdict is
+ * RETRY, and a RETRY writes NO Verification row — so D-65 and A-3 get nothing.
+ */
+const LOCKER_NUMBER = process.env.LOCKER_NUMBER ?? "";
+const CONFIRM_AT_BANK = process.env.CONFIRM_AT_BANK ?? "";
+const LISTING_PHOTO = process.env.LISTING_PHOTO ?? "";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@engirent.edu.ph";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
 const OUT_DIR = process.env.E2E_OUT_DIR ?? ".";
@@ -104,7 +123,13 @@ function makePng() {
 
 async function uploadImage(token) {
   const fd = new FormData();
-  fd.append("file", new Blob([makePng()], { type: "image/png" }), "cover.png");
+  if (LISTING_PHOTO) {
+    const bytes = readFileSync(LISTING_PHOTO);
+    const type = /\.png$/i.test(LISTING_PHOTO) ? "image/png" : "image/jpeg";
+    fd.append("file", new Blob([bytes], { type }), type === "image/png" ? "cover.png" : "cover.jpg");
+  } else {
+    fd.append("file", new Blob([makePng()], { type: "image/png" }), "cover.png");
+  }
   const res = await fetch(`${API}/upload/image`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, ...BYPASS },
@@ -192,17 +217,48 @@ let ownerId = null;
 let renterId = null;
 
 async function cleanup() {
-  console.log("\n--- cleanup (accounts + item only — rental/transactions kept as this run's audit trail) ---");
+  console.log("\n--- cleanup ---");
   try {
+    // The bay and the rental first, because they are what can move hardware
+    // later. A deposit left AWAITING_DEPOSIT holds its bay RESERVED forever; a
+    // RETRY re-opens the door but schedules no second capture, so nothing else
+    // will ever free it. A DEPOSITED one is picked up by E4.6's hourly sweep
+    // and DROPPED by the actuator after the 1h grace, inside 07:00-21:00 —
+    // with nobody there unless someone stays.
+    if (rentalId) {
+      const r = await prisma.rental.findUnique({ where: { id: rentalId } });
+      if (r?.status === "AWAITING_DEPOSIT") {
+        await prisma.locker.updateMany({
+          where: { currentRentalId: rentalId, status: "RESERVED" },
+          data: { status: "AVAILABLE", currentRentalId: null },
+        });
+        await prisma.rental.update({ where: { id: rentalId }, data: { status: "CANCELLED" } });
+        console.log(`rental ${rentalId}: AWAITING_DEPOSIT -> CANCELLED, bay RESERVED -> AVAILABLE`);
+      } else if (r) {
+        // Deliberately NOT auto-cancelled: an item is physically in the bay,
+        // and cancelling makes it a CANCELLED_WITH_ITEM release candidate.
+        console.log(`!!! rental ${rentalId} is ${r.status} — an item may be IN the bay. NOT touched.`);
+        console.log("!!! Resolve with a person present: collect via E4.6, or the sweep will drop it after the grace period.");
+      }
+    }
     if (itemId) {
-      await prisma.item.deleteMany({ where: { id: itemId } });
-      console.log("removed item");
+      const refs = await prisma.rental.count({ where: { itemId } });
+      if (refs === 0) {
+        await prisma.item.deleteMany({ where: { id: itemId } });
+        console.log("removed item");
+      } else {
+        // Soft delete (schema: isActive), and unlisted so browse never shows it.
+        // Not isAvailable, which is rental state the system flips on its own.
+        await prisma.item.updateMany({ where: { id: itemId }, data: { isActive: false, isListed: false } });
+        console.log(`item kept (referenced by ${refs} rental row(s)), soft-deleted and unlisted`);
+      }
     }
     for (const email of [owner.email, renter.email]) {
       const u = await prisma.user.findUnique({ where: { email } });
       if (u) {
         await prisma.notification.deleteMany({ where: { userId: u.id } });
-        console.log(`kept ${email}'s rental/transaction history, removing account`);
+        // This used to print "removing account" and remove nothing.
+        console.log(`kept account ${email} (its rental/transaction rows are this run's audit trail)`);
       }
     }
   } catch (e) {
@@ -215,9 +271,26 @@ async function cleanup() {
 async function run() {
   const facePath = process.argv[2];
   if (!facePath) {
-    console.error("Usage: node scripts/e2e-full-lifecycle.mjs <path-to-a-real-face.jpg>");
+    console.error("Usage: LOCKER_NUMBER=<n> CONFIRM_AT_BANK=bay<n> node scripts/e2e-full-lifecycle.mjs <path-to-a-real-face.jpg>");
     process.exit(1);
   }
+  // G11 guards run before ANY account, item or rental is created, so a refusal
+  // leaves nothing behind to clean up.
+  if (!/^[1-4]$/.test(LOCKER_NUMBER)) {
+    console.error("REFUSING: LOCKER_NUMBER must be 1-4. The server's fallback picks an arbitrary bay (G11).");
+    process.exit(2);
+  }
+  if (CONFIRM_AT_BANK !== `bay${LOCKER_NUMBER}`) {
+    console.error(`REFUSING: CONFIRM_AT_BANK must be "bay${LOCKER_NUMBER}" — set it only when a person is at that bay (G11).`);
+    process.exit(2);
+  }
+  const bay = await prisma.locker.findFirst({ where: { lockerNumber: LOCKER_NUMBER } });
+  if (!bay || bay.status !== "AVAILABLE" || !bay.isOperational) {
+    console.error(`REFUSING: bay ${LOCKER_NUMBER} is ${bay ? `${bay.status}, operational=${bay.isOperational}` : "missing"}.`);
+    await prisma.$disconnect();
+    process.exit(2);
+  }
+  console.log(`G11: bay ${LOCKER_NUMBER} confirmed attended; listing photo = ${LISTING_PHOTO ? "REAL" : "synthetic (verdict will be RETRY, no Verification row)"}`);
 
   section("Admin login");
   const adminLogin = await jreq("/auth/login", { method: "POST", body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
@@ -298,7 +371,8 @@ async function run() {
   check("rental auto-advanced to AWAITING_DEPOSIT after both payments", afterPay.json?.data?.rental?.status === "AWAITING_DEPOSIT", `status is ${afterPay.json?.data?.rental?.status}`);
 
   section("Owner: real kiosk deposit — genuine hardware commands to the real Pi (door unlock + camera capture), not a DB shortcut");
-  const deposit = await jreq("/kiosk/deposit", { method: "POST", token: ownerToken, body: { rentalId } });
+  const bayRow = await prisma.locker.findFirst({ where: { lockerNumber: LOCKER_NUMBER } });
+  const deposit = await jreq("/kiosk/deposit", { method: "POST", token: ownerToken, body: { rentalId, lockerId: bayRow.id } });
   check("deposit initiates, locker assigned", deposit.status === 200, JSON.stringify(deposit.json));
   const lockerNumber = deposit.json?.data?.locker?.lockerNumber;
   console.log(`  → real locker ${lockerNumber} door should be unlocking on the physical kiosk right now`);
