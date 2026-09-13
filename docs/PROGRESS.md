@@ -1286,6 +1286,44 @@ period so a flapping router does not tear down a working bay mid-transaction,
 and it must never start while a door is open. **Not a UI-only change** — it
 lives beside the GPIO init order in `main.py`.
 
+### E4.2 DEPLOYED TO THE KIOSK AND SEEN ON ITS PHYSICAL SCREEN, 2026-09-13 23:26.
+
+The Pi came back on `GFiber_2.4_Coverage_e3280` with internet, Tailscale and a
+correct clock, and reconnected to the API (`Connected to server
+http://desktop-gklhcri:5000`). **D-74 is therefore verified in BOTH directions
+on hardware** — `Uplink no_internet` earlier, `Uplink recovered: Connected` now.
+
+The kiosk had been serving a build from **2026-09-11** with **0** occurrences of
+`qr-fresh-arc`: E4.2 had never reached it. Built locally, old `dist` backed up
+as `dist.bak-20260913-e42`, new build copied, Flask confirmed serving it
+(`200`, served CSS contains the ring), Chromium relaunched via its own service
+using D-62's safe pkill pattern — the autostart script was not touched.
+
+**On the real 1080x1920 screen** (`design/after/e4-2/kiosk-live-ring.png`,
+captured with `grim` over the labwc Wayland socket): the freshness ring is
+drawn around the QR card — lit arc across the top and down the right, dim track
+completing it — with **"This code refreshes in 85s"** counting down from the
+real token, and `LINK ● Live`. To reach the QR screen without touching the
+kiosk, `POST /api/ui {"status":"item_retry"}` navigates to main (UI only, no
+GPIO); idle was restored afterwards.
+
+### D-73 — REFINED 2026-09-13 after trying to watch a rotation on hardware. Fix deployed; severity is smaller than first written; still not seen rotating.
+
+An attempt to watch the 90s rotation on the live screen failed for an
+instructive reason: `useKioskState.ts:6` sets **`IDLE_MS = 30_000`** — the main
+screen returns to the attract loop after **30 seconds** of no interaction. So
+on an unattended kiosk a 90s token can never reach its expiry on screen, and
+the next touch mounts `MainScreen` fresh, which fetches a token and mints a new
+one if the old expired.
+
+**So the dead-QR window is real but bounded**: it can only bite someone who
+keeps the screen awake across the expiry. My earlier write-up implied a student
+would routinely meet a dead code; that was overstated, and it is why nobody had
+hit it. The fix (refetch when the countdown reaches zero) is correct, deployed
+and harmless — **but still unverified rotating on hardware.** To verify, the
+screen must be kept awake past 90s (touch it every ~20s) and the code watched
+to change with the caption never parking at 0.
+
 ### D-73 — the kiosk displays a dead QR code for up to 30 seconds. FOUND 2026-09-13. FIXED in the client, unverified on hardware.
 
 `get_qr_token()` mints a replacement **lazily**: `if _active_qr_token is None

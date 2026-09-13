@@ -32,6 +32,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import subprocess
 import sys
 import threading
 
@@ -132,6 +133,80 @@ def install_captive_routes(app, ip: str) -> None:
     app._engirent_captive = True
 
 
+# NOT /tmp: a successful save REBOOTS the Pi, and /tmp plus a volatile journal
+# are both wiped by that — the 2026-09-13 test lost its whole report that way.
+SELFTEST_PATH = os.path.join(
+    os.getenv("SETUP_MODE_REPORT_DIR", "/home/engirent"), "engirent-setup-selftest.json")
+
+
+def _no_redirect_opener():
+    """urllib follows redirects, which would hide the very thing we check: that
+    a phone's probe gets a 302 rather than a 204 or a page."""
+    import urllib.request
+
+    class _Keep(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_a, **_k):
+            return None
+
+    return urllib.request.build_opener(_Keep)
+
+
+def self_check(ip: str, ssid: str, path: str = SELFTEST_PATH) -> dict:
+    """Test the hotspot FROM THE PI and leave a report on disk.
+
+    Raising the hotspot cuts every remote route to this kiosk, so nobody can
+    watch it happen. This runs the checks locally and writes them where they
+    can be read after the Pi returns to its normal Wi-Fi — the only way to
+    verify setup mode rather than assume it (D-77 was exactly an unverified
+    assumption: the log said 192.168.4.1 while the hotspot was on 10.42.0.1).
+    """
+    import json
+    import urllib.error
+
+    from .hotspot import parse_ipv4_address
+
+    report: dict = {"ssid": ssid, "expected_ip": ip, "checks": {}}
+
+    def record(name, ok, detail):
+        report["checks"][name] = {"ok": bool(ok), "detail": str(detail)}
+        log.info("self-check %-18s %s  %s", name, "OK  " if ok else "FAIL", detail)
+
+    try:
+        r = subprocess.run(["nmcli", "-g", "IP4.ADDRESS", "device", "show", "wlan0"],
+                           capture_output=True, text=True, timeout=10)
+        actual = parse_ipv4_address(r.stdout)
+        record("wlan0_address", actual == ip, f"{actual} (want {ip})")
+    except Exception as e:                                     # pragma: no cover
+        record("wlan0_address", False, e)
+
+    opener = _no_redirect_opener()
+    for name, url_path, want in (("portal_page", "/", 200), ("captive_probe", "/generate_204", 302)):
+        try:
+            resp = opener.open(f"http://{ip}{url_path}", timeout=6)
+            code, loc = resp.status, resp.headers.get("Location", "")
+        except urllib.error.HTTPError as e:
+            code, loc = e.code, e.headers.get("Location", "")
+        except Exception as e:                                 # pragma: no cover
+            code, loc = None, str(e)
+        record(name, code == want, f"HTTP {code}{' -> ' + loc if loc else ''} (want {want})")
+
+    try:
+        r = subprocess.run(["nslookup", "connectivitycheck.gstatic.com", ip],
+                           capture_output=True, text=True, timeout=10)
+        record("captive_dns", ip in r.stdout, (r.stdout or r.stderr).strip().replace("\n", " ")[:120])
+    except Exception as e:
+        record("captive_dns", False, f"nslookup unavailable: {e}")
+
+    report["all_ok"] = all(c["ok"] for c in report["checks"].values())
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        log.info("self-check report written to %s (all_ok=%s)", path, report["all_ok"])
+    except Exception as e:                                     # pragma: no cover
+        log.error("could not write self-check report: %s", e)
+    return report
+
+
 def teardown_hotspot(ssid: str) -> None:
     """Remove the hotspot profile so NetworkManager falls back to saved client
     networks, and the captive DNS rule with it. Best-effort: every step is
@@ -186,6 +261,10 @@ def main() -> int:
     timer = threading.Timer(timeout_min * 60, _give_up)
     timer.daemon = True
     timer.start()
+
+    # Run the self-check once the portal is up. In a thread, because
+    # run_portal() below blocks forever.
+    threading.Timer(4.0, self_check, args=(actual_ip, ssid)).start()
 
     log.info("SETUP MODE: join Wi-Fi '%s' — the setup page should open by itself (captive portal %s); "
              "if not, open http://%s  (gives up in %d min)",
