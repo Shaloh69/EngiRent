@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · E4.2 DONE + SEEN · **D-63 CLOSED** · **S-8 + S-9 FIXED** · **D-74 uplink diagnosis + watchdog BUILT, classification VERIFIED ON THE LIVE PI (no_internet where the old code said connected), NOT DEPLOYED** · **D-75 FIXED** (the Wi-Fi association check never matched — nmcli says 802-11-wireless, not wifi) · KIOSK: app back on VT7, still NO INTERNET (router 192.168.1.1), off Tailscale, clock 2 days behind · SERVER up (re-derive PID) — **tunnel URLs NOT re-pointed, classifier refused twice, CORS rejects live admin/web origins** · E4.6 deployed, NO HARDWARE EXERCISED · D-73 open until one live rotation · D-65 deployed not closed · D-66 open · **G1 debt 3 — AT THE CEILING, STOP** (D-65 write path, E4.6, D-74's watchdog runtime) · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
+[PHASE E4 · **E4.2 DEPLOYED TO THE KIOSK AND SEEN ON ITS PHYSICAL SCREEN** (ring + live countdown, design/after/e4-2/kiosk-live-ring.png) · **D-74 VERIFIED BOTH WAYS ON HARDWARE** · D-63 CLOSED · S-8/S-9 FIXED · D-75 FIXED · **D-76/D-77 FIXED** (the portal could never run as the service user; the hotspot was never at 192.168.4.1, ran no DHCP, could not tear itself down) · KIOSK HEALTHY: GFiber + internet + Tailscale + correct clock + talking to the API, all 8 doors locked · SERVER healthy: tunnels re-pointed, CORS proven, admin rebuilt · E4.6 deployed, NO HARDWARE EXERCISED · D-73 deployed, severity refined (IDLE_MS 30s), not seen rotating · D-65 deployed not closed · D-66 open · **RULING PENDING BUILD: automatic setup mode after repeated failed checks** · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -184,6 +184,25 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-13 (late: the kiosk stretch — D-76, D-77, setup mode, E4.2 on
+hardware) — G5 check. ONE SYMPTOM, and the hardware kept catching me.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it is why D-76 and D-77 exist.** Both were found by running things on the Pi as the service user instead of reading the code and assuming. The `IDLE_MS = 30s` refinement to D-73 came the same way. |
+| 2 vaguer summaries | Absent. |
+| 3 trusting a tool over the artifact | **Absent here, and it is the lesson of D-77 itself:** `start_ap_mode` logged `IP=192.168.4.1` while the hotspot sat on 10.42.0.1, because every nmcli return code was discarded. The replacement **reads the address back** and reports what it found. |
+| 4 drifting toward the user's answer | **Present in a mild form, corrected.** I wrote D-73 as if students would routinely meet a dead code. `IDLE_MS = 30s` means they would not. The register now says so, and says my earlier wording overstated it. |
+| 5 batching | Absent — D-76, D-77, the captive portal and the E4.2 deployment are separate commits. |
+| 6 skipping verification | **Absent, and expensively so.** Three claims were withheld for want of evidence: setup mode "started" (never seen on a phone), the captive portal (untested on hardware), and D-73's rotation (the screen idles at 30s before a 90s token expires). The self-test report was moved off `/tmp` precisely because a reboot destroyed the evidence once. |
+
+**The pattern worth keeping:** every defect this stretch was a **silently
+discarded failure** — `capture_output=True` with the result never read, a
+permission that answers "no" to a service, a `Start-ScheduledTask` that is
+ignored while a task is still running. None logged anything wrong; two logged
+something reassuring and false. **On this project, an ignored return code is
+the defect.**
 
 **2026-09-13 (end of session: D-63 → brownout → kiosk → S-8) — G5 check.
 ONE SYMPTOM, THREE OCCURRENCES, and one of them reached the user.**
