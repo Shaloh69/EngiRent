@@ -1,0 +1,171 @@
+{
+  "run1_inherited39": {
+    "inherited_expires_in": 39,
+    "fetches": [
+      {
+        "phase": "soak",
+        "at": "0.56",
+        "token": "56610d5a",
+        "expires_in": 90
+      },
+      {
+        "phase": "soak",
+        "at": "30.54",
+        "token": "56610d5a",
+        "expires_in": 59
+      },
+      {
+        "phase": "watch",
+        "at": "0.57",
+        "token": "56610d5a",
+        "expires_in": 39
+      },
+      {
+        "phase": "watch",
+        "at": "30.57",
+        "token": "56610d5a",
+        "expires_in": 9
+      },
+      {
+        "phase": "watch",
+        "at": "40.57",
+        "token": "8bb2d399",
+        "expires_in": 90
+      },
+      {
+        "phase": "watch",
+        "at": "60.57",
+        "token": "8bb2d399",
+        "expires_in": 70
+      }
+    ],
+    "rendered_qr_changes": [
+      {
+        "at": "40.85",
+        "from": "This code refreshes in 1s",
+        "to": "This code refreshes in 91s"
+      }
+    ],
+    "zero_window": {
+      "samples": 0,
+      "seconds": 0,
+      "from": null,
+      "to": null
+    },
+    "truncation_race": null,
+    "verdict": "PASS - a NEW token arrived off the interval grid, at the moment the countdown reached zero"
+  },
+  "run2_inherited5": {
+    "inherited_expires_in": 5,
+    "fetches": [
+      {
+        "phase": "soak",
+        "at": "0.79",
+        "token": "a53c5952",
+        "expires_in": 90
+      },
+      {
+        "phase": "soak",
+        "at": "30.75",
+        "token": "a53c5952",
+        "expires_in": 60
+      },
+      {
+        "phase": "soak",
+        "at": "60.77",
+        "token": "a53c5952",
+        "expires_in": 30
+      },
+      {
+        "phase": "watch",
+        "at": "0.22",
+        "token": "a53c5952",
+        "expires_in": 5
+      },
+      {
+        "phase": "watch",
+        "at": "6.18",
+        "token": "a53c5952",
+        "expires_in": 0
+      },
+      {
+        "phase": "watch",
+        "at": "7.18",
+        "token": "78b64d8c",
+        "expires_in": 90
+      },
+      {
+        "phase": "watch",
+        "at": "30.20",
+        "token": "78b64d8c",
+        "expires_in": 66
+      }
+    ],
+    "rendered_qr_changes": [],
+    "zero_window": {
+      "samples": 0,
+      "seconds": 0,
+      "from": null,
+      "to": null
+    },
+    "truncation_race": null,
+    "verdict": "FAIL - no rotation seen at all in the watch window"
+  },
+  "run3_inherited19": {
+    "inherited_expires_in": 19,
+    "fetches": [
+      {
+        "phase": "soak",
+        "at": "0.86",
+        "token": "5e7098b8",
+        "expires_in": 90
+      },
+      {
+        "phase": "soak",
+        "at": "30.88",
+        "token": "5e7098b8",
+        "expires_in": 59
+      },
+      {
+        "phase": "soak",
+        "at": "60.88",
+        "token": "5e7098b8",
+        "expires_in": 29
+      },
+      {
+        "phase": "watch",
+        "at": "0.49",
+        "token": "5e7098b8",
+        "expires_in": 19
+      },
+      {
+        "phase": "watch",
+        "at": "20.34",
+        "token": "a04f6d17",
+        "expires_in": 90
+      },
+      {
+        "phase": "watch",
+        "at": "30.31",
+        "token": "a04f6d17",
+        "expires_in": 80
+      }
+    ],
+    "rendered_qr_changes": [
+      {
+        "at": "20.66",
+        "from": "This code refreshes in 1s",
+        "to": "This code refreshes in 91s"
+      }
+    ],
+    "zero_window": {
+      "samples": 0,
+      "seconds": 0,
+      "from": null,
+      "to": null
+    },
+    "truncation_race": null,
+    "verdict": "PASS - a NEW token arrived off the interval grid when the countdown reached zero; rendered QR changed"
+  },
+  "note": "Tokens are sha256 prefixes, never raw. run1 and run2 predate the probe fixes (asm-layer wait, verdict logic): run1 verdict stands; run2 printed FAIL because the sampler started after the rotation — its fetch trace is the evidence (same token + expires_in 0 at 6.18s, fresh token at 7.18s)."
+}

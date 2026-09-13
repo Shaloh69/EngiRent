@@ -30,8 +30,18 @@ phone screen for each beat designed **in the same sitting**, never separately.
   `ring-45s.png`, `ring-20s.png`, `full-45s.png`.
   **Found and fixed in the doing: D-73** — the kiosk displayed a dead code for
   up to 30s, because tokens mint lazily and nothing asked between expiry and
-  the next poll. The countdown hitting zero is now the trigger. D-73 stays
-  **open** until a live kiosk is watched through one rotation.
+  the next poll. The countdown hitting zero is now the trigger.
+  **D-73 CLOSED 2026-09-14**, verified against the live kiosk (the deployed
+  bundle served by the Pi at `engirent-kiosk:8080`, the real `get_qr_token()`
+  mint, 1080x1920) by `design/tools/probe-d73-rotation.mjs`. The probe reloads
+  mid-token so the countdown's zero lands **off** the 30s poll grid — a plain
+  watch cannot tell the fix from the old code, because 90 is a multiple of 30.
+  Three runs (inherited 39s / 5s / 19s): each rotated at the zero, 10-25s clear
+  of any interval poll, with a caption that never sat at 0 across a 500ms
+  sample. Evidence: `design/after/e4-2/d73-live-rotation-trace.json`,
+  `d73-live-12s-before-rotation.png`, `d73-live-57s-after-rotation.png`.
+  Not the physical panel's pixels during a rotation. The panel loads the same
+  bundle from the same server, and E4.2's ring was already photographed on it.
 
 ## E4.3 — Face verify screen (phone)
 - [ ] Live framing feedback (too dark / hold still) **before** upload
