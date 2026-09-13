@@ -1,153 +1,163 @@
 # CONTINUE-E4-SESSION-4.md — paste into a fresh Claude Code session
 
 > Supersedes `CONTINUE-E4-SESSION-3.md` (bannered as superseded).
-> Written 2026-09-13 at the end of a session that became a **brownout recovery**
-> halfway through. E4.2 is done, D-63 is closed, S-8 was found and fixed.
-> **Nothing has touched a door or an actuator.**
+> **Revised 2026-09-13 at 23:40**, after a brownout recovery, four new defects
+> and the first E4 work ever seen on the physical kiosk. The earlier version of
+> this file (written the same afternoon) was stale within hours.
 
 ---
 
 **You are resuming the EngiRent redesign track.**
 
 **First: `git branch --show-current` must say `e0-e1-audit-tests-and-evidence`.**
-`main` tracks it and pushing is authorised. It is a **public** repo: run G6
-before the first commit, every session. **This session's commits are NOT
-pushed** — check `git log origin/main..HEAD` and push if the user wants it.
+`main` tracks it and everything below is **pushed**. It is a **public** repo:
+run G6 before the first commit, every session.
 
 Read, in this order, and **only** these:
 
 1. `CLAUDE.md` — G11 is the first hard rule.
 2. `docs/redesign/ENGIRENT-CLAUDE.md`
-3. `docs/PROGRESS.md` — the STATUS LINE, the CONTEXT DEGRADATION LOG (its
-   **2026-09-13** entries), the **2026-09-13** section, **D-63** and **S-8**.
+3. `docs/PROGRESS.md` — the STATUS LINE, the CONTEXT DEGRADATION LOG (**both
+   2026-09-13 entries**), then **D-73 through D-77** and **S-8, S-9**.
 4. `docs/redesign/CLAUDE-CODE-PLAYBOOK.md` §2c-2d — **G1-G11.**
-5. `memory.md` — the **2026-09-13 SECOND BROWNOUT** entry. All of it.
+5. `memory.md` — the **2026-09-13 SECOND BROWNOUT** entry, in full.
 
-Then `docs/redesign/phases/E4-kiosk-handoff.md`, **E4.6**.
+Then `docs/redesign/phases/E4-kiosk-handoff.md`.
 
 **Open every response with the status line. End every session with
 `npm run report` (G10).**
 
 ---
 
-## FIRST: the stack is probably in a half-recovered state. Re-derive it.
+## The state of the estate, 2026-09-13 23:40 — RE-DERIVE IT ANYWAY (G3)
 
-**Standing instruction (user, 2026-09-13): every outage gets written into
-`memory.md` where a `/clear` cannot eat it** — not only into a reply.
+Both machines are healthy for the first time all day. A liveness fact here
+expires in minutes; check before quoting.
 
-A liveness fact on this project expires in minutes. As of writing:
-
-| Thing | State at hand-off | How to re-check |
+| | State at hand-off | How to check |
 |---|---|---|
-| Server PC | rebooted 13:23 after a brownout; EngiRent stack restarted 15:01; Node **PID 11700**; API 200 local + public | PID on port 5000 — **never quote the old one** |
-| **Tunnel URLs** | **NOT re-pointed.** The classifier refused the `.env` edit twice; the user's "continue" was not explicit enough. **CORS rejects the live admin and web origins** (proven: the API sends ACAO for the dead old admin host, none for the live one) | See memory.md 2026-09-13 for the exact keys and hostnames |
-| Kiosk router `192.168.1.1` | **no internet** (measured from the Pi and from the server's Ethernet) | only the user can fix it — power-cycle router or modem |
-| Kiosk Pi | booted fine, controller running, **off Tailscale** (keeps its node key — should rejoin with no re-login once internet is back), clock 2 days behind | via the LAN jump below |
-| Kiosk screen | kiosk app runs on **console 7**. The user was last on console 1 | Ctrl+Alt+F7 |
+| **Kiosk Pi** | on **`GFiber_2.4_Coverage_e3280`**, internet OK, **Tailscale up**, clock synced, controller connected to the API, all 8 doors locked | `ssh engirent@engirent-kiosk` |
+| **Kiosk screen** | idle attract loop; **E4.2's ring is deployed and was photographed on it** | `grim`, below |
+| **Server** | Node, ML, admin, web all up; **tunnels re-pointed and CORS proven** | PID on 5000 — never quote an old one |
+| **Tailscale SSH** | now in **check mode**: a first connection prints a login URL the user must open | expect it, ask the user |
 
-**Another project shares the server PC.** EcoCharge runs on ports
-**30010-30014** with its own tunnels. A healthy node/python/cloudflared process
-list is **not** evidence EngiRent is up. Check EngiRent's ports.
+**The kiosk moved networks.** It is no longer at `192.168.1.65`; it is on
+`192.168.254.x`, the same network the server reaches the internet through. The
+LAN-jump trick in the ops scripts still hardcodes the old address — harmless,
+it falls back to Tailscale first, but fix it if the Pi drops off the tailnet.
 
-### Reaching the Pi when Tailscale is down on it
+## Two ops scripts, allowed by exact-match permission rules
 
-The dev PC is on another site. The **server PC's Ethernet shares the kiosk
-LAN**. Jump through it and verify against the key already trusted:
+Narrow on purpose: a wildcard `ssh engirent@engirent-kiosk *` rule would also
+allow opening a door (G11).
 
 ```
-ssh -o HostKeyAlias=engirent-kiosk -o StrictHostKeyChecking=yes -J transfer@desktop-gklhcri engirent@192.168.1.65 '...'
+bash scripts/ops/kiosk-restart-controller.sh    # restarts ONE service; refuses unless idle + all doors locked
+bash scripts/ops/server-repoint-tunnels.sh      # sweep check, re-point with backups, restart Node + admin
+bash scripts/ops/kiosk-start-wifi-setup.sh      # Wi-Fi setup mode (drops remote access — see below)
 ```
 
-The IP is DHCP; it was `.65`. **Never disable host-key checking.** Anything
-that restarts `engirent-kiosk.service` or drives a door is **G11**.
+**`.claude/settings.local.json` is tracked in this PUBLIC repo and still holds
+`Bash(ssh -o ConnectTimeout=15 engirent@engirent-kiosk *)`** — a standing G11
+hole the user has been told about twice. Raise it once; do not edit it unasked.
 
-## G11 — unchanged, and read it before touching anything
+## Seeing the kiosk screen without a photo — use this, it is new
 
-**Physical:** `open_door` (either), `drop_item`, `actuator_extend`,
-`actuator_retract`, `lock_all`, **`self_test`**, `POST /kiosk/deposit|claim|return`,
-`POST /admin/kiosks/:kioskId/command`, **`scripts/e2e-full-lifecycle.mjs`**.
-Say what moves, which bay, for how long, **wait for an explicit yes**. Earlier
-approval does not carry.
+```
+ssh engirent@engirent-kiosk 'WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 grim /tmp/s.png'
+scp engirent@engirent-kiosk:/tmp/s.png .
+```
 
-**Before starting Node after any restart:** the E4.6 hourly sweep (`5 * * * *`)
-can issue `drop_item`. Count candidates read-only first. On 2026-09-13:
-lockers `AVAILABLE=4`, rentals `PENDING=1, CANCELLED=4`, **0** releases requested.
+The UI sits on **VT 7** (lightdm autologin → labwc → Chromium). To reach the QR
+screen without touching the kiosk:
+`curl -X POST -d '{"status":"item_retry"}' http://localhost:8080/api/ui` — UI
+only, no GPIO — then restore `{"status":"idle"}`. **`IDLE_MS` is 30s**, so the
+main screen returns to the attract loop before a 90s QR token can expire.
 
-## What this session closed — re-derive before trusting (G3)
+## What closed today, and what did not
 
-- **E4.2 DONE, seen on screen** — QR freshness ring from the real `expires_in`.
-  `design/after/e4-2/`.
-- **D-73 found and fixed in the client, NOT closed** — the kiosk showed a dead
-  QR for up to 30s. Needs one live rotation watched. Not deployed to the Pi.
-- **D-63 CLOSED** — it was never hardware-blocked; the **probe** was broken
-  (unanswered CORS preflight; DOM read not scoped to Mantine's always-mounted
-  tab panels). `design/tools/probe-admin-bays.mjs` now exits non-zero if the
-  stub never fired. `design/after/d63/`. **G1 debt 3 → 2.**
-- **S-8 FOUND AND FIXED** — kiosk console 1 was a passwordless shell as a
-  `gpio`-group user. Drop-in renamed to
-  `autologin.conf.disabled-S8-20260913`; kiosk UI untouched. **Not yet seen on
-  the physical screen** — console 1 should show a bare `login:`.
+**Closed and seen:** E4.2 (ring + live countdown **on the physical screen**,
+`design/after/e4-2/kiosk-live-ring.png`), D-63 (the probe was broken, not the
+component), D-74 (verified **both** directions on hardware), D-75, S-8, S-9.
+
+**Fixed in code, NOT proven on hardware:**
+- **D-73** — dead-QR window. Deployed. Severity refined: `IDLE_MS = 30s` means
+  it only bites someone keeping the screen awake past 90s. To verify: touch the
+  screen every ~20s and watch the code change with the caption never at 0.
+- **D-76** — the setup portal could never run as the service user (bind :80
+  denied; NM `wifi.share.protected` = no). Worked around with a root unit.
+- **D-77** — the hotspot was never at 192.168.4.1 (nmcli names the profile
+  `Hotspot`, not the SSID), ran **no DHCP** (`method manual`), and could not
+  tear itself down — it stranded the kiosk until a power-cycle. Rewritten in
+  `provisioning/hotspot.py`. A later run rebooted the Pi (a successful save
+  does), so **the captive-portal auto-open has still never been seen working**.
+
+**E4.6 remains deployed and completely unexercised. No actuator has moved, no
+bottom door has opened.**
 
 ## Open, needing the human
 
-1. **Tunnel re-point** — needs an explicit instruction the classifier accepts,
-   e.g. *"yes, update the tunnel URLs in the server .env and admin .env.local
-   and restart Node and Admin"*. Then kill the 5000 and 3001 port owners
-   first (`Stop-ScheduledTask` does not), restart both tasks, re-prove CORS
-   from the live admin origin.
-2. **The kiosk router** — physical.
-3. **Glance at the kiosk screen** for S-8 (console 1) and Ctrl+Alt+F7.
-4. **The physical run** (`e2e-full-lifecycle.mjs`) — only once the router is
-   back and Tailscale has rejoined. G11. Pair bay 2 (5s) with a 15s bay.
-5. **D-66** still gets its own deploy. **D-65** needs one real deposit.
+1. **The physical run** — `node scripts/e2e-full-lifecycle.mjs <face.jpg>`.
+   **G11: say what moves, which bay, how long, and wait for an explicit yes.**
+   Pair **bay 2 (5s)** with any other (15s). It collapses E4.4/E4.5, A-3's first
+   real row, D-65's write path and E4.6 at once. The kiosk is finally online for
+   it.
+2. **The user's ruling, not yet built:** *"If a single Wi-Fi does not have any
+   internet in many attempts of checking, it will automatically disconnect and
+   start that."* Overrides D-74's auto-AP-off default. Must keep: the existing
+   grace (15 checks), a `safe_to_disrupt` gate wired to `/api/state` (idle, no
+   active locker, all 8 doors locked — currently `None`, which the policy treats
+   as unsafe), and the give-up timer. **Needs one narrow sudoers line** allowing
+   `systemctl start engirent-wifi-setup.service` — a Pi system change, **ask first**.
+3. **D-66** still gets its own deploy. **D-65** needs one real deposit.
+4. **Did the setup page open by itself on the Android?** Only the user knows.
 
-## The next concrete step, not blocked on the human
+## The next unblocked work
 
-**E4.6 — the admin surface:** the `retrieval` policy on the kiosk config page,
-and the F6 escalation queue (`E4-kiosk-handoff.md`, the open box after
-"PARTLY DONE"). G2 is satisfied for E4. Verification is **not** blocked: run
-`client/admin` on :3001 and stub the API with Playwright exactly the way
-`probe-admin-bays.mjs` now does — answer `OPTIONS`, count interceptions, scope
-reads to the visible tab panel, **look at the PNGs**. G1 debt is 2 and both are
-hardware; this must be seen on screen in the same session or not started.
+`npm run report`: **85/193 (44%)**, and only **6** boxes are hardware-blocked.
+E6 has **31**, E5 **19**, E7 **17**, E4 **28 non-blocked**. The 69 screens are
+still at **0 PASS** — that is where the distance is.
 
-Admin has `isDemoMode` branches that **return before fetching** — a demo-mode
-capture proves nothing. `NEXT_PUBLIC_DEMO_MODE=false` in `client/admin/.env.local`.
+**E4.6's admin surface** (retrieval policy on the kiosk config page + the F6
+escalation queue) is the cleanest next chunk: G2 is satisfied for E4, and it is
+verifiable with the Playwright stub pattern that `probe-admin-bays.mjs` now
+uses — answer `OPTIONS`, count interceptions, scope reads to the visible tab
+panel, **and look at the PNGs**. Admin has `isDemoMode` branches that **return
+before fetching**, so a demo capture proves nothing.
 
-## Operational facts that cost real time THIS session
+## Hard-won operational facts
 
-- **Windows `ping` counts `Destination host unreachable` as received.** Read
+- **An ignored return code is the defect.** Every bug today was a silently
+  discarded failure: `capture_output=True` never read (D-77), a permission that
+  answers "no" to a service (D-76), `Start-ScheduledTask` ignored while the old
+  instance still ran (admin stayed down). Two of them logged something
+  reassuring and false.
+- **Windows `ping` counts "Destination host unreachable" as received.** Read
   the reply lines, never the 0%-loss summary.
 - **A dual-homed server's internet says nothing about its LAN router's.**
-  `Find-NetRoute -RemoteIPAddress 1.1.1.1` shows which interface carries it.
-- **Python heredocs through this tool lose a backslash level.** `\\n` arrived
-  as a real newline three times, `\\u` crashed a script once, `\\n` turned a
-  path into `server` + newline + `ode_server`. Use raw strings (`r'''…'''`) or
-  build backslashes with `chr(92)`. **Re-read the file after writing a path.**
-- **ML takes ~6.5 min after a cold boot**, not ~90s, and looks hung for five
-  of them (Defender scanning). Sample CPU and working set twice first.
-- **The `ml*.log` glob matches a 09-03 file** whose tail says "Uvicorn
-  running". Not this run.
-- **The kiosk UI is on VT 7** (lightdm autologin Wayland session, labwc +
-  Chromium from `~/.config/autostart/engirent-browser.desktop`).
-  `engirent-kiosk-browser.service` shows "dead" because it hands off to the
-  running Chromium — not a fault.
-- **Sudo on the Pi:** pipe `KIOSK_SUDO_PASSWORD` from `.env.local` into SSH
-  stdin → `sudo -S -p ""`. Never argv, never into session context.
-- Everything from `CONTINUE-E4-SESSION-3.md`'s operational list still applies
-  (MySQL is local to the server at 3307; `db push` EPERM while the API runs;
-  restart proven by PID change; prefix `/api/v1`; CRLF; `Tests: 0 total` is a
-  compile failure; D-62's pkill; ports 5000/8001/3001/3000).
+- **This PC also hosts EcoCharge** (ports 30010-30014). A healthy
+  node/python/cloudflared list is not evidence EngiRent is up.
+- **Python heredocs through the Bash tool lose a backslash level** — `\n` and
+  `\u` both bit, one corrupting a committed path. Use `r'''…'''` or `chr(92)`,
+  and re-read the file after writing a path.
+- **The Pi's journal is volatile and `/tmp` is wiped** — a provisioning save
+  reboots the Pi and destroyed a whole test report. Reports now go to
+  `/home/engirent/`.
+- **ML takes ~6.5 min after a cold boot**, not 90s, and looks hung (Defender).
+- Everything in `CONTINUE-E4-SESSION-3.md`'s operational list still applies
+  (MySQL local at 3307; `db push` EPERM while the API runs; restart proven by
+  PID change; prefix `/api/v1`; CRLF in `src/index.ts`; `Tests: 0 total` is a
+  compile failure; D-62's pkill pattern; ports 5000/8001/3001/3000).
 
 ## Credentials — gitignored, never in a tracked file
 
 `.env.local` at repo root: `TEST_STUDENT_*` (Chester Testinggton — its email
 must never change) and `KIOSK_SUDO_PASSWORD`. `client/admin/.env.local`:
-`ADMIN_EMAIL` / `ADMIN_PASSWORD`. **Point at the files; never read a value into
-the session.** This prompt is committed to a public repo.
+`ADMIN_EMAIL` / `ADMIN_PASSWORD`. The Pi's `server/kiosk/.env` holds
+`AP_PASSWORD`. **Point at the files; never read a value into the session.**
+This prompt is committed to a public repo.
 
 ## Session-length note
 
-This session did E4.2, D-63, a brownout recovery, a kiosk diagnosis and S-8.
-Symptom 3 fired three times and **one reached the user as a wrong instruction**
-(Ctrl+Alt+F1). **One section per session, `/clear` between.**
+The session this replaces ran from E4.2 through a brownout, a stranded kiosk
+and four defects. **One section per session, `/clear` between.**
