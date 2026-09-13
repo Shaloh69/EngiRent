@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **PHYSICAL RUN IN PROGRESS with real accounts via the app** (payments posted 01:51) · app deposit would pick BAY 4 · **APP OUTAGE 01:46 (429, one shared public-IP bucket of 100/15min) MITIGATED 01:50: limit 1000, 0×429 after — proper fix owed (exclude /media, strict login limiter)** · kiosk Wi-Fi outage 01:05 resolved by reboot · D-78 OPEN (RETRY never re-captures) · APP 1.9.0 PUBLISHED · D-73 CLOSED · S-11 MITIGATED · S-9 + S-10 not on the Pi · E4.6 NO HARDWARE EXERCISED · D-65 not closed · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **PHYSICAL RUN BLOCKED AT PAYMENT by D-79: the app can never create the security-deposit payment, so no app rental reaches AWAITING_DEPOSIT** · app deposit would pick BAY 4 · **APP OUTAGE 01:46 (429, one shared public-IP bucket of 100/15min) MITIGATED 01:50: limit 1000, 0×429 after — proper fix owed (exclude /media, strict login limiter)** · kiosk Wi-Fi outage 01:05 resolved by reboot · D-78 OPEN (RETRY never re-captures) · APP 1.9.0 PUBLISHED · D-73 CLOSED · S-11 MITIGATED · S-9 + S-10 not on the Pi · E4.6 NO HARDWARE EXERCISED · D-65 not closed · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1373,6 +1373,49 @@ no new defect of its own.**
 sign in on it, the claim is "published and correct on the artifact", not "works
 on a device".
 **Will break again** at the next tunnel restart, like every build before it.
+
+### D-79 — no rental created in the app can ever be fully paid. FOUND 2026-09-14 BY A REAL USER DURING THE PHYSICAL RUN. NOT FIXED.
+
+The user approved the renter's payment in the console, and the app stayed on
+"pending payment". The owner was shown nothing. Read from the live DB, rental
+`115ca281…` ("Soldering 60w"):
+- status `PENDING`
+- **one** transaction: `RENTAL_PAYMENT COMPLETED`, approved 17:51:58 UTC
+- **no `SECURITY_DEPOSIT` transaction at all**
+- the renter got "Payment Received — One More Step"
+
+**Cause.** `rental_detail_screen.dart:184` hardcodes `'type': 'RENTAL_PAYMENT'`.
+The server advances to `AWAITING_DEPOSIT` only when **both** types are
+`COMPLETED` (`adminController.ts:830-853`, mirrored at
+`paymentController.ts:487-509`). The app has no path that creates a deposit
+payment.
+- Once the fee is `COMPLETED` and nothing is `PENDING`,
+  `awaitingPaymentConfirmation` is false. The screen offers "Pay Now to Confirm"
+  again, which re-posts `RENTAL_PAYMENT`, and the server refuses a second fee
+  once one is COMPLETED.
+- The owner silence is **by design** (`adminController.ts:900`: the owner is
+  told only when fully paid). It is the same defect seen from the other phone.
+
+**Why nothing caught it:**
+- `e2e-full-lifecycle.mjs` posts **both** types straight to the API, so it
+  never goes through the app's payment code.
+- The 2026-09-07 E2 verification recorded "the rental correctly stayed PENDING
+  because only the rental payment, not the deposit, was approved" and never
+  asked how the deposit would get paid.
+- The instructions sheet already handles a deposit (`:267`
+  `isDeposit = ins['type'] == 'SECURITY_DEPOSIT'`). Only the request was
+  missing.
+
+**Consequence:** in the shipped 1.9.0, and every build since manual payments,
+**no app-created rental reaches the kiosk.**
+
+**Unblock for tonight (no code, real API):** the renter posts the missing
+`SECURITY_DEPOSIT` through `POST /payments` with their own login, and the admin
+approves it. The real handler then advances the rental, notifies the owner and
+emits `payment:approved`.
+
+**Proper fix (app 1.9.1):** pay whichever type is still owed, fee first, then
+deposit, with the label saying which. Or ask for both in one sheet.
 
 ### D-78 — a RETRY verdict is a dead end: the door re-opens and nothing ever captures again. FOUND 2026-09-14 BY CODE READ (both sides). NOT SEEN ON HARDWARE. NOT FIXED.
 
