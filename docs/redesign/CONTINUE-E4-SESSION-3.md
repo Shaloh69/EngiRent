@@ -1,3 +1,10 @@
+> # SUPERSEDED 2026-09-13 by `CONTINUE-E4-SESSION-4.md`. Kept per REPO-HYGIENE.
+> **Out of date in five places.** Since it was written: a second brownout took
+> the server and kiosk down (see `memory.md` 2026-09-13) — the PID, "server
+> live" and the Pi's reachability here are all stale; E4.2 was built and seen;
+> D-63 was closed (it was never hardware-blocked); D-73 and S-8 were found; and
+> the kiosk router lost its internet.
+
 # CONTINUE-E4-SESSION-3.md — paste into a fresh Claude Code session
 
 > Supersedes `CONTINUE-E4-SESSION-2.md` (bannered as superseded).
