@@ -1,0 +1,5 @@
+
+# Shell scripts run by Git Bash / on the Pi fail on CRLF ("$'': command not found").
+# scripts/ops/*.sh are also named by exact-match permission rules, so a
+# checkout that broke them would break those rules silently.
+*.sh text eol=lf
