@@ -992,6 +992,38 @@ guess, because a tally that cannot be re-derived is exactly the P-1 failure
 trust; this fraction is not.** Worth either deriving it from the register or
 dropping it.
 
+### D-74 — Wi-Fi provisioning cannot see "connected but no internet", which is the failure that actually happens. FOUND 2026-09-13. NOT FIXED.
+
+**Asked by the user during the brownout: does the kiosk have Wi-Fi
+provisioning?** It does — `server/kiosk/provisioning/` (`ap_portal.py`,
+`wifi_manager.py`): hotspot `EngiRent-Kiosk-Setup` at `192.168.4.1`, a portal
+on port 80 to pick a network and enter its password. **It would not have
+helped today, for three independent reasons, all verified:**
+
+1. **It runs once, at startup only** — `main()` step 1, before hardware init.
+   No runtime watchdog. This boot logged `WiFi connected ✓` at 22:05:18 (Pi
+   clock) and never checked again.
+2. **It triggers only on NO Wi-Fi at all.** `is_wifi_connected()` returns True
+   for NetworkManager connectivity `full`, **`limited`** or `portal`, and falls
+   back to "any Wi-Fi connection activated". Joined-but-no-uplink is connected.
+3. **On this Pi, NetworkManager cannot tell anyway.** `ConnectivityCheckAvailable
+   = false`, `ConnectivityCheckEnabled = false`, no `[connectivity] uri`. It
+   reported **`full`** while `ping 1.1.1.1` lost 100%, DNS failed everywhere and
+   Tailscale was logged out.
+
+**Also true:** it blocks `main()` — while the portal runs, hardware is never
+initialised, until reboot. The Pi has **10 saved networks** and NetworkManager
+autoconnects to any in range; only `PLDTHOMEFIBR5Gc9908` was visible.
+
+**Design constraints for a real fix, so nobody builds the obvious wrong thing:**
+the Pi has one radio, so bringing the hotspot up **drops the current Wi-Fi —
+and with it the LAN path through the server PC** that is the only remote way
+in when Tailscale is down. A runtime "no uplink" check needs a real
+connectivity URI (or a direct probe of the server over Tailscale), a grace
+period so a flapping router does not tear down a working bay mid-transaction,
+and it must never start while a door is open. **Not a UI-only change** — it
+lives beside the GPIO init order in `main.py`.
+
 ### D-73 — the kiosk displays a dead QR code for up to 30 seconds. FOUND 2026-09-13. FIXED in the client, unverified on hardware.
 
 `get_qr_token()` mints a replacement **lazily**: `if _active_qr_token is None
@@ -2523,6 +2555,18 @@ semi-public. What changed is that it is now known to be *published*.
 reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
+
+### S-9 — LOW. FOUND AND FIXED IN CODE 2026-09-13, NOT DEPLOYED. The kiosk logged its setup-hotspot password in plain text.
+
+`server/kiosk/main.py:176` logged `Hotspot '%s' active  pw='%s'` with the real
+`AP_PASSWORD`. The journal is readable by the `adm` group (`engirent` is in
+it). Whoever has that password can join `EngiRent-Kiosk-Setup` while it is up
+and choose which network the kiosk trusts — its `SERVER_URL` is plain `http://`.
+Mitigating: the hotspot only exists when the Pi boots with no Wi-Fi at all,
+and the live Pi overrides the repo default (`AP_PASSWORD` is set in its
+`.env`). **Fixed:** the line no longer passes the password; `ap_pass` still
+reaches `start_ap_mode`. `py_compile` clean. `ap_portal.py` logs no password.
+**Not on the Pi** — deploying means restarting `engirent-kiosk.service` (G11).
 
 ### S-8 — FOUND AND FIXED 2026-09-13. The kiosk's physical console 1 was a logged-in shell with no password, as a user who can drive the door relays.
 

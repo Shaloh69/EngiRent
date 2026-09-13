@@ -173,7 +173,10 @@ def maybe_provision():
         log.error("Could not start AP hotspot — skipping (retry next boot)")
         return
 
-    log.info("Hotspot '%s' active  pw='%s'  portal=http://%s", ap_ssid, ap_pass, ap_ip)
+    # S-9: the password is not logged. The journal is readable by the `adm`
+    # group, and anyone holding it could join the setup hotspot and choose
+    # which network the kiosk trusts. Whoever provisions reads it from .env.
+    log.info("Hotspot '%s' active  portal=http://%s  (password: AP_PASSWORD in .env)", ap_ssid, ap_ip)
     run_portal(host="0.0.0.0", port=80)
 
     log.error("Portal exited unexpectedly — retrying in 10 s")
