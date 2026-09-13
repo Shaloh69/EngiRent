@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **E4.2 DEPLOYED TO THE KIOSK AND SEEN ON ITS PHYSICAL SCREEN** (ring + live countdown, design/after/e4-2/kiosk-live-ring.png) · **D-74 VERIFIED BOTH WAYS ON HARDWARE** · D-63 CLOSED · S-8/S-9 FIXED · D-75 FIXED · **D-76/D-77 FIXED** (the portal could never run as the service user; the hotspot was never at 192.168.4.1, ran no DHCP, could not tear itself down) · KIOSK HEALTHY: GFiber + internet + Tailscale + correct clock + talking to the API, all 8 doors locked · SERVER healthy: tunnels re-pointed, CORS proven, admin rebuilt · E4.6 deployed, NO HARDWARE EXERCISED · D-73 deployed, severity refined (IDLE_MS 30s), not seen rotating · D-65 deployed not closed · D-66 open · **RULING PENDING BUILD: automatic setup mode after repeated failed checks** · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
+[PHASE E4 · **D-73 CLOSED 2026-09-14** (live kiosk, 3 off-grid rotations, dead window 0s; the plain watch proved nothing) · **S-11 OPEN, MEDIUM: production MySQL published on 0.0.0.0:3307, reachable over Tailscale — fix put to the user** · S-10 FIXED IN CODE (published AP default + PSK on argv), not on the Pi · S-9 not on the Pi · E4.2 on the physical screen · D-74 verified both ways · D-76/D-77 fixed, captive portal never seen on a phone · E4.6 deployed, NO HARDWARE EXERCISED · D-65 deployed not closed · D-66 open · **RULING PENDING BUILD: automatic setup mode** · KIOSK + SERVER healthy 2026-09-13 23:37 · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS · see CONTINUE-E4-SESSION-4.md]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1325,6 +1325,57 @@ completing it — with **"This code refreshes in 85s"** counting down from the
 real token, and `LINK ● Live`. To reach the QR screen without touching the
 kiosk, `POST /api/ui {"status":"item_retry"}` navigates to main (UI only, no
 GPIO); idle was restored afterwards.
+
+### D-73 — CLOSED 2026-09-14. Verified against the live kiosk, and the first attempt at verifying it proved nothing.
+
+**Signal named before looking (G8):** the rendered QR must change to a **new**
+token within ~1s of the countdown reaching 0, and the caption must never park on
+*"Fetching a fresh code…"*.
+
+**Attempt 1 was not a test, and it looked like a pass.** A 155s watch on a
+freshly mounted screen: fetches at 3.72 / 33.74 / 63.74 / 93.72s, one token
+change at 93.86s. But the 30s interval poll fires on a grid that starts at mount,
+and the token's 90s expiry sits on that same grid. The expiry trigger and the
+poll landed within ~100ms of each other, **so the pre-fix code rotates at the
+same instant.** A rotation happened; it said nothing about the fix.
+
+**The discriminator:** reload the page mid-token. The deadline then comes from a
+partial `expires_in`, and the zero lands **off** the poll grid.
+`design/tools/probe-d73-rotation.mjs` does this against `engirent-kiosk:8080`,
+which serves the deployed bundle and runs the real `get_qr_token()`. It uses UI
+and HTTP only: `GET /api/qr-token` touches no GPIO, and the keep-awake `Shift`
+press hits the only `keydown` listener in the kiosk UI
+(`useKioskState.ts:134`), which only resets the idle timer. G11 is not
+engaged. Tokens are recorded as sha256 prefixes.
+
+| Run | Inherited | Rotation fetch | Nearest poll | New token | Caption at 0 |
+|---|---|---|---|---|---|
+| 1 | 39s | **T+40.57** | T+30 / T+60 | yes, QR pixels changed at 40.85 (`1s` → `91s`) | never |
+| 2 | 5s | T+6.18 **same token, `expires_in: 0`**, then **T+7.18 fresh** | T+30 | yes | never |
+| 3 | 19s | **T+20.34** | T+30 | yes, QR pixels changed at 20.66 | never |
+
+**Run 2 caught the race named before looking, and it self-heals.**
+`server.py:111` is `int(expiry - now)`, which understates remaining life by the
+fractional second, so the client's zero can land just *before* the real expiry.
+The refetch then returns the same token with `expires_in: 0`. Recovery is not by
+design. `setDeadline(now + 0)` is compared against a 1s tick that lags, so
+`remaining` computes to `ceil(<1s) = 1`, not 0. The effect's dependency
+`remaining` therefore changes again and re-fires on the next tick. Worst case
+measured: **1.0s**, down from the original 30s. Recorded, not numbered: it has
+no visible effect a person could act on. It is fragile, though. **Anyone who
+changes the tick or the ceil should re-run the probe.**
+
+**What this does not cover:** the physical panel's pixels during a rotation.
+The panel's Chromium loads the same bundle from the same server, and E4.2's ring
+was photographed on it. Evidence: `design/after/e4-2/d73-live-rotation-trace.json`,
+`d73-live-12s-before-rotation.png`, `d73-live-57s-after-rotation.png`, all
+opened and looked at.
+
+**A probe defect found on the way, the one the E4.2 entry warned about.** The
+first inherited-TTL screenshot was the `BlockAssembly` wall, taken 0.3s after the
+click. The fix (wait for `.asm-layer` to detach) was first put in the wrong
+place. That cost run 2's rendered-QR sample, because an inherited 5s token rotated
+during the 8s transition. Only the shots wait now.
 
 ### D-73 — REFINED 2026-09-13 after trying to watch a rotation on hardware. Fix deployed; severity is smaller than first written; still not seen rotating.
 
@@ -2874,6 +2925,81 @@ semi-public. What changed is that it is now known to be *published*.
 reachable, in the same session that brings it online, before any other kiosk
 work. Recorded here rather than in the backlog because E4 cannot start without
 touching that machine anyway.
+
+### S-11 — MEDIUM. FOUND 2026-09-14. **NOT FIXED: the fix is a change to the live server and was put to the user.** The production MySQL is published on every interface of the server.
+
+Found by G6's sweep, following up `MYSQL_PASSWORD: engirent123` in the tracked
+`server/node_server/docker-compose.yml`. Every value was checked **server-side,
+printing booleans only**. No credential entered the session, and **no login was
+attempted against production**.
+
+| Check | Result |
+|---|---|
+| `docker ps` | `engirent-mysql 0.0.0.0:3307->3306/tcp, [::]:3307->3306/tcp`. **EcoCharge's container on the same PC is `127.0.0.1:13306`**, which is the correct shape |
+| TCP connect from the dev PC to `100.122.239.125:3307` and `desktop-gklhcri:3307` | **OPEN**, over a tailnet that holds two accounts' devices |
+| Node's `DATABASE_URL` | host is local, user `root`, password **not** a published literal, ≥16 chars |
+| Container env | no `MYSQL_USER`; root password not a published literal; no empty-password flag |
+| Anything that reaches 3307 remotely | **nothing**: every script, README and the system map say `localhost`/`127.0.0.1:3307` |
+
+**So it is not a leaked password. The production root login is exposed beyond
+the machine, and no consumer needs it to be.** The docs all describe a binding the
+container does not have, which is why nobody caught it.
+
+**Caveat:** container env only seeds a database on first initialisation. It is
+the best evidence available short of a login attempt, which was deliberately
+not made.
+
+**Two fixes, put to the user rather than taken**, because both change a live
+production machine that also hosts EcoCharge:
+1. **Windows Firewall inbound block on TCP 3307**: reversible
+   (`Remove-NetFirewallRule`), no database restart. Windows Firewall does not
+   filter loopback, so Node is unaffected. Verified by the same TCP probe
+   timing out while `/api/v1/items` still returns 200.
+2. **Recreate the container bound to `127.0.0.1:3307`**: the proper fix, but a
+   DB outage, and the data is in an **anonymous** volume
+   (`6cea54aa…`). A careless `docker rm -v` or a fresh `docker run` without
+   naming that volume would lose the production database.
+
+### S-10 — LOW. FOUND AND FIXED IN CODE 2026-09-14, NOT DEPLOYED. The kiosk's first-boot hotspot fell back to a password committed to this public repo.
+
+`provisioning/ap_portal.py:22` shipped `AP_PASSWORD = "engirent123"`.
+`main.py:171` used it whenever `AP_PASSWORD` was unset. A kiosk deployed without
+its `.env` would raise a setup hotspot that **anyone who has read the source can
+join**, and joining it means choosing which network the kiosk trusts over a
+plain-http `SERVER_URL` (S-9's threat model). The live Pi sets the variable (S-9),
+and D-77 meant that path never produced a working hotspot anyway. Hence LOW, but
+the credential is published. `setup_mode.py` already refused on these terms; the
+first-boot path did not.
+
+**The same function also put the PSK on nmcli's argv**, readable by any local
+process through /proc. That is the exact leak `hotspot.py` was written to avoid.
+D-77 had already said this function "should delegate to
+`hotspot.start_hotspot` when next touched".
+
+**Fixed:**
+- `AP_PASSWORD = ""`, commented as deliberate.
+- `start_ap_mode` validates the PSK (`validate_psk`: 8-63 chars, no
+  newline/backslash/edge spaces), then **delegates to `hotspot.start_hotspot`**.
+  That fixes D-77's four bugs on this path: address, DHCP, teardown, argv.
+- `stop_ap_mode` delegates to `stop_hotspot`, the explicit-id teardown.
+- `ap_portal` no longer imports `subprocess`.
+- `main.py` refuses to provision below 8 characters, with an actionable log line.
+
+**Verified:** `tests/test_ap_portal.py`, 12 tests; the kiosk suite is 108 passed.
+**Mutation-checked:** restoring the default → 2 red; dropping `validate_psk` → 7
+red; re-importing `subprocess` → 1 red; file restored byte-identical. `main.py`'s
+guard has no test, because importing `main.py` loads GPIO. It was **executed**
+from its AST with stubs: unset → `start_ap_mode` called **0×** with the error
+logged; 7 chars → 0×; valid → 1×.
+
+**Not on the Pi.** Deploy it alongside S-9: both are one `engirent-kiosk.service`
+restart, through `scripts/ops/kiosk-restart-controller.sh`, which refuses unless
+the kiosk is idle and all doors are locked. Confirm the Pi's `.env` still sets
+`AP_PASSWORD` first; without it, first-boot provisioning now refuses. That is
+the point, but it must not surprise anyone.
+
+**Not rotated, because there is nothing to rotate:** the live Pi uses its own
+value. The literal stays in git history, which is harmless for the same reason.
 
 ### S-9 — LOW. FOUND AND FIXED IN CODE 2026-09-13, NOT DEPLOYED. The kiosk logged its setup-hotspot password in plain text.
 

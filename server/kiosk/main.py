@@ -171,6 +171,19 @@ def maybe_provision():
     ap_pass = os.getenv("AP_PASSWORD", AP_PASSWORD)
     ap_ip   = os.getenv("AP_IP", AP_IP)
 
+    # S-10: this used to fall back to a password that is committed to a PUBLIC
+    # repo, so a kiosk deployed without its .env would raise a setup hotspot
+    # anyone reading the source could join -- and joining it means choosing
+    # which network the kiosk trusts, over a plain-http SERVER_URL. Refuse and
+    # keep retrying saved networks instead. `setup_mode.py` already refuses on
+    # the same terms; this is the first-boot path catching up.
+    if len(ap_pass) < 8:
+        log.error(
+            "AP_PASSWORD is missing or shorter than 8 characters — refusing to "
+            "start the setup hotspot. Set AP_PASSWORD in server/kiosk/.env."
+        )
+        return
+
     if not start_ap_mode(ssid=ap_ssid, password=ap_pass, ip=ap_ip):
         log.error("Could not start AP hotspot — skipping (retry next boot)")
         return

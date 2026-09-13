@@ -9,17 +9,19 @@ Flow:
 """
 
 import logging
-import subprocess
 import threading
 
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 
+from .hotspot import HotspotError, start_hotspot, stop_hotspot, validate_psk
 from .wifi_manager import connect_wifi, get_available_networks, reboot
 
 log = logging.getLogger("kiosk.ap")
 
 AP_SSID     = "EngiRent-Kiosk-Setup"
-AP_PASSWORD = "engirent123"   # env-override in main.py
+AP_PASSWORD = ""   # deliberately empty: a default in a public repo IS a
+                   # published credential (S-10). Set AP_PASSWORD in the
+                   # Pi's server/kiosk/.env; both callers refuse without it.
 AP_IP       = "192.168.4.1"
 
 # ── HTML template (self-contained, no external deps) ──────────────────────────
@@ -168,53 +170,51 @@ def api_connect():
 def start_ap_mode(ssid: str = AP_SSID, password: str = AP_PASSWORD,
                   ip: str = AP_IP) -> bool:
     """
-    Create a WiFi hotspot using nmcli so the admin can connect and provision.
-    Returns True if hotspot started successfully.
+    Create a WiFi hotspot so whoever is provisioning can connect and choose a
+    network. Returns True only if the hotspot is really up.
+
+    D-77: this used to drive nmcli itself and got four things wrong, all
+    silently, because every return code was discarded. It addressed the profile
+    by SSID when `nmcli dev wifi hotspot` names it `Hotspot`, so the static
+    address was never applied and the log claimed 192.168.4.1 while the radio
+    sat on 10.42.0.1; it set `ipv4.method manual`, so no DHCP or DNS ran and no
+    phone could get an address; it tore down by SSID, so it could not remove
+    what it had made and stranded the kiosk on its own hotspot until someone
+    power-cycled it; and it passed the PSK on nmcli's argv, which is readable
+    by any local process through /proc. `hotspot.start_hotspot` fixes all four
+    and reads the address back off the interface, so this delegates to it
+    rather than keeping a second, worse implementation alive.
     """
     try:
-        # Delete any leftover hotspot profile
-        subprocess.run(["nmcli", "con", "delete", ssid],
-                       capture_output=True, timeout=5)
-    except Exception:
-        pass
+        validate_psk(password)
+    except HotspotError as exc:
+        # S-10: there is no default PSK any more. Refusing is better than
+        # raising a hotspot whose password is published in a public repo --
+        # joining it means choosing which network this kiosk trusts, over a
+        # plain-http SERVER_URL.
+        log.error("refusing to start the setup hotspot: %s", exc)
+        return False
 
     try:
-        result = subprocess.run(
-            [
-                "nmcli", "dev", "wifi", "hotspot",
-                "ifname", "wlan0",
-                "ssid",   ssid,
-                "password", password,
-            ],
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode != 0:
-            log.error("AP hotspot failed: %s", result.stderr.strip())
-            return False
-
-        # Set static IP on the hotspot interface
-        subprocess.run(
-            ["nmcli", "con", "modify", ssid,
-             "ipv4.addresses", f"{ip}/24",
-             "ipv4.method", "manual"],
-            capture_output=True, timeout=5,
-        )
-        subprocess.run(["nmcli", "con", "up", ssid],
-                       capture_output=True, timeout=10)
-        log.info("AP hotspot started: SSID=%s  IP=%s", ssid, ip)
+        start_hotspot(ssid, password, ip)
         return True
-    except Exception as e:
-        log.error("start_ap_mode error: %s", e)
+    except HotspotError as exc:
+        log.error("AP hotspot failed: %s", exc)
         return False
 
 
-def stop_ap_mode(ssid: str = AP_SSID):
+def stop_ap_mode(ssid: str = AP_SSID) -> None:
+    """Take the hotspot down so NetworkManager rejoins saved client networks.
+
+    D-77 again: deleting by SSID could never remove the profile, because it is
+    named `engirent-setup-hotspot` (or, for anything older, `Hotspot`).
+    `stop_hotspot` targets the explicit id, deletes the keyfile, and removes a
+    legacy `Hotspot` profile only when its SSID is ours.
+    """
     try:
-        subprocess.run(["nmcli", "con", "delete", ssid],
-                       capture_output=True, timeout=5)
-        log.info("AP hotspot stopped.")
-    except Exception as e:
-        log.error("stop_ap_mode error: %s", e)
+        stop_hotspot(ssid)
+    except Exception as exc:                      # pragma: no cover - defensive
+        log.error("stop_ap_mode error: %s", exc)
 
 
 def run_portal(host: str = "0.0.0.0", port: int = 80):
