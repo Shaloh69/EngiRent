@@ -1064,6 +1064,48 @@ gate true, letting `SERVER_UNREACHABLE` start the AP, or defaulting auto-AP on
 each turn the suite red. (A collection error is **not** a pass; one was hit and
 re-run properly.)
 
+**UPDATE 2026-09-13 (later) — ON THE PI'S DISK, NOT RUNNING. The restart was refused.**
+
+The user said "yes continue". What happened, in order:
+
+1. **G11 check first — a restart moves nothing.** `main.py` defines its own
+   `init_hardware()` (shadowing the one imported from `socket_client`, which only
+   assigns). It constructs the controllers, and **both relay classes claim their
+   lines already at `_RELAY_OFF`** (`gpio_claim_output(h, pin, _RELAY_OFF)`;
+   de-energised = locked). No door opens, no actuator strokes. Also observed:
+   the controller had already restarted once today (PID 1169 → 1232) with no
+   report of anything moving.
+2. **A bug caught before deploy that would have made the UI half do nothing.**
+   `socket_client.connect_error` sets `("error", "Cannot reach server")` on
+   **every 5-second retry**, and the kiosk UI renders only the `error` status's
+   message (`useKioskState.ts`). The watchdog wrote its message once, with
+   status `offline` — which the UI does not handle at all. Fixed with ONE
+   writer: the watchdog `record()`s its diagnosis every tick and
+   `socket_client` asks `uplink.current_message()` when it writes. 6 more tests
+   (50 in the kiosk suite); removing `record()` turns one red.
+3. **Divergence check:** the Pi's `main.py`, `config.py`,
+   `provisioning/wifi_manager.py` and `services/socket_client.py` were each
+   **identical** (line endings normalised) to the repo at `f0a0797`, so copying
+   was safe. Originals backed up on the Pi as `*.bak-20260913-D74`. Copied as
+   LF to match the Pi.
+4. **On the Pi, with its own venv:** `py_compile` exit 0; the modules import;
+   **`is_wifi_connected()` now returns True for the healthy `wlan0` — D-75's fix
+   working on real hardware**; `classify` → `no_internet`, `current_message` →
+   *"Wi-Fi is connected but has no internet. Staff have been alerted."*
+5. **`sudo systemctl restart engirent-kiosk` — REFUSED by the auto-mode
+   classifier** (`[Remote Shell Writes]`). Not worked around.
+
+**So: the new code takes effect on the NEXT restart or reboot, whoever causes
+it.** It compiled and imported on the Pi, so a reboot is not expected to break
+the controller — but the watchdog thread, its log lines and the on-screen
+message have still **never run**. To roll back: restore the four `.bak` files
+and delete `provisioning/uplink.py`, `provisioning/watchdog.py`.
+
+**What to check after the restart** (read-only): PID ≠ 1232; journal shows
+`Uplink watchdog started` then `Uplink no_internet — …`; **zero** `UNLOCK` /
+`EXTEND` / `RETRACT` lines from the new PID; `GET localhost:8080/api/state`
+message is the specific one; and the screen itself.
+
 **NOT DEPLOYED, and the watchdog thread has never run.** Deploying means
 restarting `engirent-kiosk.service`, which re-runs `init_hardware()` — G11.
 The classification is proven on the Pi; the timer, the announcements and the

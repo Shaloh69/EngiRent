@@ -185,6 +185,69 @@ def test_p2p_device_alone_does_not_count_as_associated():
     assert parse_wifi_associated("p2p-dev-wlan0:wifi-p2p:connected") is False
 
 
+def test_p2p_connected_line_does_not_mask_a_real_wifi_line():
+    assert parse_wifi_associated("p2p-dev-wlan0:wifi-p2p:connected\nwlan0:wifi:connected") is True
+
+
+# ── the shared diagnosis: one writer for the screen ─────────────────────────
+
+import provisioning.uplink as uplink_mod
+from provisioning.watchdog import UplinkWatchdog
+
+
+@pytest.fixture(autouse=False)
+def fresh_diagnosis():
+    uplink_mod.record(None)
+    yield
+    uplink_mod.record(None)
+
+
+def test_no_message_before_the_first_measurement(fresh_diagnosis):
+    """The socket client must fall back to its own text, not print 'None'."""
+    assert uplink_mod.current_message() is None
+
+
+def test_ok_has_no_override_message(fresh_diagnosis):
+    uplink_mod.record(Uplink.OK)
+    assert uplink_mod.current_message() is None
+
+
+def test_no_internet_supplies_the_specific_message(fresh_diagnosis):
+    uplink_mod.record(Uplink.NO_INTERNET)
+    assert uplink_mod.current_message() == describe(Uplink.NO_INTERNET)
+
+
+def test_watchdog_records_every_tick_not_only_on_change(fresh_diagnosis, monkeypatch):
+    """The screen is rewritten by the socket client on every 5s retry. If the
+    watchdog only recorded on change, a later retry would still read the right
+    value -- but if it ever stopped recording, recovery would never clear the
+    old message. So it records unconditionally; this pins that."""
+    probes = iter([
+        probe(wifi=True, internet=False, dns=False, server=False),
+        probe(wifi=True, internet=False, dns=False, server=False),
+        probe(),
+    ])
+    monkeypatch.setattr("provisioning.watchdog.run_probe", lambda url, server_ok=None: next(probes))
+    wd = UplinkWatchdog("http://desktop-gklhcri:5000")
+
+    assert wd.tick(now=0) == Uplink.NO_INTERNET
+    assert uplink_mod.current_message() == describe(Uplink.NO_INTERNET)
+    assert wd.tick(now=60) == Uplink.NO_INTERNET          # no change, still recorded
+    assert uplink_mod.current_message() == describe(Uplink.NO_INTERNET)
+    assert wd.tick(now=120) == Uplink.OK                  # recovery clears it
+    assert uplink_mod.current_message() is None
+
+
+def test_watchdog_never_starts_ap_by_default_even_when_told_it_is_safe(fresh_diagnosis, monkeypatch):
+    monkeypatch.setattr("provisioning.watchdog.run_probe",
+                        lambda url, server_ok=None: probe(wifi=False, internet=False, dns=False, server=False))
+    started = []
+    wd = UplinkWatchdog("http://x:1", safe_to_disrupt=lambda: True, start_ap=lambda: started.append(1))
+    for t in range(0, 100_000, 5_000):
+        wd.tick(now=t)
+    assert started == []
+
+
 def test_empty_and_garbage_are_false_not_crashes():
     for junk in ("", "\n\n", "nonsense", "a:b", ":::"):
         assert parse_wifi_associated(junk) is False

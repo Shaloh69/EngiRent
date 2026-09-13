@@ -265,5 +265,31 @@ def run_probe(server_url: str, server_ok: bool | None = None) -> Probe:
     )
 
 
+# ── The current diagnosis, shared with the socket client ──────────────────────
+#
+# ONE writer for what the screen says. The socket client's `connect_error`
+# handler already sets `("error", "Cannot reach server")` on every 5-second
+# retry, and the kiosk UI renders only the `error` status's message
+# (`useKioskState.ts`: `s.status === "error"` -> ErrorScreen). A watchdog that
+# wrote its own message once, on change, was overwritten within 5 seconds --
+# caught before deploy on 2026-09-13. So the watchdog only RECORDS; the socket
+# client asks for the cause when it writes its message.
+
+_current: Uplink | None = None
+
+
+def record(state: Uplink) -> None:
+    global _current
+    _current = state
+
+
+def current_message() -> str | None:
+    """The cause to show instead of a generic "Cannot reach server", or None
+    when there is nothing more specific to say (unknown yet, or OK)."""
+    if _current is None or _current is Uplink.OK:
+        return None
+    return describe(_current)
+
+
 def describe(state: Uplink) -> str:
     return MESSAGES.get(state, MESSAGES[Uplink.SERVER_UNREACHABLE])

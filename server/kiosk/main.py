@@ -241,7 +241,7 @@ def main():
     # Reports only unless UPLINK_AUTO_AP is set; holds no hardware reference
     # and never touches GPIO.
     if os.getenv("UPLINK_WATCHDOG_ENABLED", "true").lower() != "false":
-        from services.socket_client import sio, _set_ui
+        from services.socket_client import sio
         _uplink_watchdog = UplinkWatchdog(
             server_url=os.getenv("SERVER_URL", "http://localhost:5000"),
             interval=int(os.getenv("UPLINK_CHECK_INTERVAL", "60")),
@@ -251,9 +251,11 @@ def main():
             )),
             # An open socket is better evidence than any probe we could invent.
             server_ok_fn=lambda: sio.connected,
-            # Say WHY on screen. The socket client already shows "offline"; this
-            # replaces "Disconnected from server – retrying…" with the actual cause.
-            on_state=lambda state, msg: _set_ui("offline", msg) if state.value != "ok" else None,
+            # No UI writes from here, deliberately: the socket client rewrites the
+            # screen on every 5s retry and would clobber a one-off message. The
+            # watchdog records its diagnosis; socket_client reads it when it
+            # writes. See uplink.current_message.
+            on_state=None,
             # No safety oracle is wired yet, so this stays None and the policy
             # refuses to disrupt — deliberate: a bay may be open with a
             # student's property in it. Auto-AP is off by default anyway.

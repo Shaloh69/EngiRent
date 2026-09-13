@@ -22,7 +22,7 @@ import logging
 import threading
 import time
 
-from .uplink import Action, PolicyConfig, Uplink, UplinkPolicy, classify, describe, run_probe
+from .uplink import Action, PolicyConfig, Uplink, UplinkPolicy, classify, describe, record, run_probe
 
 log = logging.getLogger("kiosk.uplink")
 
@@ -70,6 +70,9 @@ class UplinkWatchdog:
         state = classify(run_probe(self.server_url, server_ok=server_ok))
         action = self.policy.update(state, now, safe_to_disrupt=self.safe_to_disrupt)
         self.last_state = state
+        # Every tick, not just on change: the socket client reads this on each
+        # retry, so it must always reflect the latest measurement.
+        record(state)
 
         if action is Action.ANNOUNCE:
             msg = describe(state)

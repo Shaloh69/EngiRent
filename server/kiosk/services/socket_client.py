@@ -217,6 +217,16 @@ def get_ui_state() -> dict:
     return _ui_state
 
 
+def _uplink_message() -> str | None:
+    """The uplink watchdog's diagnosis, if any (D-74). Never raises: a missing or
+    broken watchdog must not stop the kiosk reporting that it is offline."""
+    try:
+        from provisioning.uplink import current_message
+        return current_message()
+    except Exception:
+        return None
+
+
 def _set_ui(status: str, message: str, active_locker: int | None = None):
     _ui_state["status"] = status
     _ui_state["message"] = message
@@ -243,13 +253,15 @@ async def connect():
 @sio.event
 async def disconnect():
     log.warning("Disconnected from server")
-    _set_ui("offline", "Disconnected from server – retrying…")
+    _set_ui("offline", _uplink_message() or "Disconnected from server – retrying…")
 
 
 @sio.event
 async def connect_error(data):
     log.error("Connection error: %s", data)
-    _set_ui("error", "Cannot reach server")
+    # D-74: name the cause when the uplink watchdog knows it. Falls back to the
+    # old generic text if the watchdog is disabled or has not measured yet.
+    _set_ui("error", _uplink_message() or "Cannot reach server")
 
 
 @sio.on("kiosk:config")
