@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **PHYSICAL RUN BLOCKED AT PAYMENT by D-79: the app can never create the security-deposit payment, so no app rental reaches AWAITING_DEPOSIT** · app deposit would pick BAY 4 · **APP OUTAGE 01:46 (429, one shared public-IP bucket of 100/15min) MITIGATED 01:50: limit 1000, 0×429 after — proper fix owed (exclude /media, strict login limiter)** · kiosk Wi-Fi outage 01:05 resolved by reboot · D-78 OPEN (RETRY never re-captures) · APP 1.9.0 PUBLISHED · D-73 CLOSED · S-11 MITIGATED · S-9 + S-10 not on the Pi · E4.6 NO HARDWARE EXERCISED · D-65 not closed · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **APP 1.9.1 (build 20) PUBLISHED 2026-09-14 02:14 — D-79 fixed in the app, NOT YET SEEN ON A PHONE** · 3 stuck real rentals CANCELLED on the user's ruling (fees kept as FAILED) · physical run to restart from a fresh rental in 1.9.1 · UNRESOLVED: user reports white-on-white payment numbers — not found in code, screen not yet identified · D-80 OPEN (manual deposits never refunded) · D-79b latent · D-78 OPEN · 429 outage mitigated (limit 1000) · kiosk ONLINE · S-11 MITIGATED · E4.6 NO HARDWARE EXERCISED · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE

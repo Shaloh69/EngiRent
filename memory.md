@@ -327,6 +327,51 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-14 ~02:14 — v1.9.1 (Prerelease20) shipped for D-79, and three stuck real rentals were cancelled on the user's ruling
+
+**Why:** during the physical run a real renter paid the fee, the admin approved
+it, and the rental stayed PENDING forever. The app hardcoded `RENTAL_PAYMENT` and
+could never create the `SECURITY_DEPOSIT` the server requires (D-79,
+`docs/PROGRESS.md`). The user said "just update the app". 1.9.1 pays whichever
+payment is owed and gates each rental action by role.
+
+**Built and verified on the artifact:**
+- `com.engirent.app versionCode=20 versionName=1.9.1`, `CN=EngiRent` signer
+- only `perl-gamecube-loving-quotes…/api/v1` baked in
+- **the string "Pay security deposit" present in `libapp.so`**, proof that the
+  fix itself is in this build
+- 90,960,199 bytes, sha256 `d9088e4a…`, **identical on the server**
+
+The incremental build took about 76 seconds, not 9 minutes.
+
+**Published to all three places:**
+1. `Engirent_Prerelease20…apk`
+2. `release.ts` and `changelog.ts`: the server copies were first diffed and still
+   matched the 1.9.0 publish. `EngiRentWeb` restarted (PID 25388 stopped).
+3. `AppRelease` row 1.9.1 (build 20, 3 highlights); `LATEST_APP_VERSION` 1.9.0 →
+   1.9.1 with a `.bak-release20-*` backup, and `RATE_LIMIT_MAX_REQUESTS=1000`
+   confirmed still in place. The E4.6 guard ran first (kiosk idle, 8/8 locked,
+   0 DEPOSITED, 0 pending releases). `EngiRentNode` restarted (PID 20956 stopped).
+
+**Reset, the user's choice "Cancel all three and start fresh"** (from a
+screenshot of the admin payments table):
+- **What:** payments `529af549` (Dildo sa Robot ₱6), `e2cfd3ed` (Soldering 60w
+  ₱10), `386da33f` (Tester ₱200).
+- **Checked before any write:** each was a PENDING rental with exactly one
+  `RENTAL_PAYMENT COMPLETED`, no locker, and no deposit locker. The script would
+  have refused otherwise.
+- **Done, in one DB transaction:** rental → `CANCELLED`, fee → `FAILED` (kept,
+  **not deleted**), and a "Rental Cancelled" notification to **both** parties
+  explaining the bug, asking them to update to 1.9.1, and to message the admin
+  if money was actually sent.
+- **Side effects:** the compiled `recomputeItemAvailability` ran per item,
+  mirroring `rentalController.cancelRental`.
+- **Read back:** all three CANCELLED/FAILED, items available, 2 notifications
+  each.
+
+**Not done:** returning any money that was really sent. That is manual, and
+D-80 applies.
+
 ### 2026-09-14 ~01:46 — APP OUTAGE: "Too Many Requests" with three users. MITIGATED 01:50 (limit raised by the user).
 
 **Cause, measured:** the global limiter (`middleware/rateLimiter.ts`) keys on

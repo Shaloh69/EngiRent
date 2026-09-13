@@ -28,16 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.9.0",
-  buildNumber: 19,
-  fileName: "Engirent_Prerelease19.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.9.1",
+  buildNumber: 20,
+  fileName: "Engirent_Prerelease20.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-09-14",
   sizeMb: 86.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Live updates finally arrive — chat, rental status, deposit and return results, and payment confirmations had never reached the app in real time",
-    "Pay Now shows exactly where to send the money and tells you when an admin confirms it, instead of doing nothing",
-    "Fixed sign-in: build 18 still pointed at a server address that no longer exists",
+    "Renters can pay the security deposit — before this a rental could never be fully paid or reach the kiosk",
+    "The pay button says exactly what it pays and how much",
+    "Owners and renters each see only their own next step, with a note saying whose turn it is",
   ],
 };
 

@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-09-14",
+    version: "1.9.1",
+    tag: "fix",
+    title: "Renters can pay the security deposit, and each side sees what happens next",
+    bullets: [
+      "Renters can now pay the security deposit from the app. Before this, Pay Now only ever asked for the rental fee, so a rental could never be fully paid and never reached the kiosk",
+      "The pay button now says exactly what it pays and how much, and you can send the deposit without waiting for the rental fee to be confirmed first",
+      "Owners no longer see the renter's payment buttons. Each side sees only its own next step, and a short note says whose turn it is while you wait",
+    ],
+  },
+  {
+    date: "2026-09-14",
     version: "1.9.0",
     tag: "release",
     title: "Live updates that actually arrive, a payment screen that tells you what to do, and a redesign",
