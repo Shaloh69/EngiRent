@@ -186,6 +186,7 @@ export default function KioskPage() {
    * through the UI.
    */
   const [timingSource, setTimingSource] = useState<"kiosk" | "demo" | "unknown">("unknown");
+  const [timingReportedAt, setTimingReportedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [cmdLoading, setCmdLoading] = useState<string | null>(null);
@@ -256,13 +257,22 @@ export default function KioskPage() {
         configRes.status === "fulfilled"
           ? (configRes.value.data.data?.config ?? {})
           : {};
-      // No demo fallback outside demo mode: an unknown timing is shown as
-      // unknown and cannot be saved, because saving it would overwrite the
-      // real one on the Pi.
-      const lockers = config.lockers as Record<string, LockerTiming> | undefined;
+      // The kiosk's OWN calibrated values, read from its kiosk_config.json and
+      // reported when it connects (kiosk:timing_report). Only these count as
+      // real: `config.lockers` is merely whatever an admin last saved, and
+      // showing that as the hardware's truth is how D-83 happened.
+      const reported =
+        configRes.status === "fulfilled"
+          ? (configRes.value.data.data?.reportedTiming as
+              | { lockers: Record<string, LockerTiming>; reportedAt: number }
+              | null
+              | undefined)
+          : undefined;
+      const lockers = reported?.lockers;
       setKiosk({ ...DEMO_STATE, id: kioskId, timing: lockers ?? {} });
-      setTiming(lockers ?? {});
+      setTiming(lockers ? { ...lockers } : {});
       setTimingSource(lockers ? "kiosk" : "unknown");
+      setTimingReportedAt(reported?.reportedAt ?? null);
     } catch {
       setKiosk({ ...DEMO_STATE, timing: {} });
       setTiming({});
@@ -463,6 +473,9 @@ export default function KioskPage() {
         });
       }
       showToast(`Locker ${lockerId.padStart(2, "0")} timing saved`);
+      // The kiosk writes the new value to its file and reports it back; show
+      // what it actually holds rather than what this form sent.
+      if (!isDemoMode) setTimeout(() => fetchState(), 3000);
     } catch {
       showToast(`Failed to save locker ${lockerId} timing`, false);
     } finally {
@@ -810,6 +823,13 @@ Releasing clears the occupied state and detaches any rental — only do this if 
           </Group>
           <Divider />
           <Stack gap="md" pt="md">
+            {!timingUnknown && timingReportedAt && (
+              <Text size="xs" c="dimmed">
+                Reported by the kiosk at{" "}
+                {new Date(timingReportedAt).toLocaleTimeString()} — these are the
+                values its doors and actuator are using now.
+              </Text>
+            )}
             {timingUnknown && (
               <Alert
                 icon={<AlertCircle size={16} />}
@@ -820,7 +840,7 @@ Releasing clears the occupied state and detaches any rental — only do this if 
                   These are not this locker&apos;s real timings
                 </Text>
                 <Text size="xs" mt={2}>
-                  The kiosk has not reported its calibrated values to the server, so
+                  The kiosk has not reported its calibrated values (it may be offline or not yet updated), so
                   the boxes below show placeholders. Saving them would overwrite the
                   Pi&apos;s hand-calibrated <Code>kiosk_config.json</Code> — bay 2, for
                   example, really runs 5s doors and a 21s actuator stroke. Saving is

@@ -44,6 +44,7 @@ import {
 } from "./services/retrievalService";
 import { openKioskSession } from "./services/kioskSessionStore";
 import { recordKioskLog } from "./services/kioskLogBuffer";
+import { recordTimingReport } from "./services/kioskTimingStore";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
   sendItemReadyForClaim,
@@ -1263,6 +1264,27 @@ io.on("connection", (socket: Socket) => {
         `overall=${d?.overall ?? "?"}`,
     );
     kioskEventBus.emit("kiosk_self_test", { ...d, ts: Date.now() });
+  });
+
+  // -- The kiosk's own calibrated timings (2026-09-17). Read-only on this
+  // side: stored so the admin console can show what the hardware really uses
+  // (D-83) and the phone's door countdown can use the real per-bay seconds
+  // (D-82). Nothing here is ever pushed back to the Pi.
+  socket.on("kiosk:timing_report", (data: { kiosk_id?: string; lockers?: unknown }) => {
+    if (!isKiosk(socket)) return;
+    const kioskId = String(data?.kiosk_id ?? socket.data.kioskId ?? "");
+    if (!kioskId) return;
+    const report = recordTimingReport(kioskId, data?.lockers);
+    if (!report) {
+      logger.warn(`[PI-TIMING] ${kioskId} sent a timing report with no valid bays -- ignored`);
+      return;
+    }
+    logger.info(
+      `[PI-TIMING] ${kioskId} reported ` +
+        Object.entries(report.lockers)
+          .map(([bay, t]) => `bay ${bay} main ${t.main_door_open_seconds}s/bottom ${t.bottom_door_open_seconds}s/ext ${t.actuator_extend_seconds}s/ret ${t.actuator_retract_seconds}s`)
+          .join("; "),
+    );
   });
 
   // ── Pi log forwarding — all relevant Pi logs streamed to Render

@@ -16,6 +16,7 @@ import {
   noteOpen,
   noteCapture,
 } from "../services/kioskBayAccessStore";
+import { doorOpenSeconds } from "../services/kioskTimingStore";
 import {
   signedMediaUrl,
   saveBuffer,
@@ -696,6 +697,8 @@ export const openBay = async (
     const io = req.app.get("io");
     if (!io) throw new ValidationError("Realtime channel unavailable");
 
+    const realSeconds = doorOpenSeconds(grant.kioskId, grant.lockerNumber, grant.door);
+
     io.to(`kiosk:${grant.kioskId}`).emit("kiosk:command", {
       action: "open_door",
       locker_id: parseInt(grant.lockerNumber, 10),
@@ -714,7 +717,10 @@ export const openBay = async (
       data: {
         lockerNumber: grant.lockerNumber,
         door: grant.door,
-        doorOpenSeconds: DOOR_OPEN_SECONDS_HINT,
+        // D-82: the kiosk's own calibrated value when it has reported one
+        // (bay 2 is 5s, the others 15s), the old estimate only when it has not.
+        doorOpenSeconds: realSeconds ?? DOOR_OPEN_SECONDS_HINT,
+        doorOpenSecondsSource: realSeconds === undefined ? "estimate" : "kiosk",
         opensRemaining: Math.max(0, 12 - noted.grant.opens),
         expiresAt: noted.grant.expiresAt,
       },

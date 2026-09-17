@@ -247,7 +247,29 @@ async def connect():
         "locker_count": 4,
         "version": "1.0.0",
     })
+    await _report_timing()
     _set_ui("online", "Kiosk online – Ready")
+
+
+async def _report_timing():
+    """Tell the server which per-bay timings this kiosk is ACTUALLY using.
+
+    Read-only: it reads kiosk_config.json and sends the `lockers` block, and
+    changes nothing. Before 2026-09-17 the server never knew these values, so
+    the admin console displayed placeholders — and saving them would have
+    overwritten this file (D-83) — while the phone counted down a hardcoded
+    15s even on bay 2, which unlocks for 5 (D-82).
+
+    Sent on connect and again after a pushed config is saved, so the server
+    never keeps a value this file no longer holds. A failure here must never
+    stop the kiosk working, so it is logged and swallowed.
+    """
+    try:
+        lockers = load_timing_config().get("lockers", {})
+        await sio.emit("kiosk:timing_report", {"kiosk_id": KIOSK_ID, "lockers": lockers})
+        log.info("Reported timing config for %d bay(s)", len(lockers))
+    except Exception as e:  # noqa: BLE001 - reporting is best-effort
+        log.warning("Could not report timing config: %s", e)
 
 
 @sio.event
@@ -281,6 +303,9 @@ async def on_config(data: dict):
         }
         save_timing_config(timing_only)
         log.info("Timing config saved from server ✓")
+        # Re-report what is now on disk, so the console never shows a value
+        # this file no longer holds.
+        await _report_timing()
     else:
         log.info("Server config has no 'lockers' key — keeping local kiosk_config.json")
 

@@ -7,6 +7,7 @@ import logger from "../utils/logger";
 import { hashPassword } from "../utils/bcrypt";
 import kioskEventBus from "../utils/kioskEventBus";
 import { getKioskLogs } from "../services/kioskLogBuffer";
+import { getTimingReport } from "../services/kioskTimingStore";
 import {
   signedMediaUrl,
   userIdPath,
@@ -1121,7 +1122,14 @@ export const getKioskConfig = async (
     const record = await prisma.kioskConfig.findUnique({ where: { kioskId } });
     const config = record?.config ?? DEFAULT_CONFIG;
 
-    res.json({ success: true, data: { kioskId, config } });
+    // What the kiosk says its hardware is actually using, read from its own
+    // kiosk_config.json and reported on connect. This — not `config.lockers`,
+    // which is only whatever an admin last saved — is what the console must
+    // display, because it is what the doors and actuator obey. `null` until
+    // the kiosk reports, and the console refuses to save in that state (D-83).
+    const reported = getTimingReport(kioskId) ?? null;
+
+    res.json({ success: true, data: { kioskId, config, reportedTiming: reported } });
   } catch (error) {
     next(error);
   }

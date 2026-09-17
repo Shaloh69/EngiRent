@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **THIRD OUTAGE 2026-09-17: server had rebooted 09-15; stack restarted, tunnels rotated, APP 1.10.1 PUBLISHED** · D-84 (logs had no history) + D-85 (snapshot failed silently) FIXED AND DEPLOYED; auto-snapshot added — console page NOT YET OPENED (fires a camera, G11) · Pi real-timings report BLOCKED: Tailscale SSH needs the user's login · D-83 guarded · bay 4 still RESERVED (is an item inside?) · button-driven bay flow deployed, NOT EXERCISED · D-80 · D-82 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **REAL KIOSK TIMINGS NOW REACH THE CONSOLE AND THE PHONE** (Pi reports its calibration; verified via API: bay 2 = 5/5/21/21) — D-82 closed, D-83 real fix done · D-84 logs backlog + D-85 snapshot feedback + auto-snapshot DEPLOYED · console page deployed, NOT YET OPENED (fires a camera, G11) · stack up on rotated tunnels, app 1.10.1 published · bay 4 still RESERVED (item inside?) · button-driven bay flow NOT EXERCISED · D-80 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1503,6 +1503,48 @@ owner is at it); its grant exists so the door can be re-opened if it relocks.
 passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:**
 ignoring expiry → red; removing the open cap → red; restored byte-identical.
 **Not exercised on hardware** — that is the next physical run.
+
+### D-83 (real fix) + D-82 CLOSED 2026-09-17: the kiosk now reports its own calibrated timings, and both the console and the phone use them.
+
+**What the user asked for — "the Saved Locker Timings don't reflect here" — now
+works, end to end, verified at every hop:**
+
+1. **Pi** (`socket_client.py`, `_report_timing`): read-only, sends the
+   `lockers` block of its own `kiosk_config.json` as `kiosk:timing_report` on
+   connect **and again after it saves a pushed config**, so the server never
+   keeps a value the file no longer holds. Best-effort; a failure is logged and
+   swallowed. The Pi copy was **identical** to the repo, so it was copied
+   (`.bak-20260917` kept), compiled **on the Pi**, and the controller restarted
+   through `kiosk-restart-controller.sh`: PID 1151 → 45193, idle and all doors
+   locked at the time. Journal: *"Reported timing config for 4 bay(s)"* at
+   20:22:46. The only actuator lines are pin assignments at start-up (no
+   movement).
+2. **Server** (`kioskTimingStore.ts`): validates each bay whole (four finite
+   numbers in (0, 600]) and drops any bay with a bad field rather than half-show
+   it. `GET /admin/kiosks/:id/config` now also returns `reportedTiming`. The
+   handler was patched onto the server's **diverged** `index.ts` (D-37(b) still
+   present). Build 20:22:02, PID 33508.
+3. **Verified through the API with a real admin token:** `reportedTiming` =
+   **bay 1 15/15/22/22 · bay 2 5/5/21/21 · bay 3 15/15/17/17 · bay 4
+   15/15/23/23** — exactly the calibrated file. `config.lockers` (admin-saved)
+   is **absent**, so nothing is set to be pushed over it.
+4. **Console:** shows **only** the kiosk's report as real, with *"Reported by the
+   kiosk at …"*. The D-83 guard (no save unless the source is the kiosk) is kept,
+   and after a save it re-reads what the kiosk actually wrote.
+5. **Phone (D-82):** `POST /kiosk/open-bay` now returns the kiosk's real
+   seconds for that bay and door, with `doorOpenSecondsSource: "kiosk"`; it
+   falls back to 15 only when the kiosk has not reported (`"estimate"`). Bay 2
+   now counts down **5**, not 15.
+
+**Found on the way, and why the Pi's file had to be the source:** on every kiosk
+connect, `index.ts` pushes the stored `KioskConfig` **down** to the Pi, and the Pi
+writes it into its calibration file. No row exists today, so nothing has been
+overwritten — but the console displaying anything other than the Pi's own report
+would have let a stale saved value be re-applied on every reconnect.
+
+**Tests:** 8 new timing-store tests; the server suite is **223 passed (22
+suites)**; the kiosk suite is 108 passed. **The console page is deployed but NOT
+yet opened** — opening it fires the auto-snapshot (G11).
 
 ### D-84 / D-85 — the admin Live Pi Logs panel had no history, and a failed snapshot looked like nothing happening. FOUND AND FIXED 2026-09-17. DEPLOYED; the console page NOT YET OPENED (opening it fires a camera, G11).
 
