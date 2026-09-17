@@ -1504,6 +1504,26 @@ passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:
 ignoring expiry → red; removing the open cap → red; restored byte-identical.
 **Not exercised on hardware** — that is the next physical run.
 
+### D-81 — two stale PayMongo payment pairs are still approvable in the admin console. FOUND 2026-09-14, CONFIRMED HISTORICAL 2026-09-18. Data only; voiding them needs the user's OK.
+
+Seen during the physical run as "two `RENTAL_PAYMENT:PENDING` on one rental". On
+2026-09-18 every live payment group on the live DB was read:
+
+| Rental | Status | Pending rows |
+|---|---|---|
+| `9fcea394` "natug na hurley" | PENDING | `51ac133c` + `f0e06813`, ₱150 each, **PayMongo**, 2026-09-05 17:46 / 17:55 |
+| `2124e7fe` "Blast" | **CANCELLED** | `6076225b` + `fc6332f0`, ₱200 each, **PayMongo**, 2026-09-03 16:16 / 16:17 |
+
+**Not a live defect.** Both predate the manual-payments ruling (2026-09-06) and
+its de-duplication. The deployed `paymentController` has the "at most one live
+payment of each type" guard in both source and build, so no new pair can form.
+They are abandoned PayMongo checkout sessions.
+
+**Still a hazard:** the console lists every PENDING payment with its own approve
+button, so an admin could confirm ₱150 twice for one rental, or confirm money for
+a rental that is already cancelled. **Proposed:** mark all four rows `FAILED`
+(kept, not deleted; no PayMongo money moved on test keys). Waiting on the user.
+
 ### D-86 — the admin console's live event stream never reaches the browser through the Cloudflare tunnel. FOUND AND WORKED AROUND 2026-09-17 (polling). DEPLOYED; on-screen check pending the user's OK.
 
 **How it was found.** After D-84/D-85 the console was opened (the user approved
