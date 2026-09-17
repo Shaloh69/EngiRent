@@ -28,16 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.9.1",
-  buildNumber: 20,
-  fileName: "Engirent_Prerelease20.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-09-14",
+  version: "1.10.1",
+  buildNumber: 22,
+  fileName: "Engirent_Prerelease22.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-09-17",
   sizeMb: 86.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Renters can pay the security deposit — before this a rental could never be fully paid or reach the kiosk",
-    "The pay button says exactly what it pays and how much",
-    "Owners and renters each see only their own next step, with a note saying whose turn it is",
+    "Rebuilt for the server's new address — build 21 and earlier can no longer sign in",
+    "You open the locker with a button when you're ready, with a countdown while the door is unlocked",
+    "Tap \"Item is placed\" and the kiosk checks then — no more 20-second timer deciding for you",
   ],
 };
 

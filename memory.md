@@ -327,6 +327,56 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-17 19:39 — THIRD OUTAGE: the server rebooted on 2026-09-15 and nothing came back. Restarted, tunnels rotated, app rebuilt as 1.10.1.
+
+**Found:** all three public tunnels answered `000`. The machine was reachable on
+Tailscale; `LastBootUpTime` was **2026-09-15 16:41** and all seven `EngiRent*`
+tasks sat `Ready` with last-run times of 09-13/09-14. Only MySQL (3307) was up,
+as always. Same Interactive-logon gotcha as both previous outages.
+
+**New tunnel hostnames (this run):**
+
+| | Hostname |
+|---|---|
+| API | `tall-merely-robust-equity` |
+| Web | `mainland-submitting-band-specs` |
+| Admin | `nissan-likely-senate-edit` |
+
+**Two new gotchas, both cost time here:**
+
+1. **A quick tunnel can fail to be issued at all.** `tunnel-api.log` and
+   `tunnel-web.log` said `failed to request quick Tunnel: Post
+   "https://api.trycloudflare.com/tunnel": context deadline exceeded` and the
+   tasks exited. Only the admin tunnel got a hostname on the first pass. Fix:
+   start those tasks again. **And when scraping hostnames from the logs, exclude
+   `api.trycloudflare.com`** — it is cloudflared's own endpoint and matches a
+   naive `https://[a-z0-9-]+\.trycloudflare\.com` regex, which is how the first
+   read reported it as the assigned hostname.
+2. **FOURTH restart gotcha: orphaned `next build` workers block the next
+   start.** Killing the port owner leaves the `next build` process and its
+   workers alive; the task then exits **instantly with LastTaskResult 1** and
+   states `Ready`, over and over. `EngiRentAdmin` did this three times. Fix:
+   `Get-CimInstance Win32_Process | Where-Object CommandLine -like "*clientdmin*"`,
+   kill those node processes, then start the task — it went `Running` at once.
+   Distinguish EcoCharge's node processes by command line, never by name.
+
+**Restart order used:** guard (0 DEPOSITED, 0 pending releases — Node owns the
+E4.6 sweep that can issue `drop_item`) → all seven tasks → re-read hostnames →
+`scripts/ops/server-repoint-tunnels.sh` (backs up node `.env` and admin
+`.env.local`, rewrites the four URL keys, restarts Node + admin) → kill orphans
+→ start admin.
+
+**The app had to be rebuilt again, for the third time for this reason:**
+1.10.0's APK has the old API host baked in. Built **1.10.1+22** with
+`--dart-define=API_BASE_URL=https://tall-merely-robust-equity.trycloudflare.com/api/v1`;
+verified versionCode 22, `CN=EngiRent` signer, and only the new host inside
+`libapp.so`; 90,960,303 bytes, sha256 `6d1bdf6c…`, identical on the server.
+`RATE_LIMIT_MAX_REQUESTS=1000` survived the re-point (checked).
+
+**This is now a standing cost, not an incident: every server restart breaks
+every installed app.** The fix is a stable public hostname (a named Cloudflare
+tunnel), not another rebuild.
+
 ### 2026-09-14 ~02:14 — v1.9.1 (Prerelease20) shipped for D-79, and three stuck real rentals were cancelled on the user's ruling
 
 **Why:** during the physical run a real renter paid the fee, the admin approved

@@ -16,6 +16,30 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-09-17",
+    version: "1.10.1",
+    tag: "fix",
+    title: "Rebuilt for the server's new address",
+    bullets: [
+      "The server restarted and its public address changed, which the app has baked in at build time — anyone on build 21 or earlier cannot sign in until they install this one",
+      "No other changes: the locker flow from 1.10.0 is unchanged",
+    ],
+  },
+  {
+    date: "2026-09-14",
+    version: "1.10.0",
+    tag: "feature",
+    title: "You open the locker when you're ready, and you decide when it checks",
+    bullets: [
+      "The locker no longer opens by itself the moment your face is verified. You get an \"Open Kiosk Now\" button, so the door unlocks while you're standing in front of it with a hand free",
+      "A countdown shows how long the door stays unlocked, and you can open it again if it relocks before you're done",
+      "A reminder on screen: push the door of the locker that lights up — the lock only holds it shut, it doesn't swing open on its own",
+      "When your item is inside and the door is closed, tap \"Item is placed\" and the kiosk photographs the locker then. Before, it took the photo on a 20-second timer whether you were ready or not",
+      "If the kiosk isn't sure about the item, you can now simply try again: it reopens the locker and rechecks. Previously that was a dead end — the door reopened and nothing ever looked again",
+      "The kiosk screen now explains a retry instead of jumping back to its start screen",
+    ],
+  },
+  {
     date: "2026-09-14",
     version: "1.9.1",
     tag: "fix",
