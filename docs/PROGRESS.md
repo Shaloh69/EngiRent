@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **D-86: the admin event stream never crosses the Cloudflare tunnel** (measured: 66ms on localhost, nothing through the tunnel) — logs and snapshots now POLLED, deployed, on-screen check pending the user's OK · real kiosk timings in console + phone VERIFIED ON SCREEN (D-82/D-83) · log backlog VERIFIED ON SCREEN (D-84) · bay 4 released (owner: empty) · stack up on rotated tunnels, app 1.10.1 · button-driven bay flow NOT EXERCISED · D-80 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · stack UP 2026-09-18 01:13 (tunnels: api tall-merely-robust-equity · web mainland-submitting-band-specs · admin nissan-likely-senate-edit) · app 1.10.1 published · real kiosk timings (D-82/D-83) + log backlog (D-84) VERIFIED ON SCREEN · D-86 polling for logs/snapshots DEPLOYED, user checking · D-81 stale payments VOIDED · bay 4 released · button-driven bay flow NOT EXERCISED (next physical run) · white prices unresolved (needs screenshot; app bundles no fonts) · D-80 open · deployed console 18 files behind repo · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -184,6 +184,28 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-09-17/18 (third outage → D-82…D-86 → D-81) — G5 check, run unprompted.
+TWO SYMPTOMS, both caught; one process defect recurred.**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | **Absent, and it found the outage.** The date had moved three days; every tunnel answered `000`; `LastBootUpTime` showed a reboot on 09-15. Liveness was re-derived again after the second date change, before any claim. |
+| 2 vaguer summaries | Absent. |
+| 3 **trusting an instrument over the artifact** | **PRESENT ×2, both caught before being acted on.** (a) A bundle check reported `notifyAdmins 0, openKioskSession 0`, which the code made impossible: PowerShell 5.1's `-SimpleMatch` leaves `.Matches` empty, so the sum is always 0. Re-counted by lines: 5 and 1. (b) An "orphaned build" filter matched **my own query's command line**, twice; the process list was read before anything was killed. |
+| 4 drifting toward the user's answer | Absent. Every hardware-adjacent action went through G11: the first page open, the re-check (the user declined it, and the page was **not** opened), and the bay 4 release (only after the user said the bay was empty). |
+| 5 batching | **Borderline.** The log backlog, the snapshot timeout and the auto-snapshot shipped as one console change. Each piece was verified separately, but the on-screen check that exposed D-86 came only after all three were out. |
+| 6 skipping verification | **Present in the form G1 names.** The D-84/85 console change was deployed before it could be seen, and seeing it (with the user's OK) is what revealed D-86. The D-86 polling is now deployed and **not seen by me**; the user is checking it. That is the one unverified console chunk. |
+
+**Process defect, recurred:** the Python-heredoc backslash loss — recorded in this
+very file — struck again and put real newlines inside a template string. The
+rule is now explicit in D-86: **use the Edit tool for any replacement that
+contains a backslash.**
+
+**Outage lesson, from the 04:45 admin outage (D-83), paid for once:** diffing the
+one file being deployed is not enough when it has dependencies. Every console
+deploy since has been made against the server's **own** page version and
+typechecked before copying.
 
 **2026-09-14 (D-73 closed, S-10 fixed, S-11 found and mitigated): G5 check.
 ONE SYMPTOM, and it is the one this log keeps naming.**
@@ -1504,7 +1526,7 @@ passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:
 ignoring expiry → red; removing the open cap → red; restored byte-identical.
 **Not exercised on hardware** — that is the next physical run.
 
-### D-81 — two stale PayMongo payment pairs are still approvable in the admin console. FOUND 2026-09-14, CONFIRMED HISTORICAL 2026-09-18. Data only; voiding them needs the user's OK.
+### D-81 — two stale PayMongo payment pairs were still approvable in the admin console. FOUND 2026-09-14, CONFIRMED HISTORICAL 2026-09-18. VOIDED 2026-09-18 on the user's ruling.
 
 Seen during the physical run as "two `RENTAL_PAYMENT:PENDING` on one rental". On
 2026-09-18 every live payment group on the live DB was read:
@@ -1521,8 +1543,14 @@ They are abandoned PayMongo checkout sessions.
 
 **Still a hazard:** the console lists every PENDING payment with its own approve
 button, so an admin could confirm ₱150 twice for one rental, or confirm money for
-a rental that is already cancelled. **Proposed:** mark all four rows `FAILED`
-(kept, not deleted; no PayMongo money moved on test keys). Waiting on the user.
+a rental that is already cancelled.
+
+**Voided, user's ruling "Void all four":** a guarded script refused unless each
+row was still `RENTAL_PAYMENT`/`PENDING`/`PayMongo`, then set all four `FAILED`
+(kept, not deleted) in one transaction. The "natug na hurley" renter was notified
+to pay again from 1.10.1. Read back: all four `FAILED`; **live payment groups 1,
+duplicates 0.** With the fee rows FAILED, 1.10.1's `nextPaymentType` offers that
+renter "Pay rental fee" (a FAILED fee counts as owed).
 
 ### D-86 — the admin console's live event stream never reaches the browser through the Cloudflare tunnel. FOUND AND WORKED AROUND 2026-09-17 (polling). DEPLOYED; on-screen check pending the user's OK.
 
