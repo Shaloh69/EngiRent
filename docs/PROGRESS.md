@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **D-83 GUARDED: the admin console could have overwritten the Pi's calibrated timings in one click** (deployed, seen on screen) · APP 1.10.0 PUBLISHED · button-driven bay flow DEPLOYED, NOT EXERCISED · **I CAUSED A 13-MIN ADMIN OUTAGE 04:45-04:58** (deployed a page against an older deployed theme) · deployed admin console is 18 files behind the repo, 6 missing · STILL OWED: real timings from the Pi (also closes D-82), live Pi logs, snapshot + auto-snapshot · white prices on the phone unresolved · D-80 · D-79b · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **THIRD OUTAGE 2026-09-17: server had rebooted 09-15; stack restarted, tunnels rotated, APP 1.10.1 PUBLISHED** · D-84 (logs had no history) + D-85 (snapshot failed silently) FIXED AND DEPLOYED; auto-snapshot added — console page NOT YET OPENED (fires a camera, G11) · Pi real-timings report BLOCKED: Tailscale SSH needs the user's login · D-83 guarded · bay 4 still RESERVED (is an item inside?) · button-driven bay flow deployed, NOT EXERCISED · D-80 · D-82 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1503,6 +1503,63 @@ owner is at it); its grant exists so the door can be re-opened if it relocks.
 passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:**
 ignoring expiry → red; removing the open cap → red; restored byte-identical.
 **Not exercised on hardware** — that is the next physical run.
+
+### D-84 / D-85 — the admin Live Pi Logs panel had no history, and a failed snapshot looked like nothing happening. FOUND AND FIXED 2026-09-17. DEPLOYED; the console page NOT YET OPENED (opening it fires a camera, G11).
+
+**Reported by the user:** "the raspi logs … don't reflect here", "Snapshot is not
+working", and "I want this to auto take a snapshot when first loaded".
+
+**D-84, the logs. The pipeline was never broken — verified, not assumed.** The Pi
+emits `kiosk:log`; `index.ts` publishes it to `kioskEventBus`;
+`/admin/kiosks/events` streams it; the console appends it. The deployed source
+**and** the running build both contain every link, and the Node log shows the
+kiosk's `[PI-LOG]` lines arriving after the restart (19:52:07). But the stream
+carries only what happens **while a page is open**, and an idle kiosk logs almost
+nothing, so *"Waiting for Pi logs…"* was literally true and nothing could ever
+show history.
+**Fix:** `kioskLogBuffer.ts` keeps the last 300 lines in memory (empty on restart,
+on purpose); `index.ts` records each line before publishing it;
+`GET /admin/kiosks/logs` serves them; the console renders them on open and then
+appends live ones.
+**Verified through the API with a real admin token:** 200, returning a real Pi
+line (`12:00:57Z kiosk.socket Occupancy updated`) seconds after Node restarted.
+
+**D-85, the snapshot.** The Pi side is right: with no `rental_id`,
+`_cmd_capture_image` emits `kiosk:admin_snapshot`, Node relays it, and the
+console shows the first URL. **Two silent failures on the console side:**
+1. A response with an **empty** `image_urls` was ignored entirely, so a failed
+   capture produced no message at all.
+2. The spinner cleared **only** when an event arrived, with no timeout, so an
+   offline kiosk or a busy camera left it spinning for ever.
+**Fix:** an empty list now says *"the kiosk captured no image — check that bay's
+camera"*; a 25s timeout clears the spinner and says the kiosk may be offline.
+**Auto-snapshot** (the user's instruction): one `capture_image` of the selected
+bay, once per page mount (not per tab switch). **Camera only**: it reads a USB
+camera and never touches a door, a solenoid or the actuator.
+
+**Why the snapshot is not yet proven working:** opening the page fires that
+camera command, and G11 names "admin kiosk command". It needs the user's yes
+before I open it.
+
+**Deploy, done carefully after D-83's outage:**
+- `index.ts` on the server is **diverged**: it holds D-37(b)'s `notifyAdmins`
+  and the pre-E3.2 `openKioskSession`. So the two edits were **patched onto the
+  server's copy**, not copied from the repo. `adminController.ts` was identical;
+  `adminRoutes.ts` differed only by a comment.
+- The built bundle, re-measured: `notifyAdmins` 5 lines, `openKioskSession` 1,
+  `recordKioskLog` 1, **`expiresAt` 0** (D-66 did not ride along).
+- The console fixes were applied **both** to the repo page and to the server's
+  own older page (18 files behind, see D-83), which uses only
+  `roleColor.critical`/`success`. It rebuilt and answered 200.
+
+**A measurement slip, caught (G5 symptom 3):** the first bundle check reported
+`notifyAdmins 0, openKioskSession 0`. That was impossible, and it was: with
+`-SimpleMatch`, PowerShell 5.1 leaves `.Matches` empty, so summing it is always 0.
+Counting matching lines gave the true numbers. **A result that contradicts the
+code is a question about the instrument first.**
+
+**Tests:** 6 new buffer tests; the server suite is **215 passed (21 suites)**. The
+cap mutation turned red; restored byte-identical.
 
 ### D-83 — SEVERE. The admin console could overwrite the Pi's hand-calibrated locker timings with demo numbers, in one click. FOUND 2026-09-14 FROM THE USER'S SCREENSHOT. GUARDED (deployed); the real fix is still owed.
 

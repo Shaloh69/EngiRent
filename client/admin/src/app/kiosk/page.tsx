@@ -190,6 +190,14 @@ export default function KioskPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [cmdLoading, setCmdLoading] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
+  // The page takes one snapshot of the selected bay when it opens, on the
+  // user's instruction (2026-09-17). Camera only: `capture_image` reads a USB
+  // camera and never touches a door, a solenoid or the actuator.
+  const autoSnapDone = useRef(false);
+  // A requested snapshot used to leave the spinner running for ever if nothing
+  // came back — no timeout, no error. The Pi can fail to answer (offline, busy
+  // camera) and the operator was left staring at it.
+  const snapTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [snapLoading, setSnapLoading] = useState<Record<string, boolean>>({});
   const [releasing, setReleasing] = useState<Record<string, boolean>>({});
   // D-63. The CANONICAL locker model, which this page has never had. The
@@ -267,6 +275,40 @@ export default function KioskPage() {
   useEffect(() => {
     fetchState();
   }, [fetchState]);
+
+  // The Live Pi Logs panel used to open empty and stay empty: the event stream
+  // only carries lines logged WHILE the page is open, and an idle kiosk logs
+  // nothing for minutes, so "Waiting for Pi logs…" was true and looked broken.
+  // The server now keeps the last 300 lines (kioskLogBuffer.ts) — render them
+  // first, then keep appending live ones.
+  useEffect(() => {
+    if (isDemoMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get("/admin/kiosks/logs?limit=300");
+        const rows = (res.data?.data?.logs ?? []) as LogEntry[];
+        if (!cancelled && rows.length > 0) setLogs(rows);
+      } catch {
+        // A missing backlog is not worth an error banner: the live stream
+        // still works, and this panel is a convenience.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // One snapshot of the selected bay when the page opens, per the user's
+  // instruction. Camera only — no door, no actuator — and once per mount, not
+  // per tab change, so switching bays does not fire the cameras repeatedly.
+  useEffect(() => {
+    if (isDemoMode || loading || autoSnapDone.current) return;
+    if (!kiosk?.id) return;
+    autoSnapDone.current = true;
+    takeSnapshot(Number(activeTab.replace("locker-", "")) || 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, kiosk?.id]);
 
   // ── SSE real-time stream with auto-reconnect ─────────────────────────────
   useEffect(() => {
@@ -353,6 +395,20 @@ export default function KioskPage() {
                   } else if (eventName === "kiosk_admin_snapshot") {
                     const lockerId = String(data.locker_id);
                     const urls = data.image_urls as string[] | undefined;
+                    if (snapTimers.current[lockerId]) {
+                      clearTimeout(snapTimers.current[lockerId]);
+                      delete snapTimers.current[lockerId];
+                    }
+                    if (!urls || urls.length === 0) {
+                      // The kiosk answered with no images. Silently ignoring
+                      // this is what made "snapshot is not working" look like
+                      // nothing happening at all.
+                      setSnapLoading((p) => ({ ...p, [lockerId]: false }));
+                      showToast(
+                        `Locker ${lockerId.padStart(2, "0")}: the kiosk captured no image — check that bay's camera`,
+                        false,
+                      );
+                    }
                     if (urls && urls.length > 0) {
                       setSnapshots((p) => ({ ...p, [lockerId]: urls[0] }));
                       setSnapLoading((p) => ({ ...p, [lockerId]: false }));
@@ -457,7 +513,18 @@ export default function KioskPage() {
         num_frames: 1,
       });
       showToast("Snapshot requested — waiting for Pi…");
-      // Actual URL arrives via SSE kiosk_admin_snapshot
+      // The URL arrives via SSE (kiosk_admin_snapshot). If it never does, say
+      // so instead of spinning: the command is fire-and-forget, so a kiosk
+      // that is offline or whose camera failed produces silence.
+      if (snapTimers.current[sid]) clearTimeout(snapTimers.current[sid]);
+      snapTimers.current[sid] = setTimeout(() => {
+        setSnapLoading((p) => ({ ...p, [sid]: false }));
+        showToast(
+          `Locker ${sid.padStart(2, "0")}: no snapshot came back within 25s — the kiosk may be offline or its camera busy`,
+          false,
+        );
+        delete snapTimers.current[sid];
+      }, 25_000);
     } catch {
       showToast("Failed to request snapshot", false);
       setSnapLoading((p) => ({ ...p, [sid]: false }));

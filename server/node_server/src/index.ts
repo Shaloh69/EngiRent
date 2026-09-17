@@ -43,6 +43,7 @@ import {
   rentalForCommand,
 } from "./services/retrievalService";
 import { openKioskSession } from "./services/kioskSessionStore";
+import { recordKioskLog } from "./services/kioskLogBuffer";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
   sendItemReadyForClaim,
@@ -1288,7 +1289,13 @@ io.on("connection", (socket: Socket) => {
       } else {
         logger.info(line);
       }
-      kioskEventBus.emit("kiosk_log", { ...data, ts: Date.now() });
+      const logLine = { ...data, ts: Date.now() };
+      // Kept so the admin console can open with history. The stream below only
+      // carries what happens while a page is watching, and an idle kiosk logs
+      // nothing for minutes — which is why the panel read "Waiting for Pi
+      // logs…" and looked broken.
+      recordKioskLog(logLine);
+      kioskEventBus.emit("kiosk_log", logLine);
     },
   );
 

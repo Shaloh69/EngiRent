@@ -20,6 +20,7 @@ import {
   sendKioskCommand,
   listKiosks,
   kioskEventStream,
+  getKioskLogBacklog,
   getReports,
   getSystemHealth,
   listIdVerifications,
@@ -249,6 +250,7 @@ router.get("/health", requireAdmin, getSystemHealth);
 
 // ── Kiosk management ──────────────────────────────────────────────────────
 router.get("/kiosks/events", requireAdmin, kioskEventStream); // SSE — must be before :kioskId routes
+router.get("/kiosks/logs", requireAdmin, getKioskLogBacklog); // backlog for the log panel — same ordering reason
 router.get("/kiosks", requireAdmin, listKiosks);
 
 // D-63. The console could release a locker but never see its state: no

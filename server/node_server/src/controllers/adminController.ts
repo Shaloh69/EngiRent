@@ -6,6 +6,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from "../utils/errors"
 import logger from "../utils/logger";
 import { hashPassword } from "../utils/bcrypt";
 import kioskEventBus from "../utils/kioskEventBus";
+import { getKioskLogs } from "../services/kioskLogBuffer";
 import {
   signedMediaUrl,
   userIdPath,
@@ -2521,6 +2522,29 @@ export const bulkModerateItems = async (
     });
 
     res.json({ success: true, message: `${result.count} item(s) updated`, data: { count: result.count } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /admin/kiosks/logs — the recent Pi log lines, newest last.
+ *
+ * The console's Live Pi Logs panel subscribes to `/admin/kiosks/events` for new
+ * lines, but that stream starts empty every time the page opens. This is the
+ * history to render before the first live line arrives.
+ */
+export const getKioskLogBacklog = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
+    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const kioskId = req.query.kioskId ? String(req.query.kioskId) : undefined;
+    const logs = getKioskLogs(limit, kioskId);
+    res.json({ success: true, data: { logs, count: logs.length } });
   } catch (error) {
     next(error);
   }
