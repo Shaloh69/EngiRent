@@ -39,8 +39,18 @@ export function recordKioskLog(line: KioskLogLine): void {
  * render the backlog and then keep appending live lines without re-sorting.
  * `limit` clamps to the buffer; a non-positive or absent limit means all.
  */
-export function getKioskLogs(limit?: number, kioskId?: string): KioskLogLine[] {
-  const scoped = kioskId ? lines.filter((l) => l.kiosk_id === kioskId) : lines;
+export function getKioskLogs(
+  limit?: number,
+  kioskId?: string,
+  since?: number,
+): KioskLogLine[] {
+  // `since` is what lets the console POLL for new lines (D-86): the live event
+  // stream never reaches the browser through the Cloudflare tunnel.
+  const scoped = lines.filter(
+    (l) =>
+      (!kioskId || l.kiosk_id === kioskId) &&
+      (since === undefined || l.ts > since),
+  );
   if (!limit || limit <= 0 || limit >= scoped.length) return [...scoped];
   return scoped.slice(scoped.length - limit);
 }

@@ -199,6 +199,10 @@ export default function KioskPage() {
   // came back — no timeout, no error. The Pi can fail to answer (offline, busy
   // camera) and the operator was left staring at it.
   const snapTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Newest server timestamp of a log line already on screen (D-86 polling).
+  const lastLogTs = useRef(0);
+  // Snapshot poll loops, one per bay, so a second request replaces the first.
+  const snapPolls = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const [snapLoading, setSnapLoading] = useState<Record<string, boolean>>({});
   const [releasing, setReleasing] = useState<Record<string, boolean>>({});
   // D-63. The CANONICAL locker model, which this page has never had. The
@@ -291,21 +295,46 @@ export default function KioskPage() {
   // nothing for minutes, so "Waiting for Pi logs…" was true and looked broken.
   // The server now keeps the last 300 lines (kioskLogBuffer.ts) — render them
   // first, then keep appending live ones.
+  //
+  // D-86: and then it POLLS for new lines, because the live event stream never
+  // reaches the browser through the Cloudflare tunnel (measured: first event
+  // in ~66ms on localhost, nothing through the tunnel in 35s). `lastLogTs`
+  // is the newest server timestamp seen from either path, so a line that does
+  // arrive by stream is not appended twice.
   useEffect(() => {
     if (isDemoMode) return;
     let cancelled = false;
-    (async () => {
+    const pull = async (initial: boolean) => {
       try {
-        const res = await api.get("/admin/kiosks/logs?limit=300");
-        const rows = (res.data?.data?.logs ?? []) as LogEntry[];
-        if (!cancelled && rows.length > 0) setLogs(rows);
+        const since = lastLogTs.current;
+        const res = await api.get(
+          initial ? "/admin/kiosks/logs?limit=300" : `/admin/kiosks/logs?since=${since}`,
+        );
+        const rows = ((res.data?.data?.logs ?? []) as LogEntry[]).filter(
+          (r) => typeof r.ts !== "number" || r.ts > since,
+        );
+        if (cancelled || rows.length === 0) return;
+        lastLogTs.current = Math.max(since, ...rows.map((r) => Number(r.ts) || 0));
+        setLogs((prev) => (initial ? rows : [...prev, ...rows]).slice(-300));
       } catch {
-        // A missing backlog is not worth an error banner: the live stream
-        // still works, and this panel is a convenience.
+        // A missed poll is not worth an error banner; the next one catches up.
       }
-    })();
+    };
+    pull(true);
+    const t = setInterval(() => pull(false), 3000);
     return () => {
       cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+
+  // Leaving the page must not leave snapshot polls running.
+  useEffect(() => {
+    const polls = snapPolls.current;
+    const timers = snapTimers.current;
+    return () => {
+      Object.values(polls).forEach(clearInterval);
+      Object.values(timers).forEach(clearTimeout);
     };
   }, []);
 
@@ -394,6 +423,9 @@ export default function KioskPage() {
                     setKiosk((p) => (p ? { ...p, status: "error" } : p));
                   } else if (eventName === "kiosk_log") {
                     const entry = data as unknown as LogEntry;
+                    // Skip what polling already appended (D-86).
+                    if (typeof entry.ts === "number" && entry.ts <= lastLogTs.current) continue;
+                    if (typeof entry.ts === "number") lastLogTs.current = entry.ts;
                     setLogs((prev) => [...prev, entry].slice(-300));
                     setTimeout(
                       () =>
@@ -408,6 +440,10 @@ export default function KioskPage() {
                     if (snapTimers.current[lockerId]) {
                       clearTimeout(snapTimers.current[lockerId]);
                       delete snapTimers.current[lockerId];
+                    }
+                    if (snapPolls.current[lockerId]) {
+                      clearInterval(snapPolls.current[lockerId]);
+                      delete snapPolls.current[lockerId];
                     }
                     if (!urls || urls.length === 0) {
                       // The kiosk answered with no images. Silently ignoring
@@ -520,23 +556,68 @@ export default function KioskPage() {
         );
         return;
       }
+      // D-86: the result is POLLED for, because the event stream that used to
+      // carry it never reaches the browser through the Cloudflare tunnel. To
+      // avoid comparing this browser's clock with the server's, note the
+      // timestamp of whatever snapshot the server already holds for this bay,
+      // and accept only one newer than that.
+      const latestUrl = `/admin/kiosks/snapshots/${lockerId}/latest`;
+      let prevTs = 0;
+      try {
+        const before = await api.get(latestUrl);
+        prevTs = Number(before.data?.data?.snapshot?.ts) || 0;
+      } catch {
+        // No baseline: any snapshot that arrives counts as new.
+      }
+
       await api.post(`/admin/kiosks/${kiosk?.id ?? FALLBACK_KIOSK_ID}/command`, {
         action: "capture_image",
         locker_id: lockerId,
         num_frames: 1,
       });
       showToast("Snapshot requested — waiting for Pi…");
-      // The URL arrives via SSE (kiosk_admin_snapshot). If it never does, say
-      // so instead of spinning: the command is fire-and-forget, so a kiosk
-      // that is offline or whose camera failed produces silence.
-      if (snapTimers.current[sid]) clearTimeout(snapTimers.current[sid]);
+
+      const stop = () => {
+        if (snapPolls.current[sid]) clearInterval(snapPolls.current[sid]);
+        delete snapPolls.current[sid];
+        if (snapTimers.current[sid]) clearTimeout(snapTimers.current[sid]);
+        delete snapTimers.current[sid];
+      };
+      stop();
+
+      snapPolls.current[sid] = setInterval(async () => {
+        try {
+          const res = await api.get(latestUrl);
+          const snap = res.data?.data?.snapshot as
+            | { imageUrls: string[]; ts: number }
+            | null
+            | undefined;
+          if (!snap || !(Number(snap.ts) > prevTs)) return;
+          stop();
+          setSnapLoading((p) => ({ ...p, [sid]: false }));
+          if (snap.imageUrls.length === 0) {
+            showToast(
+              `Locker ${sid.padStart(2, "0")}: the kiosk captured no image — check that bay's camera`,
+              false,
+            );
+            return;
+          }
+          setSnapshots((p) => ({ ...p, [sid]: snap.imageUrls[0] }));
+          showToast(`Snapshot captured for Locker ${sid.padStart(2, "0")}`);
+        } catch {
+          // A missed poll is harmless; the next one, or the timeout, decides.
+        }
+      }, 1500);
+
+      // If nothing arrives, say so instead of spinning: the command is
+      // fire-and-forget, so an offline kiosk or a failed camera is silence.
       snapTimers.current[sid] = setTimeout(() => {
+        stop();
         setSnapLoading((p) => ({ ...p, [sid]: false }));
         showToast(
           `Locker ${sid.padStart(2, "0")}: no snapshot came back within 25s — the kiosk may be offline or its camera busy`,
           false,
         );
-        delete snapTimers.current[sid];
       }, 25_000);
     } catch {
       showToast("Failed to request snapshot", false);

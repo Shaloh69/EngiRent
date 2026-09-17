@@ -45,6 +45,7 @@ import {
 import { openKioskSession } from "./services/kioskSessionStore";
 import { recordKioskLog } from "./services/kioskLogBuffer";
 import { recordTimingReport } from "./services/kioskTimingStore";
+import { recordAdminSnapshot } from "./services/kioskSnapshotStore";
 import { finalizeRentalCompletion } from "./services/rentalSettlementService";
 import {
   sendItemReadyForClaim,
@@ -1114,6 +1115,9 @@ io.on("connection", (socket: Socket) => {
           `│  Images : ${image_urls?.length ?? 0} file(s)\n` +
           `└─────────────────────────────────────────────`,
       );
+      // D-86: kept so the console can poll for it — the event below never
+      // reaches the browser through the Cloudflare tunnel.
+      recordAdminSnapshot(data);
       kioskEventBus.emit("kiosk_admin_snapshot", { ...data, ts: Date.now() });
     },
   );

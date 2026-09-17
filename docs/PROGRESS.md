@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · **REAL KIOSK TIMINGS NOW REACH THE CONSOLE AND THE PHONE** (Pi reports its calibration; verified via API: bay 2 = 5/5/21/21) — D-82 closed, D-83 real fix done · D-84 logs backlog + D-85 snapshot feedback + auto-snapshot DEPLOYED · console page deployed, NOT YET OPENED (fires a camera, G11) · stack up on rotated tunnels, app 1.10.1 published · bay 4 still RESERVED (item inside?) · button-driven bay flow NOT EXERCISED · D-80 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E4 · **D-86: the admin event stream never crosses the Cloudflare tunnel** (measured: 66ms on localhost, nothing through the tunnel) — logs and snapshots now POLLED, deployed, on-screen check pending the user's OK · real kiosk timings in console + phone VERIFIED ON SCREEN (D-82/D-83) · log backlog VERIFIED ON SCREEN (D-84) · bay 4 released (owner: empty) · stack up on rotated tunnels, app 1.10.1 · button-driven bay flow NOT EXERCISED · D-80 · phases 85/193 (44%) · screens 0/69 PASS]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -1503,6 +1503,60 @@ owner is at it); its grant exists so the door can be re-opened if it relocks.
 passed, `tsc` clean, `flutter analyze` clean, kiosk UI builds. **Mutation check:**
 ignoring expiry → red; removing the open cap → red; restored byte-identical.
 **Not exercised on hardware** — that is the next physical run.
+
+### D-86 — the admin console's live event stream never reaches the browser through the Cloudflare tunnel. FOUND AND WORKED AROUND 2026-09-17 (polling). DEPLOYED; on-screen check pending the user's OK.
+
+**How it was found.** After D-84/D-85 the console was opened (the user approved
+the one camera snapshot). The log backlog and the real timings rendered, but the
+**snapshot never arrived**. The chain was then walked hop by hop, measuring each:
+
+| Hop | Evidence |
+|---|---|
+| Console → server command | `POST /admin/kiosks/KIOSK-001/command` → **200** |
+| Pi receives, captures, uploads, relays | journal 20:41:23–25: `capture_image` received, *Captured 3 frames*, *Uploaded … 3 URL(s)*, *Images sent … rental=None* (the admin-snapshot branch) |
+| Server receives | Node log: `[PI-SNAPSHOT] Admin snapshot received` |
+| Server → browser (`/admin/kiosks/events`) | the request was **open** (logged as finishing at 20:41:52, when the test browser closed) — but the page never got the event, and got **none** of the Pi's live log lines either |
+
+**Then measured directly (G8: the signal was "does the `connected` event, written
+the instant a client connects, arrive?"):**
+- **On the server, via localhost: `event: connected` at +66ms.**
+- **Through the tunnel: nothing in 20s**; then, after adding a 2KB opening
+  padding and a padded 15s heartbeat, **still nothing in 35s**; then with
+  `Accept-Encoding: identity` and with gzip, **nothing in 12s either way**.
+- The headers were already right (`text/event-stream`, `no-cache,
+  no-transform`, `X-Accel-Buffering: no`, `flushHeaders()`), and there is no
+  compression middleware.
+
+**Conclusion: the Cloudflare quick tunnel holds the whole streamed response.**
+This one fault was behind **both** user reports: live Pi logs never appeared,
+and snapshots were captured, uploaded and relayed but never shown.
+
+**Worked around with polling, which does get through:**
+- `kioskSnapshotStore.ts` keeps the latest admin snapshot per bay; `index.ts`
+  records it on `kiosk:admin_snapshot`; `GET
+  /admin/kiosks/snapshots/:n/latest` serves it.
+- The console records the timestamp of whatever snapshot the server already
+  held, sends the command, then polls every 1.5s for a **newer** one. The
+  browser's clock is never compared with the server's. A 25s timeout says so;
+  an empty capture says so.
+- Logs: `GET /admin/kiosks/logs?since=<ts>` every 3s, deduplicated against the
+  stream by the newest server timestamp seen.
+- The stream is kept (it works on localhost and possibly over Tailscale); both
+  paths dedupe.
+- The padded heartbeat stays: harmless, and it replaced a 7-byte `:ping`.
+
+**Deployed** to the server's diverged `index.ts` by patch (D-37(b) intact) and to
+the server's older console page (typechecked by swapping it into the repo tree,
+then restoring the repo page byte-identical). **Tests:** 7 new (snapshot store and
+`since`); the server suite is **230 passed (23 suites)**.
+
+**Process slips, both caught before they shipped:**
+1. I added a second `heartbeat` without reading the handler, which already had
+   one; `tsc` caught the redeclaration.
+2. The Python-heredoc backslash trap recorded in this file **struck again**: a
+   `\n\n` became real newlines inside a template string. Rewritten with the
+   Edit tool. **Use the Edit tool for any replacement that contains a
+   backslash.**
 
 ### D-83 (real fix) + D-82 CLOSED 2026-09-17: the kiosk now reports its own calibrated timings, and both the console and the phone use them.
 

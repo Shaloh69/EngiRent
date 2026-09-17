@@ -8,6 +8,7 @@ import { hashPassword } from "../utils/bcrypt";
 import kioskEventBus from "../utils/kioskEventBus";
 import { getKioskLogs } from "../services/kioskLogBuffer";
 import { getTimingReport } from "../services/kioskTimingStore";
+import { getLatestAdminSnapshot } from "../services/kioskSnapshotStore";
 import {
   signedMediaUrl,
   userIdPath,
@@ -1322,6 +1323,16 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
   res.setHeader("X-Accel-Buffering", "no"); // disable nginx buffering on Render
   res.flushHeaders();
 
+  // D-86 (2026-09-17). Measured: on localhost the first event arrives in
+  // ~66ms; through the Cloudflare quick tunnel it did not arrive in 20s. The
+  // tunnel holds a streamed response until enough bytes accumulate, so the
+  // console never saw a live Pi log line or an admin snapshot — the kiosk
+  // captured, uploaded and relayed, and the page waited for ever. An SSE
+  // comment line (":" prefix) is ignored by every client, so a ~2KB one up
+  // front pushes the stream past the buffer, and a heartbeat keeps each later
+  // event from sitting behind an idle gap.
+  res.write(":" + " ".repeat(2048) + "\n\n");
+
   const send = (event: string, data: unknown) => {
     try {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -1355,14 +1366,16 @@ export const kioskEventStream = (req: AuthRequest, res: Response): void => {
   kioskEventBus.on("kiosk_self_test", onSelfTest);
   kioskEventBus.on("kiosk_emergency", onEmergency);
 
-  // Heartbeat keeps the connection alive through proxies/load balancers
+  // Heartbeat keeps the connection alive through proxies — and, since D-86,
+  // is padded and more frequent: a 7-byte ":ping" every 25s never pushed the
+  // Cloudflare tunnel's buffer, so events queued behind it indefinitely.
   const heartbeat = setInterval(() => {
     try {
-      res.write(":ping\n\n");
+      res.write(": hb " + Date.now() + " ".repeat(512) + "\n\n");
     } catch {
       clearInterval(heartbeat);
     }
-  }, 25_000);
+  }, 15_000);
 
   req.on("close", () => {
     clearInterval(heartbeat);
@@ -2551,8 +2564,38 @@ export const getKioskLogBacklog = async (
     const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
     const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
     const kioskId = req.query.kioskId ? String(req.query.kioskId) : undefined;
-    const logs = getKioskLogs(limit, kioskId);
-    res.json({ success: true, data: { logs, count: logs.length } });
+    const sinceRaw = Number(req.query.since);
+    const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : undefined;
+    const logs = getKioskLogs(limit, kioskId, since);
+    res.json({ success: true, data: { logs, count: logs.length, serverTime: Date.now() } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /admin/kiosks/snapshots/:lockerNumber/latest?since=<ms>
+ *
+ * D-86: the console requests a snapshot and then POLLS here, because the event
+ * stream that used to carry the result never reaches the browser through the
+ * Cloudflare tunnel. `null` means "nothing newer yet" — keep polling until the
+ * console's own timeout. An entry with an empty `imageUrls` means the kiosk
+ * answered and captured nothing, which the console reports (D-85).
+ */
+export const getLatestKioskSnapshot = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const lockerNumber = String(req.params.lockerNumber ?? "");
+    if (!/^\d{1,2}$/.test(lockerNumber)) {
+      throw new ValidationError("lockerNumber must be a bay number");
+    }
+    const sinceRaw = Number(req.query.since);
+    const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : undefined;
+    const snapshot = getLatestAdminSnapshot(lockerNumber, since);
+    res.json({ success: true, data: { snapshot, serverTime: Date.now() } });
   } catch (error) {
     next(error);
   }
