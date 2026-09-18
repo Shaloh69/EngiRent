@@ -2,7 +2,11 @@ import { Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
 // E5 — every occupancy change goes through the single compartment writer.
-import { clearBay, setCompartment } from "../services/lockerCompartments";
+import {
+  clearBay,
+  setCompartment,
+  setOperational,
+} from "../services/lockerCompartments";
 import {
   ForbiddenError,
   GoneError,
@@ -356,9 +360,114 @@ export const listAllLockers = async (
         isOperational: true,
         currentRentalId: true,
         lastUsedAt: true,
+        // E5: both compartments, so an admin deciding whether to take a bay
+        // out of service can see whether anything is inside it.
+        topStatus: true,
+        topRentalId: true,
+        bottomStatus: true,
+        bottomRentalId: true,
       },
     });
     res.json({ success: true, data: { lockers } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /admin/kiosks/lockers/:lockerNumber/service  { inService, reason? }
+ *
+ * Put a locker into or out of service from the admin console.
+ *
+ * Until 2026-09-19 NOTHING in the codebase wrote `isOperational` — the only
+ * way a bay had ever been taken out of service was a one-off database script
+ * run by hand during a physical test. An operator watching a jammed door or a
+ * failing actuator had no way to stop the system assigning students to it.
+ *
+ * What "out of service" means, precisely: no NEW deposit is assigned to the
+ * bay (`canAcceptDeposit` checks the flag). It does NOT evict or hide an item
+ * already inside — a student's property is never stranded by an admin toggle,
+ * and it can still be collected. What it DOES pause is automatic release: the
+ * E4.6 policy refuses to command the actuator on a non-operational bay
+ * (`bay_not_operational`), which is the right call for a bay that may be
+ * mechanically broken. So when the bay holds something, the response says so
+ * plainly instead of letting the admin find out later.
+ *
+ * Admin only, and audited: this changes where students' items go.
+ */
+export const setLockerService = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const lockerNumber = req.params.lockerNumber as string;
+    const { inService, reason } = req.body as { inService?: unknown; reason?: unknown };
+
+    if (typeof inService !== "boolean") {
+      throw new ValidationError("inService must be true or false");
+    }
+
+    const locker = await prisma.locker.findUnique({ where: { lockerNumber } });
+    if (!locker) throw new NotFoundError("Locker not found");
+
+    if (locker.isOperational === inService) {
+      res.json({
+        success: true,
+        message: `Locker ${lockerNumber} is already ${inService ? "in" : "out of"} service`,
+        data: { lockerNumber, isOperational: inService, changed: false, warning: null },
+      });
+      return;
+    }
+
+    await setOperational(locker.id, inService);
+
+    // The kiosk screen and the console both show occupancy live; push the
+    // change now rather than leaving the bay advertised as usable (or not)
+    // until the next unrelated broadcast.
+    await emitLockerOccupancy(req.app?.get("io"), locker.kioskId);
+
+    const holdsItem =
+      Boolean(locker.topRentalId) ||
+      Boolean(locker.bottomRentalId) ||
+      locker.topStatus !== "AVAILABLE" ||
+      locker.bottomStatus !== "AVAILABLE";
+
+    await recordAudit(req, {
+      action: inService ? "kiosk.lockerInService" : "kiosk.lockerOutOfService",
+      targetType: "kiosk",
+      targetId: locker.id,
+      reason: typeof reason === "string" && reason.trim() ? reason.trim() : null,
+      metadata: {
+        lockerNumber,
+        holdsItem,
+        topStatus: locker.topStatus,
+        bottomStatus: locker.bottomStatus,
+      },
+    });
+
+    logger.info(
+      `Locker ${lockerNumber} put ${inService ? "IN" : "OUT OF"} service by ${req.user?.email}` +
+        (holdsItem ? " (bay holds an item)" : ""),
+    );
+
+    res.json({
+      success: true,
+      message: inService
+        ? `Locker ${lockerNumber} is back in service`
+        : `Locker ${lockerNumber} is out of service — no new deposits will be assigned to it`,
+      data: {
+        lockerNumber,
+        isOperational: inService,
+        changed: true,
+        // Only meaningful when taking a bay OUT of service.
+        warning:
+          !inService && holdsItem
+            ? `Locker ${lockerNumber} still holds an item. It can still be collected, ` +
+              `but automatic releases are paused for this locker while it is out of service.`
+            : null,
+      },
+    });
   } catch (error) {
     next(error);
   }

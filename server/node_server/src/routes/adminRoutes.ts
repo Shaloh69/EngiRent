@@ -39,6 +39,7 @@ import {
 import { getConversationForAdmin } from "../controllers/messageController";
 import {
   listAllLockers,
+  setLockerService,
   releaseLocker,
   releaseLockerByNumber,
 } from "../controllers/kioskController";
@@ -283,6 +284,20 @@ router.post(
   requireAdmin,
   validate([param("lockerNumber").notEmpty()]),
   releaseLockerByNumber,
+);
+
+// Put a locker into or out of service. Until 2026-09-19 nothing could write
+// `isOperational` at all — see setLockerService's doc comment. Admin only
+// (not REVIEWER): it changes where students' items are sent.
+router.patch(
+  "/kiosks/lockers/by-number/:lockerNumber/service",
+  requireAdmin,
+  validate([
+    param("lockerNumber").notEmpty(),
+    body("inService").isBoolean(),
+    body("reason").optional().isString().isLength({ max: 500 }),
+  ]),
+  setLockerService,
 );
 
 router.get(

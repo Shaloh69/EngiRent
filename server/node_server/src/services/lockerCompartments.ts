@@ -127,6 +127,41 @@ export async function clearBay(lockerId: string): Promise<void> {
   });
 }
 
+/**
+ * Put a bay into or out of service.
+ *
+ * Lives here, with the other occupancy writers, because the whole-bay
+ * `status` is DERIVED from `isOperational` as well as from both compartments
+ * (`deriveLockerStatus`: not operational -> OUT_OF_SERVICE). Flipping the flag
+ * without re-deriving would leave `status` saying the opposite of the flag —
+ * the same two-representations drift that killed bays after one rental.
+ *
+ * Deliberately touches NOTHING about the compartments. Taking a bay out of
+ * service must never strand or erase an item already inside it: it stops NEW
+ * deposits being assigned (`canAcceptDeposit` checks the flag) and nothing
+ * else. Whatever is in there can still be collected.
+ */
+export async function setOperational(
+  lockerId: string,
+  inService: boolean,
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const bay = await tx.locker.findUnique({ where: { id: lockerId } });
+    if (!bay) throw new Error(`setOperational: locker ${lockerId} not found`);
+    await tx.locker.update({
+      where: { id: lockerId },
+      data: {
+        isOperational: inService,
+        status: deriveLockerStatus({
+          topStatus: bay.topStatus,
+          bottomStatus: bay.bottomStatus,
+          isOperational: inService,
+        }),
+      },
+    });
+  });
+}
+
 /** Which compartment currently holds a given rental's item, if either. */
 export async function compartmentHolding(
   lockerId: string,

@@ -6742,3 +6742,53 @@ error). `lgpio` is stubbed because it only exists on the Pi. Full kiosk suite
 **NOT YET SEEN ON SCREEN.** The unit tests prove the Pi logic; only a person
 pressing Cancel on the real kiosk, and finishing a real claim, proves the
 screen. That is the user's next physical run, after F5.
+
+### Locker in/out of service from the admin console — BUILT, DEPLOYED, and exercised end to end 2026-09-19
+
+Asked for by the user alongside "make locker 4 in service". Found that
+**nothing in the codebase wrote `isOperational` at all** — the only time a bay
+had ever left service was a one-off database script I ran by hand during the
+physical test. An operator watching a jammed door or failing actuator had no
+way to stop students being assigned to it.
+
+- `PATCH /admin/kiosks/lockers/by-number/:lockerNumber/service` `{ inService,
+  reason? }` — admin only (not REVIEWER: it changes where students' items go),
+  validated, audited (`kiosk.lockerInService` / `kiosk.lockerOutOfService`),
+  and it rebroadcasts occupancy so the kiosk and console update live.
+- Written through `setOperational` in the single writer, because the whole-bay
+  `status` is DERIVED from `isOperational` as well as the compartments.
+- **Out of service never strands an item.** It stops NEW deposits
+  (`canAcceptDeposit`) and touches neither compartment. It does pause
+  automatic release (the E4.6 policy refuses to stroke a non-operational bay,
+  correctly, since it may be broken), so the response carries a plain warning
+  when the bay holds something.
+- Console: an "Out of service" / "Back in service" button beside Release on
+  each bay, with a confirm stating the consequence. Not gated on the kiosk
+  being online — a broken or offline bay is exactly when it is needed.
+- `listAllLockers` now also returns both compartments, so the admin can see
+  whether anything is inside before deciding.
+
+**Evidence of the drift this prevents, found in the live data.** Before the
+call, bay 4 read `status=AVAILABLE` with `isOperational=False` — a
+contradiction. My own hand-run script had flipped the flag without re-deriving
+the status. That is precisely why the flag now only changes through the
+single writer.
+
+**Locker 4 put back in service through the new endpoint itself**, as a real
+end-to-end test rather than another script: admin login -> requireAdmin ->
+validation -> setOperational -> audit -> broadcast. BEFORE `isOperational=False`
+-> PATCH 200 "Locker 4 is back in service" -> AFTER `isOperational=True`,
+`AVAILABLE`. A repeat call is a no-op (`changed=False`); a malformed body is
+refused (400). The kiosk's own `/api/state` then read
+`{"1":"AVAILABLE","2":"AVAILABLE","3":"AVAILABLE","4":"AVAILABLE"}`.
+Credentials were read from `client/admin/.env.local` in memory only; neither
+the password nor the token was ever printed.
+
+6 new controller tests (bad input, unknown locker, back in service, out of
+service leaves compartments untouched, the item warning, the no-op). Node
+suite **264/264**.
+
+**No app rebuild needed**, and checked rather than assumed: nothing under
+`client/flutter_app` has changed since build 26 (`git log 1f0895d..HEAD --
+client/flutter_app` is empty, working tree clean, pubspec still 1.11.0+26).
+Everything since has been server, Pi and console.

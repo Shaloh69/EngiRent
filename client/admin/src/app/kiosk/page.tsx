@@ -29,6 +29,8 @@ import {
 import {
   Activity,
   AlertCircle,
+  Ban,
+  CircleCheck,
   Camera,
   ChevronRight,
   Clock,
@@ -205,6 +207,7 @@ export default function KioskPage() {
   const snapPolls = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const [snapLoading, setSnapLoading] = useState<Record<string, boolean>>({});
   const [releasing, setReleasing] = useState<Record<string, boolean>>({});
+  const [servicing, setServicing] = useState<Record<string, boolean>>({});
   // D-63. The CANONICAL locker model, which this page has never had. The
   // `lockers` field above is DOOR state (main/bottom, locked/unlocked) and is
   // the right model for the hardware controls -- but it cannot answer "is this
@@ -669,6 +672,64 @@ Releasing clears the occupied state and detaches any rental — only do this if 
     }
   };
 
+  // Put a locker into or out of service. Until 2026-09-19 there was no way to
+  // do this from the console at all — the only time a bay ever left service
+  // was a hand-run database script. Out of service means "stop assigning NEW
+  // deposits here"; it never evicts or hides an item already inside, and the
+  // server says so if the bay holds one.
+  const setLockerService = async (lockerNumber: number, inService: boolean) => {
+    const sid = String(lockerNumber);
+    const label = `Locker ${sid.padStart(2, "0")}`;
+    const bay = bays[sid];
+    const occupied =
+      bay && bay.status !== "AVAILABLE" && bay.status !== "OUT_OF_SERVICE";
+    const prompt = inService
+      ? `Put ${label} back in service?\n\nIt will be offered to new deposits again.`
+      : `Take ${label} out of service?\n\nNo new deposits will be assigned to it.` +
+        (occupied
+          ? `\n\nIt currently reads ${bay!.status}. Anything inside can still be collected, ` +
+            `but automatic releases pause while it is out of service.`
+          : "");
+    if (!window.confirm(prompt)) return;
+
+    setServicing((p) => ({ ...p, [sid]: true }));
+    try {
+      if (isDemoMode) {
+        await new Promise((r) => setTimeout(r, 400));
+        showToast(`Demo: ${label} ${inService ? "back in service" : "out of service"}`);
+        return;
+      }
+      const res = await api.patch(`/admin/kiosks/lockers/by-number/${sid}/service`, {
+        inService,
+      });
+      const warning = res.data?.data?.warning as string | null | undefined;
+      showToast(warning ?? res.data?.message ?? `${label} updated`, !warning);
+      // Reflect it immediately rather than waiting for the next poll, so the
+      // operator sees the button and badge flip as a direct result of the click.
+      setBays((p) =>
+        p[sid]
+          ? {
+              ...p,
+              [sid]: {
+                ...p[sid],
+                isOperational: inService,
+                status: inService
+                  ? p[sid].status === "OUT_OF_SERVICE"
+                    ? "AVAILABLE"
+                    : p[sid].status
+                  : "OUT_OF_SERVICE",
+              },
+            }
+          : p,
+      );
+      void fetchState();
+    } catch (e: any) {
+      showToast(e?.response?.data?.error ?? `Failed to update ${label}`, false);
+    } finally {
+      setServicing((p) => ({ ...p, [sid]: false }));
+    }
+  };
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -893,6 +954,34 @@ Releasing clears the occupied state and detaches any rental — only do this if 
             >
               Release
             </Button>
+            {/* In / out of service. Like Release, deliberately NOT gated on
+                `isOnline`: it is a database decision about where new deposits
+                go, and a broken or offline bay is exactly when an operator
+                needs to take it out of rotation. */}
+            {bays[sid] &&
+              (bays[sid].isOperational ? (
+                <Button
+                  size="sm"
+                  variant="light"
+                  color="orange"
+                  leftSection={<Ban size={13} />}
+                  loading={servicing[sid]}
+                  onClick={() => setLockerService(id, false)}
+                >
+                  Out of service
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="light"
+                  color="teal"
+                  leftSection={<CircleCheck size={13} />}
+                  loading={servicing[sid]}
+                  onClick={() => setLockerService(id, true)}
+                >
+                  Back in service
+                </Button>
+              ))}
           </Group>
         </Card>
 

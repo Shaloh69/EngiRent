@@ -14,7 +14,7 @@ jest.mock("../../config/database", () => ({
 }));
 
 import prisma from "../../config/database";
-import { listAllLockers, releaseLocker } from "../kioskController";
+import { listAllLockers, releaseLocker, setLockerService } from "../kioskController";
 import { AuthRequest } from "../../middleware/auth";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -197,5 +197,115 @@ describe("listAllLockers — D-63: the admin must be able to SEE locker state", 
     await listAllLockers(req, makeRes(), jest.fn());
     const arg = prismaMock.locker.findMany.mock.calls[0][0] as Record<string, unknown>;
     expect(arg.where).toEqual({ kioskId: "KIOSK-001" });
+  });
+});
+
+/**
+ * setLockerService — putting a locker into or out of service from the console.
+ *
+ * Until 2026-09-19 nothing in the codebase could write `isOperational`; the
+ * only way a bay had ever left service was a hand-run database script. These
+ * pin what the toggle is allowed to do, and — as importantly — what it must
+ * never do: erase or strand an item already inside the bay.
+ */
+describe("setLockerService — in/out of service from the admin console", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    // setOperational re-derives the whole-bay status inside a transaction;
+    // hand the mock in as `tx` so the real write path runs.
+    prismaMock.$transaction.mockImplementation((async (fn: (tx: unknown) => unknown) =>
+      fn(prismaMock)) as never);
+  });
+
+  function svcReq(lockerNumber: string, body: Record<string, unknown>): AuthRequest {
+    return {
+      params: { lockerNumber },
+      body,
+      user: { userId: "admin-1", email: "admin@x.com", studentId: "s", role: "ADMIN" },
+      app: { get: () => undefined },
+    } as unknown as AuthRequest;
+  }
+
+  const EMPTY_BAY = {
+    id: "locker-4",
+    lockerNumber: "4",
+    kioskId: "kiosk-1",
+    isOperational: false,
+    topStatus: "AVAILABLE",
+    topRentalId: null,
+    bottomStatus: "AVAILABLE",
+    bottomRentalId: null,
+  };
+
+  it("rejects a request that does not say true or false", async () => {
+    const next = jest.fn();
+    await setLockerService(svcReq("4", { inService: "yes" }), makeRes(), next);
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+    expect(prismaMock.locker.update).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown locker and changes nothing", async () => {
+    prismaMock.locker.findUnique.mockResolvedValue(null);
+    const next = jest.fn();
+    await setLockerService(svcReq("9", { inService: true }), makeRes(), next);
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
+    expect(prismaMock.locker.update).not.toHaveBeenCalled();
+  });
+
+  it("puts a bay back in service and re-derives its status to AVAILABLE", async () => {
+    prismaMock.locker.findUnique.mockResolvedValue(EMPTY_BAY as never);
+    prismaMock.locker.update.mockResolvedValue({} as never);
+    const res = makeRes();
+    const next = jest.fn();
+
+    await setLockerService(svcReq("4", { inService: true }), res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(prismaMock.locker.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ isOperational: true, status: "AVAILABLE" }),
+      }),
+    );
+  });
+
+  it("taking a bay out of service reports OUT_OF_SERVICE and never touches its compartments", async () => {
+    prismaMock.locker.findUnique.mockResolvedValue({ ...EMPTY_BAY, isOperational: true } as never);
+    prismaMock.locker.update.mockResolvedValue({} as never);
+
+    await setLockerService(svcReq("4", { inService: false }), makeRes(), jest.fn());
+
+    const written = (prismaMock.locker.update.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(written.isOperational).toBe(false);
+    expect(written.status).toBe("OUT_OF_SERVICE");
+    // The toggle must never erase or move an item — it only stops new deposits.
+    for (const k of ["topStatus", "topRentalId", "bottomStatus", "bottomRentalId"]) {
+      expect(written).not.toHaveProperty(k);
+    }
+  });
+
+  it("warns when a bay taken out of service still holds an item", async () => {
+    prismaMock.locker.findUnique.mockResolvedValue({
+      ...EMPTY_BAY,
+      isOperational: true,
+      topStatus: "OCCUPIED",
+      topRentalId: "rental-7",
+    } as never);
+    prismaMock.locker.update.mockResolvedValue({} as never);
+    const res = makeRes();
+
+    await setLockerService(svcReq("4", { inService: false }), res, jest.fn());
+
+    const body = (res.json as jest.Mock).mock.calls[0][0];
+    expect(body.data.warning).toMatch(/still holds an item/);
+  });
+
+  it("is a no-op when the bay is already in the requested state", async () => {
+    prismaMock.locker.findUnique.mockResolvedValue(EMPTY_BAY as never); // already out
+    const res = makeRes();
+
+    await setLockerService(svcReq("4", { inService: false }), res, jest.fn());
+
+    expect(prismaMock.locker.update).not.toHaveBeenCalled();
+    expect((res.json as jest.Mock).mock.calls[0][0].data.changed).toBe(false);
   });
 });
