@@ -6792,3 +6792,85 @@ suite **264/264**.
 `client/flutter_app` has changed since build 26 (`git log 1f0895d..HEAD --
 client/flutter_app` is empty, working tree clean, pubspec still 1.11.0+26).
 Everything since has been server, Pi and console.
+
+### D-89 — a correct item looped RETRY at the locker, headed for an automatic cancellation, and never reached a person. FIXED 2026-09-19. Deployed.
+
+**Reported during the second physical test**: the kiosk kept returning to
+"Locker 01 is opening", the phone showed attempts 2-4 asking to reposition,
+and the admin console showed nothing to approve.
+
+**What the logs showed.** Rental `c1e24433` ("Pusil sa minions"), attempts
+1-4, every one `verification_done: retry`, each re-opening bay 1's door. **No
+verification rows** were created for any of them (newest row was the day
+before), which is why the admin saw nothing — a RETRY returns before the row
+is written or the background full run is queued. Three of the four attempts
+ran **all seven stages** in ~20s (not degraded); the fourth was degraded at
+26.2s. So the answer to "does it run the full test during this time?" is: the
+pipeline ran in full, and still said RETRY — but it never reached the admin or
+the background run.
+
+**Looked at the actual photographs** rather than reasoning about scores. All
+three — both listing photos and the locker capture — are unmistakably the same
+yellow "GLUE GUN 60W 110-240V". A person approves it at a glance. The
+difference is the scene: listing photos on wrinkled beige fabric in soft
+light, the locker flat white metal with a red edge under a harsh flash; and
+listing B shows the gun's other side.
+
+Scored the capture against each listing photo separately, full mode, nothing
+skipped:
+
+| compared with | confidence | trad | SIFT | SSIM | deep | pHash |
+|---|---|---|---|---|---|---|
+| listing A (same side) | 53.2 | 51.9 | 63.0 | 16.8 | 70.3 | 49.2 |
+| listing B (other side) | 50.3 | 50.0 | 47.5 | 23.6 | 70.8 | 45.3 |
+| A + B (production) | 52.4 | 51.5 | 57.1 | 20.2 | 70.5 | 49.2 |
+
+My first hypothesis (orientation) was only partly right — the same side scores
+just 3 points higher. The dominant cause is that **the pipeline compares whole
+scenes, not objects**: SSIM (17) and the colour/texture channel mostly measure
+how unlike the owner's bedsheet the locker looks. Only the deep-learning stage
+(70) is really recognising the object, and it carries 25% of the weight. This
+item cannot reach 60 in that locker however it is placed — so "reposition and
+try again" was advice that could not work.
+
+**The loop's ending was worse than the loop.** The ML service returns RETRY
+up to attempt 10, then REJECTED; a REJECTED deposit cancels the rental and
+drops the item back to the owner. A correct item would have cost ten door
+cycles and the renter's paid rental, and no person would have been involved.
+That contradicts the user's standing ruling (2026-09-18): *"if the score is
+below 85 regardless of day it will always need admin approval"*.
+
+**Fix — `verdictPolicy.ts`, the ruling applied to the path that ignored it:**
+- `MAX_ATTEMPTS_BEFORE_REVIEW = 2` — the first try plus ONE retry, kept for
+  what retry is actually good at (item half out of view, a failed quality
+  gate). After that a RETRY becomes PENDING: verification row written, full
+  background run queued, owner told the item is placed and awaiting review.
+- A deposit is **never auto-rejected** from a quick check, on any attempt. A
+  person rejects it, from the admin Review with the photos, which (since
+  D-87d) releases the item back to its owner properly.
+- Returns get the same retry cap; return REJECTED is untouched because it
+  already goes to a person (DISPUTED).
+- The escalation reason is written to the row's `reviewNotes`, so the reviewer
+  sees why it arrived.
+
+**Second defect found before telling the user to continue.** The stuck rental
+has bay 1 RESERVED for it. Re-scanning would have re-entered `assignLocker`,
+which only accepts a FREE upper compartment — so it would have assigned bay 2
+and left bay 1 reserved for ever, possibly with the glue gun inside. Same
+failure shape as the bays that died after one rental. `assignLocker` now
+resumes a deposit in a bay already holding that rental before considering any
+other.
+
+**Also found, NOT fixed:** OCR has contributed nothing on every check —
+`tesseract is not installed or it's not in your PATH` on the server. Its weight
+is small; installing Tesseract on the Windows server is an environment task.
+
+**Open question for the user, not decided here:** the real fix for the low
+scores is calibration, not flow. Options are re-weighting toward the stages
+that recognise objects (deep learning, SIFT) and away from the scene-sensitive
+ones (SSIM, pHash, colour), better item isolation before comparison, or asking
+owners to photograph items on a plain light background. Each changes what the
+thesis's verification method *is*, so it is the user's call.
+
+Tests: 9 new in `verdictPolicy.test.ts`, including the exact 2/3/4 sequence
+from the test. Node suite **271/271**.

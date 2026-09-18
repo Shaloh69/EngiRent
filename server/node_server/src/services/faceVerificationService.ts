@@ -201,6 +201,28 @@ async function assignLocker(
     orderBy: { lockerNumber: "asc" },
   });
 
+  // D-89 — RESUME IN THE SAME BAY. A deposit can be interrupted and re-entered
+  // (the bay-access grant expires, the person re-scans the QR after a retry,
+  // the phone drops out). Its bay is still RESERVED for it, so the search
+  // below — which only accepts a FREE upper compartment — skipped it and
+  // assigned a second bay. The first stayed RESERVED for a rental that had
+  // moved on: permanently unassignable, and possibly with the item still
+  // inside it. Found 2026-09-19 with a real glue gun sitting in bay 1 after
+  // four retries.
+  //
+  // So a bay already holding this rental in its upper compartment is reused,
+  // before anything else is considered. Only an operational one: a bay taken
+  // out of service mid-deposit should not be forced back into use.
+  const resumed = candidates.find((l) => l.topRentalId === rentalId);
+  if (resumed) {
+    logger.info(
+      `Deposit for rental ${rentalId} resumes in bay ${resumed.lockerNumber}, ` +
+        `already reserved for it — not assigning a second bay`,
+    );
+    await emitLockerOccupancy(io, kioskId);
+    return { lockerId: resumed.id, lockerNumber: resumed.lockerNumber };
+  }
+
   const locker = candidates.find((l) =>
     canAcceptDeposit(
       {

@@ -48,6 +48,7 @@ import {
   storageDropForCommand,
 } from "./services/storageDropService";
 import { setCompartment } from "./services/lockerCompartments";
+import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
   requestRelease,
   confirmRelease,
@@ -593,7 +594,19 @@ io.on("connection", (socket: Socket) => {
             }
           }
 
-          const { decision, confidence, method_scores } = mlResult;
+          // D-89 — the user's ruling: below 85, on any day, a person decides.
+          // A RETRY is honoured once (a genuine placement problem); after
+          // that, and for any REJECTED, the deposit goes to review instead of
+          // looping the door or cancelling a paid rental on a quick check.
+          const verdict = depositVerdict(mlResult.decision, attemptNumber);
+          const decision = verdict.decision;
+          const { confidence, method_scores } = mlResult;
+          if (verdict.escalated) {
+            logger.info(
+              `Deposit verdict for rental ${rental_id} ESCALATED to review: ` +
+                `quick check said ${mlResult.decision} ${confidence} on attempt ${attemptNumber}`,
+            );
+          }
 
           if (decision === "RETRY") {
             await prisma.rental.update({
@@ -697,7 +710,11 @@ io.on("connection", (socket: Socket) => {
               deepLearningScore: method_scores?.deep_learning_aggregated,
               status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
               ...verificationEvidenceFields(mlResult), // D-65
-              ...(mlError && { reviewNotes: `ML error: ${mlError}` }),
+              ...((mlError || verdict.note) && {
+                reviewNotes: [mlError && `ML error: ${mlError}`, verdict.note]
+                  .filter(Boolean)
+                  .join(" "),
+              }),
             },
           });
 
@@ -841,7 +858,17 @@ io.on("connection", (socket: Socket) => {
             mlResult = mlUnreachableResult();
           }
 
-          const { decision, confidence, method_scores } = mlResult;
+          // D-89 — same retry cap on a return; REJECTED already goes to a
+          // person here (DISPUTED), so it is left as it was.
+          const verdict = returnVerdict(mlResult.decision, attemptNumber);
+          const decision = verdict.decision;
+          const { confidence, method_scores } = mlResult;
+          if (verdict.escalated) {
+            logger.info(
+              `Return verdict for rental ${rental_id} ESCALATED to review: ` +
+                `quick check said ${mlResult.decision} ${confidence} on attempt ${attemptNumber}`,
+            );
+          }
 
           if (decision === "RETRY") {
             await prisma.rental.update({
@@ -964,7 +991,11 @@ io.on("connection", (socket: Socket) => {
               deepLearningScore: method_scores?.deep_learning_aggregated,
               status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
               ...verificationEvidenceFields(mlResult), // D-65
-              ...(mlError && { reviewNotes: `ML error: ${mlError}` }),
+              ...((mlError || verdict.note) && {
+                reviewNotes: [mlError && `ML error: ${mlError}`, verdict.note]
+                  .filter(Boolean)
+                  .join(" "),
+              }),
             },
           });
 
