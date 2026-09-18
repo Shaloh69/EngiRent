@@ -155,6 +155,16 @@ async def verify_item(
         default=None,
         description="JSON-encoded pre-extracted features from Item.mlFeatures (skips ResNet50 re-extraction)",
     ),
+    mode: str = Form(
+        default="fast",
+        description=(
+            "fast (default) = a student is waiting at the locker, so stages that "
+            "do not fit the budget are skipped and the result is marked degraded. "
+            "full = the background re-run for a row awaiting human review; every "
+            "stage runs. Never call this with full from a request someone is "
+            "watching — it can take minutes."
+        ),
+    ),
 ):
     """
     Full hybrid verification: compare owner images with kiosk camera images.
@@ -176,6 +186,8 @@ async def verify_item(
         raise HTTPException(status_code=400, detail="At least 1 original image required")
     if len(kiosk_images) < 1:
         raise HTTPException(status_code=400, detail="At least 1 kiosk image required")
+    if mode not in ("fast", "full"):
+        raise HTTPException(status_code=400, detail="mode must be 'fast' or 'full'")
 
     orig_paths = []
     kiosk_paths = []
@@ -185,7 +197,8 @@ async def verify_item(
         kiosk_paths = await _save_uploads(kiosk_images)
 
         logger.info(
-            "Verifying: %d original images vs %d kiosk images (attempt %d)",
+            "Verifying [%s]: %d original images vs %d kiosk images (attempt %d)",
+            mode,
             len(orig_paths),
             len(kiosk_paths),
             attempt_number,
@@ -198,6 +211,7 @@ async def verify_item(
             kiosk_sources=kiosk_paths,
             attempt_number=attempt_number,
             reference_features=parsed_features,
+            mode=mode,
         )
 
         return VerificationResponse(**result)

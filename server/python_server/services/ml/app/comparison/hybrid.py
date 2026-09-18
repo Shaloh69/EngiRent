@@ -22,6 +22,7 @@ Pipeline:
 """
 
 import logging
+import time
 
 import numpy as np
 
@@ -85,13 +86,47 @@ class HybridVerifier:
         kiosk_sources: list[str | bytes | np.ndarray],
         attempt_number: int = 1,
         reference_features: dict | None = None,
+        mode: str = "fast",
     ) -> dict:
         """
         Full hybrid verification with all improvements.
 
+        Args:
+            mode: "fast" for the check a student is waiting on at the locker,
+                "full" for the background re-run that assists a human reviewer.
+                The pipeline is identical; only the time budget differs, so a
+                full run is the same evidence the fast run would have gathered
+                if it had been allowed to finish.
+
         Returns:
             Complete verification result with decision and diagnostics.
         """
+        # D-87: a verify must ALWAYS answer. A deposit waits on this call, and
+        # on 2026-09-18 one ran 7+ minutes with a bay reserved and an item
+        # inside it. Past this deadline the optional stages are skipped rather
+        # than the request being cut off — a real verdict from less evidence,
+        # clearly marked, beats silence.
+        #
+        # D-87b: which deadline depends on who is waiting. See config.py.
+        # NOTE deliberately: "full" does not raise `max_image_size`. The win is
+        # that every stage RUNS, not that it sees more pixels — SIFT saturates
+        # well below 1280, SSIM resizes to 640 and ResNet to 224. Keeping one
+        # resolution also keeps the two tiers comparable: when the full run
+        # disagrees with the fast one, it is because of the extra stages, not
+        # because it was looking at a different image.
+        full_run = mode == "full"
+        budget = (
+            settings.verify_full_budget_seconds
+            if full_run
+            else settings.verify_time_budget_seconds
+        )
+        started_at = time.monotonic()
+        deadline = started_at + budget
+        skipped_stages: list[str] = []
+
+        def out_of_time() -> bool:
+            return time.monotonic() > deadline
+
         # --- Step 1: Quality gate ---
         logger.info("Step 1: Image quality check")
         quality_issues = []
@@ -174,26 +209,44 @@ class HybridVerifier:
         traditional_agg = self._aggregate_scores(traditional_scores)
 
         # --- Step 4: SIFT with RANSAC ---
-        logger.info("Step 4: SIFT keypoint matching + RANSAC")
-        sift_result = self.sift.match_multi(original_sources, kiosk_sources)
-        # Use inlier ratio (geometrically verified) instead of raw match ratio
-        sift_best_inlier = sift_result.get("best_inlier_ratio", 0.0)
-        sift_best_match = sift_result["best_ratio"]
-        # Blend: 70% inlier ratio (more reliable) + 30% match ratio
-        sift_score = sift_best_inlier * 0.7 + sift_best_match * 0.3
+        if out_of_time():
+            skipped_stages.append("sift")
+            logger.warning("Step 4 SKIPPED: over the %.0fs %s budget", budget, mode)
+            sift_result = {"best_ratio": 0.0, "best_inlier_ratio": 0.0, "all_ratios": []}
+            sift_best_inlier = 0.0
+            sift_best_match = 0.0
+            sift_score = 0.0
+        else:
+            logger.info("Step 4: SIFT keypoint matching + RANSAC")
+            sift_result = self.sift.match_multi(original_sources, kiosk_sources)
+            # Use inlier ratio (geometrically verified) instead of raw match ratio
+            sift_best_inlier = sift_result.get("best_inlier_ratio", 0.0)
+            sift_best_match = sift_result["best_ratio"]
+            # Blend: 70% inlier ratio (more reliable) + 30% match ratio
+            sift_score = sift_best_inlier * 0.7 + sift_best_match * 0.3
 
         # --- Step 5: SSIM ---
-        logger.info("Step 5: SSIM structural similarity")
         ssim_scores = []
-        for orig in original_sources:
-            for kiosk in kiosk_sources:
-                ssim = self.similarity.compare_ssim(orig, kiosk)
-                ssim_scores.append(ssim)
-        ssim_agg = self._aggregate_scores(ssim_scores)
+        if out_of_time():
+            skipped_stages.append("ssim")
+            logger.warning("Step 5 SKIPPED: over the %.0fs %s budget", budget, mode)
+            ssim_agg = 0.0
+        else:
+            logger.info("Step 5: SSIM structural similarity")
+            for orig in original_sources:
+                for kiosk in kiosk_sources:
+                    ssim = self.similarity.compare_ssim(orig, kiosk)
+                    ssim_scores.append(ssim)
+            ssim_agg = self._aggregate_scores(ssim_scores)
 
         # --- Step 6: Deep Learning ---
         deep_agg = 0.0
-        if settings.enable_deep_learning:
+        deep_ran = False
+        if settings.enable_deep_learning and out_of_time():
+            skipped_stages.append("deep_learning")
+            logger.warning("Step 6 SKIPPED: over the %.0fs %s budget", budget, mode)
+        elif settings.enable_deep_learning:
+            deep_ran = True
             logger.info("Step 6: Deep learning comparison")
             if reference_features and "deep" in reference_features and reference_features["deep"]:
                 orig_deep = [np.array(f) for f in reference_features["deep"]]
@@ -213,7 +266,10 @@ class HybridVerifier:
         # --- Step 7: OCR ---
         ocr_match = False
         ocr_details = None
-        if settings.enable_ocr:
+        if settings.enable_ocr and out_of_time():
+            skipped_stages.append("ocr")
+            logger.warning("Step 7 SKIPPED: over the %.0fs %s budget", budget, mode)
+        elif settings.enable_ocr:
             logger.info("Step 7: OCR serial number check")
             orig_texts = (
                 reference_features.get("ocr_texts", [])
@@ -224,28 +280,22 @@ class HybridVerifier:
             ocr_match, ocr_details = match_serial_numbers(orig_texts, kiosk_texts)
 
         # --- Step 8: Hybrid score ---
-        if settings.enable_deep_learning:
-            final_score = (
-                traditional_agg * settings.weight_traditional
-                + deep_agg * settings.weight_deep_learning
-                + sift_score * settings.weight_sift
-                + ssim_agg * settings.weight_ssim_hybrid
-                + phash_best * settings.weight_phash_hybrid
-            )
-        else:
-            # Without deep learning, redistribute weight
-            total_w = (
-                settings.weight_traditional
-                + settings.weight_sift
-                + settings.weight_ssim_hybrid
-                + settings.weight_phash_hybrid
-            )
-            final_score = (
-                traditional_agg * (settings.weight_traditional / total_w)
-                + sift_score * (settings.weight_sift / total_w)
-                + ssim_agg * (settings.weight_ssim_hybrid / total_w)
-                + phash_best * (settings.weight_phash_hybrid / total_w)
-            )
+        #
+        # D-87: only the channels that actually RAN contribute, and their
+        # weights are renormalised over those. Scoring a skipped stage as 0
+        # would drag an honest match down and read as evidence against the
+        # item, which is the opposite of the truth: we simply did not look.
+        channels = [
+            (traditional_agg, settings.weight_traditional, True),
+            (deep_agg, settings.weight_deep_learning, settings.enable_deep_learning and deep_ran),
+            (sift_score, settings.weight_sift, "sift" not in skipped_stages),
+            (ssim_agg, settings.weight_ssim_hybrid, "ssim" not in skipped_stages),
+            (phash_best, settings.weight_phash_hybrid, True),
+        ]
+        total_w = sum(w for _, w, ran in channels if ran)
+        final_score = (
+            sum(score * w for score, w, ran in channels if ran) / total_w if total_w > 0 else 0.0
+        )
 
         # OCR bonus
         if ocr_match:
@@ -265,12 +315,51 @@ class HybridVerifier:
         # --- Decision ---
         decision, message = self._make_decision(final_score, attempt_number)
 
+        # D-87: a check that ran out of time looked at less than it should
+        # have. It still answers — that is the whole point — but partial
+        # evidence must never approve an item or reject it outright. Send it to
+        # a human instead, the same rule the server already applies when this
+        # service cannot be reached at all.
+        elapsed = time.monotonic() - started_at
+        degraded = bool(skipped_stages)
+        if degraded:
+            logger.warning(
+                "Verify DEGRADED after %.1fs: skipped %s. Decision %s -> %s",
+                elapsed,
+                ", ".join(skipped_stages),
+                decision,
+                "PENDING" if decision == "APPROVED" else ("RETRY" if decision == "REJECTED" else decision),
+            )
+            if decision == "APPROVED":
+                decision = "PENDING"
+                message = (
+                    "Checked against part of the evidence only (skipped: "
+                    + ", ".join(skipped_stages)
+                    + "). Sent for a quick human check."
+                )
+            elif decision == "REJECTED":
+                decision = "RETRY" if attempt_number < settings.max_retry_attempts else "PENDING"
+                message = (
+                    "Could not finish the full check in time (skipped: "
+                    + ", ".join(skipped_stages)
+                    + "). Please try again."
+                )
+
         return {
             "verified": decision == "APPROVED",
             "decision": decision,
             "message": message,
             "confidence": round(final_score, 2),
             "attempt_number": attempt_number,
+            # D-87 diagnostics: how long the check took, and whether any stage
+            # was skipped to keep the promise that this call always answers.
+            "elapsed_seconds": round(elapsed, 2),
+            "degraded": degraded,
+            "skipped_stages": skipped_stages,
+            # D-87b: which tier produced this verdict. A stored row without it
+            # cannot be read later — an 81 from a fast run and an 81 from a full
+            # run mean very different things about the item.
+            "mode": mode,
             "method_scores": {
                 "traditional_best": round(max(traditional_scores) if traditional_scores else 0.0, 2),
                 "traditional_aggregated": round(traditional_agg, 2),

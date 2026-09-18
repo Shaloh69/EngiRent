@@ -40,6 +40,16 @@ class VerificationResponse(BaseModel):
     good_pair_count: int = Field(default=0, description="Number of image pairs above manual review threshold")
     all_traditional_scores: list[float] = Field(description="All pairwise traditional CV scores")
     sift_all_ratios: list[float] = Field(description="All pairwise SIFT match ratios")
+    # D-87: how long the check took, and whether the time budget forced any
+    # stage to be skipped. Without these a degraded verdict is indistinguishable
+    # from a full one, and the caller has no way to say "a human should look".
+    elapsed_seconds: float = Field(default=0.0, description="Wall-clock seconds this verification took")
+    degraded: bool = Field(default=False, description="True when the time budget forced stages to be skipped")
+    skipped_stages: list[str] = Field(default_factory=list, description="Stages skipped because of the time budget")
+    # D-87b: "fast" = the check a student waited on at the locker; "full" = the
+    # background re-run that assists a human reviewer. The same score means
+    # different things in each, so the tier travels with the result.
+    mode: str = Field(default="fast", description="Which tier produced this verdict: fast or full")
 
 
 class StorableFeatures(BaseModel):

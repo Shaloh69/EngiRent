@@ -43,8 +43,43 @@ class Settings(BaseSettings):
     weight_phash_hybrid: float = 0.10
 
     # Image processing
-    max_image_size: int = 4096
+    #
+    # D-87 (2026-09-18), measured on the live kiosk: with this at 4096 a single
+    # deposit check ran for **7+ minutes** and was still inside "Step 3:
+    # Traditional CV" when it was killed — the student stood at the locker and
+    # the rental could not complete. Cost is quadratic in the pixel count, and
+    # the pipeline touches every image several times (background removal, CLAHE,
+    # ORB/HOG, SIFT+RANSAC, SSIM, ResNet), across 2 listing photos x 3 kiosk
+    # frames. Phone photos arrive at ~4000px, so almost nothing was being
+    # clamped. 1280 keeps far more detail than any stage actually consumes
+    # (SIFT saturates well below it; SSIM and the ResNet pass resize to 640 and
+    # 224 anyway) while cutting the work by ~10x.
+    max_image_size: int = 1280
     target_size: tuple[int, int] = (640, 640)
+
+    # D-87: the wall clock a single verify may spend before it starts SKIPPING
+    # the remaining optional stages. It never aborts the request — the service
+    # must always answer with a real verdict, because a deposit waits on it and
+    # a silent cut-off is what left a bay reserved with an item inside. When the
+    # budget is passed the result is marked `degraded` and is never allowed to
+    # read as APPROVED on partial evidence.
+    #
+    # D-87b (2026-09-18) — TWO TIERS, because one budget could not serve both
+    # jobs. A student is standing at an open locker: that check has to finish in
+    # the time it takes to close a door. But squeezing the whole pipeline into
+    # that window meant the heavy stages never ran, and a *correct* item scored
+    # only 80-81 — under the 85 threshold — so nothing could ever be
+    # auto-approved. The two callers want different things, so they now get
+    # different budgets:
+    #
+    #   fast  — at placement, with a person waiting. Skips whatever does not
+    #           fit. A PENDING here means "a human will look", not "suspect".
+    #   full  — afterwards, in the background, for the row a human is about to
+    #           review. Every stage runs; nobody is waiting. The ceiling exists
+    #           only so one wedged image cannot occupy the service forever, and
+    #           even at the ceiling the run still returns a real verdict.
+    verify_time_budget_seconds: float = 25.0
+    verify_full_budget_seconds: float = 900.0
 
     # Feature extraction
     orb_features_count: int = 200

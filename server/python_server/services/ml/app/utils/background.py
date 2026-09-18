@@ -17,6 +17,11 @@ Two strategies:
 import cv2
 import numpy as np
 
+# D-87: the longest side GrabCut itself works at. The mask is coarse and gets
+# morphologically smoothed straight afterwards, so a bigger canvas costs time
+# without buying accuracy.
+_GRABCUT_MAX_DIM = 480
+
 
 def remove_background_grabcut(image: np.ndarray, iterations: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -35,19 +40,40 @@ def remove_background_grabcut(image: np.ndarray, iterations: int = 5) -> tuple[n
     """
     h, w = image.shape[:2]
 
-    # Initial rectangle: center 70% of the image
-    margin_x = int(w * 0.15)
-    margin_y = int(h * 0.15)
-    rect = (margin_x, margin_y, w - 2 * margin_x, h - 2 * margin_y)
+    # D-87 (2026-09-18): GrabCut is what made a deposit check take minutes.
+    # Measured on the live server: the traditional-CV stage alone ran ~100s for
+    # 5 images, and this is ~20s of it per image — 5 iterations of GrabCut over
+    # the full working image. The mask it produces is coarse (it is immediately
+    # smoothed by a 7x7 morphological close/open), so computing it at full size
+    # buys nothing. Compute it small and scale the mask back: the cost falls
+    # with the square of the side length, and the smoothed mask is
+    # indistinguishable in practice.
+    scale = 1.0
+    small = image
+    if max(h, w) > _GRABCUT_MAX_DIM:
+        scale = _GRABCUT_MAX_DIM / max(h, w)
+        small = cv2.resize(image, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
 
-    mask = np.zeros((h, w), np.uint8)
+    sh, sw = small.shape[:2]
+
+    # Initial rectangle: center 70% of the image
+    margin_x = int(sw * 0.15)
+    margin_y = int(sh * 0.15)
+    rect = (margin_x, margin_y, sw - 2 * margin_x, sh - 2 * margin_y)
+
+    mask = np.zeros((sh, sw), np.uint8)
     bg_model = np.zeros((1, 65), np.float64)
     fg_model = np.zeros((1, 65), np.float64)
 
-    cv2.grabCut(image, mask, rect, bg_model, fg_model, iterations, cv2.GC_INIT_WITH_RECT)
+    cv2.grabCut(small, mask, rect, bg_model, fg_model, iterations, cv2.GC_INIT_WITH_RECT)
 
     # 0=bg, 1=fg, 2=probable_bg, 3=probable_fg
     fg_mask = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+
+    # Back to the caller's resolution, since callers mask the ORIGINAL image
+    # with this and every downstream stage expects matching shapes.
+    if fg_mask.shape[:2] != (h, w):
+        fg_mask = cv2.resize(fg_mask, (w, h), interpolation=cv2.INTER_NEAREST)
 
     # Clean up mask with morphological operations
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
