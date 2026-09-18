@@ -70,6 +70,15 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   Timer? _doorTicker;
   bool _busy = false;
   String? _bayError;
+
+  /// D-87b. The check that runs while the student stands at the locker is the
+  /// FAST tier — it skips whatever does not fit ~25 seconds, so anything short
+  /// of a clear pass comes back PENDING and goes to a human. That is a normal,
+  /// frequent outcome, not a failure: the item is in the locker and the rental
+  /// has moved on. Showing it under the same "all set" wording as an approval
+  /// would be a lie in one direction; showing it as an error would be a lie in
+  /// the other. It gets its own wording.
+  bool _awaitingReview = false;
   int _attempt = 0;
 
   @override
@@ -498,7 +507,17 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   /// rather than a canned "face not recognised" line that would be wrong.
   void _onItemApproved(Map<String, dynamic> data) {
     if (data['rentalId'] != widget.rentalId) return;
-    if (mounted) setState(() => _phase = _Phase.success);
+    if (!mounted) return;
+    // D-87b: the server sends the decision alongside this event. APPROVED means
+    // the pipeline cleared it outright; anything else reaching here means
+    // "accepted, a person will confirm it". Both are successes for the student
+    // standing at the locker — they differ only in what happens next, and that
+    // difference is the part the screen has to say out loud.
+    final decision = (data['decision'] as String?)?.toUpperCase();
+    setState(() {
+      _awaitingReview = decision != null && decision != 'APPROVED';
+      _phase = _Phase.success;
+    });
   }
 
   void _onItemRejected(Map<String, dynamic> data) {
@@ -647,11 +666,20 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         _Phase.bay => _buildBay(),
         _Phase.checking => _buildChecking(),
         _Phase.success => _buildResult(
-            icon: Icons.lock_open_rounded,
-            color: AppColors.success,
-            title: _successLabel,
-            body:
-                'Close the door when you\'re done — the kiosk confirms automatically.',
+            icon: _awaitingReview
+                ? Icons.hourglass_top_rounded
+                : Icons.lock_open_rounded,
+            color: _awaitingReview ? AppColors.info : AppColors.success,
+            title:
+                _awaitingReview ? 'Item placed — awaiting review' : _successLabel,
+            body: _awaitingReview
+                ? 'Your item is in the locker and the door is closed.\n\n'
+                    'The quick check at the kiosk was not confident enough to '
+                    'confirm it on its own, so our full model is taking a closer '
+                    'look and a person confirms the result.\n\n'
+                    'This can take a few hours. You do not need to wait here — '
+                    'we will notify you in the app as soon as it is confirmed.'
+                : 'Close the door when you\'re done — the kiosk confirms automatically.',
             primaryLabel: 'Done',
             onPrimary: () => Navigator.pop(context, true),
           ),

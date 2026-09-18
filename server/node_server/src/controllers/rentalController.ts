@@ -22,7 +22,7 @@ export const createRental = async (
       throw new ForbiddenError("Authentication required");
     }
 
-    const { itemId, startDate, endDate } = req.body;
+    const { itemId, startDate, endDate, pickupDate } = req.body;
 
     // Get item
     const item = await prisma.item.findUnique({
@@ -63,6 +63,29 @@ export const createRental = async (
       );
     }
 
+    // E5.1 — when the RENTER intends to collect. Optional: a rental created
+    // without one behaves exactly as every rental did before E5 (treated as
+    // "today", i.e. the fast lane). Validated here rather than trusted,
+    // because it decides whether an actuator moves the item into storage.
+    let pickup: Date | null = null;
+    if (pickupDate !== undefined && pickupDate !== null && pickupDate !== "") {
+      const parsed = new Date(pickupDate);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new ValidationError("Pick-up date is not a valid date");
+      }
+      // Must fall inside the rental period. A pick-up before the rental starts
+      // has nothing to collect; one after it ends would have the item sitting
+      // in a locker past the rental it belongs to.
+      const dayOf = (d: Date) =>
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      if (dayOf(parsed) < dayOf(start) || dayOf(parsed) > dayOf(end)) {
+        throw new ValidationError(
+          "Pick-up date must fall within your rental dates",
+        );
+      }
+      pickup = parsed;
+    }
+
     const totalPrice = days * item.pricePerDay;
 
     // Create rental
@@ -76,6 +99,7 @@ export const createRental = async (
         totalPrice,
         securityDeposit: item.securityDeposit,
         status: "PENDING",
+        pickupDate: pickup,
       },
       include: {
         item: {

@@ -38,6 +38,11 @@ class SocketService {
   final _depositApproved = StreamController<Map<String, dynamic>>.broadcast();
   final _depositRejected = StreamController<Map<String, dynamic>>.broadcast();
   final _depositRetry = StreamController<Map<String, dynamic>>.broadcast();
+  // D-87d: the deposit has now been CONFIRMED (by the full verification model
+  // or by a human) and collection is open. Distinct from `deposit:approved`,
+  // which fires when the item is merely in the locker and says nothing about
+  // whether anyone has confirmed it matches.
+  final _depositConfirmed = StreamController<Map<String, dynamic>>.broadcast();
   final _faceVerified = StreamController<Map<String, dynamic>>.broadcast();
   final _faceFailed = StreamController<Map<String, dynamic>>.broadcast();
   final _rentalActive = StreamController<Map<String, dynamic>>.broadcast();
@@ -68,6 +73,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onDepositApproved => _depositApproved.stream;
   Stream<Map<String, dynamic>> get onDepositRejected => _depositRejected.stream;
   Stream<Map<String, dynamic>> get onDepositRetry => _depositRetry.stream;
+  Stream<Map<String, dynamic>> get onDepositConfirmed =>
+      _depositConfirmed.stream;
   Stream<Map<String, dynamic>> get onFaceVerified => _faceVerified.stream;
   Stream<Map<String, dynamic>> get onFaceFailed => _faceFailed.stream;
   Stream<Map<String, dynamic>> get onRentalActive => _rentalActive.stream;
@@ -151,6 +158,7 @@ class SocketService {
       ..on('deposit:approved', _handle(_depositApproved))
       ..on('deposit:rejected', _handle(_depositRejected))
       ..on('deposit:retry', _handle(_depositRetry))
+      ..on('deposit:confirmed', _handle(_depositConfirmed))
       ..on('face:verified', _handle(_faceVerified))
       ..on('face:failed', _handle(_faceFailed))
       ..on('rental:active', _handle(_rentalActive))
@@ -238,6 +246,7 @@ class SocketService {
     disconnect();
     _rentalCompleted.close();
     _depositApproved.close();
+    _depositConfirmed.close();
     _depositRejected.close();
     _depositRetry.close();
     _faceVerified.close();

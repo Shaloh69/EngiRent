@@ -1560,6 +1560,22 @@ h3 {
   color: var(--teal);
 }
 
+/*
+ * D-87b — the "awaiting review" explanation. Deliberately quieter than
+ * .success-instr: it is reassurance to read once, not the instruction the
+ * person is acting on. Width is capped well inside the 1080px portrait panel
+ * so three lines of it do not run edge to edge.
+ */
+.success-note {
+  max-width: 44ch;
+  margin: 1.4rem auto 0;
+  font-size: var(--t-md);
+  line-height: 1.5;
+  color: var(--ink2);
+  opacity: 0.85;
+  text-align: center;
+}
+
 .error-icon { color: var(--danger); }
 .offline-icon { color: var(--warn); }
 

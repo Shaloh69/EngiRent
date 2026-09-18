@@ -90,6 +90,7 @@ export default function App() {
         <SuccessScreen
           sub={k.successSub}
           instr={k.successInstr}
+          note={k.successNote}
           countdown={k.countdown}
         />
       )}

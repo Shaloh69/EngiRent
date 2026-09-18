@@ -7,8 +7,10 @@ import {
   ActionIcon,
   Alert,
   Anchor,
+  Button,
   Card,
   Group,
+  Modal,
   Progress,
   SimpleGrid,
   Stack,
@@ -21,6 +23,7 @@ import {
   AlertCircle,
   Camera,
   CheckCircle2,
+  Images,
   ScanFace,
   ThumbsDown,
   ThumbsUp,
@@ -34,12 +37,42 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { roleColor } from "../theme";
 import { StatValue } from "@/components/ui/UnknownValue";
 
+/**
+ * A Verification hangs off ONE of two relations, never both:
+ *   `rental`        — a RETURN verification  (Rental.verificationId)
+ *   `depositRental` — a DEPOSIT verification (Rental.depositVerificationId)
+ *
+ * This page only ever read `v.rental`, so every deposit row rendered its item
+ * as an em dash and was unsearchable by name — which is most of the queue,
+ * because deposits outnumber returns and the fast tier sends far more of them
+ * to review. Found on screen 2026-09-18 with a real deposit in the queue.
+ */
+function itemTitleOf(v: any): string | null {
+  return v?.rental?.item?.title ?? v?.depositRental?.item?.title ?? null;
+}
+
+function rentalIdOf(v: any): string | null {
+  return v?.rentalId ?? v?.rental?.id ?? v?.depositRental?.id ?? null;
+}
+
+/** Which side of the hand-off this verification belongs to. */
+function stageOf(v: any): "Deposit" | "Return" | null {
+  if (v?.depositRental) return "Deposit";
+  if (v?.rental) return "Return";
+  return null;
+}
+
 export default function VerificationsPage() {
   const [verifications, setVerifications] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [decision, setDecision] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // The row currently open in the comparison view. Holding the whole row, not
+  // just an id, keeps the modal rendering the data the reviewer was looking at
+  // when they clicked, even if the list refreshes underneath them.
+  const [reviewing, setReviewing] = useState<any | null>(null);
+  const [deciding, setDeciding] = useState(false);
 
   useEffect(() => {
     void fetchVerifications();
@@ -68,11 +101,30 @@ export default function VerificationsPage() {
     }
   };
 
+  /**
+   * Decide from inside the comparison view. Kept separate from updateStatus so
+   * the modal only closes on success — a failed decision that closed the modal
+   * anyway would read as "done" and the reviewer would move on, leaving a
+   * student's item in limbo.
+   */
+  const decide = async (id: string, status: string) => {
+    setDeciding(true);
+    try {
+      await api.patch(`/admin/verifications/${id}`, { status });
+      setReviewing(null);
+      await fetchVerifications();
+    } catch (apiError: any) {
+      setError(apiError?.response?.data?.error || "Failed to update verification.");
+    } finally {
+      setDeciding(false);
+    }
+  };
+
   const filtered = useMemo(
     () =>
       verifications.filter((v) => {
         const term = search.toLowerCase();
-        const title = v.rental?.item?.title ?? "";
+        const title = itemTitleOf(v) ?? "";
         const matchesSearch = !term || title.toLowerCase().includes(term);
         const matchesDecision = !decision || v.decision === decision;
         return matchesSearch && matchesDecision;
@@ -193,73 +245,243 @@ export default function VerificationsPage() {
         >
           {filtered.map((v) => {
             const score = Number(v.confidenceScore ?? 0);
-            const rentalId = v.rentalId ?? v.rental?.id;
+            const rentalId = rentalIdOf(v);
+            const title = itemTitleOf(v);
+            const stage = stageOf(v);
             return (
               <Table.Tr key={v.id}>
                 <Table.Td>
-                  {rentalId ? (
-                    <Anchor component={Link} href={`/rentals/${rentalId}`} fw={600} size="sm">
-                      {v.rental?.item?.title ?? "View rental"}
-                    </Anchor>
-                  ) : (
-                    <Text size="sm" fw={600}>
-                      {v.rental?.item?.title ?? "—"}
-                    </Text>
-                  )}
+                  <Stack gap={2}>
+                    {rentalId ? (
+                      <Anchor component={Link} href={`/rentals/${rentalId}`} fw={600} size="sm">
+                        {title ?? "View rental"}
+                      </Anchor>
+                    ) : (
+                      <Text size="sm" fw={600}>
+                        {title ?? "—"}
+                      </Text>
+                    )}
+                    {stage && (
+                      <Text size="xs" c="dimmed">
+                        {stage}
+                      </Text>
+                    )}
+                  </Stack>
                 </Table.Td>
                 <Table.Td>
                   <StatusBadge status={v.decision} />
                 </Table.Td>
                 <Table.Td>
-                  <Stack gap={2} w={120}>
+                  <Stack gap={2} w={160}>
+                    {/*
+                      The number above is the FAST verdict — the check a student
+                      waited on at the locker, which skips stages to finish in
+                      time. A 0.0% here usually means it produced no evidence at
+                      all (the ML service timed out or was unreachable), NOT
+                      that the item scored zero. Showing it alone made a review
+                      queue of 0.0% rows that a reviewer could not act on.
+                    */}
                     <Text size="xs" fw={600}>
-                      {score.toFixed(1)}%
+                      {v.unavailable ? "no evidence" : `${score.toFixed(1)}%`}
                     </Text>
-                    <Progress
-                      value={score}
-                      size="xs"
-                      color={
-                        score >= 85
-                          ? roleColor.success
-                          : score >= 60
-                            ? roleColor.warning
-                            : roleColor.critical
-                      }
-                    />
+                    {!v.unavailable && (
+                      <Progress
+                        value={score}
+                        size="xs"
+                        color={
+                          score >= 85
+                            ? roleColor.success
+                            : score >= 60
+                              ? roleColor.warning
+                              : roleColor.critical
+                        }
+                      />
+                    )}
+                    {v.unavailable && v.unavailableReason && (
+                      <Text size="xs" c="dimmed">
+                        {v.unavailableReason}
+                      </Text>
+                    )}
+                    {/* The full model's second opinion — every stage, no time
+                        pressure. This is the number a human should weigh. */}
+                    {v.deepReviewStatus && (
+                      <Text size="xs" c="dimmed" mt={4}>
+                        {v.deepReviewStatus === "COMPLETED"
+                          ? `full model: ${Number(v.deepReviewScore ?? 0).toFixed(1)}% ${v.deepReviewDecision ?? ""}`
+                          : v.deepReviewStatus === "FAILED"
+                            ? "full model: failed"
+                            : `full model: ${v.deepReviewStatus.toLowerCase()}…`}
+                      </Text>
+                    )}
                   </Stack>
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm">{new Date(v.createdAt).toLocaleString()}</Text>
                 </Table.Td>
                 <Table.Td>
-                  <Group gap="xs">
-                    <Tooltip label="Approve">
-                      <ActionIcon
-                        variant="light"
-                        color={roleColor.success}
-                        onClick={() => updateStatus(v.id, "APPROVED")}
-                        aria-label="Approve verification"
-                      >
-                        <ThumbsUp size={15} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Reject">
-                      <ActionIcon
-                        variant="light"
-                        color={roleColor.critical}
-                        onClick={() => updateStatus(v.id, "REJECTED")}
-                        aria-label="Reject verification"
-                      >
-                        <ThumbsDown size={15} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
+                  {/*
+                    The approve/reject icons used to live HERE, in the row, with
+                    no way to see the photographs at all — a reviewer was asked
+                    to decide whether two items matched while looking only at a
+                    percentage. Since the deposit decision releases someone
+                    else's property, that is the one decision in this product
+                    that must not be takeable blind, so it now lives behind the
+                    comparison view and cannot be reached without opening it.
+                  */}
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<Images size={14} />}
+                    onClick={() => setReviewing(v)}
+                  >
+                    Review
+                  </Button>
                 </Table.Td>
               </Table.Tr>
             );
           })}
         </DataTableCard>
       </Stack>
+
+      {/*
+        THE COMPARISON VIEW.
+        Listing photos on the left, what the locker camera actually saw on the
+        right. The whole judgement is "are these the same object", and until
+        now the queue never showed either side of it.
+
+        The image URLs arrive already signed: mediaUrlRewriter turns any
+        `verifications/**` path into a short-lived signed URL on the way out
+        (1h TTL, MEDIA_SIGNED_URL_TTL_SECONDS), because kiosk captures are
+        evidence tied to a specific rental and are deliberately not publicly
+        readable. So a page left open for hours may show broken images —
+        reload it rather than assuming the capture is missing.
+      */}
+      <Modal
+        opened={reviewing !== null}
+        onClose={() => setReviewing(null)}
+        title={
+          reviewing
+            ? `${stageOf(reviewing) ?? "Check"} — ${itemTitleOf(reviewing) ?? "unknown item"}`
+            : ""
+        }
+        size="xl"
+      >
+        {reviewing && (
+          <Stack gap="md">
+            <Group gap="xs">
+              <StatusBadge status={reviewing.decision} />
+              <Text size="sm" c="dimmed">
+                {reviewing.unavailable
+                  ? `quick check produced no evidence (${reviewing.unavailableReason ?? "unknown"})`
+                  : `quick check: ${Number(reviewing.confidenceScore ?? 0).toFixed(1)}%`}
+              </Text>
+              {reviewing.deepReviewStatus === "COMPLETED" && (
+                <Text size="sm" c="dimmed">
+                  · full model: {Number(reviewing.deepReviewScore ?? 0).toFixed(1)}%{" "}
+                  {reviewing.deepReviewDecision ?? ""}
+                </Text>
+              )}
+            </Group>
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  Listing photos (what was promised)
+                </Text>
+                <ImageStrip urls={asUrlList(reviewing.originalImages)} />
+              </Stack>
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  Locker camera (what was placed)
+                </Text>
+                <ImageStrip urls={asUrlList(reviewing.kioskImages)} />
+              </Stack>
+            </SimpleGrid>
+
+            <Alert color={roleColor.warning} variant="light" icon={<AlertCircle size={16} />}>
+              Approving releases the owner&apos;s item to the renter. Rejecting
+              cancels the rental and returns the item to its owner. Both are
+              hard to undo — look at the photographs first.
+            </Alert>
+
+            <Group justify="flex-end" gap="sm">
+              <Button variant="default" onClick={() => setReviewing(null)}>
+                Cancel
+              </Button>
+              <Button
+                color={roleColor.critical}
+                leftSection={<ThumbsDown size={15} />}
+                loading={deciding}
+                onClick={() => decide(reviewing.id, "REJECTED")}
+              >
+                Doesn&apos;t match — reject
+              </Button>
+              <Button
+                color={roleColor.success}
+                leftSection={<ThumbsUp size={15} />}
+                loading={deciding}
+                onClick={() => decide(reviewing.id, "APPROVED")}
+              >
+                Same item — approve
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </AdminLayout>
+  );
+}
+
+/**
+ * `originalImages` / `kioskImages` are Json columns holding a string array.
+ * Tolerates the shapes actually seen in this database rather than trusting the
+ * type: a real array, a JSON-encoded string from an older write path, or null.
+ * A reviewer seeing "no images" must mean it, not mean "we could not parse it".
+ */
+function asUrlList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((u): u is string => typeof u === "string");
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed)
+        ? parsed.filter((u): u is string => typeof u === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function ImageStrip({ urls }: { urls: string[] }) {
+  if (urls.length === 0) {
+    return (
+      <Text size="sm" c="dimmed">
+        No images on this record.
+      </Text>
+    );
+  }
+  return (
+    <Stack gap="xs">
+      {urls.map((url, i) => (
+        // Plain <img> on purpose: next/image would need the rotating
+        // Cloudflare tunnel hostname in next.config's remotePatterns, and that
+        // hostname changes on every restart.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={`${url}-${i}`}
+          src={url}
+          alt={`comparison image ${i + 1}`}
+          style={{
+            width: "100%",
+            borderRadius: 8,
+            display: "block",
+            objectFit: "contain",
+            maxHeight: 320,
+            background: "rgba(0,0,0,0.2)",
+          }}
+        />
+      ))}
+    </Stack>
   );
 }

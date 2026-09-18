@@ -451,7 +451,12 @@ async def _cmd_capture_image(data: dict):
         # instant it uploaded, before that decision ever came back. Now it
         # waits in a dedicated "do not leave" state until Node's
         # "verification_done" command arrives (_cmd_verification_done below).
-        _set_ui("verifying_item", "Checking your item — this takes about 15 seconds…")
+        # D-87c: this promised "about 15 seconds" and the real fast check has
+        # been measured at 25-45s+ on actual kiosk photos. An invented number
+        # that the hardware then misses is worse than no number — the person
+        # starts doubting the machine at the 16th second. Say what is true: it
+        # runs several checks in order and they should not walk away.
+        _set_ui("verifying_item", "Checking your item — please don't walk away…")
     else:
         # Admin snapshot — no ML, just relay the URL to admin dashboard
         await safe_emit("kiosk:admin_snapshot", {
@@ -479,7 +484,12 @@ async def _cmd_verification_done(data: dict):
     if result == "approved":
         _set_ui("item_verified", "Item verified ✓", locker_id)
     elif result == "pending":
-        _set_ui("item_verified", "Item received — pending manual review", locker_id)
+        # D-87b: this used to reuse "item_verified", which told the student
+        # their item was verified when it was not — it was accepted and queued
+        # for a person to look at. The item IS placed and the rental HAS moved
+        # on; what is pending is the review, and that is now its own status so
+        # the screen can say so without contradicting itself.
+        _set_ui("item_pending", "Item placed — awaiting review", locker_id)
     elif result == "retry":
         _set_ui("item_retry", "Please reposition the item and try again", locker_id)
     else:  # rejected

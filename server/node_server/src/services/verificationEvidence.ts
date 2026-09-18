@@ -39,6 +39,40 @@ export function mlUnreachableResult(): MlVerificationResult {
   };
 }
 
+/** E5.3 — why a long-lead deposit carries no fast-lane score. */
+export const LONG_LEAD_FULL_CHECK = "long_lead_full_check_queued";
+
+/**
+ * E5.3 — the placeholder verdict for a deposit whose pick-up is days away.
+ *
+ * Such a deposit is decided by the FULL verification run, not the fast one, so
+ * no fast check is performed at all and there is deliberately no score here.
+ *
+ * Why not simply run the full check inline? Because the OWNER is standing at
+ * an open locker during a deposit. The full pipeline takes 30-95s, and making
+ * someone wait that long in a public corridor is precisely the failure D-87
+ * was about. Running the fast check anyway and then discarding it would also
+ * be wrong: it is a second job for a single-process ML service whose answer
+ * nobody is going to use.
+ *
+ * So the deposit completes immediately, the item is in, and the full run
+ * decides seconds later — auto-approving at >= 85 (deepReviewQueue) or going
+ * to a human. `unavailable` is set for the same reason as the unreachable
+ * case: this row carries NO comparison evidence, and D-65 exists so a zero
+ * score can never be mistaken for a real one. It must be excluded from any
+ * threshold calibration set.
+ */
+export function longLeadPendingResult(): MlVerificationResult {
+  return {
+    decision: "PENDING",
+    confidence: 0,
+    method_scores: {},
+    ocr: null,
+    unavailable: true,
+    unavailableReason: LONG_LEAD_FULL_CHECK,
+  };
+}
+
 export interface VerificationEvidenceFields {
   unavailable: boolean;
   unavailableReason: string | null;

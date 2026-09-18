@@ -34,9 +34,19 @@ import { verifyAccessToken } from "./utils/jwt";
 import { resolveFaceSubject } from "./services/faceVerificationService";
 import { runMlVerification } from "./services/mlVerificationService";
 import {
+  attachDeepReviewEmitter,
+  queueDeepReview,
+} from "./services/deepReviewQueue";
+import {
+  longLeadPendingResult,
   mlUnreachableResult,
   verificationEvidenceFields,
 } from "./services/verificationEvidence";
+import { isLongLeadPickup } from "./services/pickupLaneService";
+import {
+  confirmStorageDrop,
+  storageDropForCommand,
+} from "./services/storageDropService";
 import {
   requestRelease,
   confirmRelease,
@@ -95,6 +105,10 @@ app.use(mediaUrlRewriter);
 
 // Expose io to controllers
 app.set("io", io);
+// D-87b: the background deep-review queue reports finished runs to the admin
+// room. It works without this — the result is written to the verification row
+// either way — but the console would only see it on its next poll.
+attachDeepReviewEmitter(io);
 
 // ── Socket.io authentication ────────────────────────────────────────────────
 // Every socket is tagged as one of: "kiosk" (Raspberry Pi, proven by the shared
@@ -382,8 +396,19 @@ io.on("connection", (socket: Socket) => {
       // from the Pi. Until this fires the item is not known to have changed
       // compartments, and the retrieval flow refuses to open a bottom door.
       if (action === "drop_item" && status === "ok") {
-        const rentalId = rentalForCommand(command_id);
-        if (rentalId) void confirmRelease(rentalId);
+        // Two different things produce a `drop_item`: E4.6 releasing an item
+        // back to its OWNER, and E5.4 dropping a long-lead deposit into
+        // storage so the upper bay can be reused. Identical hardware command,
+        // completely different bookkeeping — a storage drop must NOT write
+        // `releasedAt`, because that marks the item as the owner's to collect
+        // and would lock the renter out of their own rental. Keyed on the
+        // command id so the two can never be confused.
+        if (storageDropForCommand(command_id)) {
+          void confirmStorageDrop(io, command_id);
+        } else {
+          const rentalId = rentalForCommand(command_id);
+          if (rentalId) void confirmRelease(rentalId);
+        }
       }
 
       if (status === "ok") {
@@ -493,18 +518,41 @@ io.on("connection", (socket: Socket) => {
           let mlResult: Awaited<ReturnType<typeof runMlVerification>>;
           let mlError: string | null = null;
 
-          try {
-            mlResult = await runMlVerification(
-              rental.item.images as string[],
-              image_urls,
-              attemptNumber,
-              rental.item.mlFeatures,
+          // E5.3 — WHICH LANE DECIDES THIS DEPOSIT.
+          //
+          // A pick-up that is days away is decided by the FULL run, never the
+          // fast one. The fast lane exists only because someone is standing at
+          // an open door; it pays for that speed by skipping stages worth 40%
+          // of the score, which is why it structurally cannot approve anything
+          // (D-87b). When nobody is waiting, that trade buys nothing.
+          //
+          // The owner IS still standing here though, so the full run is not
+          // performed inline — it would hold them for 30-95s. The deposit
+          // completes now, and `queueDeepReview` below decides moments later,
+          // auto-approving at >= 85 or handing it to a human.
+          const longLead = isLongLeadPickup(rental.pickupDate);
+
+          if (longLead) {
+            logger.info(
+              `Deposit for rental ${rental_id} is a long-lead pick-up ` +
+                `(${rental.pickupDate?.toISOString() ?? "?"}) — skipping the fast ` +
+                `check; the full run decides.`,
             );
-          } catch (err) {
-            mlError = (err as Error).message;
-            // D-65: the ML service itself was unreachable. Tag it, or this
-            // row is indistinguishable from a genuine zero-confidence match.
-            mlResult = mlUnreachableResult();
+            mlResult = longLeadPendingResult();
+          } else {
+            try {
+              mlResult = await runMlVerification(
+                rental.item.images as string[],
+                image_urls,
+                attemptNumber,
+                rental.item.mlFeatures,
+              );
+            } catch (err) {
+              mlError = (err as Error).message;
+              // D-65: the ML service itself was unreachable. Tag it, or this
+              // row is indistinguishable from a genuine zero-confidence match.
+              mlResult = mlUnreachableResult();
+            }
           }
 
           const { decision, confidence, method_scores } = mlResult;
@@ -615,6 +663,22 @@ io.on("connection", (socket: Socket) => {
             },
           });
 
+          // D-87b: the verdict above came from the FAST tier — a student was
+          // standing at an open locker, so stages that did not fit were
+          // skipped. If it is going to a human, give that human the full
+          // pipeline's opinion too. Fire-and-forget: it takes minutes, and the
+          // deposit below must not wait for it.
+          if (decision !== "APPROVED") {
+            void queueDeepReview({
+              verificationId: verification.id,
+              rentalId: rental_id,
+              originalUrls: rental.item.images as string[],
+              kioskUrls: image_urls,
+              attemptNumber,
+              mlFeatures: rental.item.mlFeatures,
+            });
+          }
+
           await prisma.rental.update({
             where: { id: rental_id },
             data: {
@@ -641,32 +705,57 @@ io.on("connection", (socket: Socket) => {
             await emitLockerOccupancy(io, locker.kioskId);
           }
 
-          await prisma.notification.create({
-            data: {
-              userId: rental.renterId,
-              title: "Item Ready for Claim",
-              message: `${rental.item.title} has been deposited and is ready for pickup.`,
-              type: "ITEM_READY_FOR_CLAIM",
-              relatedEntityId: rental_id,
-              relatedEntityType: "rental",
-            },
-          });
+          // D-87d: only say "ready for pickup" when it actually IS. This block
+          // used to run for PENDING too, so a renter got a notification and an
+          // email telling them to come and collect an item no one had
+          // confirmed — and, after D-87b, that was every single deposit. The
+          // ready-for-claim announcement now belongs to whoever grants the
+          // approval: deepReviewQueue when the full model clears it, or
+          // adminController when a human does.
+          if (decision === "APPROVED") {
+            await prisma.notification.create({
+              data: {
+                userId: rental.renterId,
+                title: "Item Ready for Claim",
+                message: `${rental.item.title} has been deposited and is ready for pickup.`,
+                type: "ITEM_READY_FOR_CLAIM",
+                relatedEntityId: rental_id,
+                relatedEntityType: "rental",
+              },
+            });
 
-          // Feature caching for this item already happened at listing time
-          // (itemController.createItem/updateItem → extractAndCacheMlFeatures);
-          // persisting the verification *result* here into Item.mlFeatures was
-          // removed — it wrote the wrong shape (hybrid.py expects
-          // {traditional, deep, ocr_texts, image_count}, not a decision/score
-          // object) and never actually served as a usable cache.
-          const renterUser = await prisma.user.findUnique({
-            where: { id: rental.renterId },
-            select: { email: true, firstName: true },
-          });
-          if (renterUser) {
-            await sendItemReadyForClaim(renterUser.email, {
-              firstName: renterUser.firstName,
-              itemTitle: rental.item.title,
-              rentalId: rental_id,
+            // Feature caching for this item already happened at listing time
+            // (itemController.createItem/updateItem → extractAndCacheMlFeatures);
+            // persisting the verification *result* here into Item.mlFeatures was
+            // removed — it wrote the wrong shape (hybrid.py expects
+            // {traditional, deep, ocr_texts, image_count}, not a decision/score
+            // object) and never actually served as a usable cache.
+            const renterUser = await prisma.user.findUnique({
+              where: { id: rental.renterId },
+              select: { email: true, firstName: true },
+            });
+            if (renterUser) {
+              await sendItemReadyForClaim(renterUser.email, {
+                firstName: renterUser.firstName,
+                itemTitle: rental.item.title,
+                rentalId: rental_id,
+              });
+            }
+          } else {
+            // The owner has done their part and the item is physically in the
+            // bay. Tell the renter the truth: it is in, it is being confirmed,
+            // and they will hear when they can fetch it.
+            await prisma.notification.create({
+              data: {
+                userId: rental.renterId,
+                title: "Item dropped off — being confirmed",
+                message:
+                  `${rental.item.title} is in the locker. We're confirming it matches ` +
+                  `the listing before you collect it — you'll be notified as soon as it's ready.`,
+                type: "ITEM_READY_FOR_CLAIM",
+                relatedEntityId: rental_id,
+                relatedEntityType: "rental",
+              },
             });
           }
 
@@ -842,6 +931,20 @@ io.on("connection", (socket: Socket) => {
 
           const verificationStatus =
             decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW";
+
+          // D-87b — same as the deposit branch: a returning item judged on the
+          // fast tier goes to a human with the full run's second opinion
+          // following behind it.
+          if (decision !== "APPROVED") {
+            void queueDeepReview({
+              verificationId: verification.id,
+              rentalId: rental_id,
+              originalUrls: rental.item.images as string[],
+              kioskUrls: image_urls,
+              attemptNumber,
+              mlFeatures: rental.item.mlFeatures,
+            });
+          }
 
           await prisma.rental.update({
             where: { id: rental_id },
@@ -1168,6 +1271,28 @@ io.on("connection", (socket: Socket) => {
             action: "flow_error",
             message: `Rental status "${rental.status}" is not actionable at kiosk`,
           });
+          return;
+        }
+
+        // D-87d: stop an unconfirmed claim at the door of the flow, before the
+        // renter is sent to their phone to verify a face for a bay that will
+        // then refuse to open. `resolveFaceSubject`/`processFaceVerification`
+        // enforce this too — that is the real boundary — but failing here gives
+        // the person a straight answer at the kiosk instead of walking them
+        // through identity verification first and refusing at the end.
+        if (
+          rental.status === "DEPOSITED" &&
+          rental.verificationStatus !== "APPROVED"
+        ) {
+          socket.emit("kiosk:command", {
+            action: "flow_error",
+            message:
+              "This item is still being confirmed — you'll be notified when it's ready to collect",
+          });
+          logger.info(
+            `[PI-FLOW]  Claim blocked for rental ${rental_id}: deposit not confirmed ` +
+              `(verificationStatus=${rental.verificationStatus ?? "null"})`,
+          );
           return;
         }
 

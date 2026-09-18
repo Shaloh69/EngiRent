@@ -235,6 +235,23 @@ model Rental {
   depositAttemptCount Int @default(0)
   returnAttemptCount  Int @default(0)
 
+  /// E5.1 — when the RENTER intends to collect the item.
+  ///
+  /// Drives which verification lane the deposit takes, and therefore whether
+  /// the item is dropped into the lower compartment to free the upper bay:
+  ///   pick-up TODAY        -> fast check at the locker, as before; the item
+  ///                           stays in the upper bay for a same-day hand-off.
+  ///   pick-up ANY LATER DAY -> full check only (nobody is standing there, so
+  ///                           there is no reason to accept a degraded
+  ///                           verdict), then the item is dropped to storage
+  ///                           and the upper bay is released for another
+  ///                           hand-off.
+  ///
+  /// Nullable because every rental created before E5 has no pick-up date, and
+  /// those must keep behaving exactly as they did — a null reads as "today",
+  /// i.e. the pre-existing path. See `isLongLeadPickup`.
+  pickupDate  DateTime?
+
   // Timestamps
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -377,6 +394,24 @@ model Verification {
   unavailable       Boolean @default(false)
   unavailableReason String?
 
+  /// D-87b — the assisted second opinion.
+  ///
+  /// The verdict above is the FAST one: a student was standing at an open
+  /// locker, so the pipeline skipped whatever did not fit ~25s. That is why a
+  /// genuinely correct item can land at 80-81 and come here instead of being
+  /// approved — the deep-learning stage alone carries a quarter of the score
+  /// and never got to run.
+  ///
+  /// Once a row lands in MANUAL_REVIEW the server queues the SAME pipeline with
+  /// no time pressure and writes the outcome here. It is advisory: it never
+  /// changes `decision`, `status`, or the rental. A human still decides — they
+  /// just decide with the full evidence instead of a quarter of it missing.
+  deepReviewStatus   String? // QUEUED | RUNNING | COMPLETED | FAILED
+  deepReviewScore    Float?
+  deepReviewDecision String? // what the full run would have said on its own
+  deepReviewDetails  Json? // method scores, elapsed, skipped stages, error
+  deepReviewAt       DateTime?
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -404,6 +439,38 @@ model Locker {
   // Status
   status        LockerStatus @default(AVAILABLE)
   isOperational Boolean      @default(true)
+
+  /// E5.2 — THE TWO COMPARTMENTS, modelled separately.
+  ///
+  /// A bay is physically two spaces: an upper compartment behind `main_door`
+  /// and a lower one behind `bottom_door`, with an actuator that moves an item
+  /// from the upper to the lower (`kiosk_config.json` carries both door times
+  /// and the extend/retract seconds per bay).
+  ///
+  /// Until E5 this model had ONE `status` and ONE `currentRentalId`, so it
+  /// could not express "upper empty, lower occupied" — which is exactly the
+  /// state that makes bay reuse possible. With four bays, four long-lead
+  /// rentals otherwise consume the whole bank until collection day, and a
+  /// student wanting a same-day hand-off is refused because someone else's
+  /// multimeter is sitting in a bay until Friday.
+  ///
+  /// `status` above is KEPT and maintained as the derived, whole-bay answer
+  /// (see `deriveLockerStatus`), because the occupancy broadcast, the kiosk's
+  /// own display and the admin console all key off one status per
+  /// `lockerNumber`. Changing that contract is E5.8, not this step.
+  ///
+  /// The invariant that governs both compartments is already written at
+  /// `LockerStatus.AWAITING_RETRIEVAL`: never put a second item on top of an
+  /// uncollected one. A lower compartment holding a long-lead item is in that
+  /// position, which is why a bay with BOTH compartments occupied is locked.
+  topStatus       LockerStatus @default(AVAILABLE)
+  topRentalId     String?
+  bottomStatus    LockerStatus @default(AVAILABLE)
+  bottomRentalId  String?
+  /// When the item in the lower compartment was dropped there. Distinguishes
+  /// legitimate long-term storage from something E4.6's collection sweep
+  /// should treat as abandoned.
+  bottomStoredAt  DateTime?
 
   // Current rental
   currentRentalId String?

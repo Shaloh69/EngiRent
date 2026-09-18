@@ -1,6 +1,11 @@
 {
   "permissions": {
     "allow": [
+      "Bash(bash scripts/ops/kiosk-restart-controller.sh)",
+      "Bash(bash scripts/ops/server-repoint-tunnels.sh)",
+      "Bash(ssh -o ConnectTimeout=15 engirent@engirent-kiosk *)",
+      "Bash(curl -s -m 120 -X POST http://100.122.239.125:5000/api/v1/auth/register-face *)",
+            "Bash(ssh -o ConnectTimeout=25 transfer@desktop-gklhcri *)",
       "Bash(sed -i 's#https://zezsxfyoufqqxaffsvng.supabase.co#https://hosyeqkzkhewtadicgba.supabase.co#' server/kiosk/.env.example)",
       "Bash(scp -q server/node_server/src/controllers/adminController.ts transfer@desktop-gklhcri:*)",
       "Bash(xargs wc:*)",

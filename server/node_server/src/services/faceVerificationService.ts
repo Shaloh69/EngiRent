@@ -29,11 +29,19 @@
 
 import axios from "axios";
 import type { Server as SocketIOServer } from "socket.io";
+import type { LockerStatus } from "@prisma/client";
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import env from "../config/env";
 import { decryptFaceEncoding } from "../utils/crypto";
 import { grantBayAccess } from "./kioskBayAccessStore";
+// E5 — one definition of "long lead", "usable bay" and "which door holds it".
+import {
+  canAcceptDeposit,
+  deriveLockerStatus,
+  doorHoldingRental,
+  isLongLeadPickup,
+} from "./pickupLaneService";
 import { signedMediaUrl } from "./storageService";
 import {
   emitLockerOccupancy,
@@ -173,15 +181,66 @@ async function assignLocker(
   io: SocketIOServer,
   kioskId: string,
   rentalId: string,
+  longLead = false,
 ): Promise<{ lockerId: string; lockerNumber: string } | null> {
-  const locker = await prisma.locker.findFirst({
-    where: { status: "AVAILABLE", isOperational: true, kioskId },
+  // E5.5. This used to ask for `status: "AVAILABLE"` on the whole bay, which
+  // was correct while a bay was one space. Now a bay can have a free upper
+  // compartment and an occupied lower one, and whether that bay is usable
+  // depends on the deposit: a same-day hand-off only needs the upper
+  // compartment, while a long-lead deposit ALSO needs the lower one free,
+  // because it is going to be dropped down there once its full check passes.
+  //
+  // Assigning a long-lead deposit to a bay with a full lower compartment would
+  // leave an item with nowhere to go — it would either have to stack on
+  // someone else's property (the invariant at `AWAITING_RETRIEVAL` forbids it)
+  // or occupy the upper bay indefinitely, which defeats the whole feature.
+  //
+  // Candidates are filtered in code rather than SQL so `canAcceptDeposit` stays
+  // the single definition of "usable" — see pickupLaneService.
+  const candidates = await prisma.locker.findMany({
+    where: { kioskId, isOperational: true },
+    orderBy: { lockerNumber: "asc" },
   });
-  if (!locker) return null;
+
+  const locker = candidates.find((l) =>
+    canAcceptDeposit(
+      {
+        topStatus: l.topStatus,
+        bottomStatus: l.bottomStatus,
+        isOperational: l.isOperational,
+      },
+      longLead,
+    ),
+  );
+
+  if (!locker) {
+    logger.warn(
+      `No bay at ${kioskId} can accept a ${longLead ? "long-lead" : "same-day"} deposit ` +
+        `for rental ${rentalId}. Bays: ` +
+        candidates
+          .map((l) => `${l.lockerNumber}[top=${l.topStatus},bottom=${l.bottomStatus}]`)
+          .join(" "),
+    );
+    return null;
+  }
+
+  const next = {
+    topStatus: "RESERVED" as LockerStatus,
+    bottomStatus: locker.bottomStatus,
+    isOperational: locker.isOperational,
+  };
 
   await prisma.locker.update({
     where: { id: locker.id },
-    data: { status: "RESERVED", currentRentalId: rentalId, lastUsedAt: new Date() },
+    data: {
+      topStatus: "RESERVED",
+      topRentalId: rentalId,
+      // The legacy whole-bay fields stay in step, because the occupancy
+      // broadcast, the kiosk display and the console all still read them.
+      status: deriveLockerStatus(next),
+      currentRentalId: rentalId,
+      lastUsedAt: new Date(),
+    },
   });
 
   // D-53: RESERVED means "spoken for", not free. Pushed before anything can
@@ -302,7 +361,13 @@ export async function applyFaceVerificationOutcome(params: {
   // ── Deposit: owner is dropping the item off. Assign a locker now — none
   // exists yet at this stage, unlike claim below.
   if (rental.status === "AWAITING_DEPOSIT") {
-    const assigned = await assignLocker(io, kioskId, rentalId);
+    // E5.5 — a long-lead deposit needs a bay whose LOWER compartment is also
+    // free, because it will be dropped down there after its full check. A
+    // same-day deposit only needs the upper compartment: it is collected from
+    // there and never dropped. `include` above returns all Rental scalars, so
+    // `pickupDate` is present.
+    const longLead = isLongLeadPickup(rental.pickupDate);
+    const assigned = await assignLocker(io, kioskId, rentalId, longLead);
     if (!assigned) {
       io.to(`user:${rental.ownerId}`).emit("face:failed", {
         rentalId,
@@ -344,6 +409,35 @@ export async function applyFaceVerificationOutcome(params: {
   // deposited into — already assigned by the deposit's item-verification
   // step, so it's read from the relation rather than picked fresh.
   if (rental.status === "DEPOSITED") {
+    // D-87d (ruling 2026-09-18) — DO NOT OPEN A BAY FOR AN UNCONFIRMED DEPOSIT.
+    //
+    // A deposit reaches DEPOSITED whatever the item check said: the APPROVED
+    // and PENDING paths were the same code, so the only trace of "nobody has
+    // confirmed this is the right item" was a `verificationStatus` column that
+    // gated nothing. D-87b then made PENDING the normal outcome — the fast tier
+    // structurally cannot approve — so in practice EVERY renter could collect
+    // an unverified item, and the owner's protection was a review queue whose
+    // decisions did nothing (see adminController, same date).
+    //
+    // The ruling: collection waits until either the full model clears it
+    // (deepReviewQueue, ~35s) or a human does. This check is deliberately HERE,
+    // in the function that opens the door, and not only at the socket entry
+    // point: this is the trust boundary, and a gate that lives only in the
+    // caller is one refactor away from being gone.
+    if (rental.verificationStatus !== "APPROVED") {
+      logger.warn(
+        `Claim REFUSED for rental ${rentalId}: deposit not confirmed ` +
+          `(verificationStatus=${rental.verificationStatus ?? "null"}). ` +
+          `No bay opened.`,
+      );
+      return {
+        action: "none",
+        error:
+          "This item is still being confirmed. You'll be notified as soon as " +
+          "it's ready to collect — usually within a few minutes.",
+      };
+    }
+
     if (!rental.depositLocker) {
       logger.error(`Claim for rental ${rentalId} has no depositLocker — cannot open`);
       return { action: "none", error: "No locker on record for this rental" };
@@ -354,6 +448,43 @@ export async function applyFaceVerificationOutcome(params: {
       data: { status: "ACTIVE", claimedAt: new Date() },
     });
 
+    // E5.6 — OPEN THE COMPARTMENT THAT ACTUALLY HOLDS THE ITEM.
+    //
+    // This hardcoded `main_door`, which was right while an item could only
+    // ever be in the upper compartment. Long-lead deposits are now dropped
+    // into the LOWER compartment so the upper bay can serve another hand-off
+    // (E5.4), so granting the upper door would open an empty space while the
+    // renter's item sits behind the other one.
+    //
+    // Read from the bay's own per-compartment columns rather than inferred
+    // from the pick-up date: the date says what we INTENDED, the columns say
+    // where the item IS. If a drop failed, or a long-lead pick-up was brought
+    // forward before the drop ran, only the columns are right.
+    const bay = await prisma.locker.findUnique({
+      where: { id: rental.depositLocker.id },
+    });
+    if (!bay) {
+      logger.error(`Claim for rental ${rentalId}: bay row missing — cannot open`);
+      return { action: "none", error: "No locker on record for this rental" };
+    }
+
+    const claimDoor = doorHoldingRental(bay, rentalId);
+    if (!claimDoor) {
+      // Neither compartment claims this rental. Refuse rather than guess: a
+      // wrong guess opens a door onto someone else's property.
+      logger.error(
+        `Claim for rental ${rentalId}: bay ${bay.lockerNumber} holds it in neither ` +
+          `compartment (top=${bay.topRentalId ?? "-"}, bottom=${bay.bottomRentalId ?? "-"}). ` +
+          `No door opened.`,
+      );
+      return {
+        action: "none",
+        error:
+          "We can't tell which compartment holds your item. Please contact staff " +
+          "rather than opening a door — we don't want to hand you the wrong item.",
+      };
+    }
+
     // Granted, not opened: the renter taps "Open Kiosk Now" when they are in
     // front of the bay with a hand free, and can tap it again if the door
     // relocks before they have the item out.
@@ -363,13 +494,45 @@ export async function applyFaceVerificationOutcome(params: {
       kioskId,
       action: "claim",
       lockerNumber: rental.depositLocker.lockerNumber,
-      door: "main_door",
+      door: claimDoor,
     });
 
+    // Free only the compartment the item is leaving. Freeing the whole bay
+    // would mark an occupied sibling compartment empty, which is how an item
+    // gets a second one dropped on top of it.
+    const freed =
+      claimDoor === "main_door"
+        ? {
+            topStatus: "AVAILABLE" as LockerStatus,
+            topRentalId: null,
+            bottomStatus: bay.bottomStatus,
+            bottomRentalId: bay.bottomRentalId,
+            bottomStoredAt: bay.bottomStoredAt,
+          }
+        : {
+            topStatus: bay.topStatus,
+            topRentalId: bay.topRentalId,
+            bottomStatus: "AVAILABLE" as LockerStatus,
+            bottomRentalId: null,
+            bottomStoredAt: null,
+          };
+
     await prisma.locker.update({
-      where: { id: rental.depositLocker.id },
-      data: { status: "AVAILABLE", currentRentalId: null },
+      where: { id: bay.id },
+      data: {
+        ...freed,
+        status: deriveLockerStatus({
+          topStatus: freed.topStatus,
+          bottomStatus: freed.bottomStatus,
+          isOperational: bay.isOperational,
+        }),
+        currentRentalId: freed.topRentalId ?? freed.bottomRentalId ?? null,
+      },
     });
+
+    logger.info(
+      `Claim for rental ${rentalId}: granted ${claimDoor} on bay ${bay.lockerNumber}`,
+    );
 
     // D-53. Resolved from the locker rather than from `kioskId` (the kiosk
     // the person is standing at) because the relation is selected as

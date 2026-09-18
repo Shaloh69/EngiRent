@@ -27,7 +27,56 @@ export interface MlVerificationResult {
   /** True when the pipeline never ran (references unavailable) — see D-18. */
   unavailable?: boolean;
   unavailableReason?: string;
+  /** D-87: the time budget forced stages to be skipped. */
+  degraded?: boolean;
+  skipped_stages?: string[];
+  elapsed_seconds?: number;
+  /** D-87b: which tier answered — "fast" or "full". */
+  mode?: string;
 }
+
+/**
+ * D-87b — TWO TIERS.
+ *
+ * `fast` is the check a student is standing at an open locker waiting for. It
+ * runs what fits in ~25s and says so when it had to skip something.
+ *
+ * `full` is the re-run for a row that is already headed to a human. Nobody is
+ * waiting, so every stage runs; it can take minutes. It never drives the
+ * rental — it only puts better evidence in front of the reviewer.
+ */
+export type MlVerificationMode = "fast" | "full";
+
+/**
+ * Axios needs its own ceiling or a wedged ML service hangs the socket handler
+ * that called it — which is exactly how a bay ended up reserved with an item
+ * inside on 2026-09-18. Give each tier headroom over the service's own budget
+ * so the timeout only ever fires when the service has genuinely stopped
+ * answering, not when it is merely being slow on purpose.
+ */
+/**
+ * D-87c (2026-09-18, found by the first real deposit). These were 45s/960s, and
+ * the 45s **fired on the very first physical test**: the row recorded
+ * `ml_unreachable` / "timeout of 45000ms exceeded", so the fast tier
+ * contributed nothing and the reviewer got a 0.0% row with no evidence.
+ *
+ * The 45s was chosen as "service budget 25s + headroom", which was wrong about
+ * how the budget works. `verify_time_budget_seconds` is checked BETWEEN stages,
+ * not inside them — so one long stage sails straight past it. Measured fast
+ * runs: 25.1s, 29.0s, 36.8s on my own probe images, and over 45s on real kiosk
+ * photos. The budget bounds when the pipeline STOPS STARTING new work; it does
+ * not bound the wall clock.
+ *
+ * So a client timeout tuned close to the budget defeats the entire "the service
+ * always answers" design — it turns a slow-but-real verdict into no verdict.
+ * These are now backstops against a genuinely wedged process, nothing more, and
+ * are deliberately far above any observed run. The thing that keeps the student
+ * at the locker from waiting forever is the service's own budget, not this.
+ */
+const REQUEST_TIMEOUT_MS: Record<MlVerificationMode, number> = {
+  fast: 120_000,
+  full: 960_000,
+};
 
 /**
  * Item media reaches this path straight from Prisma, so it never passes through
@@ -65,6 +114,7 @@ export async function runMlVerification(
   kioskUrls: string[],
   attemptNumber: number,
   mlFeatures: unknown,
+  mode: MlVerificationMode = "fast",
 ): Promise<MlVerificationResult> {
   const [origBlobs, kioskBlobs] = await Promise.all([
     Promise.all(originalUrls.map(downloadBlob)),
@@ -114,6 +164,7 @@ export async function runMlVerification(
     formData.append("kiosk_images", b, `kiosk_${i}.jpg`),
   );
   formData.append("attempt_number", String(attemptNumber));
+  formData.append("mode", mode);
   if (mlFeatures)
     formData.append("reference_features", JSON.stringify(mlFeatures));
 
@@ -121,6 +172,7 @@ export async function runMlVerification(
     `${env.ML_SERVICE_URL}/api/v1/verify`,
     formData,
     {
+      timeout: REQUEST_TIMEOUT_MS[mode],
       headers: {
         ...(env.ML_SERVICE_API_KEY && { "X-API-Key": env.ML_SERVICE_API_KEY }),
       },

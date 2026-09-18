@@ -34,6 +34,10 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
 
   DateTime? _startDate;
   DateTime? _endDate;
+  // E5.1 — when the renter intends to collect. Optional, and null means
+  // "the day the rental starts", which is the behaviour every rental had
+  // before this existed.
+  DateTime? _pickupDate;
   bool _submitting = false;
   bool _lockersLoading = false;
   bool _dateError = false;
@@ -127,8 +131,47 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
         _startDate = range.start;
         _endDate = range.end;
         _dateError = false;
+        // A pick-up date chosen against the OLD range may now sit outside the
+        // new one. The server rejects that, so clear it rather than carry a
+        // value forward that will fail on submit.
+        if (_pickupDate != null &&
+            (_pickupDate!.isBefore(range.start) ||
+                _pickupDate!.isAfter(range.end))) {
+          _pickupDate = null;
+        }
       });
     }
+  }
+
+  /// E5.1 — pick-up day, constrained to the rental period because the server
+  /// enforces the same rule; offering a day it will reject is a trap.
+  Future<void> _pickPickupDate() async {
+    if (_startDate == null || _endDate == null) {
+      setState(() => _dateError = true);
+      AppToast.warning(context, 'Choose your rental dates first',
+          'The pick-up day has to fall inside them.');
+      return;
+    }
+    final chosen = await showDatePicker(
+      context: context,
+      initialDate: _pickupDate ?? _startDate!,
+      firstDate: _startDate!,
+      lastDate: _endDate!,
+      helpText: 'When will you collect it?',
+      builder: (context, child) => child!,
+    );
+    if (chosen != null) setState(() => _pickupDate = chosen);
+  }
+
+  /// True when collection is on a later calendar day than today — the same
+  /// rule the server applies (`isLongLeadPickup`). Deliberately calendar-based,
+  /// not a 24h window: "tomorrow morning" is tomorrow to the person booking it.
+  bool get _pickupIsLater {
+    if (_pickupDate == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final pick = DateTime(_pickupDate!.year, _pickupDate!.month, _pickupDate!.day);
+    return pick.isAfter(today);
   }
 
   void _showOverlapError() {
@@ -186,6 +229,8 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
         'itemId': widget.item.id,
         'startDate': _startDate!.toIso8601String(),
         'endDate': _endDate!.toIso8601String(),
+        if (_pickupDate != null)
+          'pickupDate': _pickupDate!.toIso8601String(),
       });
       if (!mounted) return;
 
@@ -252,6 +297,28 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                   padding: const EdgeInsets.only(top: AppSpacing.xs),
                   child: _BookedRangesNotice(ranges: _bookedRanges, formatter: _shortFmt),
                 ),
+              // E5.1 — the pick-up day, and an honest account of what it
+              // changes. This is not a cosmetic preference: choosing a later
+              // day sends the deposit down a different verification path and
+              // moves the item into a different compartment of the locker. A
+              // field that silently did that would be a trap, so the
+              // consequence is stated next to the choice.
+              AppPickerField(
+                label: 'Pick-up day',
+                icon: Icons.schedule_outlined,
+                hasValue: _pickupDate != null,
+                placeholder: hasDates
+                    ? 'Same day you start (default)'
+                    : 'Choose your rental dates first',
+                value: _pickupDate != null ? _dateFmt.format(_pickupDate!) : '',
+                helper: _pickupDate == null
+                    ? 'Leave this to collect on your first rental day.'
+                    : _pickupIsLater
+                        ? 'Checked in full before you collect — the owner can drop it '
+                            'off any time, and the locker stays free for others.'
+                        : 'Quick check at the locker, so you can collect right away.',
+                onTap: _pickPickupDate,
+              ),
             ],
           ),
 

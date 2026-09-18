@@ -19,6 +19,10 @@ import fs from "fs";
 import env from "../config/env";
 import { finalizeRentalCompletion } from "../services/rentalSettlementService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
+// D-87d: a rejected DEPOSIT must release the owner's item from the bay, the
+// same way index.ts's automatic rejection path does — not just flip a column.
+import { requestRelease } from "../services/retrievalService";
+import { sendItemReadyForClaim } from "../utils/email";
 import { FEEDBACK_CATEGORIES } from "./feedbackController";
 import { recordAudit } from "../services/auditLogService";
 import { sendCsv } from "../utils/csv";
@@ -579,6 +583,127 @@ export const reviewVerification = async (
         where: { id: returnRental.id },
         data: { status: "DISPUTED", verificationStatus: "REJECTED" },
       });
+    }
+
+    // ── D-87d: DEPOSIT verifications. ────────────────────────────────────
+    //
+    // Everything above this line only ever touched `verification.rental`,
+    // which is the RETURN relation. `depositRental` was fetched and then
+    // never read — so approving or rejecting a DEPOSIT updated the
+    // Verification row's own status column and did nothing else. The bay was
+    // not released, nobody was notified, and the renter's access was
+    // unchanged. The buttons in the admin queue were decorative for half of
+    // all verifications, and after D-87b made PENDING the normal deposit
+    // outcome, for most of the queue.
+    //
+    // Found 2026-09-18 when the user asked why a renter could collect an item
+    // that was still in review. Two defects, one question.
+    const depositRental = verification.depositRental;
+    if (depositRental && depositRental.status === "DEPOSITED") {
+      if (status === "APPROVED") {
+        // This is what actually opens collection — see the
+        // `verificationStatus !== "APPROVED"` gate in faceVerificationService.
+        await prisma.rental.update({
+          where: { id: depositRental.id },
+          data: { verificationStatus: "APPROVED" },
+        });
+        await prisma.notification.create({
+          data: {
+            userId: depositRental.renterId,
+            title: "Item Ready for Claim",
+            message: `${depositRental.item.title} has been confirmed and is ready for pickup.`,
+            type: "ITEM_READY_FOR_CLAIM",
+            relatedEntityId: depositRental.id,
+            relatedEntityType: "rental",
+          },
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+          for (const userId of [depositRental.renterId, depositRental.ownerId]) {
+            io.to(`user:${userId}`).emit("deposit:confirmed", {
+              rentalId: depositRental.id,
+              confidence: verification.confidenceScore,
+              confirmedBy: "admin",
+              at: new Date().toISOString(),
+            });
+          }
+        }
+
+        const renter = await prisma.user.findUnique({
+          where: { id: depositRental.renterId },
+          select: { email: true, firstName: true },
+        });
+        if (renter) {
+          await sendItemReadyForClaim(renter.email, {
+            firstName: renter.firstName,
+            itemTitle: depositRental.item.title,
+            rentalId: depositRental.id,
+          });
+        }
+
+        logger.info(
+          `Deposit for rental ${depositRental.id} APPROVED by ${req.user?.email} — collection open`,
+        );
+      }
+
+      if (status === "REJECTED") {
+        // Mirrors the automatic REJECTED path in index.ts (E4.6 / R4): the
+        // owner's item is physically inside a bay, so it must be released back
+        // to them rather than the bay simply being marked empty with the item
+        // sealed inside. `requestRelease` drops it to the lower compartment and
+        // sets the bay AWAITING_RETRIEVAL.
+        await prisma.rental.update({
+          where: { id: depositRental.id },
+          data: { status: "CANCELLED", verificationStatus: "REJECTED" },
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+          await requestRelease(io, depositRental.id, {
+            reasonOverride: "DEPOSIT_REJECTED",
+          });
+          for (const userId of [depositRental.renterId, depositRental.ownerId]) {
+            io.to(`user:${userId}`).emit("deposit:rejected", {
+              rentalId: depositRental.id,
+              rejectedBy: "admin",
+            });
+          }
+        } else {
+          logger.error(
+            `Deposit for rental ${depositRental.id} rejected but no io on the app — ` +
+              `the bay was NOT released. Release it from the kiosk admin page.`,
+          );
+        }
+
+        await prisma.notification.create({
+          data: {
+            userId: depositRental.renterId,
+            title: "Rental Cancelled",
+            message: `The item deposited for ${depositRental.item.title} did not match the listing. This rental has been cancelled.`,
+            type: "VERIFICATION_FAILED",
+            relatedEntityId: depositRental.id,
+            relatedEntityType: "rental",
+          },
+        });
+        await prisma.notification.create({
+          data: {
+            userId: depositRental.ownerId,
+            title: "Deposit Rejected — collect your item",
+            message: `The item you deposited for ${depositRental.item.title} did not match the listing. It is being released for you to collect.`,
+            type: "VERIFICATION_FAILED",
+            relatedEntityId: depositRental.id,
+            relatedEntityType: "rental",
+          },
+        });
+
+        await recomputeItemAvailability(depositRental.itemId);
+
+        logger.info(
+          `Deposit for rental ${depositRental.id} REJECTED by ${req.user?.email} — ` +
+            `rental cancelled, bay released to owner`,
+        );
+      }
     }
 
     logger.info(

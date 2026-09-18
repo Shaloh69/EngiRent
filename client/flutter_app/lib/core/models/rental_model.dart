@@ -17,6 +17,16 @@ class RentalModel {
   // array is how the phone tells "not paid yet" apart from "paid, waiting on
   // an admin to confirm receipt" — the rental sits in PENDING for both.
   final List<RentalTransaction> transactions;
+  // D-87d. Whether a HUMAN or the full verification model has confirmed the
+  // deposited item matches the listing: MANUAL_REVIEW while it is still being
+  // checked, APPROVED once collection is allowed, REJECTED if it failed.
+  //
+  // This matters because a rental reaches DEPOSITED regardless of the item
+  // check's verdict, and the fast check at the locker structurally cannot
+  // approve anything (it skips stages to finish while someone is standing
+  // there). So DEPOSITED alone does NOT mean "go and collect it" — the server
+  // refuses to open the bay until this reads APPROVED.
+  final String? verificationStatus;
 
   RentalModel({
     required this.id,
@@ -29,6 +39,7 @@ class RentalModel {
     required this.createdAt,
     this.renter,
     this.transactions = const [],
+    this.verificationStatus,
   });
 
   factory RentalModel.fromJson(Map<String, dynamic> json) {
@@ -47,6 +58,7 @@ class RentalModel {
       transactions: (json['transactions'] as List<dynamic>? ?? const [])
           .map((t) => RentalTransaction.fromJson(t as Map<String, dynamic>))
           .toList(),
+      verificationStatus: json['verificationStatus'] as String?,
     );
   }
 
@@ -110,6 +122,13 @@ class RentalModel {
   }
 
   bool get isActive => status == 'ACTIVE';
+
+  /// D-87d: the deposit is in the locker but nobody has confirmed it yet, so
+  /// the renter cannot collect. Deliberately treats a MISSING
+  /// verificationStatus as "not confirmed" — failing closed, matching the
+  /// server, so an older API shape cannot silently re-open the pickup button.
+  bool get depositAwaitingConfirmation =>
+      status == 'DEPOSITED' && verificationStatus != 'APPROVED';
   bool get isCompleted => status == 'COMPLETED';
   bool get isPending => status == 'PENDING';
 

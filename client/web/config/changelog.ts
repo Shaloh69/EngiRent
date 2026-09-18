@@ -17,6 +17,43 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-09-18",
+    version: "1.11.0",
+    tag: "feature",
+    title: "Tell us when you will collect it, and the locker plans around you",
+    bullets: [
+      "When you book, you can now set the day you will actually collect the item — leave it alone to collect on your first rental day, as before",
+      "If you are collecting a day or more later, the item gets the full check instead of the quick one at the locker, because nobody is standing there waiting for it",
+      "Once that check passes, the item is moved into the lower compartment of the locker, which frees the upper one for another student's hand-off. With only four lockers, that roughly doubles how many rentals the bank can carry at once",
+      "The owner can drop the item off whenever suits them, without tying up a locker until your collection day",
+      "A locker holding items in both compartments is taken out of rotation, so nothing is ever placed on top of someone else's property",
+    ],
+  },
+  {
+    date: "2026-09-18",
+    version: "1.10.4",
+    tag: "fix",
+    title: "No more being sent to collect an item nobody has checked",
+    bullets: [
+      "The app used to offer \"Pick Up Item from Kiosk\" as soon as the owner dropped it off, even while the item was still being checked against the listing — so you could walk to the locker for something that had not been confirmed",
+      "Now it waits, shows you that the item is in the locker and being confirmed, and tells you the moment you can collect it",
+      "Most checks finish in well under a minute; if one needs a person to look, you are told that instead of being left guessing",
+      "Install this if you are on build 24: the server now refuses unconfirmed pickups, and build 24 still shows the button",
+    ],
+  },
+  {
+    date: "2026-09-18",
+    version: "1.10.3",
+    tag: "fix",
+    title: "Readable prices, and an honest answer when the kiosk isn't sure",
+    bullets: [
+      "The total price, deposit and dates on a rental were white text on a white panel in dark mode — invisible. They now follow the theme like everything else",
+      "When the kiosk's quick check can't confirm your item on the spot, the app no longer implies something went wrong: your item is in the locker, a fuller check runs in the background, and a person confirms it",
+      "That confirmation can take a few hours, and the app now says so instead of leaving you watching a spinner",
+      "Same server address as build 23 — if 23 is working for you, this one is optional",
+    ],
+  },
+  {
+    date: "2026-09-18",
     version: "1.10.2",
     tag: "fix",
     title: "Rebuilt for the server's new address, again",

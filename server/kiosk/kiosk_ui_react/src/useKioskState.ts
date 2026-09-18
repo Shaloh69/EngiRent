@@ -52,6 +52,10 @@ export function useKioskState() {
   const [faceInstr, setFaceInstr] = useState("Look directly at the camera");
   const [successSub, setSuccessSub] = useState("Locker is now open");
   const [successInstr, setSuccessInstr] = useState("Please collect your item");
+  // D-87b: an optional third line, only used by the "awaiting review" outcome.
+  // null on every other success so the ordinary "door is open" screen keeps its
+  // two-line shape.
+  const [successNote, setSuccessNote] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(5);
   const [errorMsg, setErrorMsg] = useState(
     "Please try again or contact staff for assistance.",
@@ -263,6 +267,24 @@ export function useKioskState() {
         : "Locker";
       setSuccessSub(s.message || "Item verified");
       setSuccessInstr(`${lockerNum} — you're all set.`);
+      setSuccessNote(null);
+      goTo("success");
+    } else if (s.status === "item_pending") {
+      // D-87b. The fast check at the locker runs on a budget — a student is
+      // standing here — so it skips stages and sends anything short of a clear
+      // pass to a human. That is a normal outcome, not a failure, and the two
+      // facts the person needs are that their item is IN and that a person
+      // will confirm it. Saying only "pending manual review" read as "something
+      // went wrong" and sent them looking for staff.
+      const lockerNum = s.active_locker
+        ? `Locker ${String(s.active_locker).padStart(2, "0")}`
+        : "Locker";
+      setSuccessSub(s.message || "Item placed — awaiting review");
+      setSuccessInstr(`${lockerNum} is closed. You're done here.`);
+      setSuccessNote(
+        "Our full model is taking a closer look, then a person confirms it. " +
+          "This can take a few hours — you'll be notified in the app.",
+      );
       goTo("success");
     } else if (s.status === "item_retry") {
       // Was `goTo("main")`: the kiosk silently returned to the QR screen, so a
@@ -276,6 +298,30 @@ export function useKioskState() {
       setErrorMsg(s.message || "An error occurred. Please try again.");
       setErrorTone("error");
       if (cur !== "error") goTo("error");
+    } else if (cur === "verifying" || cur === "working") {
+      // D-87c — THE STRANDED SCREEN. On 2026-09-18 the Pi was updated to send a
+      // new status (`item_pending`) while the browser was still running the
+      // PREVIOUS JS bundle, which had no branch for it. Nothing matched, so the
+      // kiosk sat on "Checking your item…" forever — and `verifying` is
+      // deliberately exempt from the inactivity timeout precisely because a
+      // person is told not to walk away, so nothing rescued it. The verdict had
+      // arrived and been logged; only this screen never heard about it.
+      //
+      // Any unrecognised status while parked on a do-not-leave screen now
+      // releases it instead of hanging. A person seeing a slightly generic
+      // "done" is a far better failure than a person standing in a corridor
+      // watching a spinner that will never stop. Deliberately does NOT fire
+      // from `main`/`idle`, where an unknown status is simply noise.
+      console.warn(
+        `[kiosk] unrecognised status "${s.status}" while on "${cur}" — releasing the screen`,
+      );
+      setSuccessSub(s.message || "Done");
+      setSuccessInstr("You can close the locker and go.");
+      setSuccessNote(
+        "If you were told your item still needs checking, that is already " +
+          "under way — you will be notified in the app.",
+      );
+      goTo("success");
     }
   }
 
@@ -299,20 +345,25 @@ export function useKioskState() {
       }, 90);
       return () => clearInterval(t);
     } else if (screen === "success") {
-      let n = 5;
+      // D-87b: five seconds is right for "your locker is open, take your
+      // item" — the person is already reaching for the door. It is not enough
+      // to READ the awaiting-review note, which is three lines telling them
+      // what happens over the next few hours. The dwell follows the content.
+      const secs = successNote ? 12 : 5;
+      let n = secs;
       setCountdown(n);
       const t = setInterval(() => {
         n -= 1;
         setCountdown(n);
         if (n <= 0) clearInterval(t);
       }, 1000);
-      const done = setTimeout(() => goTo("main"), 5000);
+      const done = setTimeout(() => goTo("main"), secs * 1000);
       return () => {
         clearInterval(t);
         clearTimeout(done);
       };
     }
-  }, [screen, goTo]);
+  }, [screen, goTo, successNote]);
 
   const actions = {
     touchIdle: () => {
@@ -344,6 +395,7 @@ export function useKioskState() {
     faceInstr,
     successSub,
     successInstr,
+    successNote,
     countdown,
     errorMsg,
     errorTone,

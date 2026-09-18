@@ -46,6 +46,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   StreamSubscription<Map<String, dynamic>>? _paymentApprovedSub;
   StreamSubscription<Map<String, dynamic>>? _paymentRejectedSub;
   StreamSubscription<Map<String, dynamic>>? _reconnectSub;
+  StreamSubscription<Map<String, dynamic>>? _depositConfirmedSub;
 
   // Checklist Stage 8 — the renter's on-time rate, shown only to the owner
   // (the party who actually benefits from knowing it) and only once there's
@@ -159,6 +160,24 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       if (!mounted) return;
       _load();
     });
+
+    // D-87d. The renter is deliberately blocked from collecting until the
+    // deposited item is confirmed, so this screen shows a "we're confirming
+    // it" note with no button. That note has to clear itself: the
+    // confirmation arrives seconds to hours later from the full verification
+    // model or an admin, and without this the renter sits on a stale screen
+    // and concludes the app is stuck. Same reasoning as the payment
+    // subscriptions above.
+    _depositConfirmedSub =
+        SocketService.instance.onDepositConfirmed.listen((event) {
+      if (!mounted || event['rentalId'] != widget.rentalId) return;
+      AppToast.success(
+        context,
+        'Item Confirmed',
+        'Your item has been confirmed and is ready to pick up.',
+      );
+      _load();
+    });
   }
 
   @override
@@ -166,6 +185,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     _paymentApprovedSub?.cancel();
     _paymentRejectedSub?.cancel();
     _reconnectSub?.cancel();
+    _depositConfirmedSub?.cancel();
     super.dispose();
   }
 
@@ -850,10 +870,32 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             onTap: () => _openKioskScan('place'),
                           ),
                         if (_rental!.status == 'DEPOSITED' && _viewerIsOwner == true)
-                          const _NextStepNote(
-                            text: 'The item is in the kiosk. The renter picks it up next.',
+                          _NextStepNote(
+                            text: _rental!.depositAwaitingConfirmation
+                                ? 'Your item is in the kiosk. We\'re confirming it '
+                                    'matches the listing, then the renter can pick it up.'
+                                : 'The item is in the kiosk. The renter picks it up next.',
                           ),
-                        if (_rental!.status == 'DEPOSITED' && _viewerIsOwner != true)
+                        // D-87d — the pickup button used to appear the moment a
+                        // rental reached DEPOSITED, whatever the item check
+                        // said. Since the fast check at the locker cannot
+                        // approve anything, that meant offering collection on
+                        // an item nobody had confirmed; the server now refuses
+                        // to open the bay in that state, so the button led
+                        // straight to a rejection at the kiosk. Show the wait
+                        // instead, and the button only once it is real.
+                        if (_rental!.status == 'DEPOSITED' &&
+                            _viewerIsOwner != true &&
+                            _rental!.depositAwaitingConfirmation)
+                          const _NextStepNote(
+                            text: 'The owner has dropped your item off. We\'re '
+                                'confirming it matches the listing before you collect '
+                                'it — usually a few minutes. You\'ll be notified the '
+                                'moment it\'s ready.',
+                          ),
+                        if (_rental!.status == 'DEPOSITED' &&
+                            _viewerIsOwner != true &&
+                            !_rental!.depositAwaitingConfirmation)
                           _ActionButton(
                             icon: Icons.inventory_2_rounded,
                             label: 'Pick Up Item from Kiosk',
@@ -1154,8 +1196,25 @@ class _InfoItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        // THE WHITE PRICES (reported 2026-09-17, diagnosed from a screenshot
+        // 2026-09-18). This was `AppColors.background` — a *static* constant
+        // holding the light theme's near-white. The value text below uses
+        // `p.ink`, which IS palette-aware and resolves to white in dark mode.
+        // White on white: the four figures a renter most needs to see — total
+        // price, deposit and both dates — were invisible, and these were the
+        // only white panels on an otherwise dark page.
+        //
+        // The label survived only because `p.muted` is grey in both themes,
+        // which is why the cards looked like empty boxes with headings rather
+        // than like a rendering fault.
+        //
+        // Lesson worth keeping: a static colour next to a palette-aware one is
+        // the bug. Both sides of a contrast pair have to come from the same
+        // source of truth, so this now takes its panel colour from the same
+        // palette its text does.
+        color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: p.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E4 · stack UP 2026-09-18 01:13 (tunnels: api tall-merely-robust-equity · web mainland-submitting-band-specs · admin nissan-likely-senate-edit) · app 1.10.1 published · real kiosk timings (D-82/D-83) + log backlog (D-84) VERIFIED ON SCREEN · D-86 polling for logs/snapshots DEPLOYED, user checking · D-81 stale payments VOIDED · bay 4 released · button-driven bay flow NOT EXERCISED (next physical run) · white prices unresolved (needs screenshot; app bundles no fonts) · D-80 open · deployed console 18 files behind repo · gates G1-G11 · phases 85/193 (44%) · screens 0/69 PASS]
+[PHASE E5 (opened 2026-09-18, G2 table written) - stack UP, API restarted with E5 - E5.1-E5.7 IMPLEMENTED AND DEPLOYED: Rental.pickupDate validated, Locker split into two compartments (+backfill run: bay 1 top=OCCUPIED, bays 2-3 free, bay 4 isOperational=false), long-lead pick-up skips the fast lane entirely and the full run decides, assignability needs a bottom slot, claim opens the compartment that actually holds the item, storageDropService is a SIBLING of requestRelease (reuse would have made the OWNER the face subject - F5), app has the pick-up day picker - E5.4 ACTUATOR PATH HAS NEVER RUN, G11-gated - E5.8 not started - E4.6 sweep not yet taught to read bottomStoredAt - D-87c/d/e deployed but still not seen on hardware - app 1.11.0+26 building - nothing committed - gates G1-G11]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -6101,3 +6101,373 @@ file under "PAYMENTS RULING".
 Still open: **the gate amendment** (7 kiosk `BESPOKE` rows — decided in this
 file, contradicted in four others), localization ruling execution, and the
 `client/web` dark-mode statement.
+
+### D-87b — item verification could never approve a correct item. FIXED 2026-09-18 (two tiers). MEASURED; not yet seen in a real deposit.
+
+**The defect is a consequence of D-87's fix, and it is worth stating plainly
+because the fix looked like a success.** D-87 was "a deposit check takes 7+
+minutes with a student standing at an open locker". That was fixed by clamping
+`max_image_size` 4096 -> 1280, downscaling GrabCut (`_GRABCUT_MAX_DIM = 480`,
+11x faster locally) and adding a 25s budget past which optional stages are
+skipped. Time went 107.1s -> 32.8s -> 25.2s. Every number moved the right way.
+
+**But the thing had stopped being able to say yes.** Measured on the server with
+two IDENTICAL images, which is the easiest question the pipeline will ever be
+asked:
+
+    fast   conf=89.5  PENDING   degraded=true   skipped=ssim,deep_learning,ocr
+
+The budget was being spent before the heavy stages ran, and those stages carry
+40% of the weight between them (deep 25%, SSIM 15%). A perfect match could not
+reach 85, so **nothing could ever be APPROVED** — every deposit and every return
+went to a human, forever. The service was fast and useless, and "typecheck
+clean, tests green" would have reported it as done.
+
+**The ruling (the user's, 2026-09-18): two tiers, not one compromise.**
+The two callers want different things and were being served one budget:
+
+| tier | when | budget | who is waiting |
+|---|---|---|---|
+| `fast` | at the locker, on placement | 25s | a student, at an open door |
+| `full` | after, for a row already headed to a human | 900s | nobody |
+
+`hybrid.verify(mode=...)` picks the budget; the pipeline is otherwise identical,
+and `max_image_size` deliberately does NOT change between them, so when the full
+run disagrees with the fast one it is because of the extra stages, not because
+it was looking at a different image.
+
+**Measured after the change, same identical pair, same server:**
+
+    fast   conf=89.5  PENDING   degraded=true   skipped=ssim,deep_learning,ocr
+    full   conf=92.1  APPROVED  degraded=false  skipped=-            (34.3s)
+
+That is the whole point: **92.1, APPROVED, nothing skipped.** The 80-81 ceiling
+reported earlier in the session was the skipped stages, not a limit of the
+method — an earlier answer of mine ("this will never reach 90") was wrong and is
+corrected here.
+
+**Two measurement mistakes worth keeping, both mine:**
+1. The first probe passed **two different items** as the image pair, so 4 of 6
+   pairs were cross-matches. It scored `full` at 79.1 and I nearly concluded the
+   full tier bought nothing. A "best case" probe has to actually be the best case.
+2. The first `full` run came back `degraded=true` in 25.5s — the budget had not
+   changed. The code was deployed; the **service had not restarted**.
+   `Stop-ScheduledTask` left the old uvicorn (PID 16280, started 20:00) holding
+   port 8001, and health returned 200 from the stale process. The same trap hit
+   the Node API minutes earlier (PID 3600 on port 5000 survived its task being
+   stopped, then won an EADDRINUSE race against the new one).
+   **Lesson: on this box, "task Running" and "health 200" do not mean the code
+   you just copied is the code that is answering. Check the PID's start time.**
+
+**Never auto-approves on partial evidence.** A degraded result that scores as
+APPROVED is forced to PENDING, and a degraded REJECTED becomes RETRY/PENDING —
+the same fail-closed rule the server already applies when the ML service is
+unreachable. This is why `fast` at 89.5 still reads PENDING above, and that is
+correct, not a bug.
+
+**The background queue** (`services/deepReviewQueue.ts`) is advisory only. It
+never touches `decision`, `status`, `confidenceScore` or the rental; it writes
+`deepReview*` on the Verification row and emits `admin:deep-review`. A full run
+returning 94 does NOT approve a deposit — a human still decides, now with the
+evidence the fast run could not gather. Serial, one at a time, `DEFER_MS = 5s`,
+`MAX_QUEUE = 50`, because the ML service is a single Python process and the next
+student's fast check must not queue behind background work.
+
+**Schema:** five additive nullable columns on `verifications`
+(`deepReviewStatus/Score/Decision/Details/At`). Verified additive before
+touching the live DB — `prisma migrate diff` printed five `ADD COLUMN ... NULL`
+and nothing else. The server's `schema.prisma` was structurally identical to the
+repo's apart from these five (comment-stripped diff), so the diverged checkout
+was not a factor here. It WAS a factor for `kioskSessionStore.ts`, whose server
+copy still returned `void` and broke the build until deployed.
+
+**User-facing copy, which is half the fix.** PENDING is now a frequent, normal
+outcome, so it had to stop reading as a failure:
+- Pi: new `item_pending` status — the old code reused `item_verified`, which
+  told a student their item was *verified* when it was not.
+- Kiosk screen: "Item Placed!", with a note that the full model is taking a
+  closer look and a person confirms; dwell extended 5s -> 12s, because 5s is
+  not enough to read it.
+- App: `_awaitingReview` on the kiosk scan screen — hourglass, "Item placed —
+  awaiting review", and the few-hours expectation set explicitly.
+
+**Still unverified on screen:** the kiosk/app copy and the queue in a real
+deposit. Nothing has exercised `deepReviewQueue` yet (`deep-review rows: 0`).
+
+### WHITE PRICES — FOUND AND FIXED 2026-09-18 (one line, open since 2026-09-17)
+
+Diagnosed from a user screenshot, after being unreproducible from code reading.
+`_InfoItem` in `rental_detail_screen.dart` set its panel to `AppColors.background`
+— a **static** constant holding the light theme's near-white — while its value
+text used `p.ink`, which IS palette-aware and resolves to white in dark mode.
+White on white: total price, deposit, start and end date all invisible, in the
+only four white panels on an otherwise dark page. The labels survived because
+`p.muted` is grey in both themes, which is exactly why it looked like empty
+boxes with headings rather than a rendering fault.
+
+Fixed to `p.surfaceAlt` + `p.border`. Repo-wide sweep: `color: AppColors.background`
+appeared **once**, so this was the only instance.
+
+**The general lesson, worth more than the fix:** a static colour next to a
+palette-aware one is the bug. Both sides of a contrast pair must come from the
+same source of truth. Nothing about this would ever fail a typecheck or a test.
+
+### Bay 4 — OUT OF SERVICE 2026-09-18, on the user's instruction
+
+`isOperational = false` on bay 4. `assignLocker` filters on
+`{ status: "AVAILABLE", isOperational: true }`
+(`faceVerificationService.ts:178`), so this genuinely removes it from
+assignment rather than being decorative. Confirmed after the write: assignable
+bays are **1, 2, 3**. Deliberately did NOT clear bay 4's `status` or
+`currentRentalId` — the DB still says it holds "Pusil sa minions", and a bay
+whose item may physically still be inside must not be marked empty by a script.
+Reversible in one line.
+
+**2026-09-18 21:50 — G5 six-symptom check at the D-87b / physical-test boundary.
+Run unprompted. Three symptoms present. Not a clean sheet.**
+
+Checked against `CLAUDE-CODE-PLAYBOOK.md` §2b's own list, re-read rather than
+recalled.
+
+| symptom | verdict |
+|---|---|
+| 1 re-deriving a decision | **Borderline, not present.** Most re-reads this stretch were genuine first reads after a compaction. One near-miss: I invoked Flutter at a guessed path (`C:\flutter\bin\...`) instead of deriving it, and only then looked it up. Guessing before deriving is the shape this symptom takes early. |
+| 2 vaguer summaries | **Absent.** Reports named files, PIDs, scores and hashes throughout. |
+| 3 losing the rules | **PRESENT.** I had already recorded — in this project's own log — "use the Edit tool for any replacement containing a backslash, heredocs eat them". I then used Python heredocs twice more and lost backslashes twice more: a `\n` inside a Windows path became a real newline and corrupted the probe script, and an em-dash/escape mismatch silently failed a Dart replacement. Writing the lesson down did not stop me repeating it. |
+| 4 drifting toward agreement | **Absent, actively counter-indicated.** Caught the memory file's stale "next N = 20" (reality: 23 was live), caught my own missing `/api/v1`, and refused my own first probe result (79.1) instead of concluding the full tier bought nothing. |
+| 5 batching | **PRESENT, and it cost the user real time.** I started the website `next build` and the API's `prisma generate && tsc` at the same time on one machine; they fought for CPU and `tsc` alone took 4.5 minutes. The user asked "why is it taking so long" **twice**. Worse, the manual `next build` was entirely wasted — the `EngiRentWeb` task runs its own build on start, which the log proved afterwards. Classic §2b: it felt like parallelism, it was contention. |
+| 6 skipping verification | **PRESENT, in the exact form G1 names.** Three changes are deployed and unseen (kiosk "Item Placed!" copy, the app's awaiting-review wording, `deepReviewQueue` — `deep-review rows: 0`). Separately: after restarting the ML service I declared it healthy on the strength of an HTTP 200, without checking the process start time. It was the **old code answering**. I found that only because a measurement contradicted the source — not because I looked. |
+
+**The through-line in 3, 5 and 6 is the same error**: trusting a signal that
+was cheap to get (a written-down lesson, a parallel launch, a 200) over the one
+that was slightly more expensive but actually load-bearing (the Edit tool, a
+serial build, the PID's start time).
+
+**Action taken:** the two service-restart traps are now written into D-87b above
+as a concrete check ("task Running and health 200 do not mean your new code is
+answering — check the PID's start time"), because that one nearly produced a
+false conclusion about the whole two-tier design.
+
+**Recommended next:** finish the physical run — it is precisely what clears the
+symptom-6 debt on all three unverified changes — then update this file and
+`/clear` before starting anything new. Context headroom is not the constraint
+here; the repeated-lesson pattern in symptom 3 is.
+
+### D-87d — a renter could collect an item nobody had confirmed, and the admin buttons meant to prevent it did nothing. FIXED 2026-09-18. DEPLOYED; gate not yet exercised on hardware.
+
+**Found by the user during the first physical test**, asking: *"Why can i see the Pick Up the item as the reciever but the item is still in review"*. One question, two defects.
+
+**Defect 1 — PENDING and APPROVED were the same code path.** `index.ts`'s deposit handler set `status: "DEPOSITED"`, created an **"Item Ready for Claim"** notification and sent the matching email regardless of the verdict. The only trace of "nobody has confirmed this" was a `verificationStatus` column that gated nothing at all. So the renter was actively *invited* to collect an unverified item.
+
+**Defect 2 — the review queue's buttons were decorative for deposits.** `depositRental` appeared exactly **twice** in the whole of `adminController.ts`, both times inside a query `include`, and was **never read**. The approve/reject handler only ever acted on `verification.rental` — the RETURN relation. Approving a deposit flipped the Verification row's own status and nothing else; **rejecting one did literally nothing**: bay not released, nobody notified, renter's access unchanged.
+
+**My D-87b change is what made this urgent, and I did not trace that consequence when I made it.** Before, PENDING was occasional. After, the fast tier structurally cannot approve, so *every* deposit landed in a review queue whose decisions had no effect, with collection wide open. A dormant bug became the main path.
+
+**The user's ruling:** *"Both Block either the Human confirms or the Full Model will automatic Decide."*
+
+**What now happens**
+
+- `faceVerificationService` refuses to open a bay for a claim unless `rental.verificationStatus === "APPROVED"`. The check sits in the function that opens the door — the actual trust boundary — not only at the socket entry, because a gate living solely in the caller is one refactor from gone.
+- `index.ts` also fails the flow early, so the person gets a straight answer at the kiosk instead of being walked through face verification and refused at the end.
+- The "ready for pickup" notification and email now belong to whoever grants approval. A PENDING deposit instead tells the renter the truth: it is in the locker and being confirmed.
+- **`deepReviewQueue` may now GRANT approval** — a deliberate reversal of its original "advisory only" design, and the comment in the file now says so rather than contradicting the code. Bounded by `canAutoApprove`: COMPLETED, **not degraded**, a real score, **>= 85** (the same `threshold_verified` the live path uses, not an independent knob). It can only move a deposit from waiting to approved; it never rejects, never cancels, and it re-reads the rental so a human who decided during the ~35s run is never overridden. Deposits only — returns release real money and stay with a human.
+- Admin approve now opens collection, notifies and emails. Admin reject cancels the rental and calls `requestRelease`, so the **owner's item is physically returned** rather than sealed in a bay the database calls empty.
+
+**Honest cost:** the trust boundary now includes a background job with nobody watching it. Compensations: the same 85 bar, degraded runs refused outright, and every grant logged with its score and written to the row a reviewer sees.
+
+**Fail-closed on the client too.** `RentalModel.depositAwaitingConfirmation` treats a *missing* `verificationStatus` as "not confirmed", matching the server, so an older API shape cannot silently re-open the pickup button. Verified that `getRentalById` uses Prisma `include` (all scalars returned), so the field does reach the app — this mattered, because a fail-closed gate on an absent field would have blocked **all** collection.
+
+**Live-update path:** new `deposit:confirmed` socket event -> `onDepositConfirmed` -> the rental screen reloads itself. Without it the renter sits on a "we're confirming it" note that never clears and concludes the app is stuck.
+
+**Known half-deployed state:** the server gate is live, but the published APK (1.10.3+24) predates the client change, so the app still shows "Pick Up Item from Kiosk" and the refusal surfaces at the kiosk instead. Needs build 25.
+
+### D-87c — the fast tier's client timeout fired on the first real deposit. FIXED 2026-09-18.
+
+`REQUEST_TIMEOUT_MS.fast` was 45s, chosen as "25s budget + headroom". That was wrong about how the budget works: `verify_time_budget_seconds` is checked **between** stages, never inside one, so a single long stage sails straight past it. It bounds when the pipeline stops *starting* work, not the wall clock. Measured fast runs: 25.1s, 29.0s, 36.8s on probe images — and **over 45s on real kiosk photos**, which is what the first physical deposit hit: `ml_unreachable / "timeout of 45000ms exceeded"`. The fast tier contributed nothing and the reviewer got a 0.0% row carrying no evidence. Worse, the abandoned request kept burning the single ML worker, so the full run needed 44s wall-clock for 31.6s of work.
+
+Now 120s — a backstop against a genuinely wedged process, nothing more. What keeps a student from waiting forever is the service's own budget, not this.
+
+**Also fixed:** the kiosk promised *"this takes about 15 seconds"* on a check measured at 25-45s+. An invented number the hardware then misses is worse than no number — the person starts doubting the machine at the 16th second. It now says "please don't walk away".
+
+### D-87e — the kiosk screen was stranded by my own deploy ordering. FIXED 2026-09-18.
+
+The user's screenshot showed the kiosk still on **"Checking your item..."** long after the verdict had arrived and been logged (`verification_done | result: pending` at 21:54:37). Cause: I updated the Pi to send a **new** status (`item_pending`) while Chromium was still running the **previous JS bundle**, which had no branch for it. The `if/else if` chain fell through, nothing matched, and `verifying` is deliberately exempt from the inactivity timeout — precisely because a person is told not to walk away — so nothing rescued it. `engirent-kiosk-browser.service` was `inactive` with 10 chromium processes alive: started before the `dist` deploy and never reloaded.
+
+Fix: an unrecognised status while parked on a do-not-leave screen (`verifying` or `working`) now **releases** it with a generic "done" instead of hanging. A slightly vague success beats a person standing in a corridor watching a spinner that will never stop. Deliberately does not fire from `main`/`idle`, where an unknown status is just noise.
+
+**The transferable lesson:** introducing a new status string is a **breaking protocol change** between the Pi and the browser bundle. Deploy the bundle and reload the browser *before* shipping the code that emits the new value — or add the fallback first.
+
+### SPEC ONLY — pick-up date, verification lanes, bay reuse (2026-09-18)
+
+The user's new feature ruling is written up in full at **`docs/redesign/SPEC-PICKUP-DATE-AND-BAY-REUSE.md`**. Renter sets a pick-up date; more than one day out forces the full check only; long-lead deposits are dropped to the lower compartment so the top bay is reusable; a locker with both compartments occupied is locked.
+
+**Nothing is implemented.** The blocking finding, re-derived from the schema: `model Locker` has ONE `status` and ONE `currentRentalId`, so it **cannot represent "top empty, bottom occupied"** — which is the entire point of the feature. That schema change is step 2 of 8 and everything else depends on it.
+
+The spec also records seven consequences that must be designed rather than discovered. The sharpest: the claim flow hardcodes `door: "main_door"`, so collection from the bottom compartment would open the wrong door; a *rejected* long-lead item belongs to the **owner** and also needs the bottom compartment, so the bottom must record whose item it is or an owner and a renter can both be granted the same door; "above one day" is undefined for a 23:00 deposit with an 08:00 pick-up; and E4.6's collection sweep would treat legitimate long-term storage as abandoned.
+
+Rule 5 ("lock a locker when both bays are full") is not a new idea — it is the invariant already written at `LockerStatus.AWAITING_RETRIEVAL` ("dropping a second item onto an un-retrieved one would stack two students' property in one compartment"), extended to the case where the bottom holds a long-lead item. The user's instinct matched the existing design.
+
+Step 4 drives an actuator, so it is **G11-gated** and cannot be tested without naming the bay and getting an explicit yes.
+
+**Held deliberately, not forgotten:** starting an 8-step feature mid-physical-test, on top of three changes that are deployed but not yet seen working, is what G1 and G2 exist to prevent. Per G2 it also needs its own dated, repo-derived phase table before any implementation edit.
+
+## PHASE E5 — Pick-up date, verification lanes, bay reuse (opened 2026-09-18)
+
+**G2 gate: this is the dated, repo-derived section-by-section table.** Opened
+because the user asked for this feature three times; the third ask is a
+decision, so implementation proceeds. Spec:
+`docs/redesign/SPEC-PICKUP-DATE-AND-BAY-REUSE.md`.
+
+Every "current state" cell below was read out of the repo today, not recalled.
+
+| § | change | current state, re-derived | risk |
+|---|---|---|---|
+| **E5.1** | `Rental.pickupDate DateTime?` | `createRental` destructures only `{ itemId, startDate, endDate }` (`rentalController.ts`). No pick-up concept exists anywhere. | Additive nullable column. Safe. |
+| **E5.2** | Two-compartment state on `Locker` | `model Locker` has ONE `status LockerStatus` and ONE `currentRentalId String?` (schema lines ~416-427). Cannot express "top empty, bottom occupied". | Additive columns + a derived `status` kept for compatibility. The blocking dependency for E5.4-E5.6. |
+| **E5.3** | Lane selection by pick-up date | `index.ts` deposit branch calls `runMlVerification(..., attemptNumber, mlFeatures)` with `mode` defaulting to `"fast"`. One lane for everyone. | Logic only. |
+| **E5.4** | Drop to storage after the full check | `requestRelease` (`retrievalService.ts:94`) already emits `drop_item` and sets the bay `AWAITING_RETRIEVAL`, but it is **release-to-OWNER**: it notifies the owner "collect your item", sets `releaseReason`, and is gated by `decideRelease`/`retrievalPolicy`. Reusing it as-is would tell the wrong person to collect. | **Needs a sibling path, not a reuse.** Drives an actuator → **G11**. |
+| **E5.5** | Assignability + lock when both full | `assignLocker` (`faceVerificationService.ts:178`) filters `{ status: "AVAILABLE", isOperational: true, kioskId }`. | Must become "top free AND a bottom slot exists", or a long-lead deposit passes its check with nowhere to be dropped. |
+| **E5.6** | Claim opens the compartment holding the item | Claim branch hardcodes `door: "main_door"` (`faceVerificationService.ts`, claim grant). | **Ships with E5.4 or items strand** in a compartment nothing will open. |
+| **E5.7** | Pick-up date picker + consequence copy | No UI exists. | App rebuild. |
+| **E5.8** | Two-compartment occupancy on console + kiosk | `lockerOccupancyService` broadcasts one status per `lockerNumber`; the kiosk logs `Occupancy updated: {"1": "AVAILABLE", ...}`. | Display only; both ends key off one status per bay today. |
+
+**Ordering constraint:** E5.2 gates E5.4/E5.5/E5.6. E5.4 and E5.6 must land
+together. E5.8 is last because it reads whatever E5.2 settles on.
+
+**Definition adopted** (spec §5.3 flagged this as undecided): "above one day"
+means the pick-up date's **calendar date is not today** in the kiosk's local
+timezone. Chosen because it is the one a student reasons about — "I'll get it
+tomorrow" — and because the user's own phrasing was "If the pick up date is
+Today". A 23:00 deposit for an 08:00 next-morning pick-up therefore counts as
+long-lead, which is the safe direction: it buys the full check and frees the
+top bay.
+
+**G5 six-symptom check at this phase boundary:** carried forward from the
+2026-09-18 21:50 entry — symptoms 3, 5 and 6 were present then. Symptom 6
+(unverified changes) is still live: D-87c/d/e are deployed and not yet seen
+working on hardware. Opening E5 on top of that is a deliberate acceptance of
+debt on the user's third explicit ask, recorded here rather than glossed.
+
+### E5.1-E5.7 — IMPLEMENTED AND DEPLOYED 2026-09-18. Hardware path (E5.4) NOT YET EXERCISED.
+
+Built on the user's third ask. Spec: `docs/redesign/SPEC-PICKUP-DATE-AND-BAY-REUSE.md`.
+Phase table above.
+
+**E5.1 `Rental.pickupDate`** — nullable. `createRental` now accepts and
+**validates** it: must parse, and must fall inside the rental period (a pick-up
+before the start has nothing to collect; after the end leaves the item in a
+locker past its own rental). Rejected values are a 400, not a silent null,
+because this field decides whether an actuator moves someone's property.
+
+**E5.2 two compartments** — `topStatus/topRentalId`, `bottomStatus/bottomRentalId`,
+`bottomStoredAt` on `Locker`. The old whole-bay `status` is **kept and
+maintained** via `deriveLockerStatus`, because the occupancy broadcast, the
+kiosk display and the admin console all still read one status per bay;
+migrating those is E5.8.
+
+**The data migration was the dangerous part and it is easy to miss.** The new
+columns land with `DEFAULT 'AVAILABLE'`, so straight after the push every bay
+reads empty in both compartments — *including bay 1, which physically held
+"Pusil sa minions"*. `canAcceptDeposit` reads those columns, so the next
+deposit could have been assigned to an occupied bay and a second item dropped
+onto a student's property. `backfill_compartments.js` seeds them from the old
+single `status` (OCCUPIED/RESERVED -> upper; AWAITING_RETRIEVAL -> lower,
+because that status already means "waiting behind bottom_door"). Verified on
+the live DB: bay 1 came out `top=OCCUPIED(5cf53954...)`, bays 2-4 free, bay 4
+still `isOperational=false`.
+
+**E5.3 lane selection** — `laneForDeposit` / `isLongLeadPickup` in the new
+`pickupLaneService`. One module owns the definition so a second copy cannot
+drift; same reasoning as `BLOCKING_RENTAL_STATUSES`.
+
+*Definition settled:* long-lead means the pick-up's **calendar date is not
+today**, in the server's local timezone (the same box and timezone as the
+bank). Not a 24h window — "tomorrow morning" is tomorrow to whoever booked it,
+and the user's own phrasing was "If the pick up date is Today". Comparing UTC
+days would flip "today" at 08:00 local in the Philippines (UTC+8), so a morning
+deposit for a same-day afternoon pick-up would have been classed long-lead and
+dropped into storage the student could not reach.
+
+*A null pickupDate reads as today*, so every pre-E5 rental keeps exactly the
+path it had. A null meaning "long lead" would have rerouted live rentals
+through an actuator.
+
+**A design call the spec did not make.** "Force the full check" does **not**
+mean run it inline. The OWNER is standing at an open locker during a deposit,
+and the full pipeline is 30-95s — making them wait is the exact failure D-87
+was about. So a long-lead deposit performs **no fast check at all**
+(`longLeadPendingResult`, tagged `long_lead_full_check_queued` and marked
+`unavailable` per D-65, since the row carries no comparison evidence and must
+never enter a calibration set), the deposit completes immediately, and
+`deepReviewQueue` decides moments later — auto-approving at >= 85 or handing it
+to a human. Running the fast check and discarding it would also have been
+wrong: a second job for a single-process ML service whose answer nobody uses.
+
+**E5.5 assignability** — `assignLocker` took `status: "AVAILABLE"` on the whole
+bay. Now: the upper compartment must be free, **and for a long-lead deposit the
+lower one must be free too**, because that item is going down there once it
+passes. Assigning one to a bay with a full lower compartment would create an
+item with nowhere to go. Candidates are filtered in code, not SQL, so
+`canAcceptDeposit` stays the single definition of "usable". A bay with both
+compartments occupied is therefore locked — which is rule 5, and it is the
+invariant already written at `LockerStatus.AWAITING_RETRIEVAL`.
+
+**E5.6 claim opens the right door** — the claim branch hardcoded
+`door: "main_door"`. With long-lead items in the lower compartment that would
+grant access to an empty space while the item sat behind the other door.
+`doorHoldingRental` reads the bay's own columns rather than inferring from the
+pick-up date: the date says what we intended, the columns say where the item
+**is** — and only the columns are right if a drop failed or a pick-up was
+brought forward. If neither compartment claims the rental it **refuses** rather
+than guessing; a wrong guess opens a door onto someone else's property. It also
+frees only the compartment the item left, since freeing the whole bay would
+mark an occupied sibling empty.
+
+**E5.4 the drop — and why it is NOT `requestRelease`.** Both move an item
+downward with the same actuator and the same `drop_item` command, so reuse is
+the obvious idea and it is wrong. `requestRelease` means *give this back to the
+OWNER*: it writes `releaseRequestedAt`, and `resolveFaceSubject` reads exactly
+that:
+
+    const awaitingRetrieval =
+      rental.releaseRequestedAt != null && rental.retrievedAt == null;
+    const isOwner = awaitingRetrieval || rental.status === "AWAITING_DEPOSIT";
+
+So reusing it would make the **owner** the party who must face-verify for that
+bay — locking the renter out of their own rental and granting the owner a door
+onto it. That is failure mode F5 reached from the opposite direction, and it
+would have looked like a harmless refactor. `storageDropService` is a sibling
+that shares the hardware command and nothing else, with its own
+`pendingStorageDrops` map so the ack handler in `index.ts` can tell a storage
+drop from a release (identical command, completely different bookkeeping).
+
+`dropToStorage` re-checks every precondition against the DB before commanding —
+status DEPOSITED, verificationStatus APPROVED, item actually in the upper
+compartment, lower compartment genuinely empty, bay operational — and refuses
+rather than stroking on a stale read. Both compartments go RESERVED *before*
+the command goes out, so nothing can be assigned mid-travel. Unacknowledged
+drops are surfaced, never auto-retried, for the reason
+`findUnacknowledgedReleases` gives: a blind second stroke could push a second
+item onto the first.
+
+**E5.7 app** — pick-up day picker on the booking screen, constrained to the
+rental period (the server enforces the same rule, so offering a day it will
+reject is a trap), and cleared automatically if the range changes so a stale
+value cannot fail on submit. The helper text states the consequence next to the
+choice rather than hiding it, because the field silently changes which
+verification path runs and which compartment the item ends up in.
+
+**NOT DONE / NOT VERIFIED**
+
+- **E5.8** (two-compartment occupancy on the console and kiosk) is not started.
+  Both still show one status per bay, now derived.
+- **E5.4 has never run.** No long-lead deposit has been made, so no actuator
+  has moved for this feature. It is **G11-gated**: testing it means naming the
+  bay and getting an explicit yes.
+- The `bottomStoredAt` column exists so E4.6's collection sweep can tell
+  legitimate long-term storage from an abandoned item. **The sweep has not been
+  taught to read it**, which is an open risk the moment a real long-lead
+  deposit is stored.
+- Nothing about longer-storage pricing, and the spec's open question about
+  whether the lower compartment may ever hold more than one item stands
+  (the invariant says no; the physical compartment has not been consulted).
