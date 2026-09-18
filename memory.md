@@ -327,6 +327,44 @@ ANSI, so an em-dash in a comment breaks the parser several lines away; and
 arrives — put anything with variables in a `.ps1` and run it with `-File`.
 
 
+### 2026-09-18 18:54 — FOURTH OUTAGE: server rebooted 04:32, kiosk offline 8h, tunnels rotated again. App 1.10.2.
+
+Same shape as the third, on the same day the user wanted to start physical
+testing. Measured, not assumed: all three tunnels `000`; `LastBootUpTime`
+**2026-09-18 04:32:43**; all seven tasks `Ready`; only MySQL up. The kiosk was
+`offline, last seen 8h ago` and came back on its own (or by the user) during the
+restart, reaching `active; direct 192.168.254.124`.
+
+**New hostnames:** api `detective-dive-muslim-outstanding`, web
+`prince-russia-bowling-ministries`, admin `modular-headphones-lots-compounds`.
+
+**All three quick tunnels failed to be issued on the first pass** (`context
+deadline exceeded`), as on 09-17 — but this time the server's internet was
+checked before retrying: TCP 1.1.1.1:443 OK, DNS OK, `api.trycloudflare.com`
+answered 405 to a HEAD. So it is Cloudflare's issuing endpoint that is flaky,
+not the link. A second `Start-ScheduledTask` on all three issued them at once.
+**Note:** DNS resolved to an IPv6 address; if this recurs often, try
+`--edge-ip-version 4` in the tunnel .bat files (not done — a change to the
+launcher, needs the user).
+
+**`EngiRentAdmin` again exited instantly with orphaned `next build` workers
+holding its log.** The precise filter is `Name -eq "node.exe" -and CommandLine
+-like "*clientdmin*"` — a broader one matches the query's own PowerShell
+process, which has bitten twice.
+
+**App rebuilt a fourth time for the same reason: 1.10.2+23**, verified
+(versionCode 23, `CN=EngiRent`, only the new host in `libapp.so`, 90,960,307
+bytes, sha256 `373dd057…`, identical on the server).
+
+**The kiosk's physical monitor is dead.** Workaround, needing no change to the
+Pi: the kiosk UI server binds `0.0.0.0:8080`, so **any tailnet machine can open
+`http://engirent-kiosk:8080`** and act as the screen — same interface, same live
+state, same live QR token. It is not a mirror of the panel; it is a second
+client of the same app, which is enough to run a handover.
+
+**Tailscale SSH is in check mode again** and issues a NEW approval URL per
+attempt. Ask the user to open ONE and stop retrying, or the links pile up.
+
 ### 2026-09-17 19:39 — THIRD OUTAGE: the server rebooted on 2026-09-15 and nothing came back. Restarted, tunnels rotated, app rebuilt as 1.10.1.
 
 **Found:** all three public tunnels answered `000`. The machine was reachable on

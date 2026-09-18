@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-09-18",
+    version: "1.10.2",
+    tag: "fix",
+    title: "Rebuilt for the server's new address, again",
+    bullets: [
+      "The server restarted and its public address changed again, so build 22 and earlier cannot sign in until you install this one",
+      "Nothing else changed: the locker flow from 1.10.0 is the same",
+    ],
+  },
+  {
     date: "2026-09-17",
     version: "1.10.1",
     tag: "fix",

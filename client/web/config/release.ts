@@ -28,14 +28,14 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.10.1",
-  buildNumber: 22,
-  fileName: "Engirent_Prerelease22.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-09-17",
+  version: "1.10.2",
+  buildNumber: 23,
+  fileName: "Engirent_Prerelease23.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-09-18",
   sizeMb: 86.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Rebuilt for the server's new address — build 21 and earlier can no longer sign in",
+    "Rebuilt for the server's new address — build 22 and earlier can no longer sign in",
     "You open the locker with a button when you're ready, with a countdown while the door is unlocked",
     "Tap \"Item is placed\" and the kiosk checks then — no more 20-second timer deciding for you",
   ],
