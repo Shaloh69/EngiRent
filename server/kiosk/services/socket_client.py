@@ -227,10 +227,106 @@ def _uplink_message() -> str | None:
         return None
 
 
+# ── Why the kiosk never went back to "ready" (found 2026-09-18) ──────────────
+#
+# `_ui_state` is STICKY: a status stays until the next command overwrites it.
+# The React screen polls /api/state every 2 seconds and acts on whatever comes
+# back. Put those together and nothing could ever end a flow:
+#
+#   * Cancel moved the screen to main locally, told the Pi nothing, and the
+#     next poll returned "face_scan" and pulled it straight back.
+#   * After a finished deposit the screen's own timer went to main, and the
+#     next poll returned "item_verified" and put it back on the success
+#     screen — forever. That is the "kiosk keeps repeating" reported in the
+#     first physical test.
+#
+# Two things fix it. Every change carries a SEQUENCE NUMBER, so the screen can
+# tell a new state from the same one polled again and stop re-applying it.
+# And a flow that has genuinely FINISHED returns the Pi to "online" by itself,
+# so the Pi's answer to "what is happening?" becomes "nothing, ready for the
+# next person" instead of re-announcing a flow that ended minutes ago.
+
+_ui_seq = 0
+
+# Statuses after which the Pi returns itself to "online" if nothing newer
+# happens, and how long it waits. Everything a person may still be acting on
+# is deliberately ABSENT: face_scan (retrying on their phone), verified /
+# door_open / dropping / capturing / verifying_item (hardware or a check in
+# progress), item_retry (the door is open again for repositioning).
+#
+#   item_verified / item_pending / error — a flow that has FINISHED and shown
+#     its outcome. 20s: longer than the screen's own dwell (5s, or 12s with the
+#     awaiting-review note) so it is always read, short enough that the next
+#     student is not greeted by a stranger's result.
+#
+#   idle — "a hardware step just finished". This is ambiguous on its own, and
+#     that is why it needs the Pi's judgement rather than the screen's: after a
+#     CLAIM or a RETRIEVE the flow is over, but after a DEPOSIT or RETURN door
+#     closes, the flow continues (the person still taps "Item is placed", then
+#     the locker is photographed). Waiting 30s and reverting only if nothing
+#     newer arrived handles both: a live flow's next command lands long before
+#     that and supersedes the revert, and a finished one returns to ready. The
+#     screen holds on idle meanwhile instead of guessing.
+_REVERT_AFTER_SECONDS = {
+    "item_verified": 20.0,
+    "item_pending": 20.0,
+    "error": 20.0,
+    "idle": 30.0,
+}
+
+# The rental currently being verified on someone's phone, so Cancel can tell
+# the server exactly which session to close.
+_active_rental_id: str | None = None
+
+
 def _set_ui(status: str, message: str, active_locker: int | None = None):
+    global _ui_seq
+    _ui_seq += 1
     _ui_state["status"] = status
     _ui_state["message"] = message
     _ui_state["active_locker"] = active_locker
+    _ui_state["seq"] = _ui_seq
+
+    delay = _REVERT_AFTER_SECONDS.get(status)
+    if delay is not None:
+        seq_at_set = _ui_seq
+
+        def _revert():
+            # Only if nothing newer has happened since. A second person may
+            # already have started, or this flow may simply have moved on —
+            # never stamp "ready" over a live step.
+            if _ui_seq == seq_at_set:
+                _reset_to_ready(f"no activity {delay:.0f}s after '{status}'")
+
+        import threading
+
+        t = threading.Timer(delay, _revert)
+        t.daemon = True
+        t.start()
+
+
+def _reset_to_ready(why: str) -> None:
+    """Return the kiosk to its default, ready-for-the-next-person state."""
+    global _active_rental_id
+    _active_rental_id = None
+    _set_ui("online", "Kiosk online – Ready")
+    log.info("Kiosk UI reset to ready (%s)", why)
+
+
+def cancel_current_flow() -> None:
+    """The person at the kiosk pressed Cancel.
+
+    Resets the kiosk immediately, and tells the server to close the session.
+    The second half is the important one: an open session lets the phone
+    finish face verification after the person has walked away, and the door
+    would then open in a public corridor with nobody at it.
+    """
+    rental_id = _active_rental_id
+    _reset_to_ready("cancelled at the kiosk")
+    if rental_id and _main_loop is not None:
+        asyncio.run_coroutine_threadsafe(
+            sio.emit("kiosk:flow_cancel", {"rental_id": rental_id}), _main_loop
+        )
 
 
 # ── Socket.io event handlers ───────────────────────────────────────────────────
@@ -509,6 +605,9 @@ async def _cmd_await_phone_verification(data: dict):
     The next thing the kiosk hears is either open_door (success) or
     face_failed (the phone reported a bad match) or a timeout back to main,
     all driven from Node."""
+    global _active_rental_id
+    # Remembered so Cancel can close exactly this session server-side.
+    _active_rental_id = data.get("rental_id")
     _set_ui(
         "face_scan",
         data.get("message") or "Check your phone — we're verifying it's you",

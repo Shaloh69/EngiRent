@@ -585,6 +585,26 @@ export const verifyFaceFromApp = async (
           `verified=false confidence=${(result.confidence * 100).toFixed(1)}% ` +
           `exhausted=${exhausted} attemptsRemaining=${attemptsRemaining}`,
       );
+
+      // A failed match used to be reported to the PHONE only. Once the
+      // attempts were exhausted the session was dead — the person has to
+      // rescan the QR — but the kiosk was never told, so it sat on "Check your
+      // phone — we're verifying it's you" indefinitely, with a Cancel button
+      // that could not dislodge it. Found on screen 2026-09-18.
+      //
+      // Only the EXHAUSTED case is sent. A retryable miss is deliberately
+      // left alone: "check your phone" is still the truth, the person is
+      // retrying there, and flashing an error on the kiosk mid-retry is the
+      // flicker the original design avoided on purpose.
+      if (exhausted) {
+        const io = req.app.get("io");
+        io?.to(`kiosk:${session.kioskId}`).emit("kiosk:command", {
+          action: "flow_error",
+          rental_id: rentalId,
+          message:
+            "We couldn't verify it's you. Please scan the QR code again to start over.",
+        });
+      }
       res.json({
         success: true,
         data: {

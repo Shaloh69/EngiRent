@@ -35,6 +35,21 @@ export const INFO_SCREENS: Screen[] = ["how", "catalogue", "lockers"];
  *  deadlock fix written for them the same day, permanently unreachable. */
 export const PRE_FLOW_SCREENS: Screen[] = ["idle", "main", ...INFO_SCREENS];
 
+/**
+ * Screens that belong to a transaction in flight. When the Pi reports it is
+ * "online" again (no flow in progress), a kiosk still showing one of these is
+ * showing a flow that has ended, and returns to "main" for the next person.
+ * The complement of PRE_FLOW_SCREENS — kept explicit rather than derived so a
+ * new screen has to be classified deliberately.
+ */
+export const FLOW_SCREENS: Screen[] = [
+  "face",
+  "verifying",
+  "working",
+  "success",
+  "error",
+];
+
 export type Mode = "place" | "retrieve" | null;
 
 export interface RentalInfo {
@@ -60,6 +75,13 @@ export type LockerOccupancy =
 export interface KioskServerState {
   status?: string;
   message?: string;
+  /**
+   * Increments on every state change the Pi makes. The screen polls every 2s,
+   * and without this it could not tell a NEW state from the same one polled
+   * again — so it kept re-applying finished flows (the "kiosk keeps
+   * repeating" defect) and undid Cancel within two seconds.
+   */
+  seq?: number;
   /**
    * E3.2 / spec 1.1. The REAL duration of the operation now running, in
    * seconds, as decided by the handler that is actually driving the

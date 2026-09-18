@@ -230,6 +230,24 @@ def on_browser_connect():
 # not an error.
 
 
+@local_sio.on("user_cancel")
+def on_user_cancel(_data=None):
+    """The person at the kiosk pressed Cancel.
+
+    Before 2026-09-18 Cancel never reached here — the React screen just
+    navigated to main on its own, the Pi kept reporting the old status, and the
+    screen's 2-second poll pulled it straight back. Now the Pi resets itself to
+    ready and tells the server to close the session, which is what stops a door
+    opening for someone who has already walked away.
+    """
+    from services.socket_client import cancel_current_flow, get_ui_state
+
+    cancel_current_flow()
+    # Push the reset straight back so the screen does not wait for its next
+    # 2-second poll to learn the flow is over.
+    emit("state_update", get_ui_state())
+
+
 @local_sio.on("user_confirm")
 def on_user_confirm(data):
     """Browser confirmed rental — schedule initiate_rental_flow on the asyncio loop."""

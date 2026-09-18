@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import type { KioskServerState, Mode, Screen } from "./types";
+import { FLOW_SCREENS } from "./types";
 import type { WorkingKind } from "./components/screens/WorkingScreen";
 
 const IDLE_MS = 30_000; // MAIN -> IDLE
@@ -100,6 +101,9 @@ export function useKioskState() {
   const inactTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const offlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenRef = useRef<Screen>(screen);
+  // The last Pi state sequence number this screen has ACTED on. See
+  // applyServerState: a re-polled state with the same seq changes nothing.
+  const lastSeqRef = useRef<number | null>(null);
   screenRef.current = screen;
 
   const goTo = useCallback((next: Screen) => {
@@ -214,6 +218,38 @@ export function useKioskState() {
     if (s.occupancy) setOccupancy(s.occupancy);
 
     const cur = screenRef.current;
+
+    // Navigation happens only on a NEW state from the Pi. The screen polls
+    // /api/state every 2s, and before this every poll re-applied the last
+    // status: Cancel was undone within two seconds, and a finished deposit
+    // bounced back onto the success screen forever. The passive data above
+    // (door state, occupancy) is still refreshed on every poll — only the
+    // decision to MOVE screens is deduplicated.
+    if (typeof s.seq === "number") {
+      if (s.seq === lastSeqRef.current) return;
+      lastSeqRef.current = s.seq;
+    }
+
+    // The Pi saying "online" means no flow is in progress — it reverted on
+    // its own after a finished outcome, or someone cancelled. If this screen
+    // is still showing a flow, that flow is over: go back to ready for the
+    // next person. Deliberately not applied to idle/main/info screens, where
+    // someone may simply be browsing.
+    if (s.status === "online") {
+      if (FLOW_SCREENS.includes(cur)) goTo("main");
+      return;
+    }
+
+    // "idle" = a hardware step just finished (a door closed, the actuator
+    // stopped, the photos were taken). The screen cannot tell from this alone
+    // whether the flow goes on — after a deposit door closes the person still
+    // has to tap "Item is placed" — or is over, as after a claim. So it HOLDS.
+    // The Pi resolves the ambiguity: the next step's command supersedes this,
+    // or after 30s of nothing the Pi reverts to "online" and the branch above
+    // returns the screen to ready. Handled explicitly so it cannot fall
+    // through to the stranded-screen fallback below, which would tell someone
+    // mid-deposit they were done.
+    if (s.status === "idle") return;
     if (s.status === "face_scan") {
       setFaceInstr(s.message || "Look directly at the camera");
       if (cur !== "face") goTo("face");
@@ -369,7 +405,13 @@ export function useKioskState() {
     touchIdle: () => {
       if (screenRef.current === "idle") goTo("main");
     },
-    cancel: () => goTo("main"),
+    // Cancel now TELLS the Pi. It used to only navigate locally, which the
+    // next poll undid; the Pi also resets itself and closes the server
+    // session so the door cannot open after the person has walked away.
+    cancel: () => {
+      socketRef.current?.emit("user_cancel");
+      goTo("main");
+    },
     retry: () => goTo("main"),
     errHome: () => goTo("main"),
     // Informational screens off the main menu (§4 — the kiosk is also a

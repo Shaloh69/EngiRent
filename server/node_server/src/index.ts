@@ -53,7 +53,10 @@ import {
   confirmRelease,
   rentalForCommand,
 } from "./services/retrievalService";
-import { openKioskSession } from "./services/kioskSessionStore";
+import {
+  consumeKioskSession,
+  openKioskSession,
+} from "./services/kioskSessionStore";
 import { recordKioskLog } from "./services/kioskLogBuffer";
 import { recordTimingReport } from "./services/kioskTimingStore";
 import { recordAdminSnapshot } from "./services/kioskSnapshotStore";
@@ -438,6 +441,40 @@ io.on("connection", (socket: Socket) => {
   );
 
   // ── Kiosk status update
+  // ── Someone at the kiosk pressed Cancel ─────────────────────────────────────────
+  //
+  // Cancel used to be purely local to the kiosk screen: it navigated to the
+  // main screen and told nobody. The Pi kept reporting the old status, the
+  // screen's 2-second poll pulled it straight back, and the server's session
+  // stayed open. That last part is the one that matters for safety: an open
+  // session means the phone can still complete face verification after the
+  // person has walked away from the kiosk, and the door then opens in a
+  // public corridor with nobody standing at it (G11). Ending the session here
+  // closes that. Found 2026-09-18 during the second physical test.
+  //
+  // Kiosk-authenticated only, like every other kiosk:* event. The rental id is
+  // the one the Pi recorded from its own await_phone_verification command, so
+  // a client cannot cancel someone else's session through this path.
+  socket.on("kiosk:flow_cancel", (data: { rental_id?: string }) => {
+    if (!isKiosk(socket)) return;
+    const rentalId = data?.rental_id;
+    if (!rentalId) return;
+    consumeKioskSession(rentalId);
+    logger.info(`[PI-FLOW]  Cancelled at the kiosk — session closed for rental ${rentalId}`);
+    void prisma.rental
+      .findUnique({ where: { id: rentalId }, select: { ownerId: true, renterId: true } })
+      .then((r) => {
+        if (!r) return;
+        // Whichever party was mid-verification. The phone may not listen for
+        // this yet — harmless if so: its next verify attempt now fails with an
+        // expired session instead of opening a door.
+        for (const uid of [r.ownerId, r.renterId]) {
+          if (uid) io.to(`user:${uid}`).emit("kiosk:cancelled", { rentalId });
+        }
+      })
+      .catch(() => {});
+  });
+
   socket.on("kiosk:status", (data: unknown) => {
     if (!isKiosk(socket)) return;
     const d = data as Record<string, unknown>;

@@ -6657,3 +6657,88 @@ exist in the old build: 200. `/dashboard`, `/verifications`, `/kiosk`,
 `/rentals`, `/disputes` all 200. The kiosk page was checked first for a D-86
 regression: it polls (0 `EventSource`), so the sync did not reintroduce the SSE
 stream that never crosses the tunnel.
+
+### D-88 — the kiosk could never return to "ready" on its own, and Cancel did nothing. FIXED 2026-09-18. Deployed; on-screen check pending the user's F5.
+
+**Reported by the user during the second physical test**, with a screenshot of
+the kiosk on "Check your phone — we're verifying it's you": *"When Face
+Verification fails clicking cancel dont bring me back to the main page"*, and
+*"check if ... whenever a phone is done with the kiosk the kiosk will auto
+default state and ready for the next User"*. The honest answer to the second
+was **no, it would not** — and this is also the real cause of *"The Kiosk UI
+keeps repeating after a failure"* from the FIRST physical test, which was only
+treated symptomatically then.
+
+**Root cause, one mechanism behind all of it.** The Pi's `_ui_state` is
+STICKY: a status stays until the next command overwrites it. The React screen
+polls `/api/state` every **2 seconds** and acted on whatever came back:
+
+- **Cancel** called `goTo("main")` locally and told nobody. The next poll
+  returned `face_scan` and the screen jumped straight back.
+- **After a finished deposit**, the success screen's own timer went to main;
+  the next poll returned `item_verified` and put it back on the success screen
+  — forever. That is the "keeps repeating" loop.
+- The screen had **no handler for `online` or `idle` at all**, so nothing on
+  the Pi side could ever move it back to ready.
+
+**Two further defects found while tracing it:**
+
+1. **A failed face verification was reported to the phone only.** Even once
+   every attempt was exhausted and the person had to rescan the QR, the kiosk
+   kept saying "we're verifying it's you" indefinitely. Now, on EXHAUSTED only,
+   the server sends the kiosk a `flow_error`. A retryable miss is deliberately
+   left alone — "check your phone" is still true, and flashing an error
+   mid-retry is the flicker the original design avoided on purpose.
+2. **Cancel left the server session open.** That let the phone finish face
+   verification after the person had walked away, and the door would then open
+   in a public corridor with nobody at it (G11's exact scenario). New
+   `kiosk:flow_cancel` socket event, kiosk-authenticated like every other
+   `kiosk:*` event, calls `consumeKioskSession`. The rental id comes from the
+   Pi's own record of its `await_phone_verification` command, not from anything
+   a client sends.
+
+**The fix**
+
+- **Pi** (`socket_client.py`): every `_set_ui` increments a **sequence
+  number**. Finished outcomes (`item_verified`, `item_pending`, `error`) revert
+  to `online` after 20s — longer than the screen's own 5s/12s dwell, so the
+  outcome is always read. `idle` reverts after 30s. A revert fires **only if
+  nothing newer happened since**, so it can never stamp "ready" over a second
+  person's flow. `cancel_current_flow()` resets immediately and emits
+  `kiosk:flow_cancel`.
+- **Pi** (`kiosk_ui/server.py`): new local `user_cancel` event, which resets
+  and pushes the new state straight back rather than waiting for a poll.
+- **Screen** (`useKioskState.ts`): navigates only on a **new** seq; a re-polled
+  state refreshes door state and occupancy but never moves screens. `online`
+  returns any in-flight screen to main (`FLOW_SCREENS`, now an explicit list in
+  `types.ts` so a new screen must be classified deliberately). Cancel emits
+  `user_cancel`.
+
+**The `idle` subtlety, which is why the Pi decides and not the screen.** After
+any door or actuator step the Pi sets `idle` "Ready". That is ambiguous: after
+a CLAIM the flow is over, but after a DEPOSIT door closes the person still has
+to tap "Item is placed". It used to fall through to the D-87e stranded-screen
+fallback, which happened to show a sensible "Done" after a claim — and would
+have told someone mid-deposit they were finished. The screen now **holds** on
+`idle`; the Pi reverts to `online` after 30s if nothing newer arrived, and a
+live flow's next command always lands first.
+
+**Deploy order mattered, and was chosen from the D-87e lesson.** New screen +
+old Pi would hold on `idle` forever after a claim — worse than before. So the
+Pi service restarted (with the user's explicit G11 yes) **before** the browser
+reload. Both files diffed against the Pi's copies first: zero lines existed
+only on the Pi, so nothing Pi-specific was overwritten. `dist` backed up to
+`dist.bak-20260918-cancel`.
+
+**Verified the new Pi code is the code running** — the lesson of the stale ML
+process — by reading `/api/state` on the Pi: `status: online | seq: 1`. The old
+code had no `seq` field.
+
+**Tests:** new `server/kiosk/tests/test_ui_state_reset.py`, 16 cases, all
+discriminating (on the old code the revert cases fail and the seq/cancel cases
+error). `lgpio` is stubbed because it only exists on the Pi. Full kiosk suite
+**124/124**. Node suite unchanged at 258/258.
+
+**NOT YET SEEN ON SCREEN.** The unit tests prove the Pi logic; only a person
+pressing Cancel on the real kiosk, and finishing a real claim, proves the
+screen. That is the user's next physical run, after F5.
