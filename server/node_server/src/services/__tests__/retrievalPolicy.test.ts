@@ -294,3 +294,68 @@ describe("readRetrievalPolicy — admin config, defensively", () => {
     expect(p.owner_retrieval_deadline_hours).toBe(72);
   });
 });
+
+/**
+ * E5 — the collection clock for a long-lead pick-up.
+ *
+ * The failure these pin down: a renter books a Friday pick-up, the owner drops
+ * the item off on Wednesday, and the sweep — measuring its 1h grace from the
+ * deposit — declares it uncollected on Wednesday afternoon and hands it back to
+ * the owner, two days before the student was ever due. Each case is a 22-second
+ * actuator stroke moving someone's property, so they are proven here.
+ */
+describe("E5 — late collection is measured from the renter's pick-up day", () => {
+  it("still releases a same-day rental once the grace passes (pre-E5 rule unchanged)", () => {
+    const d = decideRelease(candidate({ pickupDate: null }), NOON, POLICY);
+    expect(d.release).toBe(true);
+  });
+
+  it("an absent pickupDate behaves exactly like null", () => {
+    const d = decideRelease(candidate(), NOON, POLICY);
+    expect(d.release).toBe(true);
+  });
+
+  it("does NOT release an item whose pick-up day is still in the future", () => {
+    // Deposited 3h ago, but the renter chose two days from now.
+    const pickup = new Date(2026, 8, 14, 10, 0, 0);
+    const d = decideRelease(candidate({ pickupDate: pickup }), NOON, POLICY);
+    expect(d.release).toBe(false);
+    if (!d.release) expect(d.code).toBe("grace_not_elapsed");
+  });
+
+  it("does NOT release on the pick-up day itself — the renter has all of it", () => {
+    // Pick-up is TODAY; noon is well inside it.
+    const pickup = new Date(2026, 8, 12, 9, 0, 0);
+    const d = decideRelease(candidate({ pickupDate: pickup }), NOON, POLICY);
+    expect(d.release).toBe(false);
+  });
+
+  it("releases once the pick-up day has ended AND the grace has passed", () => {
+    // Pick-up was yesterday; its day ended at midnight, 12h before NOON.
+    const pickup = new Date(2026, 8, 11, 9, 0, 0);
+    const d = decideRelease(
+      candidate({
+        pickupDate: pickup,
+        depositedAt: new Date(2026, 8, 9, 12, 0, 0),
+      }),
+      NOON,
+      POLICY,
+    );
+    expect(d.release).toBe(true);
+  });
+
+  it("still waits out the grace after the pick-up day ends", () => {
+    // Pick-up day ended at 00:00 today; 00:30 is inside the 1h grace — and
+    // outside the release window anyway, so the window test runs at 07:30 with
+    // a grace long enough to still be running.
+    const pickup = new Date(2026, 8, 11, 9, 0, 0);
+    const longGrace: RetrievalPolicy = { ...POLICY, collection_grace_hours: 12 };
+    const d = decideRelease(
+      candidate({ pickupDate: pickup, depositedAt: new Date(2026, 8, 9, 12, 0, 0) }),
+      new Date(2026, 8, 12, 7, 30, 0),
+      longGrace,
+    );
+    expect(d.release).toBe(false);
+    if (!d.release) expect(d.code).toBe("grace_not_elapsed");
+  });
+});

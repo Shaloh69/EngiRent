@@ -128,6 +128,9 @@ export async function requestRelease(
     rentalId,
     status: rental.status,
     depositedAt: rental.depositedAt,
+    // E5 — so a long-lead rental is not declared uncollected before the day
+    // the renter chose. `include` above returns all Rental scalars.
+    pickupDate: rental.pickupDate,
     releaseRequestedAt: rental.releaseRequestedAt,
     locker: locker
       ? {

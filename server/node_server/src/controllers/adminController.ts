@@ -22,6 +22,9 @@ import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 // D-87d: a rejected DEPOSIT must release the owner's item from the bay, the
 // same way index.ts's automatic rejection path does — not just flip a column.
 import { requestRelease } from "../services/retrievalService";
+// E5.4 — a human-approved long-lead deposit is dropped to storage too.
+import { dropToStorage } from "../services/storageDropService";
+import { isLongLeadPickup } from "../services/pickupLaneService";
 import { sendItemReadyForClaim } from "../utils/email";
 import { FEEDBACK_CATEGORIES } from "./feedbackController";
 import { recordAudit } from "../services/auditLogService";
@@ -645,6 +648,32 @@ export const reviewVerification = async (
         logger.info(
           `Deposit for rental ${depositRental.id} APPROVED by ${req.user?.email} — collection open`,
         );
+
+        // E5.4 — a long-lead deposit is dropped to the lower compartment once
+        // approved, freeing the upper bay. This used to happen ONLY on the
+        // full model's auto-approval (deepReviewQueue). But per the user's
+        // ruling, anything scoring below 85 — on any day — needs a human, so
+        // a long-lead item is approved HERE whenever the model is unsure. Left
+        // as it was, every human-approved long-lead item would have stayed in
+        // the upper compartment and the capacity saving would only ever
+        // happen for the items that needed no help. Found 2026-09-18 while
+        // checking that ruling against the code.
+        //
+        // Not a correctness risk if it does not happen: the claim path reads
+        // which compartment actually holds the item (`doorHoldingRental`), so
+        // an undropped item is still collected through the right door.
+        //
+        // DRIVES AN ACTUATOR. `dropToStorage` re-checks every precondition
+        // against the database and refuses rather than stroking on stale data.
+        if (isLongLeadPickup(depositRental.pickupDate) && io) {
+          const dropped = await dropToStorage(io, depositRental.id);
+          if (!dropped) {
+            logger.warn(
+              `Long-lead rental ${depositRental.id} approved by an admin but NOT dropped to ` +
+                `storage; it stays collectable from the upper compartment.`,
+            );
+          }
+        }
       }
 
       if (status === "REJECTED") {

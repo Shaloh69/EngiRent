@@ -6471,3 +6471,69 @@ verification path runs and which compartment the item ends up in.
 - Nothing about longer-storage pricing, and the spec's open question about
   whether the lower compartment may ever hold more than one item stands
   (the invariant says no; the physical compartment has not been consulted).
+
+### E5 follow-up — two gaps found by checking the user's rules against the code. FIXED and DEPLOYED 2026-09-18.
+
+**1. The E4.6 sweep would have clawed back every long-lead item within an hour.**
+Asked "will this work when I run the full physical test again?", the honest
+answer was **no** for the long-lead path. `decideRelease` measured R1
+(`LATE_COLLECTION`) as `hoursSince(depositedAt)` against
+`collection_grace_hours: 1`, with `auto_release_enabled: true` and a 07:00-21:00
+window. So a Friday pick-up deposited on Wednesday would have been declared
+uncollected at 07:00 Thursday and released back to the **owner** — and, because
+`requestRelease` writes `releaseRequestedAt`, `resolveFaceSubject` would then
+have made the owner the face subject, locking the renter out of their own item.
+
+Fixed with `collectionClockStart`: no pick-up date keeps the pre-E5 rule
+exactly (clock starts at deposit); with one, the clock starts at the **end of
+the chosen day** in local time, then the same grace applies. "Friday" means any
+time Friday. `ReleaseCandidate.pickupDate` is optional so every existing caller
+and test is untouched.
+
+6 new tests in `retrievalPolicy.test.ts`; **43/43 pass** (37 pre-existing
+unchanged). The key test is discriminating — on the old code a future pick-up
+deposited 3h ago *releases*, and the test requires that it does not. Lesson
+carried from D-73: a regression test that the old code also passes proves
+nothing.
+
+**Still open:** if a long-lead item already in the LOWER compartment is later
+released for genuinely late collection, `requestRelease` will command a drop
+stroke on a bay whose upper compartment is empty. It needs to reassign the
+lower compartment to the owner instead of stroking. Reachable only after a
+pick-up day passes uncollected, so not in a same-session test.
+
+**2. A human-approved long-lead deposit was never dropped to storage.**
+The user's ruling: *"if the score is below 85 regardless of day it will always
+need admin approval"*. Checked against the code, all three parts held — admin
+approve (`adminController.ts:602`) is gated only on DEPOSITED, so a same-day
+item can be approved on the fast result without waiting; `canAutoApprove`'s
+>= 85 is shared by both lanes; and `deepReviewQueue.ts:306` refuses to
+re-approve anything a human already decided, so there is no double approval if
+an admin acts mid-run.
+
+But it exposed a gap: `dropToStorage` was called only from the auto-approve
+path. Every long-lead item that needed a human — i.e. every one scoring below
+85 — would have stayed in the upper compartment, so the capacity saving only
+ever happened for items that needed no help. Admin approval of a long-lead
+deposit now drops it too. Not a correctness risk had it been missed:
+`doorHoldingRental` reads where the item actually is, so an undropped item is
+still collected through the right door.
+
+**Correction to the user's mental model, recorded because it will matter in
+testing.** The pick-up day does NOT decide admin-vs-no-admin. Both lanes are
+decided by the full run (auto-approve >= 85), with a human below that. What the
+day actually changes: whether a fast check runs at the locker, whether a RETRY
+can reopen the door for repositioning (same-day only — a long-lead item that
+photographs badly goes straight to a human), which compartment the item ends up
+in, and when it counts as late.
+
+**Realistic expectation for the next test:** the only real kiosk capture so far
+scored **49.98** on the full run. If that is typical, nothing will auto-approve
+and every deposit in both lanes will land in the admin queue. That is not a
+bug; it is the first calibration data point, and the test will add more.
+
+**Second reset done** on the same ruling as the first (cancel all, void
+payments; REFUNDED moves no money). Bay 1 was deliberately left OCCUPIED by the
+reset because "Pusil sa minions" was physically inside; it was cleared only
+after the user confirmed the item was already out — no door was opened.
+State: 0 live rentals, bays 1-3 free in both compartments, bay 4 out of service.

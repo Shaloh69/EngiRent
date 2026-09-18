@@ -48,6 +48,12 @@ export interface ReleaseCandidate {
   rentalId: string;
   status: string;
   depositedAt: Date | null;
+  /**
+   * E5 — the day the renter said they would collect. Optional so every caller
+   * and test written before E5 keeps compiling and behaving identically: an
+   * absent/null pickupDate means the pre-E5 rule (late = grace after deposit).
+   */
+  pickupDate?: Date | null;
   /** Set once a release has been asked for. Non-null means "already in flight or done". */
   releaseRequestedAt: Date | null;
   /** The bay physically holding the item, if the system believes it holds one. */
@@ -95,6 +101,31 @@ export function isWithinReleaseWindow(now: Date, policy: RetrievalPolicy): boole
   const { release_window_start_hour: start, release_window_end_hour: end } = policy;
   if (start === end) return true; // a zero-width window means "no restriction"
   return start < end ? h >= start && h < end : h >= start || h < end;
+}
+
+/**
+ * E5 — the moment an uncollected item starts counting as late.
+ *
+ *   no pick-up date  -> the deposit time (the pre-E5 rule, unchanged)
+ *   pick-up date set -> the END of that calendar day, local time, or the
+ *                       deposit time if that is somehow later
+ *
+ * End of day rather than start: "I'll get it Friday" means any time Friday.
+ * Local rather than UTC for the same reason as `isLongLeadPickup` — UTC days
+ * roll over at 08:00 here, which would end "Friday" at 08:00 Saturday local
+ * and quietly shorten or lengthen the renter's day depending on the date.
+ */
+export function collectionClockStart(
+  depositedAt: Date,
+  pickupDate: Date | null | undefined,
+): Date {
+  if (!pickupDate) return depositedAt;
+  const endOfPickupDay = new Date(
+    pickupDate.getFullYear(),
+    pickupDate.getMonth(),
+    pickupDate.getDate() + 1,
+  );
+  return endOfPickupDay.getTime() > depositedAt.getTime() ? endOfPickupDay : depositedAt;
 }
 
 /** Whole hours elapsed, floored — matches how the late-fee cron counts days. */
@@ -204,11 +235,34 @@ export function decideRelease(
     if (candidate.depositedAt === null) {
       return refuse("no_deposit_timestamp", "rental is DEPOSITED but carries no depositedAt");
     }
-    const elapsed = hoursSince(candidate.depositedAt, now);
+
+    // E5 — WHEN DOES "LATE" START?
+    //
+    // This measured the grace from `depositedAt` alone, which was correct
+    // while every hand-off was same-day: the owner drops it off and the renter
+    // is expected within the hour. E5 broke that assumption. A renter who
+    // books a Friday pick-up has an item deposited on Wednesday, and with a
+    // 1h grace the sweep would declare it uncollected at 07:00 Thursday and
+    // release it back to the OWNER — a rental clawed back two days before the
+    // student was ever due. It would also flip `resolveFaceSubject` to the
+    // owner, locking the renter out of their own item. Found while answering
+    // "will the long-lead path survive a real test": it would not.
+    //
+    // The renter is late only once the day they chose is OVER. "Friday" means
+    // any time Friday, so the clock starts at the end of that day, then the
+    // same grace applies. A null pickupDate keeps the pre-E5 rule exactly.
+    const clockStart = collectionClockStart(candidate.depositedAt, candidate.pickupDate);
+    if (now.getTime() < clockStart.getTime()) {
+      return refuse(
+        "grace_not_elapsed",
+        `pick-up day has not ended yet (renter chose ${candidate.pickupDate?.toDateString()})`,
+      );
+    }
+    const elapsed = hoursSince(clockStart, now);
     if (elapsed < policy.collection_grace_hours) {
       return refuse(
         "grace_not_elapsed",
-        `${elapsed.toFixed(2)}h since deposit, grace is ${policy.collection_grace_hours}h`,
+        `${elapsed.toFixed(2)}h since the collection clock started, grace is ${policy.collection_grace_hours}h`,
       );
     }
   }
