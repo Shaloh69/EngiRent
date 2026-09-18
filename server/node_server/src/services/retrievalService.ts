@@ -2,6 +2,7 @@ import type { Server } from "socket.io";
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import { emitOccupancyForLockerId } from "./lockerOccupancyService";
+import { compartmentHolding, setCompartment } from "./lockerCompartments";
 import {
   decideRelease,
   readRetrievalPolicy,
@@ -157,6 +158,102 @@ export async function requestRelease(
 
   const bay = locker!;
   const releaseReason = opts.reasonOverride ?? decision.reason;
+
+  // ── E5: WHERE IS THE ITEM, AND IS IT SAFE TO MOVE IT? ──────────────────
+  //
+  // Before E5 a bay held one item, always in the upper compartment, so a
+  // release was always the same thing: one actuator stroke, upper to lower.
+  // Bay reuse makes that assumption dangerous in two different ways, and both
+  // were found on 2026-09-18 before the second physical test:
+  //
+  //  1. The item may ALREADY be in the lower compartment — a long-lead
+  //     deposit dropped into storage, then never collected. Stroking the
+  //     actuator would move nothing (the upper compartment is empty) while
+  //     still putting a moving mechanism through a cycle for no reason. The
+  //     user asked specifically that this never happen.
+  //
+  //  2. Far worse: the item may be in the UPPER compartment while the lower
+  //     one holds SOMEONE ELSE's stored long-lead item. A same-day deposit is
+  //     allowed into a bay whose lower compartment is occupied (it only needs
+  //     the upper one), so if that deposit is then rejected, the old code
+  //     would stroke it straight down onto the stored item. F4 did not catch
+  //     it: F4 reads the whole-bay status for AWAITING_RETRIEVAL, and a stored
+  //     item's compartment is OCCUPIED. That is two students' property stacked
+  //     in one compartment — the single invariant this design exists to
+  //     protect.
+  //
+  // So the release now asks the compartments, not the whole-bay status, and
+  // only strokes when the item is up top AND the space below is genuinely
+  // empty. In every other case the item is released IN PLACE and the owner
+  // collects it through whichever door already holds it.
+  const where = await compartmentHolding(bay.id, rentalId);
+  const bayRow = await prisma.locker.findUnique({
+    where: { id: bay.id },
+    select: { bottomStatus: true, bottomRentalId: true },
+  });
+  const lowerIsFree =
+    bayRow?.bottomStatus === "AVAILABLE" && !bayRow?.bottomRentalId;
+
+  if (where === null) {
+    // Neither compartment records this rental. Refuse rather than stroke
+    // blind: a guess here moves a mechanism with property inside it.
+    logger.error(
+      `[E4.6] release REFUSED for rental ${rentalId}: bay ${bay.lockerNumber} holds it in ` +
+        `neither compartment. No actuator command sent.`,
+    );
+    return { released: false, refusal: "item not recorded in either compartment" };
+  }
+
+  if (where === "bottom" || !lowerIsFree) {
+    // RELEASE IN PLACE — no actuator stroke.
+    const door = where === "bottom" ? "bottom_door" : "main_door";
+    const now = new Date();
+    await prisma.rental.update({
+      where: { id: rentalId },
+      data: {
+        releaseReason,
+        releaseRequestedAt: now,
+        retrievalLockerId: bay.id,
+        // Nothing was commanded, so no acknowledgement will ever arrive. The
+        // item is already where the owner will collect it, which is exactly
+        // what `releasedAt` asserts.
+        releasedAt: now,
+      },
+    });
+    await setCompartment(bay.id, where, {
+      status: "AWAITING_RETRIEVAL",
+      rentalId,
+    });
+    await emitOccupancyForLockerId(io, bay.id);
+
+    await prisma.notification.create({
+      data: {
+        userId: rental.ownerId,
+        title: "Item ready to collect",
+        message: `${rental.item.title} is ready for you at locker ${bay.lockerNumber}. Scan the kiosk QR to open it.`,
+        type: "ITEM_READY_FOR_CLAIM",
+        relatedEntityId: rentalId,
+        relatedEntityType: "rental",
+      },
+    });
+    io.to(`user:${rental.ownerId}`).emit("rental:released", {
+      rentalId,
+      reason: releaseReason,
+      lockerNumber: bay.lockerNumber,
+    });
+
+    logger.info(
+      `[E4.6] released IN PLACE for rental ${rentalId}, bay ${bay.lockerNumber} ` +
+        `(${door}, no actuator stroke: ` +
+        (where === "bottom"
+          ? "item already in the lower compartment"
+          : "lower compartment occupied, stroking would stack two items") +
+        `), reason ${releaseReason}`,
+    );
+    return { released: true, reason: releaseReason, lockerNumber: bay.lockerNumber };
+  }
+
+  // Item is up top and the space below is empty: the one case that strokes.
   const commandId = `DROP${Date.now().toString(36).toUpperCase()}`;
   pendingDrops.set(commandId, rentalId);
 
@@ -172,12 +269,11 @@ export async function requestRelease(
     },
   });
 
-  // The bay is out of service for deposits from this moment, not from the ack:
-  // if the actuator is about to move, nothing else may be assigned here.
-  await prisma.locker.update({
-    where: { id: bay.id },
-    data: { status: "AWAITING_RETRIEVAL", currentRentalId: rentalId },
-  });
+  // Both compartments are blocked from this moment, not from the ack: while
+  // the actuator travels the item is in neither compartment cleanly, and
+  // nothing may be assigned to either. `confirmRelease` settles them.
+  await setCompartment(bay.id, "top", { status: "AWAITING_RETRIEVAL", rentalId });
+  await setCompartment(bay.id, "bottom", { status: "RESERVED", rentalId });
   await emitOccupancyForLockerId(io, bay.id);
 
   // No durations are sent. The Pi reads extend/retract seconds from its own
@@ -225,6 +321,25 @@ export async function confirmRelease(rentalId: string): Promise<void> {
   });
   if (updated.count > 0) {
     logger.info(`[E4.6] release acknowledged for rental ${rentalId}`);
+
+    // E5 — the stroke is confirmed, so the compartments can now say where the
+    // item really is: the upper one is empty and free for reuse, the lower one
+    // holds the item for its owner. Until this ack both were blocked
+    // (requestRelease), because the item was mid-travel.
+    const rental = await prisma.rental.findUnique({
+      where: { id: rentalId },
+      select: { retrievalLockerId: true },
+    });
+    if (rental?.retrievalLockerId) {
+      await setCompartment(rental.retrievalLockerId, "top", {
+        status: "AVAILABLE",
+        rentalId: null,
+      });
+      await setCompartment(rental.retrievalLockerId, "bottom", {
+        status: "AWAITING_RETRIEVAL",
+        rentalId,
+      });
+    }
   }
 }
 

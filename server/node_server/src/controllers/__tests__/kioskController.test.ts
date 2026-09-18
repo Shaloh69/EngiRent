@@ -36,6 +36,15 @@ function makeReq(lockerId: string, userId: string, role: "STUDENT" | "ADMIN" = "
 describe("releaseLocker — ownership/admin check (Phase 0)", () => {
   beforeEach(() => {
     mockReset(prismaMock);
+    // E5: releasing a locker now goes through `clearBay`, which does its
+    // read-modify-write inside `prisma.$transaction(async (tx) => ...)` so the
+    // two compartments can never be written from a stale sibling. A bare
+    // `mockDeep` stubs `$transaction` to resolve WITHOUT calling the callback,
+    // which made these tests pass vacuously in principle and fail in fact: the
+    // write never ran. Handing the mock client in as `tx` lets the real code
+    // path execute, so the assertions below test what actually happens.
+    prismaMock.$transaction.mockImplementation((async (fn: (tx: unknown) => unknown) =>
+      fn(prismaMock)) as never);
   });
 
   it("rejects a student who has no relation to the rental occupying the locker", async () => {
@@ -99,6 +108,22 @@ describe("releaseLocker — ownership/admin check (Phase 0)", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(prismaMock.locker.update).toHaveBeenCalled();
+    // E5 — a manual release declares the WHOLE bay empty. Before this, the
+    // release wrote only the legacy `status`, leaving the compartment columns
+    // stale; assignment reads those, so the bay stayed unassignable forever.
+    // Assert both compartments are actually cleared, not just that a write
+    // happened.
+    expect(prismaMock.locker.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          topStatus: "AVAILABLE",
+          topRentalId: null,
+          bottomStatus: "AVAILABLE",
+          bottomRentalId: null,
+          status: "AVAILABLE",
+        }),
+      }),
+    );
   });
 
   it("allows an admin to release any locker regardless of the occupying rental", async () => {

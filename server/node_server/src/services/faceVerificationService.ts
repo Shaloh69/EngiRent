@@ -29,7 +29,6 @@
 
 import axios from "axios";
 import type { Server as SocketIOServer } from "socket.io";
-import type { LockerStatus } from "@prisma/client";
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import env from "../config/env";
@@ -38,10 +37,10 @@ import { grantBayAccess } from "./kioskBayAccessStore";
 // E5 — one definition of "long lead", "usable bay" and "which door holds it".
 import {
   canAcceptDeposit,
-  deriveLockerStatus,
   doorHoldingRental,
   isLongLeadPickup,
 } from "./pickupLaneService";
+import { setCompartment } from "./lockerCompartments";
 import { signedMediaUrl } from "./storageService";
 import {
   emitLockerOccupancy,
@@ -224,24 +223,14 @@ async function assignLocker(
     return null;
   }
 
-  const next = {
-    topStatus: "RESERVED" as LockerStatus,
-    bottomStatus: locker.bottomStatus,
-    isOperational: locker.isOperational,
-  };
-
-  await prisma.locker.update({
-    where: { id: locker.id },
-    data: {
-      topStatus: "RESERVED",
-      topRentalId: rentalId,
-      // The legacy whole-bay fields stay in step, because the occupancy
-      // broadcast, the kiosk display and the console all still read them.
-      status: deriveLockerStatus(next),
-      currentRentalId: rentalId,
-      lastUsedAt: new Date(),
-    },
-  });
+  // Through the single writer: reserve the UPPER compartment, and let the
+  // whole-bay status be derived from both compartments (lockerCompartments).
+  await setCompartment(
+    locker.id,
+    "top",
+    { status: "RESERVED", rentalId },
+    { lastUsedAt: new Date() },
+  );
 
   // D-53: RESERVED means "spoken for", not free. Pushed before anything can
   // physically open, so the panel is never a step behind the hardware.
@@ -315,6 +304,34 @@ export async function applyFaceVerificationOutcome(params: {
       return { action: "none", error: "Item release not confirmed yet" };
     }
 
+    // E5 — OPEN THE COMPARTMENT THAT ACTUALLY HOLDS THE OWNER'S ITEM.
+    //
+    // This hardcoded `bottom_door`, which was right while every release was an
+    // actuator stroke down into the lower compartment. It no longer always is:
+    // when the lower compartment is occupied by someone else's stored item,
+    // requestRelease now releases the item IN PLACE in the upper compartment
+    // rather than stroke it down on top of that one. Opening the bottom door
+    // for that owner would show them a stranger's property.
+    const retrievalBay = await prisma.locker.findUnique({
+      where: { id: rental.retrievalLocker.id },
+      select: { topRentalId: true, bottomRentalId: true },
+    });
+    const retrievalDoor = retrievalBay
+      ? doorHoldingRental(retrievalBay, rentalId)
+      : null;
+    if (!retrievalDoor) {
+      logger.error(
+        `Retrieval for rental ${rentalId}: bay ${rental.retrievalLocker.lockerNumber} holds it ` +
+          `in neither compartment. No door opened.`,
+      );
+      return {
+        action: "none",
+        error:
+          "We can't tell which compartment holds your item. Please contact staff " +
+          "rather than opening a door.",
+      };
+    }
+
     await prisma.rental.update({
       where: { id: rentalId },
       data: { retrievedAt: new Date() },
@@ -323,27 +340,30 @@ export async function applyFaceVerificationOutcome(params: {
     io.to(kioskRoom).emit("kiosk:command", {
       action: "open_door",
       locker_id: parseInt(rental.retrievalLocker.lockerNumber, 10),
-      door: "bottom_door",
+      door: retrievalDoor,
       rental_id: rentalId,
     });
 
-    // The lower compartment is empty again, so the whole bay returns to service.
-    await prisma.locker.update({
-      where: { id: rental.retrievalLocker.id },
-      data: { status: "AVAILABLE", currentRentalId: null },
-    });
+    // Free ONLY the compartment the owner is taking the item from, through the
+    // single writer. The other compartment may hold a different student's
+    // item and must keep saying so.
+    await setCompartment(
+      rental.retrievalLocker.id,
+      retrievalDoor === "main_door" ? "top" : "bottom",
+      { status: "AVAILABLE", rentalId: null },
+    );
     await emitOccupancyForLockerId(io, rental.retrievalLocker.id);
 
-    // The bottom door opens straight away here, unchanged: by this point the
-    // item is already in the lower compartment and the owner is standing at
-    // it. The grant exists so "Open Kiosk Now" can re-open it if it relocks.
+    // The door opens straight away here: the item is already where the owner
+    // will collect it and the owner is standing at it. The grant exists so
+    // "Open Kiosk Now" can re-open it if it relocks.
     grantBayAccess({
       rentalId,
       userId: rental.ownerId,
       kioskId,
       action: "retrieve",
       lockerNumber: rental.retrievalLocker.lockerNumber,
-      door: "bottom_door",
+      door: retrievalDoor,
     });
 
     io.to(`user:${rental.ownerId}`).emit("face:verified", {
@@ -497,37 +517,13 @@ export async function applyFaceVerificationOutcome(params: {
       door: claimDoor,
     });
 
-    // Free only the compartment the item is leaving. Freeing the whole bay
-    // would mark an occupied sibling compartment empty, which is how an item
-    // gets a second one dropped on top of it.
-    const freed =
-      claimDoor === "main_door"
-        ? {
-            topStatus: "AVAILABLE" as LockerStatus,
-            topRentalId: null,
-            bottomStatus: bay.bottomStatus,
-            bottomRentalId: bay.bottomRentalId,
-            bottomStoredAt: bay.bottomStoredAt,
-          }
-        : {
-            topStatus: bay.topStatus,
-            topRentalId: bay.topRentalId,
-            bottomStatus: "AVAILABLE" as LockerStatus,
-            bottomRentalId: null,
-            bottomStoredAt: null,
-          };
-
-    await prisma.locker.update({
-      where: { id: bay.id },
-      data: {
-        ...freed,
-        status: deriveLockerStatus({
-          topStatus: freed.topStatus,
-          bottomStatus: freed.bottomStatus,
-          isOperational: bay.isOperational,
-        }),
-        currentRentalId: freed.topRentalId ?? freed.bottomRentalId ?? null,
-      },
+    // Free only the compartment the item is leaving, through the single
+    // writer. Freeing the whole bay would mark an occupied sibling
+    // compartment empty, which is how an item gets a second one dropped on
+    // top of it.
+    await setCompartment(bay.id, claimDoor === "main_door" ? "top" : "bottom", {
+      status: "AVAILABLE",
+      rentalId: null,
     });
 
     logger.info(

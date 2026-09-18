@@ -6537,3 +6537,123 @@ payments; REFUNDED moves no money). Bay 1 was deliberately left OCCUPIED by the
 reset because "Pusil sa minions" was physically inside; it was cleared only
 after the user confirmed the item was already out — no door was opened.
 State: 0 live rentals, bays 1-3 free in both compartments, bay 4 out of service.
+
+### E5 — bays would have died one per rental, and a release could have stacked two items. FIXED 2026-09-18, before the second physical test.
+
+Found while fixing the edge case the user asked about ("make sure that dont
+happen" — a pointless actuator stroke when releasing an already-stored item).
+Looking at `requestRelease` for that exposed two worse defects, both mine,
+both introduced by E5.
+
+**1. Every bay would have become permanently unassignable after one rental.**
+E5 taught locker ASSIGNMENT (`canAcceptDeposit`) to read the new
+per-compartment columns. But **eight** older call sites still wrote only the
+legacy whole-bay `status`. Traced through one ordinary rental:
+
+    assign           -> topStatus RESERVED           (E5 code)
+    deposit accepted -> status OCCUPIED             top untouched
+    claim            -> top freed                    (E5 code)
+    return assigned  -> topStatus RESERVED
+    release to owner -> status AWAITING_RETRIEVAL   top STILL RESERVED
+    owner collects   -> status AVAILABLE            top STILL RESERVED
+
+The bay then reads `AVAILABLE` everywhere a human looks, while assignment sees
+a RESERVED upper compartment and refuses it forever. **Every rental would have
+silently killed a bay; three full cycles and the whole bank reports "no locker
+available" with four empty lockers standing there.** I had told the user the
+system was ready to test about ten minutes before finding this.
+
+The cause was the arrangement, not any one site: two representations of the
+same fact, written independently. Fix: `lockerCompartments.ts` is now the
+single writer. `setCompartment` changes ONE compartment inside a transaction
+and **derives** the whole-bay `status` and `currentRentalId` from both, so
+`status` is never written directly again. `clearBay` is for deliberate
+whole-bay releases only. All eight sites converted:
+
+| site | meaning | now |
+|---|---|---|
+| kioskController `releaseLocker` / `releaseLockerByNumber` | manual "this bay is empty" | `clearBay` |
+| kioskController legacy REST deposit | reserve | `setCompartment(top, RESERVED)` |
+| index.ts deposit accepted / return accepted | item in upper | `setCompartment(top, OCCUPIED)` |
+| index.ts legacy socket claim | renter took it via main_door | `setCompartment(top, AVAILABLE)` |
+| faceVerificationService owner retrieval | owner took it | the compartment that held it |
+| retrievalService release | see #2 | compartment-aware |
+
+`grep` confirms no raw `locker.update` remains outside the single writer except
+`storageDropService`, which moves BOTH compartments in one atomic write on
+purpose — splitting it into two `setCompartment` calls would create a moment
+where the pair is inconsistent.
+
+**2. A release could have stroked one student's item onto another's.**
+The anti-stacking rule F4 checks the **whole-bay** status for
+`AWAITING_RETRIEVAL`. With bay reuse this became reachable:
+
+- bay's lower compartment holds a stored long-lead item Y (compartment status
+  OCCUPIED);
+- a same-day deposit X is legitimately assigned to the free upper compartment
+  (same-day only needs the top);
+- X's deposit is rejected, so `requestRelease` returns it to its owner by
+  stroking it DOWN — **onto Y**.
+
+F4 misses it because Y's compartment is `OCCUPIED`, not `AWAITING_RETRIEVAL`.
+That is two students' property stacked in one compartment — the invariant this
+entire design exists to protect.
+
+`requestRelease` now asks the compartments, not the whole-bay status:
+
+| item is in | lower compartment | action |
+|---|---|---|
+| lower (stored) | — | **release in place, no stroke** (the user's edge case) |
+| upper | free | the one case that strokes; both compartments blocked until the ack |
+| upper | occupied | **release in place, no stroke** — stroking would stack |
+| neither | — | refuse; never stroke blind |
+
+A release in place writes `releasedAt` immediately, because no command was sent
+and so no acknowledgement will ever arrive. `confirmRelease` now settles the
+compartments on a real ack (upper free, lower awaiting retrieval). Owner
+retrieval no longer hardcodes `bottom_door`: an item released in place in the
+upper compartment is collected through `main_door`, and opening the bottom door
+would have shown that owner a stranger's property.
+
+**Tests.** New `pickupLaneService.test.ts` (21 cases) pins the long-lead
+definition, the assignment stacking guard, `deriveLockerStatus` never reporting
+a bay emptier than it is, and `doorHoldingRental` never granting a door onto
+someone else's item in a shared bay. Full Node suite **258/258, 24/24 suites**.
+
+**Two `releaseLocker` tests broke, and the fix was the test harness, not a
+weaker test.** They asserted `prismaMock.locker.update` was called. `clearBay`
+now writes inside `prisma.$transaction(async tx => ...)`, and a bare `mockDeep`
+stubs `$transaction` to resolve *without calling its callback* — so the write
+never ran in the test. The mock now hands itself in as `tx`, so the real code
+executes, and the renter case additionally asserts that **both compartments are
+cleared**, which is the behaviour that actually matters. Stronger, not greener.
+
+### Admin console brought level with the repo — DEPLOYED 2026-09-18
+
+The deployed console had been **18 files behind the repo with 7 missing**
+(`UnknownValue.tsx`, `adminSocket.ts`, `useAdminSocket.ts`,
+`ConnectionIndicator.tsx`, the design-token pair, `design-reference`). Compared
+with **line endings normalised** — raw hashes across machines differ on CRLF vs
+LF alone and would have reported identical files as changed. Result: 15
+identical, 18 changed, 7 missing, **0 server-only**, so a full sync dropped
+nothing the server alone had.
+
+Two build-breakers caught before they could cause an outage:
+
+- **`socket.io-client` was not installed on the server.** The repo's
+  `package.json` adds it and the new `adminSocket.ts` imports it. Copying the
+  source alone would have failed `next build`. `npm install` added it.
+- **My own backup broke the type check.** I backed up `src/` to
+  `src.bak-.../` INSIDE the project; TypeScript scans every `.tsx` under it, so
+  it type-checked the old server code against the newly synced `StatusBadge`
+  and failed. Moved the backup to `D:\ENG\backups\` (it is still there if a
+  rollback is ever needed). **Lesson: a backup inside a TypeScript project is
+  part of the build.**
+
+Built before restarting, so neither failure touched the running console — the
+13-minute outage earlier this session came from restarting first. Verified the
+NEW build is the one serving by requesting `/design-reference`, which did not
+exist in the old build: 200. `/dashboard`, `/verifications`, `/kiosk`,
+`/rentals`, `/disputes` all 200. The kiosk page was checked first for a D-86
+regression: it polls (0 `EventSource`), so the sync did not reintroduce the SSE
+stream that never crosses the tunnel.

@@ -47,6 +47,7 @@ import {
   confirmStorageDrop,
   storageDropForCommand,
 } from "./services/storageDropService";
+import { setCompartment } from "./services/lockerCompartments";
 import {
   requestRelease,
   confirmRelease,
@@ -693,14 +694,15 @@ io.on("connection", (socket: Socket) => {
           });
 
           if (locker) {
-            await prisma.locker.update({
-              where: { id: locker.id },
-              data: {
-                status: "OCCUPIED",
-                currentRentalId: rental_id,
-                lastUsedAt: new Date(),
-              },
-            });
+            // E5 — the deposited item is in the UPPER compartment. Through the
+            // single writer so the compartment columns that assignment reads
+            // stay in step with the whole-bay status (lockerCompartments.ts).
+            await setCompartment(
+              locker.id,
+              "top",
+              { status: "OCCUPIED", rentalId: rental_id },
+              { lastUsedAt: new Date() },
+            );
             // D-53: deposit accepted — the bay now holds an item.
             await emitLockerOccupancy(io, locker.kioskId);
           }
@@ -960,14 +962,13 @@ io.on("connection", (socket: Socket) => {
           });
 
           if (locker) {
-            await prisma.locker.update({
-              where: { id: locker.id },
-              data: {
-                status: "OCCUPIED",
-                currentRentalId: rental_id,
-                lastUsedAt: new Date(),
-              },
-            });
+            // E5 — the returned item sits in the UPPER compartment.
+            await setCompartment(
+              locker.id,
+              "top",
+              { status: "OCCUPIED", rentalId: rental_id },
+              { lastUsedAt: new Date() },
+            );
             // D-53: returned item is now sitting in the bay awaiting the owner.
             await emitLockerOccupancy(io, locker.kioskId);
           }
@@ -1109,9 +1110,12 @@ io.on("connection", (socket: Socket) => {
           });
 
           if (rental.depositLockerId) {
-            await prisma.locker.update({
-              where: { id: rental.depositLockerId },
-              data: { status: "AVAILABLE", currentRentalId: null },
+            // E5 — the renter took the item out through main_door, so only the
+            // UPPER compartment is freed. Writing the whole-bay status to
+            // AVAILABLE here would also have hidden a stored item below.
+            await setCompartment(rental.depositLockerId, "top", {
+              status: "AVAILABLE",
+              rentalId: null,
             });
             // D-53: renter has collected — the bay is genuinely free again.
             // Only the locker's primary key is in scope here, so the kiosk is

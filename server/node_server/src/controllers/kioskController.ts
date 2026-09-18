@@ -1,6 +1,8 @@
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../config/database";
+// E5 — every occupancy change goes through the single compartment writer.
+import { clearBay, setCompartment } from "../services/lockerCompartments";
 import {
   ForbiddenError,
   GoneError,
@@ -73,15 +75,17 @@ export const depositItem = async (
     if (!locker || locker.status !== "AVAILABLE")
       throw new ValidationError("No available locker");
 
-    // Reserve the locker
-    await prisma.locker.update({
-      where: { id: locker.id },
-      data: {
-        status: "RESERVED",
-        currentRentalId: rentalId,
-        lastUsedAt: new Date(),
-      },
-    });
+    // Reserve the upper compartment through the single writer (E5). Bay
+    // selection above still reads the whole-bay `status`, which is now DERIVED
+    // from both compartments — so it only ever picks a bay that is entirely
+    // empty. Conservative, and safe: it can never choose a bay holding a
+    // stored item below.
+    await setCompartment(
+      locker.id,
+      "top",
+      { status: "RESERVED", rentalId },
+      { lastUsedAt: new Date() },
+    );
 
     // Command Pi to open the insertion door
     const io = req.app.get("io");
@@ -402,10 +406,11 @@ export const releaseLocker = async (
       }
     }
 
-    await prisma.locker.update({
-      where: { id: lockerId },
-      data: { status: "AVAILABLE", currentRentalId: null },
-    });
+    // E5 — a manual "release this locker" asserts the WHOLE bay is empty, so
+    // both compartments are cleared through the single writer. Writing only
+    // the legacy `status` here left the compartment columns stale, which
+    // `canAcceptDeposit` then read as occupied forever.
+    await clearBay(lockerId);
 
     logger.info(`Locker ${locker.lockerNumber} released`);
     // D-53. `req.app?.get` rather than `req.app.get`: releaseLocker's unit
@@ -454,10 +459,8 @@ export const releaseLockerByNumber = async (
     if (!locker.isOperational)
       throw new ValidationError("Locker is not operational");
 
-    await prisma.locker.update({
-      where: { id: locker.id },
-      data: { status: "AVAILABLE", currentRentalId: null },
-    });
+    // E5 — whole-bay release; see releaseLocker above.
+    await clearBay(locker.id);
 
     logger.info(`Locker ${locker.lockerNumber} released (by number, admin)`);
     // D-53: an admin force-releasing a bay is exactly the case where the
