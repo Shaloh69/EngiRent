@@ -35,12 +35,56 @@ class Settings(BaseSettings):
     weight_orb: float = 0.12
     weight_ssim: float = 0.10
 
-    # Hybrid method weights (Phase 3)
-    weight_traditional: float = 0.30
-    weight_deep_learning: float = 0.25
-    weight_sift: float = 0.20
-    weight_ssim_hybrid: float = 0.15
+    # D-89 (2026-09-19/20) — REWEIGHTED from a measured evaluation, not guessed.
+    #
+    # The second physical test put a correct "GLUE GUN 60W" in the locker and
+    # it scored ~53 no matter which listing photo it was checked against — a
+    # score these old weights (trad .30 / deep .25 / sift .20 / ssim .15 /
+    # phash .10) could never lift near 85. Ran the real pipeline, in full mode
+    # with nothing skipped, on that glue gun's own two locker captures (the
+    # positive) against all 6 other listed items' photos (the negatives), once
+    # with item isolation off and once on (`isolate_item_first`), and measured
+    # each stage's own separation — mean positive score minus mean negative
+    # score, the number that actually says whether a stage is discriminating
+    # anything:
+    #
+    #                        no isolation   isolated
+    #   deep_learning              +35.5      +35.4   <- best in both
+    #   sift                       +21.1      +32.8
+    #   traditional                 +2.1      +11.9   <- isolation triples it
+    #   phash                       -2.9       +3.7   <- was WORSE than a coin flip
+    #   ssim                        -0.9       +0.7   <- never discriminates
+    #
+    # Two things fell out of that table. First, isolation genuinely helps —
+    # every stage's separation improves or holds (see `isolate_item_first`
+    # below, now on). Second, and this is what actually explains the bug: the
+    # two highest-weighted stages before this change (traditional .30, ssim
+    # .15 — 45% of the score between them) were the two worst discriminators.
+    # ssim and the raw colour/texture channel compare the whole photographed
+    # SCENE, and a locker's flat white interior under a camera flash looks
+    # nothing like a listing photo shot on a bedsheet — so most of the old
+    # score was measuring the room, not the item.
+    #
+    # These weights are set from the isolated column, since isolation is on:
+    weight_traditional: float = 0.20
+    weight_deep_learning: float = 0.35
+    weight_sift: float = 0.30
+    weight_ssim_hybrid: float = 0.05
     weight_phash_hybrid: float = 0.10
+    # Recomputing that same glue-gun-vs-everything table with THESE weights
+    # (still on the isolated scores) widens the gap from +19.4 to +25.0: worst
+    # negative (Soldering 60w, another ELECTRONICS listing) 42.5, best positive
+    # 57.6 — a clean 15-point margin, no overlap. Not pushed further: a more
+    # aggressive version (deep .40/sift .35/trad .15/phash .07/ssim .03) only
+    # bought another +2.7 of separation, and tuning five knobs hard against one
+    # positive example is how a real overfit starts. `ssim` and `phash` are
+    # kept above zero rather than dropped: near-zero separation on THIS n=7
+    # sample is not proof a stage is worthless on every item, and a small
+    # weight still lets either one matter if the trend ever reverses.
+    #
+    # This does not, on its own, make weak evidence read as strong: D-89's
+    # verdictPolicy still sends anything under 85 to a human after one retry,
+    # regardless of what these weights produce.
 
     # Image processing
     #
@@ -80,6 +124,11 @@ class Settings(BaseSettings):
     #           even at the ceiling the run still returns a real verdict.
     verify_time_budget_seconds: float = 25.0
     verify_full_budget_seconds: float = 900.0
+
+    # D-89: cut every item out of its background before ANY stage compares it
+    # (see utils/background.isolate_item). Turned ON from the evaluation above
+    # — every stage's separation improved or held with it on; none got worse.
+    isolate_item_first: bool = True
 
     # Feature extraction
     orb_features_count: int = 200

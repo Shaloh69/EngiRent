@@ -28,16 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.11.0",
-  buildNumber: 26,
-  fileName: "Engirent_Prerelease26.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-09-18",
-  sizeMb: 86.7,
+  version: "1.12.0",
+  buildNumber: 27,
+  fileName: "Engirent_Prerelease27.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-09-22",
+  sizeMb: 86.8,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "You can now say which day you will collect the item, and the locker plans around it",
-    "Collecting a day or more later means the item is checked in full before you arrive, and the locker frees itself up for other students in the meantime",
-    "You are no longer sent to collect an item that has not been confirmed yet",
+    "Listing an item now takes at least three photos from different angles, with tips on light and a plain background",
+    "The locker recognises your item far more reliably, because your photos give it several views to match against",
+    "If you list items, install this one \— older builds can no longer add or re-photograph a listing",
   ],
 };
 

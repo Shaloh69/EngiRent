@@ -192,7 +192,7 @@ async function run() {
       description: "Used to test the listing-video field end to end.",
       category: "ELECTRONICS", condition: "GOOD",
       pricePerDay: 20, securityDeposit: 80,
-      images: [cover.url], video: clip.url,
+      images: [cover.url, cover.url, cover.url], video: clip.url,
     },
   });
   itemWithVideoId = createWithVideo.json?.data?.item?.id;
@@ -207,7 +207,7 @@ async function run() {
       description: "Used to test that omitting video defaults to null.",
       category: "ELECTRONICS", condition: "GOOD",
       pricePerDay: 15, securityDeposit: 60,
-      images: [cover.url],
+      images: [cover.url, cover.url, cover.url],
     },
   });
   itemNoVideoId = createNoVideo.json?.data?.item?.id;
@@ -228,7 +228,7 @@ async function run() {
       description: "Should be rejected for an invalid video value.",
       category: "ELECTRONICS", condition: "GOOD",
       pricePerDay: 10, securityDeposit: 40,
-      images: [cover.url], video: "not-a-url",
+      images: [cover.url, cover.url, cover.url], video: "not-a-url",
     },
   });
   check("a garbage video value is rejected", badVideo.status === 400, `status ${badVideo.status}`);

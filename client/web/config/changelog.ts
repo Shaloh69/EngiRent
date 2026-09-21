@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-09-22",
+    version: "1.12.0",
+    tag: "feature",
+    title: "Three photos from different angles, so the locker can recognise your item",
+    bullets: [
+      "Listing an item now needs at least three photos, each from a different angle \— front, back and side. The form shows how many you have and how many more you need",
+      "A short guide on the screen and again as you take each photo: good even light, and a plain light background such as a white table or sheet",
+      "You cannot count the same photo twice \— adding one you already have is refused",
+      "Why: a correct item was being turned away at the locker because its one listing photo showed a different side and a different room. Several angles give the check a view that matches however the item is lying",
+      "If you list items, install this build: older versions can no longer add or re-photograph a listing, and will say why. Renting is unaffected",
+    ],
+  },
+  {
     date: "2026-09-18",
     version: "1.11.0",
     tag: "feature",

@@ -194,7 +194,7 @@ async function run() {
     method: "POST", token: ownerToken,
     body: {
       title: `E2E Hygiene Item ${stamp}`, description: "Used to test Stage 9 enterprise hygiene end to end.",
-      category: "ELECTRONICS", condition: "GOOD", pricePerDay: 30, securityDeposit: 100, images: [upload.url],
+      category: "ELECTRONICS", condition: "GOOD", pricePerDay: 30, securityDeposit: 100, images: [upload.url, upload.url, upload.url],
     },
   });
   itemId = create.json?.data?.item?.id;
@@ -204,7 +204,7 @@ async function run() {
     method: "POST", token: ownerToken,
     body: {
       title: `E2E Hygiene Item 2 ${stamp}`, description: "A second item, for bulk-action testing.",
-      category: "ELECTRONICS", condition: "GOOD", pricePerDay: 15, securityDeposit: 50, images: [upload.url],
+      category: "ELECTRONICS", condition: "GOOD", pricePerDay: 15, securityDeposit: 50, images: [upload.url, upload.url, upload.url],
     },
   });
   itemId2 = create2.json?.data?.item?.id;

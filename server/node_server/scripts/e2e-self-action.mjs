@@ -96,7 +96,7 @@ async function login(email, password) {
         condition: "GOOD",
         pricePerDay: 50,
         securityDeposit: 50,
-        images: ["items/e2e-probe/listing-1.jpg"],
+        images: ["items/e2e-probe/listing-1.jpg", "items/e2e-probe/listing-2.jpg", "items/e2e-probe/listing-3.jpg"],
         campusLocation: "Test",
       },
     });

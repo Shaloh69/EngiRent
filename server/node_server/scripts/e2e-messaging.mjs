@@ -208,7 +208,7 @@ async function run() {
       condition: "GOOD",
       pricePerDay: 40,
       securityDeposit: 200,
-      images: [upload.url],
+      images: [upload.url, upload.url, upload.url],
     },
   });
   itemId = create.json?.data?.item?.id;

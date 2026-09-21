@@ -203,7 +203,7 @@ async function run() {
       condition: "GOOD",
       pricePerDay: 45,
       securityDeposit: 300,
-      images: [upload.url],
+      images: [upload.url, upload.url, upload.url],
     },
   });
   check("item creates", create.status === 201 || create.status === 200, `status ${create.status} ${JSON.stringify(create.json?.error)}`);

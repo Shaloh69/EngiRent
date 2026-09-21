@@ -32,6 +32,8 @@ from ..features.phash import is_obvious_mismatch, phash_similarity
 from ..features.sift import SIFTFeatureExtractor
 from ..features.traditional import TraditionalFeatureExtractor
 from ..utils.ocr import extract_text, match_serial_numbers
+from ..utils.background import isolate_item
+from ..utils.image import load_image
 from ..utils.quality import check_quality
 from .similarity import SimilarityCalculator
 
@@ -159,6 +161,24 @@ class HybridVerifier:
                 "sift_all_ratios": [],
             }
 
+        # --- Step 1b (D-89): cut every item out of its background, ONCE ---
+        #
+        # Placed after the quality gate on purpose: blur and brightness are
+        # properties of the photograph as taken, and should be judged on it.
+        # Everything after this compares item against item.
+        #
+        # When isolated, the cached `reference_features` are discarded and the
+        # listing side re-extracted. They were computed the old way (colour and
+        # texture on a GrabCut crop, deep features on the RAW photo), and mixing
+        # an isolated locker photo with an un-isolated cached listing would
+        # score two differently-prepared images against each other — silently
+        # wrong on every comparison.
+        isolated = settings.isolate_item_first
+        if isolated:
+            original_sources = [isolate_item(load_image(s)) for s in original_sources]
+            kiosk_sources = [isolate_item(load_image(s)) for s in kiosk_sources]
+            reference_features = None
+
         # --- Step 2: Perceptual hash pre-filter ---
         logger.info("Step 2: Perceptual hash pre-filter")
         phash_scores = []
@@ -196,9 +216,9 @@ class HybridVerifier:
         if reference_features and "traditional" in reference_features:
             orig_traditional = reference_features["traditional"]
         else:
-            orig_traditional = self.traditional.extract_batch(original_sources)
+            orig_traditional = self.traditional.extract_batch(original_sources, remove_bg=not isolated)
 
-        kiosk_traditional = self.traditional.extract_batch(kiosk_sources)
+        kiosk_traditional = self.traditional.extract_batch(kiosk_sources, remove_bg=not isolated)
 
         traditional_scores = []
         for kiosk_feat in kiosk_traditional:
@@ -218,7 +238,7 @@ class HybridVerifier:
             sift_score = 0.0
         else:
             logger.info("Step 4: SIFT keypoint matching + RANSAC")
-            sift_result = self.sift.match_multi(original_sources, kiosk_sources)
+            sift_result = self.sift.match_multi(original_sources, kiosk_sources, remove_bg=not isolated)
             # Use inlier ratio (geometrically verified) instead of raw match ratio
             sift_best_inlier = sift_result.get("best_inlier_ratio", 0.0)
             sift_best_match = sift_result["best_ratio"]

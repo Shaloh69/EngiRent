@@ -202,7 +202,7 @@ async function run() {
       description: "Used to test reputation and damage-fee-cap end to end.",
       category: "ELECTRONICS", condition: "GOOD",
       pricePerDay: 25, securityDeposit: 150,
-      images: [upload.url],
+      images: [upload.url, upload.url, upload.url],
     },
   });
   itemId = create.json?.data?.item?.id;

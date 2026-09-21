@@ -326,7 +326,7 @@ async function run() {
       condition: "GOOD",
       pricePerDay: 50,
       securityDeposit: 500,
-      images: [upload.url],
+      images: [upload.url, upload.url, upload.url],
     },
   });
   check("item creates", create.status === 201 || create.status === 200, JSON.stringify(create.json));

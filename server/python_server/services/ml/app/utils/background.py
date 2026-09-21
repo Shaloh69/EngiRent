@@ -149,6 +149,50 @@ def _threshold_white_background(image: np.ndarray, threshold: int) -> tuple[np.n
     return foreground, fg_mask
 
 
+def isolate_item(image: np.ndarray, fill: int = 255) -> np.ndarray:
+    """
+    D-89 — cut the item out of its background BEFORE any comparison runs.
+
+    Why: the second physical test put a correct glue gun in the locker and it
+    scored ~53. Only SIFT and the colour/texture channel removed the background;
+    SSIM, pHash and the deep model compared the raw photos, so they mostly
+    measured how unlike the owner's beige bedsheet the white locker looked
+    (SSIM scored 17). Every stage now compares item against item.
+
+    How:
+      1. GrabCut with its centre prior (the item is roughly centred in both
+         owner photos and locker captures).
+      2. Keep only the LARGEST connected region. The locker has a red strip down
+         one edge and GrabCut can keep it; it is a separate region from the
+         item, and smaller, so it goes. Specks go with it.
+      3. Paint everything else a flat fill (white by default) and crop to the
+         item. Both sides of every comparison then show item-on-white, so no
+         stage can be scoring the background — and white matches the locker's
+         own interior and the "light background" the app now asks owners for.
+
+    Falls back to the original image when the mask is implausible (almost
+    nothing, or almost everything): a bad cut-out is worse than none, because
+    it would compare a fragment of one item against the whole of another.
+    """
+    h, w = image.shape[:2]
+    _, mask = remove_background_grabcut(image)
+
+    # Largest connected foreground region only.
+    n, labels, stats, _ = cv2.connectedComponentsWithStats((mask > 0).astype(np.uint8), connectivity=8)
+    if n <= 1:
+        return image
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    item_mask = (labels == largest).astype(np.uint8) * 255
+
+    coverage = float(item_mask.mean()) / 255.0
+    if coverage < 0.02 or coverage > 0.95:
+        return image
+
+    out = image.copy()
+    out[item_mask == 0] = fill
+    return get_item_crop(out, item_mask, padding=12)
+
+
 def get_item_crop(image: np.ndarray, mask: np.ndarray, padding: int = 10) -> np.ndarray:
     """
     Crop the image tightly around the detected foreground item.

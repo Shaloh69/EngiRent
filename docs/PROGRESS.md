@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 (opened 2026-09-18, G2 table written) - stack UP, API restarted with E5 - E5.1-E5.7 IMPLEMENTED AND DEPLOYED: Rental.pickupDate validated, Locker split into two compartments (+backfill run: bay 1 top=OCCUPIED, bays 2-3 free, bay 4 isOperational=false), long-lead pick-up skips the fast lane entirely and the full run decides, assignability needs a bottom slot, claim opens the compartment that actually holds the item, storageDropService is a SIBLING of requestRelease (reuse would have made the OWNER the face subject - F5), app has the pick-up day picker - E5.4 ACTUATOR PATH HAS NEVER RUN, G11-gated - E5.8 not started - E4.6 sweep not yet taught to read bottomStoredAt - D-87c/d/e deployed but still not seen on hardware - app 1.11.0+26 building - nothing committed - gates G1-G11]
+[PHASE E5 - stack UP 2026-09-22, all three tunnels 200 (api detective-dive-muslim-outstanding / web prince-russia-bowling-ministries / admin modular-headphones-lots-compounds) - app 1.12.0+27 PUBLISHED (sha256 244ab659b7c2dc00 local=server, CN=EngiRent, /api/v1 baked; first build was CORRUPT and caught by zip validation) - D-89b: item isolation ON + ML reweighted deep .35/SIFT .30/trad .20/pHash .10/SSIM .05 from a measured evaluation (glue gun 52 -> 56-58, hardest negative 41, gap ~14.6, STILL <60 so photos must carry it) - SERVER enforces 3 listing photos (proved live) - fast tier now finishes undegraded in ~6s (retires a D-87b premise) - D-89 loop fix live: glue gun rental c1e24433 still in bay 1, re-scan resumes in the same bay - calibration rests on ONE positive item, NOT the A-3 distribution - printed-photo attack unaddressed - OCR never ran (tesseract missing) - Pi Cancel/reset fix awaiting the user's F5 - actuator storage-drop path never run on hardware - gates G1-G11]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -6874,3 +6874,147 @@ thesis's verification method *is*, so it is the user's call.
 
 Tests: 9 new in `verdictPolicy.test.ts`, including the exact 2/3/4 sequence
 from the test. Node suite **271/271**.
+
+### D-89b — item isolation, reweighting, and a 3-photo minimum. BUILT, DEPLOYED (ML + server + app), MEASURED. App 1.12.0+27 PUBLISHED.
+
+Follows D-89 (the RETRY loop). That fixed the FLOW: a correct item no longer
+loops or cancels a rental. This is the SIGNAL: why a correct glue gun scored
+~53 in the first place. Applied together on the user's instruction ("apply
+everything ... take three shots minimum with different angles ... prompt about
+light and a light background ... cut the item off its background first ... give
+me weights").
+
+**Scope check first.** `ENGIRENT-CLAUDE.md` §1 lists foreground segmentation and
+"how the score is composed" as IN scope, and holds only the 85/60/retry-10
+**thresholds** fixed. Thresholds are untouched. The doc even names this
+diagnosis ("global descriptors score background agreement as object agreement,
+inflating similarity between different items *and* suppressing it for the
+correct one").
+
+**1. Isolation (`utils/background.isolate_item`, `isolate_item_first = True`).**
+GrabCut (already downscaled to 480px, D-87), keep only the LARGEST connected
+region (the locker's red edge strip is a separate region and goes), paint
+everything else flat white, crop. Falls back to the original when the mask is
+implausible (<2% or >95% of the frame): a bad cut-out would compare a fragment
+of one item against the whole of another. Runs ONCE up front, so every stage
+compares item against item; SIFT and the colour/texture extractor are told not
+to cut a second time. **Cached `reference_features` are discarded whenever
+isolation is on** — they were computed the old way, and scoring an isolated
+locker photo against a non-isolated cached listing would silently mis-compare on
+every check. Cost: the listing side is recomputed each time; the cache is now
+dead weight.
+
+**2. Weights — from a measurement, not a guess.** Ran the real pipeline (full
+mode, nothing skipped) on the glue gun's two locker captures (positive) against
+the 6 other listed items' photos (negatives), isolation off and on, and took
+each stage's **separation** (mean positive − mean negative):
+
+| stage | no isolation | isolated |
+|---|---|---|
+| deep learning | +35.5 | +35.4 |
+| SIFT | +21.1 | +32.8 |
+| traditional | +2.1 | +11.9 |
+| pHash | **−2.9** | +3.7 |
+| SSIM | **−0.9** | +0.7 |
+
+**This is the actual explanation of the bug.** Before: traditional .30 + SSIM
+.15 = **45% of the score came from the two stages that discriminate least**, and
+pHash and SSIM had *negative* separation without isolation — negatives scored
+higher than the correct item. Isolation helps or holds on every stage.
+New weights: deep .35 / SIFT .30 / traditional .20 / pHash .10 / SSIM .05
+(sum 1.00). SSIM and pHash kept above zero rather than dropped: near-zero
+separation on n=7 is not proof a stage is worthless on every item.
+
+**3. Live result through the real endpoint** (fresh ML process, PID started
+after the deploy):
+
+| | before | offline prediction | live |
+|---|---|---|---|
+| glue gun attempt 3 | 52.3 | 63.7 | 58.0 |
+| glue gun attempt 4 | 52.2 | 57.6 | 55.9 |
+| Soldering 60w (hardest negative) | 44.2 | 42.5 | 41.3 |
+
+Glue gun came in under my own prediction, and the reason is worth keeping:
+**SIFT is non-deterministic** (RANSAC). The same pair scored 71.0 in the eval
+and 51.0 live. So the "+25 margin" I first quoted is not a precise number. What
+survives is the worst-case gap — glue gun 55.9 vs hardest negative 41.3, about
+**14.6 points, no overlap**. **The glue gun still reads RETRY (<60) on both
+attempts.** Weights and isolation alone do not carry this item; the photos have
+to. D-89's verdictPolicy still sends it to a human after one retry.
+
+**Honest limits on this calibration — do not over-read it:**
+- **One positive item** (the glue gun, two captures) against six negatives. This
+  is a first data point, NOT the A-3 confidence distribution, which
+  `ENGIRENT-CLAUDE.md` names a prerequisite for any real threshold conversation.
+- **Printed-photo attack is not addressed, and the new weights lean harder on the
+  stages it defeats least.** A printed copy of a listing photo held in the locker
+  would match SIFT and deep strongly. It passed before too, so this is no
+  regression, but weighting deep+SIFT at 65% does not help.
+- OCR has never run on this server (`tesseract is not installed`), so the OCR
+  bonus contributed nothing to any number above.
+
+**4. Retired premise — fast tier no longer degraded.** With isolation a check
+takes ~5-6s instead of ~18-40s. Through the real endpoint in FAST mode: all
+three cases `degraded=False`, ~6s. D-87b was built on "the fast tier skips the
+heavy stages and so structurally cannot approve"; on these images that is no
+longer true. Scores are within RANSAC noise of the full tier (59.7 vs 58.0). The
+two-tier design is now partly redundant for this workload; left as is, since the
+background run is still a second opinion and the fast budget is a safety net if
+images get bigger. Worth revisiting.
+
+**5. Three-photo minimum, enforced by the SERVER.**
+- `utils/itemPhotoRules.ts`: `MIN_ITEM_PHOTOS = 3`, one constant for the create
+  route's validator and `updateItem`.
+- `updateItem` rejects a replacement set under 3 **only when `images` is in the
+  request** — an older 1-photo listing can still be re-priced; the rule is about
+  replacing photos, not about every edit.
+- **Proved live, without creating anything**: 0/1/2 photos → 400 mentioning
+  photos; 3 photos → 400 for the other missing fields and NOT mentioning photos.
+- Ten e2e scripts created listings with one photo and would all have broken;
+  12 listing creations across 9 files now send three. (The `/kiosk/return`
+  probe with `images: []` is a different endpoint and is untouched.)
+- **Older app builds (≤1.11.0) can no longer create or re-photograph a
+  listing** until they update; the error text says why. `MIN_APP_VERSION` is
+  deliberately NOT raised — that would lock every renter out of the whole app
+  over a listing-only change.
+
+**6. Phone (`create_item_screen.dart`).** Minimum 3; a tips card (3 angles,
+even light, plain light background); a live "2 of 3 photos minimum" counter; a
+one-line reminder at the moment the photo is taken; a submit toast naming how
+many more are needed. And a hole closed before shipping: tapping the **same**
+gallery photo three times satisfied "3 photos" while giving the locker one angle
+— exactly what the rule exists to fix. Exact repeats (same file or
+byte-identical) are now refused. A retake from almost the same spot cannot be
+detected; the on-screen guidance is what asks for real variety.
+
+**Tests:** Node **279/279** (8 new, discriminating: the old `updateItem` had no
+guard so the rejection cases fail on it); ML **67/67** (9 new for `isolate_item`
+on synthetic scenes — crop, flat-white background, item untouched, two
+different backdrops converging, and the unusable-image fallback).
+
+**Not done:** owners' EXISTING listings still have 1-2 photos and are not
+re-photographed; the first real signal on whether three angles moves the score
+is the next deposit of a re-listed item. `extract_reference_features` still
+computes non-isolated cache entries nobody now reads.
+
+**App 1.12.0+27 published** (sha256 `244ab659b7c2dc00`, local = server;
+signer `CN=EngiRent` identical to build 26 so it installs as an update; baked
+URL with `/api/v1` present in all three ABIs; versionCode 27). Site config,
+changelog, `AppRelease` row and `LATEST_APP_VERSION` all updated; the download
+page serves 1.12.0 and the APK fetches (206). `MIN_APP_VERSION` untouched.
+
+**Near-miss worth keeping: the first 1.12.0 APK was CORRUPT and would have
+shipped.** `flutter build` reported success, but `zipfile.BadZipFile` /
+`unzip` rejected the file (it ended mid-entry), and the baked-URL grep — my
+usual check — printed nothing. Every earlier build (19-26) validated. Cause:
+I stopped the first build (to add the duplicate-photo guard) with TaskStop,
+which killed the shell but not its Gradle daemon; the rebuild started a second
+daemon and both wrote the same output. Fix: stop both daemons (Android Studio
+JBR `java.exe`; VS Code's own Java/Dart processes left alone), delete
+`app-release.apk` and `apk/release/`, rebuild once with nothing else touching
+the project.
+**Rules from it:** (1) never edit a Flutter project or stop a build while one
+is running — let it finish or kill the Gradle daemons too; (2) validate every
+APK with `zipfile` + `testzip()` BEFORE the URL/signature checks, since "Built"
+is not evidence; (3) an empty result from a check that previously printed
+something is a finding, not a pass.

@@ -11,6 +11,7 @@ import {
 } from "../controllers/itemController";
 import { authenticate, optionalAuth, requireVerified } from "../middleware/auth";
 import { validate } from "../middleware/validation";
+import { MIN_ITEM_PHOTOS } from "../utils/itemPhotoRules";
 
 const router = Router();
 
@@ -43,9 +44,12 @@ router.post(
     body("securityDeposit")
       .isFloat({ min: 0 })
       .withMessage("Security deposit must be a positive number"),
+    // D-89: was min 1. See utils/itemPhotoRules for why it is 3.
     body("images")
-      .isArray({ min: 1 })
-      .withMessage("At least one image is required"),
+      .isArray({ min: MIN_ITEM_PHOTOS })
+      .withMessage(
+        `At least ${MIN_ITEM_PHOTOS} photos from different angles are required`,
+      ),
     body("video")
       .optional({ values: "falsy" })
       .isURL()

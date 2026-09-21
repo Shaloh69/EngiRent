@@ -75,6 +75,15 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   bool _photoError = false;
   final List<_PhotoEntry> _photos = [];
 
+  /// D-89 — the fewest photos a listing may have.
+  ///
+  /// Was 1. The locker compares what it photographs against these, and the
+  /// second physical test showed a single angle is not enough: a correct glue
+  /// gun scored ~53 partly because one listing photo showed the OTHER side of
+  /// it. Three angles give the comparison a view that matches however the item
+  /// ends up lying in the locker.
+  static const int _minPhotos = 3;
+
   // Checklist Stage 7 — one optional clip. `_existingVideoUrl` is what's
   // already on the listing (edit mode); `_pickedVideo` is a freshly
   // picked-but-not-yet-uploaded file. Both null means "no video" and, on
@@ -147,12 +156,54 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
       return;
     }
     final xFile = await _picker.pickImage(source: source, imageQuality: 85);
-    if (xFile != null) {
-      setState(() {
-        _photos.add(_PhotoEntry.picked(File(xFile.path)));
-        _photoError = false;
-      });
+    if (xFile == null) return;
+
+    // D-89 — without this the 3-photo minimum is hollow: tapping the same
+    // gallery photo three times satisfies "3 photos" while giving the locker
+    // exactly one angle to compare against, which is the very thing the rule
+    // exists to fix. Catches an exact repeat only (same file, or byte-identical
+    // content); a retake from almost the same spot is a judgement call this
+    // cannot make, and the on-screen guidance is what asks for real variety.
+    final picked = File(xFile.path);
+    if (await _isDuplicatePhoto(picked)) {
+      if (!mounted) return;
+      AppToast.error(context, 'You already added that photo',
+          'Take or choose a different angle — front, back and side.');
+      return;
     }
+
+    if (!mounted) return;
+    setState(() {
+      _photos.add(_PhotoEntry.picked(picked));
+      _photoError = false;
+    });
+  }
+
+  /// True when [candidate] is the same file as, or byte-identical to, a photo
+  /// already in the list. Photos already on the server (edit mode) are URLs, so
+  /// only locally picked files can be compared here.
+  Future<bool> _isDuplicatePhoto(File candidate) async {
+    final candidateLength = await candidate.length();
+    Uint8List? candidateBytes;
+    for (final entry in _photos) {
+      final existing = entry.file;
+      if (existing == null) continue;
+      if (existing.path == candidate.path) return true;
+      // Length first: almost every non-duplicate is rejected without reading
+      // either file, so this only ever reads bytes for a genuine suspect.
+      if (await existing.length() != candidateLength) continue;
+      candidateBytes ??= await candidate.readAsBytes();
+      final existingBytes = await existing.readAsBytes();
+      var same = true;
+      for (var i = 0; i < candidateLength; i++) {
+        if (existingBytes[i] != candidateBytes[i]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return true;
+    }
+    return false;
   }
 
   /// Checklist 2.3: "Refuse removing the last photo" — enforced as a blocked
@@ -189,7 +240,20 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: AppSpacing.xs),
+            // D-89 — the reminder at the moment it matters, not only on the
+            // form above: light, background and angle are decided in the few
+            // seconds before the shutter, and are what the locker's check
+            // depends on most.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xs),
+              child: Text(
+                _photos.isEmpty
+                    ? 'Put the item on a plain, light surface in good light.'
+                    : 'Now a different angle — turn the item or walk around it.',
+                style: TextStyle(fontSize: 13, color: p.muted),
+              ),
+            ),
             ListTile(
               leading: Icon(Icons.photo_camera_outlined, color: p.primary),
               title: const Text('Take a photo'),
@@ -368,11 +432,17 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
 
   Future<void> _submit() async {
     final formOk = _formKey.currentState!.validate();
-    setState(() => _photoError = _photos.isEmpty);
-    if (!formOk || _photos.isEmpty) {
-      if (_photos.isEmpty) {
-        AppToast.error(context, 'Add at least one photo',
-            'Listings without photos are almost never rented.');
+    final tooFewPhotos = _photos.length < _minPhotos;
+    setState(() => _photoError = tooFewPhotos);
+    if (!formOk || tooFewPhotos) {
+      if (tooFewPhotos) {
+        final missing = _minPhotos - _photos.length;
+        AppToast.error(
+          context,
+          missing == 1 ? 'Add 1 more photo' : 'Add $missing more photos',
+          'At least $_minPhotos photos from different angles are needed so the '
+              'locker can recognise your item when it is dropped off.',
+        );
       }
       return;
     }
@@ -471,19 +541,22 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
               title: 'Photos',
               icon: Icons.photo_camera_outlined,
               caption:
-                  'Up to 5. The first is the cover shown in search. Clear, well-lit '
-                  'photos of the actual item rent far more often than stock images.',
+                  '$_minPhotos to 5 photos. The first is the cover shown in search. '
+                  'These are also what the locker checks your item against when '
+                  'it is dropped off.',
               children: [
+                const _PhotoTips(),
                 _PhotoStrip(
                   photos: _photos,
                   onAdd: _showPhotoSource,
                   onRemove: _removeImage,
                   onMakeCover: _makeCover,
                 ),
+                _PhotoCount(count: _photos.length, minimum: _minPhotos),
                 if (_photoError)
-                  const Text(
-                    'At least one photo is required',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.error),
+                  Text(
+                    'At least $_minPhotos photos from different angles are required',
+                    style: const TextStyle(fontSize: 11.5, color: AppColors.error),
                   ),
               ],
             ),
@@ -690,6 +763,88 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     if (picked != null && mounted) {
       setState(() => _selectedCategory = picked);
     }
+  }
+}
+
+/// D-89 — how to take photos the locker can match.
+///
+/// The second physical test put a correct glue gun in the locker and it scored
+/// ~53: its listing photos were on a wrinkled beige bedsheet in soft light,
+/// while the locker is flat white under a flash, and one photo showed the other
+/// side of the gun. The checker now cuts the item out of its background before
+/// comparing, but it works best when the photo already looks like the locker:
+/// one item, a plain light surface, even light, several sides.
+class _PhotoTips extends StatelessWidget {
+  const _PhotoTips();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    Widget tip(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: p.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(fontSize: 12.5, color: p.ink, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          tip(Icons.threesixty_rounded,
+              'At least 3 photos, each from a different angle — front, back and side.'),
+          tip(Icons.wb_sunny_outlined,
+              'Good, even light. Avoid dark rooms and harsh shadows across the item.'),
+          tip(Icons.crop_square_rounded,
+              'A plain, light background — a white table or sheet. Nothing else in the frame.'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Progress toward the minimum, so the owner never has to guess how many more.
+class _PhotoCount extends StatelessWidget {
+  const _PhotoCount({required this.count, required this.minimum});
+
+  final int count;
+  final int minimum;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final done = count >= minimum;
+    return Row(
+      children: [
+        Icon(
+          done ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+          size: 15,
+          color: done ? AppColors.success : p.muted,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          done
+              ? '$count photos — enough for the locker to recognise your item'
+              : '$count of $minimum photos minimum',
+          style: TextStyle(fontSize: 12, color: done ? AppColors.success : p.muted),
+        ),
+      ],
+    );
   }
 }
 

@@ -26,6 +26,7 @@ function normaliseItemMedia<T>(value: T): T {
   return value;
 }
 import { findOverlappingRentals } from "../services/itemAvailabilityService";
+import { MIN_ITEM_PHOTOS, tooFewPhotosMessage } from "../utils/itemPhotoRules";
 
 /**
  * Pre-extract and cache ML verification features for an item's listing
@@ -315,6 +316,18 @@ export const updateItem = async (
       isAvailable,
       isListed,
     } = req.body;
+
+    // D-89: photos may not be edited DOWN below the minimum. Only checked when
+    // `images` is actually in the request — an update that leaves the photos
+    // alone (price, description) is not held to a rule about them. An older
+    // listing that already has fewer photos can still be re-priced; it is only
+    // when its photos are being replaced that the new set must meet the bar.
+    if (images !== undefined) {
+      const count = Array.isArray(images) ? images.length : 0;
+      if (count < MIN_ITEM_PHOTOS) {
+        throw new ValidationError(tooFewPhotosMessage(count));
+      }
+    }
 
     // isAvailable belongs to the rental lifecycle, not the owner. Letting an
     // owner set it true while a rental is in flight would put the item back
