@@ -48,6 +48,10 @@ import {
   storageDropForCommand,
 } from "./services/storageDropService";
 import { setCompartment } from "./services/lockerCompartments";
+import {
+  cancelOverdueUndepositedRentals,
+  voidRentalTransactions,
+} from "./services/overdueRentalCleanup";
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
   requestRelease,
@@ -1658,18 +1662,58 @@ cron.schedule("5 * * * *", async () => {
     if (uncollected.length === 0) return;
 
     let released = 0;
+    let cancelled = 0;
     for (const rental of uncollected) {
       // Every guard lives in the policy: grace period, release window, bay
       // busy, bay out of service, lower compartment already full. This loop
       // deliberately knows none of them.
       const outcome = await requestRelease(io, rental.id);
-      if (outcome.released) released += 1;
+      if (outcome.released) {
+        released += 1;
+        // D-91 — closing the gap right next to where the drop itself
+        // happens: an uncollected deposit released back to its owner used to
+        // just sit here marked DEPOSITED forever afterwards — releasedAt set,
+        // status untouched, the item long gone but the rental never said so.
+        // Scoped to LATE_COLLECTION specifically: every OTHER reason
+        // requestRelease can be called for already has its own status
+        // transition before release even runs (R2 return-pickup is a normal
+        // in-flight step, not a failure; R3/R4/R5 are already
+        // CANCELLED/DISPUTED by the time their release fires). Only R1 was
+        // the dead end.
+        if (outcome.reason === "LATE_COLLECTION") {
+          await prisma.rental.update({
+            where: { id: rental.id },
+            data: { status: "CANCELLED" },
+          });
+          await voidRentalTransactions(rental.id);
+          cancelled += 1;
+        }
+      }
     }
     logger.info(
-      `[CRON] E4.6 collection sweep — ${uncollected.length} uncollected deposit(s) considered, ${released} released`,
+      `[CRON] E4.6 collection sweep — ${uncollected.length} uncollected deposit(s) considered, ` +
+        `${released} released, ${cancelled} auto-cancelled`,
     );
   } catch (err) {
     logger.error(`[CRON] E4.6 collection sweep failed: ${(err as Error).message}`);
+  }
+});
+
+// D-91 — the sibling gap: rentals that never even reached a deposit, past
+// their own end date. Nothing physical to move here (no locker, no
+// actuator), so unlike the sweep above this is pure database bookkeeping.
+// Same hourly cadence, offset five minutes so the two do not hit the
+// database in the same tick.
+cron.schedule("10 * * * *", async () => {
+  try {
+    const { considered, cancelled } = await cancelOverdueUndepositedRentals();
+    if (considered > 0) {
+      logger.info(
+        `[CRON] D-91 overdue-undeposited sweep — ${considered} considered, ${cancelled} cancelled`,
+      );
+    }
+  } catch (err) {
+    logger.error(`[CRON] D-91 overdue-undeposited sweep failed: ${(err as Error).message}`);
   }
 });
 

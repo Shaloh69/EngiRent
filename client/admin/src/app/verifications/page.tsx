@@ -62,6 +62,38 @@ function stageOf(v: any): "Deposit" | "Return" | null {
   return null;
 }
 
+/**
+ * D-90 — found live 2026-09-22: an admin approved a deposit and the row kept
+ * showing "Pending" no matter what, so they clicked Approve three more times
+ * in under 30 seconds trying to make it register.
+ *
+ * `Verification` carries TWO different fields and every badge in this page was
+ * reading the wrong one:
+ *   `decision` — the ML's own verdict (APPROVED/PENDING/RETRY/REJECTED).
+ *                IMMUTABLE. Approving a row never changes it — it is the
+ *                historical record of what the model said, on purpose.
+ *   `status`   — PENDING/MANUAL_REVIEW/APPROVED/REJECTED/…, and THIS is the
+ *                field an admin's approve/reject click actually writes
+ *                (adminController's PATCH /admin/verifications/:id).
+ *
+ * So a row the ML scored PENDING and a human then approved shows `decision:
+ * "PENDING"` forever — correctly, that IS what the model said — but every
+ * badge, the stat tiles, and the filter dropdown all displayed `decision`
+ * alone, so an approved row looked identical to an untouched one everywhere
+ * in the UI. This is the single place that reconciles the two: once a human
+ * (or the background full run) has actually decided, THAT wins.
+ */
+function effectiveDecision(v: any): string {
+  if (v?.status === "APPROVED" || v?.status === "REJECTED") return v.status;
+  return v?.decision;
+}
+
+/** True once a row has an actual, final human/auto decision recorded against
+ *  it — as opposed to still sitting in MANUAL_REVIEW waiting for one. */
+function isDecided(v: any): boolean {
+  return v?.status === "APPROVED" || v?.status === "REJECTED";
+}
+
 export default function VerificationsPage() {
   const [verifications, setVerifications] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -126,7 +158,7 @@ export default function VerificationsPage() {
         const term = search.toLowerCase();
         const title = itemTitleOf(v) ?? "";
         const matchesSearch = !term || title.toLowerCase().includes(term);
-        const matchesDecision = !decision || v.decision === decision;
+        const matchesDecision = !decision || effectiveDecision(v) === decision;
         return matchesSearch && matchesDecision;
       }),
     [verifications, search, decision],
@@ -141,10 +173,12 @@ export default function VerificationsPage() {
       : 0;
     return {
       total: verifications.length,
-      approved: verifications.filter((v) => v.decision === "APPROVED").length,
-      needsReview: verifications.filter(
-        (v) => v.decision === "RETRY" || v.decision === "REJECTED",
-      ).length,
+      approved: verifications.filter((v) => effectiveDecision(v) === "APPROVED").length,
+      // "Needs review" means exactly that: nobody has decided yet. A row an
+      // admin already approved or rejected is resolved, however low the ML
+      // scored it — counting it here is what made this tile perpetually
+      // overstate the queue.
+      needsReview: verifications.filter((v) => !isDecided(v)).length,
       avg,
     };
   }, [verifications]);
@@ -269,7 +303,7 @@ export default function VerificationsPage() {
                   </Stack>
                 </Table.Td>
                 <Table.Td>
-                  <StatusBadge status={v.decision} />
+                  <StatusBadge status={effectiveDecision(v)} />
                 </Table.Td>
                 <Table.Td>
                   <Stack gap={2} w={160}>
@@ -369,7 +403,7 @@ export default function VerificationsPage() {
         {reviewing && (
           <Stack gap="md">
             <Group gap="xs">
-              <StatusBadge status={reviewing.decision} />
+              <StatusBadge status={effectiveDecision(reviewing)} />
               <Text size="sm" c="dimmed">
                 {reviewing.unavailable
                   ? `quick check produced no evidence (${reviewing.unavailableReason ?? "unknown"})`
@@ -382,6 +416,22 @@ export default function VerificationsPage() {
                 </Text>
               )}
             </Group>
+
+            {/* D-90: once a human (or the background full run) has actually
+                decided this row, say so plainly and take the action buttons
+                away — a click here after that point cannot help, and REJECT
+                specifically can actively corrupt state: the server only
+                releases/cancels while the rental is still DEPOSITED, so a
+                stale reject on an already-approved-and-claimed rental would
+                flip this row's own status to REJECTED while the rental itself
+                carries on ACTIVE, a contradiction nobody would think to check
+                for later. */}
+            {isDecided(reviewing) && (
+              <Alert color={roleColor.success} variant="light" icon={<CheckCircle2 size={16} />}>
+                Already {reviewing.status === "APPROVED" ? "approved" : "rejected"} — no further
+                action needed here.
+              </Alert>
+            )}
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
               <Stack gap="xs">
@@ -398,32 +448,38 @@ export default function VerificationsPage() {
               </Stack>
             </SimpleGrid>
 
-            <Alert color={roleColor.warning} variant="light" icon={<AlertCircle size={16} />}>
-              Approving releases the owner&apos;s item to the renter. Rejecting
-              cancels the rental and returns the item to its owner. Both are
-              hard to undo — look at the photographs first.
-            </Alert>
+            {!isDecided(reviewing) && (
+              <Alert color={roleColor.warning} variant="light" icon={<AlertCircle size={16} />}>
+                Approving releases the owner&apos;s item to the renter. Rejecting
+                cancels the rental and returns the item to its owner. Both are
+                hard to undo — look at the photographs first.
+              </Alert>
+            )}
 
             <Group justify="flex-end" gap="sm">
               <Button variant="default" onClick={() => setReviewing(null)}>
-                Cancel
+                {isDecided(reviewing) ? "Close" : "Cancel"}
               </Button>
-              <Button
-                color={roleColor.critical}
-                leftSection={<ThumbsDown size={15} />}
-                loading={deciding}
-                onClick={() => decide(reviewing.id, "REJECTED")}
-              >
-                Doesn&apos;t match — reject
-              </Button>
-              <Button
-                color={roleColor.success}
-                leftSection={<ThumbsUp size={15} />}
-                loading={deciding}
-                onClick={() => decide(reviewing.id, "APPROVED")}
-              >
-                Same item — approve
-              </Button>
+              {!isDecided(reviewing) && (
+                <>
+                  <Button
+                    color={roleColor.critical}
+                    leftSection={<ThumbsDown size={15} />}
+                    loading={deciding}
+                    onClick={() => decide(reviewing.id, "REJECTED")}
+                  >
+                    Doesn&apos;t match — reject
+                  </Button>
+                  <Button
+                    color={roleColor.success}
+                    leftSection={<ThumbsUp size={15} />}
+                    loading={deciding}
+                    onClick={() => decide(reviewing.id, "APPROVED")}
+                  >
+                    Same item — approve
+                  </Button>
+                </>
+              )}
             </Group>
           </Stack>
         )}

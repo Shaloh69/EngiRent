@@ -93,6 +93,17 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     _subs.add(sock.onReturnRetry.listen(_onItemRetry));
     _subs.add(sock.onDepositApproved.listen(_onItemApproved));
     _subs.add(sock.onDepositRejected.listen(_onItemRejected));
+    // A return's three outcomes each have their OWN event, and until now none
+    // of the three were listened to here — found 2026-09-22 from a real return
+    // that scored PENDING on attempt 2: the server logged sending
+    // `return:under_review` to the renter, the renter's phone never left
+    // "Checking locker NN", because nothing on this screen was subscribed to
+    // it. The same gap existed for a REJECTED return (`return:disputed`) and
+    // even a cleanly APPROVED one (`rental:completed` — the return path's
+    // completion event; deposits never reach it, they finish at DEPOSITED).
+    _subs.add(sock.onReturnUnderReview.listen(_onReturnUnderReview));
+    _subs.add(sock.onReturnDisputed.listen(_onReturnDisputed));
+    _subs.add(sock.onRentalCompleted.listen(_onRentalCompleted));
     _subs.add(sock.onKioskScanError.listen(_onScanError));
     _subs.add(sock.onKioskFaceRequired.listen(_onFaceRequired));
 
@@ -528,6 +539,53 @@ class _KioskScanScreenState extends State<KioskScanScreen>
       _errorMessage =
           'The kiosk could not match this item to the listing photo after several tries. '
           'An admin has been notified — take your item back out if the door is open.';
+    });
+  }
+
+  /// A RETURN's check came back PENDING — the same "accepted, a person will
+  /// confirm it" outcome `_onItemApproved` already handles for a deposit, just
+  /// reached over a different event because a return has no `decision` field
+  /// on this one (`return:under_review` only ever fires for PENDING; a clean
+  /// approval goes through `_onRentalCompleted` instead, and a REJECTED one
+  /// through `_onReturnDisputed`).
+  void _onReturnUnderReview(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (!mounted) return;
+    setState(() {
+      _awaitingReview = true;
+      _phase = _Phase.success;
+    });
+  }
+
+  /// A RETURN was rejected — the item did not match on the final attempt, and
+  /// the rental is now DISPUTED. Deliberately its own message, not
+  /// `_onItemRejected`'s: that one tells a DEPOSIT's owner to take their item
+  /// back out, which would be wrong instructions to a RENTER mid-return — the
+  /// item is released to the OWNER while the dispute is resolved, not handed
+  /// back across the counter to whoever is standing here.
+  void _onReturnDisputed(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (!mounted) return;
+    setState(() {
+      _phase = _Phase.failed;
+      _errorMessage =
+          'The returned item did not match on the final check. An admin has been '
+          'notified and the item is being released back to the owner while this '
+          'is looked into — you do not need to do anything further here.';
+    });
+  }
+
+  /// A RETURN cleared outright (decision APPROVED) and the rental has already
+  /// been settled server-side — `completeRental` ran before this event went
+  /// out, so the deposit refund and payout are already in motion. Reuses the
+  /// ordinary success screen with no awaiting-review note, exactly as if
+  /// `_onItemApproved` had fired with `decision: 'APPROVED'`.
+  void _onRentalCompleted(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId) return;
+    if (!mounted) return;
+    setState(() {
+      _awaitingReview = false;
+      _phase = _Phase.success;
     });
   }
 

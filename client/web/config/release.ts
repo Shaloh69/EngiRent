@@ -28,16 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.12.0",
-  buildNumber: 27,
-  fileName: "Engirent_Prerelease27.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.13.0",
+  buildNumber: 28,
+  fileName: "Engirent_Prerelease28.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-09-22",
   sizeMb: 86.8,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Listing an item now takes at least three photos from different angles, with tips on light and a plain background",
-    "The locker recognises your item far more reliably, because your photos give it several views to match against",
-    "If you list items, install this one \— older builds can no longer add or re-photograph a listing",
+    "Fixed: returning an item at the kiosk could leave your phone stuck on \u201cChecking\u201d forever once the check needed a person to confirm it",
+    "The same fix covers a return that is rejected, and one that clears outright \u2014 your phone now always tells you what happened",
   ],
 };
 

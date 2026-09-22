@@ -17,13 +17,24 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-09-22",
+    version: "1.13.0",
+    tag: "fix",
+    title: "Returning an item no longer strands your phone on \u201cChecking\u201d",
+    bullets: [
+      "If a return needed a person to confirm it, or was rejected, or even passed outright, the phone had no way to hear the result \u2014 it just sat on \u201cChecking locker NN\u201d until you gave up and backed out",
+      "All three outcomes now reach your phone properly: awaiting review looks the same as a deposit awaiting review, a rejected return explains that the item goes back to its owner while it is looked into, and a clean pass shows the normal done screen",
+      "Found from a real return on 2026-09-22 that needed a second attempt and then went to review \u2014 the server had already logged sending the result, the phone just never had anyone listening for it",
+    ],
+  },
+  {
+    date: "2026-09-22",
     version: "1.12.0",
     tag: "feature",
     title: "Three photos from different angles, so the locker can recognise your item",
     bullets: [
-      "Listing an item now needs at least three photos, each from a different angle \— front, back and side. The form shows how many you have and how many more you need",
+      "Listing an item now needs at least three photos, each from a different angle — front, back and side. The form shows how many you have and how many more you need",
       "A short guide on the screen and again as you take each photo: good even light, and a plain light background such as a white table or sheet",
-      "You cannot count the same photo twice \— adding one you already have is refused",
+      "You cannot count the same photo twice — adding one you already have is refused",
       "Why: a correct item was being turned away at the locker because its one listing photo showed a different side and a different room. Several angles give the check a view that matches however the item is lying",
       "If you list items, install this build: older versions can no longer add or re-photograph a listing, and will say why. Renting is unaffected",
     ],
