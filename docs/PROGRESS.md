@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET 2026-09-22: all listings/rentals/transactions/notifications/verifications/reviews/messages wiped, all accounts deleted except ADMIN and the e2e-sweep-probe fixture (kept by explicit user decision) - full JSON backup at D:\ENG\db-backups\pre-reset-2026-09-22T13-20-37-586Z.json on the server before deletion - lockers reset to AVAILABLE/empty, orphaned storage files (items/verifications/feedback dirs, deleted users' face/ID photos) removed - live API confirmed zero listings post-reset - Node 294/294 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 verified via logs/DB/live cron firing and code tracing, not the user's own eyes on a physical screen yet]
+[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET 2026-09-22 done and verified (full detail below) - EngiRentAdmin found down after the reset (502 via tunnel, port 3001 not listening, no crash trace in its log) and restarted, verified via the exact reported URL (`/verifications`) returning 200 through the public tunnel - Node 294/294 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 verified via logs/DB/live cron firing and code tracing, not the user's own eyes on a physical screen yet]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
