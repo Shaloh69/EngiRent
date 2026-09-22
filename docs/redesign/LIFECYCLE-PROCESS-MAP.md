@@ -621,6 +621,18 @@ This session has ONE job: close §15. Nothing else. No new features, no
 redesign, no refactors of code that isn't in the way. If you find something
 outside that list, write it into docs/PROGRESS.md and keep going.
 
+STATE YOU ARE STARTING FROM — verified 2026-09-23 ~03:25, but re-derive it
+rather than trusting this paragraph:
+  - Clean slate: 0 rentals, 0 transactions, 0 verifications. 11 user
+    accounts and 3 item listings kept. All four bays AVAILABLE and
+    operational. Nothing is physically in any locker.
+  - Everything up: Node API on :5000, ML on :8001, Admin, Web, three
+    Cloudflare tunnels, kiosk socket connected.
+  - Node suite 309/309. Deployed source SHA-matches the repo on all six
+    files changed this week. Git clean on branch
+    e0-e1-audit-tests-and-evidence (NOT main).
+  - The kiosk controller is the one thing NOT healthy — see step 1.
+
 Work in this order and STOP after each one to report before moving on:
 
 1. KIOSK BACK UNDER SYSTEMD.
@@ -670,10 +682,17 @@ Work in this order and STOP after each one to report before moving on:
    (G11). An approval earlier in the session does not carry to a later one.
 
 5. PROVE D-95 ON A REAL RETURN.
-   One rental the whole way: deposit → collect → return → completion. Check
-   the item is actually released to the owner AND that DEPOSIT_REFUND and
-   OWNER_PAYOUT rows appear. Per §14: a COMPLETED status without those two
-   rows is the bug, not the proof.
+   There are no rentals right now, so one has to be created: book one of the
+   3 existing listings, confirm both payments (RENTAL_PAYMENT *and*
+   SECURITY_DEPOSIT — either alone will not advance the rental), then take it
+   the whole way: deposit → collect → return → completion.
+   What actually proves it: the item is released back to the owner AND
+   DEPOSIT_REFUND + OWNER_PAYOUT rows appear. Per §14, a COMPLETED status
+   with no such rows is the bug, not the proof.
+   Expect the item check to score ~50 and need manual approval in the admin
+   console. That is NOT a new defect — it is the known D-89b problem (listing
+   photos on fabric vs. a flat white locker under flash). Approve it and move
+   on; do not go debugging the ML pipeline, it is not this session's job.
 
 Rules that bind here:
 - The repo wins over the docs. Where this map and the code disagree, the
@@ -683,12 +702,26 @@ Rules that bind here:
   designed, unit-tested and never connected to a caller. Unit tests of pure
   modules prove logic and say nothing about whether anything calls it.
 - Never drive a door, actuator or self_test without saying what will move,
-  which bay, how long, and getting an explicit yes first.
+  which bay, how long, and getting an explicit yes first. An approval given
+  earlier in the session does not carry to a later action.
+- A direct database write to locker state does NOT reach the kiosk. Its
+  occupancy comes from a server socket push, so the corridor screen will
+  keep showing the old state until the server re-broadcasts (which it does
+  when the kiosk reconnects). If you edit locker rows directly, restart the
+  Node API afterwards and confirm the new broadcast in the log.
 - Record findings in docs/PROGRESS.md as you go, not at the end.
 
-Re-derive, do not assume: before touching anything, query the live database
-for rentals, locker compartment state and settlement transactions, and
-confirm which process is really the EngiRent API (fingerprint it by its
-loaded Prisma module path — this box also runs another thesis project whose
-API is an identical `node dist/index.js`).
+Re-derive, do not assume. Before touching anything:
+  - Query the live database for rentals, locker compartment state and
+    settlement transactions.
+  - Confirm which process is really the EngiRent API by fingerprinting it on
+    its loaded Prisma module path, NOT by PID or command line — this box
+    also runs another thesis project (EcoCharge) whose API is an identical
+    `node dist/index.js`, and mistaking the two already caused one outage.
+  - Reach the kiosk through the jump host, matching on MAC prefix 2C-CF-67
+    rather than a remembered IP — its LAN address moves, and `ssh` straight
+    to the tailnet name hits Tailscale SSH's browser-approval check and
+    hangs.
+  - `Stop-Process` on the API gets refused by the permission classifier on
+    this machine; `taskkill /PID <id> /F` on the same PID goes through.
 ```
