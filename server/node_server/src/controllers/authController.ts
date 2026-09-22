@@ -92,10 +92,21 @@ export const register = async (
 
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ email }, { studentId }] },
+      select: { email: true, studentId: true },
     });
 
     if (existingUser) {
-      throw new ConflictError("Email or Student ID already registered");
+      const emailTaken = existingUser.email === email;
+      const studentIdTaken = existingUser.studentId === studentId;
+      if (emailTaken && studentIdTaken) {
+        throw new ConflictError("This email and Student ID are already registered");
+      } else if (emailTaken) {
+        throw new ConflictError("This email is already registered — did you mean to log in instead?");
+      } else {
+        throw new ConflictError(
+          "This Student ID is already registered to a different account — double-check for a typo",
+        );
+      }
     }
 
     const hashedPassword = await hashPassword(password);

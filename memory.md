@@ -2185,3 +2185,35 @@ in `AWAITING_DEPOSIT`. To prove a persistence change without a door, import the
 **deployed** helper out of `dist/` and write inside a `$transaction` you
 deliberately throw out of — the row never survives, and `verification.count()`
 before and after proves it.
+
+**2026-09-22 — self-inflicted outage: killed the wrong "duplicate" `node
+dist/index.js`, because the box runs other theses too.** `desktop-gklhcri`
+also hosts EcoCharge (`D:\EcoCharge\app\server_main` and three of its Next.js
+front ends). EcoCharge's API is *also* a plain `node dist/index.js` with no
+distinguishing text in `Win32_Process.CommandLine` — same executable name,
+same relative script path, no cwd shown. Mid-restart, two `node dist/index.js`
+processes existed at once (EngiRent's real one on port 5000, having just
+finished its DB connect + kiosk reconnect; EcoCharge's, coincidentally
+(re)started ~40s earlier on port 30010). I assumed the second one was a
+leftover duplicate of the first and killed it — it was actually EngiRent's,
+and the one I kept alive and spent several turns testing against was
+EcoCharge's. `/health` "succeeding" and a Zod validation error mentioning a
+`name` field (EngiRent's register route has no such field) were both symptoms
+of hitting the wrong app; a plain-text `Cannot POST /api/v1/auth/register`
+(Express's generic 404, not EngiRent's own JSON 404 handler) was the tell I
+should have caught sooner. Registration was down for the users hitting it
+during that window.
+
+**Fix, and the rule going forward:** never disambiguate same-named Node
+processes on this box by PID, start time, or command line — they lie.
+Identify a process by what it has **loaded**:
+```powershell
+(Get-Process -Id <pid>).Modules |
+  Where-Object { $_.FileName -like '*node_server*' } |
+  Select-Object -First 1 -ExpandProperty FileName
+```
+EngiRent's own path (`D:\ENG\EngiRent\server\node_server\node_modules\.prisma\...`)
+only ever shows up on the real one. Cheaper when you just need "is EngiRent up,"
+per the D-65 entry above: `Get-NetTCPConnection -LocalPort 5000` and a real
+route (`/api/v1/...`), not `/health` (doesn't exist) and not a port guessed
+from `netstat` output shared with other projects on the same host.

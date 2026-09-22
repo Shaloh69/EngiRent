@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22, all three tunnels 200 (api detective-dive-muslim-outstanding / web prince-russia-bowling-ministries / admin modular-headphones-lots-compounds) - app 1.12.0+27 PUBLISHED (sha256 244ab659b7c2dc00 local=server, CN=EngiRent, /api/v1 baked; first build was CORRUPT and caught by zip validation) - D-89b: item isolation ON + ML reweighted deep .35/SIFT .30/trad .20/pHash .10/SSIM .05 from a measured evaluation (glue gun 52 -> 56-58, hardest negative 41, gap ~14.6, STILL <60 so photos must carry it) - SERVER enforces 3 listing photos (proved live) - fast tier now finishes undegraded in ~6s (retires a D-87b premise) - D-89 loop fix live: glue gun rental c1e24433 still in bay 1, re-scan resumes in the same bay - calibration rests on ONE positive item, NOT the A-3 distribution - printed-photo attack unaddressed - OCR never ran (tesseract missing) - Pi Cancel/reset fix awaiting the user's F5 - actuator storage-drop path never run on hardware - gates G1-G11]
+[PHASE E5 - stack UP 2026-09-22 - D-90/D-90b/D-91 as before (admin badge, kiosk return-event listeners, auto-cancel overdue undeposited rentals) - D-92: registration's duplicate check gave one undifferentiated message for email-vs-studentId collisions - FIXED, differentiated 3 ways, verified through the public API tunnel - deploy hit a self-inflicted outage (killed the real EngiRent API believing it was a duplicate of EcoCharge's coincidentally-timed process on the same shared box; both are bare `node dist/index.js` with no distinguishing CommandLine) - recovered by fingerprinting via loaded Prisma module path, incident + fix written into memory.md - Node 294/294 - three tunnels 200 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 verified via logs/DB/live cron firing and code tracing, not the user's own eyes on a physical screen yet]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7018,3 +7018,207 @@ is running — let it finish or kill the Gradle daemons too; (2) validate every
 APK with `zipfile` + `testzip()` BEFORE the URL/signature checks, since "Built"
 is not evidence; (3) an empty result from a check that previously printed
 something is a finding, not a pass.
+
+### D-90 — the admin console's own approval never registered on screen. FOUND AND FIXED 2026-09-22.
+
+**Reported live**: an admin approved a deposit and the row kept reading
+"Pending" — screenshots showed the review modal mid-approval and the list
+still badged "Pending" at the same timestamp. Traced through the actual log
+trail rather than guessed: the click DID register
+(`Deposit for rental c1e24433... APPROVED by admin@engirent.edu.ph` at
+19:32:57), and the underlying business logic worked — the renter went on to
+successfully claim the item four minutes later. But the confused admin,
+seeing nothing change, clicked **Approve three times in 25 seconds**
+(19:32:57 / 19:33:09 / 19:33:22), each one re-running the notification/email
+side-effects.
+
+**Root cause, found in the code, not guessed:** `Verification` carries two
+separate fields — `decision` (the ML's own verdict, immutable) and `status`
+(what an admin's approve/reject actually writes). Every badge in
+`verifications/page.tsx` — the row, the modal header, both stat tiles, and the
+filter dropdown — rendered `v.decision` alone. An admin-approved row's
+`decision` stays whatever the model said forever; only `status` ever changes.
+So an approved row was **visually indistinguishable from an untouched one**
+everywhere in the console.
+
+**Fix:** one function, `effectiveDecision(v)` — `status` wins once it reaches
+a terminal state (APPROVED/REJECTED), `decision` otherwise (nothing has been
+decided yet, so the model's own read is the honest thing to show). Applied
+everywhere the old bug was: row badge, modal badge, the "Approved"/"Needs
+Review" stat counts (both were ALSO silently wrong — "Needs Review" would
+count a row forever even after a human resolved it, and "Approved" would never
+count one an admin approved unless the ML itself also said APPROVED), and the
+filter dropdown.
+
+**Also fixed, not merely displayed:** the modal's approve/reject buttons are
+now hidden once `isDecided(reviewing)` is true, replaced with a plain "Already
+approved/rejected" banner. This closes the actual mechanism behind the triple
+click, not just its symptom — and it matters beyond confusion: a stale REJECT
+click on an already-approved-and-claimed row would have flipped the
+verification's own `status` to REJECTED while the rental carried on ACTIVE,
+since the server's cancel/release side-effects are gated on
+`rental.status === "DEPOSITED"` and by then it no longer would be. That
+contradiction (a REJECTED verification on a live rental) would have been
+invisible until someone went looking.
+
+Admin console redeployed (built before restarting, verified `/verifications`
+200 after).
+
+### D-90b — a return that needs review, is rejected, or even clears outright left the renter's phone stuck on "Checking" forever. FOUND AND FIXED 2026-09-22.
+
+**Reported live**, alongside D-90, from the SAME physical session: "in
+returning I am stuck in the Checking after one failed attempt". Traced the
+full return sequence from the server log rather than assumed: attempt 1
+genuinely retried correctly (door reopened, second capture happened);
+attempt 2's quick check also said RETRY (49.85%), and per D-89's
+`verdictPolicy` correctly escalated to PENDING rather than looping a third
+time. The server logged sending `verification_done result:pending` to the
+kiosk at 19:38:47, and the **Pi received and processed it** — this delivery
+path (server -> kiosk) was never broken.
+
+**The actual break was one screen over.** `kiosk_scan_screen.dart` — the
+Flutter screen the RENTER's phone sits on mid-return — subscribes to
+`onDepositApproved`/`onDepositRejected` for the deposit side, and had **zero
+subscription** to any of the three return-specific events the server already
+emits: `return:under_review` (PENDING), `return:disputed` (REJECTED), or
+`rental:completed` (the return path's own completion event — deposits never
+reach it). All three streams already existed in `socket_service.dart` and
+were already wired to their server events; nothing on this screen ever
+listened. So a return that needed review was not the only broken case — a
+CLEANLY APPROVED return would have stranded the renter on "Checking" too,
+which had simply never been exercised yet.
+
+**Fix:** three new handlers (`_onReturnUnderReview`, `_onReturnDisputed`,
+`_onRentalCompleted`), each checking `rentalId` like every existing handler.
+`_onReturnDisputed` gets its OWN message rather than reusing
+`_onItemRejected`'s — that one tells a deposit's OWNER to take their item back
+out, which would be actively wrong guidance to a RENTER mid-return (a disputed
+return item goes to the OWNER, not back across the counter to whoever is
+standing at the kiosk).
+
+App rebuild required — this is phone-side. Published as 1.13.0+28.
+
+### D-91 — a rental past its end date, never even deposited, had no automation at all. BUILT, DEPLOYED, ALREADY PROVEN ON REAL DATA 2026-09-22.
+
+**Asked for directly**: "Add an Auto Cancel to an Item if ever its past its
+time / And if the Item is already in the Kiosk Drop it" — pointed at two real
+rentals (`77f19efe` "Omega squad" end 2026-09-19, `d609b76b` "Tubig ni
+satanas" end 2026-09-18) sitting AWAITING_DEPOSIT, 3-4 days overdue, untouched.
+
+**Checked what already existed before writing anything.** Two crons touch
+overdue rentals and neither covers this: the E4.6 sweep (`5 * * * *`) only
+looks at `DEPOSITED` rentals — item physically in a kiosk, never collected;
+the late-fee cron (`0 1 * * *`) only looks at `ACTIVE` rentals — item
+physically WITH the renter, overdue for return. A rental that never even
+reached a deposit had nothing watching it.
+
+**Scope, split deliberately in two, matching what the user actually
+described:**
+- **"Drop it" (item already in the kiosk)** is the `DEPOSITED` case, and
+  that's the EXISTING E4.6 sweep's job — it already drives the actuator
+  autonomously, every hour, in production, with no per-run confirmation
+  (a pattern already shipped in an earlier phase, not something introduced
+  here). It just never told the RENTAL it had done so: a released item sat
+  marked `DEPOSITED` forever, releasedAt set, status untouched. Closed that
+  gap in four lines added to the EXISTING loop — cancel + void, but ONLY when
+  `outcome.reason === "LATE_COLLECTION"` (every other release reason already
+  has its own status transition before release runs). **No new
+  hardware-triggering surface**: this reacts after the pre-existing call
+  succeeds; it does not change when or whether the actuator fires.
+- **"Past its time" with nothing physically anywhere** — `PENDING`/
+  `AWAITING_DEPOSIT` rentals whose `endDate` is more than 24h in the past —
+  gets a NEW, standalone module (`overdueRentalCleanup.ts`), deliberately kept
+  separate from anything hardware: it is pure database bookkeeping (cancel,
+  void, notify both parties), and folding the DEPOSITED case into it would
+  have put an actuator decision inside a module that has no business touching
+  hardware.
+
+**Money handled the same way every manual reset in this project has handled
+it**: transactions are marked `REFUNDED` in the database (the books say the
+truth, nothing is owed) and **PayMongo is never called**. An unattended,
+scheduled job is not where a real refund to someone's GCash should fire with
+nobody looking at it — that stays the human-approved step it has always been.
+Verified by a test that reads the module's own import lines and asserts
+neither `paymentController` nor `payoutService` appears — proof the module
+cannot reach a payment API, not merely that it didn't this run.
+
+**24h grace, not zero.** A judgement call, stated as one: E4.6's own grace
+defaults to 1h because an unattended bay sitting in a corridor has a real
+cost to waiting; this action is only ever a database write, so a wider grace
+costs nothing and protects a rental someone might be mid-payment on right as
+the clock turns over.
+
+**Proven on the real data that prompted it, without waiting.** Deployed, then
+triggered once manually to avoid a ~50-minute wait for the next tick — except
+the new cron **beat the manual trigger to it**: both target rentals show
+`updated: 2026-09-22T12:10:36Z` / `12:10:52Z`, exactly matching the new
+cron's own schedule (`10 * * * *`), and the manual run that followed seconds
+later correctly found nothing left to do (`considered: 0`). Server log:
+`[D-91] Auto-cancelled overdue undeposited rental 77f19efe... (2 transaction(s)
+voided)` / same for `d609b76b` / `[CRON] D-91 overdue-undeposited sweep — 2
+considered, 2 cancelled`. Both real rentals — the exact two the user pointed
+at — are now `CANCELLED` with their transactions `REFUNDED`, on the system's
+own schedule, nothing hand-run to force it.
+
+**Tests:** 11 new (`overdueRentalCleanup.test.ts`) — void-only-unsettled,
+never-touches-a-payment-import, both-parties-notified, one-failure-does-not-
+stop-the-sweep, the grace-period cutoff itself. Node suite **290/290**.
+
+**Not done / left for a real decision, not silently assumed:** whether
+`ACTIVE` (overdue-for-return) rentals should EVER auto-cancel rather than
+just accrue a late fee was deliberately left alone — the item is with the
+renter, there is nothing to "drop", and forcibly cancelling doesn't get the
+owner their item back, so the existing fee-based design is very possibly
+already the right call; changing it wasn't what was asked and would need its
+own conversation about what "cancel" even means when the renter still has the
+item in hand.
+
+### D-92 — registration's duplicate check gave one message for two different collisions. FIXED, DEPLOYED, VERIFIED through the public tunnel 2026-09-22.
+
+**Asked for directly**: "when registrating a new account it fails for some
+reason / check the logs for me recent." The specific log evidence for the
+reported incident (~19:41, two rejections then a success for
+`allanjohndelacruz1@gmail.com`) was gone by the time I looked — my own
+restart of `EngiRentNode` earlier that session had wiped `node-api3.log`
+(`svc-node.bat` redirects with `>`, not `>>`; every restart truncates it).
+Rather than close this out on an unverifiable log fragment, checked the
+database directly for the failure mode that would actually matter: a
+`user.create()` that succeeds followed by a later step (the refresh-token
+`update`) that fails, which would strand a real, unusable account and block
+every future attempt at that email/studentId with no way for the person to
+recover. **Zero** users on `isActive`/no-refresh-token orphan state existed,
+and the one account in question is a single, clean, fully-registered row —
+no corruption, no stranded account.
+
+**What reading `authController.ts` actually found**: `register`'s duplicate
+check (`prisma.user.findFirst({ where: { OR: [{ email }, { studentId }] } })`)
+threw the same `"Email or Student ID already registered"` regardless of
+*which* field collided. A student who mistypes either field gets a message
+that can't tell them which one to fix — and if an old account exists under a
+mistyped email but the person's correct student ID, every future attempt with
+their correct email is rejected by the student-ID half of the `OR`, with
+nothing telling them that's what happened. The client shows this string
+verbatim (`register_screen.dart` → `AppToast.error(context,
+authProvider.error ?? ...)`, and `auth_service.dart` passes `data['error']`
+through unchanged) — so the fix is entirely server-side.
+
+**Fix**: select which field(s) matched and throw a specific message for each
+of the three cases (email only, studentId only, both). Tests:
+`registerDuplicateMessage.test.ts`, 4 new — one per branch plus the
+non-colliding path still creates the account. Node suite **294/294**.
+
+**Deploy went sideways and is worth recording plainly.** `desktop-gklhcri`
+also runs EcoCharge (a different thesis), whose API is *also* a bare
+`node dist/index.js` with nothing in `Win32_Process.CommandLine` to tell it
+apart from EngiRent's. Mid-restart, both existed at once — I killed EngiRent's
+real, just-started process believing it was a stray duplicate of EcoCharge's,
+and spent several turns verifying the fix against EcoCharge's port by mistake
+(its generic Express 404 and an unrelated Zod validation error looked
+superficially plausible before I checked closely). **Registration was down
+for real traffic during that window.** Recovered by fingerprinting processes
+by their loaded Prisma module path instead of PID/CommandLine, confirmed
+`/api/v1/auth/register` on the correct process (port 5000, matching `.env`),
+then re-verified both new message branches through the actual public tunnel
+(`https://detective-dive-muslim-outstanding.trycloudflare.com`). Full
+incident + the fingerprinting fix written into `memory.md` so this doesn't
+repeat.
