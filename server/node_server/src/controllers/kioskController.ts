@@ -23,6 +23,7 @@ import {
   noteCapture,
 } from "../services/kioskBayAccessStore";
 import { doorOpenSeconds } from "../services/kioskTimingStore";
+import { completeClaim } from "../services/faceVerificationService";
 import {
   signedMediaUrl,
   saveBuffer,
@@ -842,6 +843,15 @@ export const openBay = async (
       `[BAY-OPEN] rental=${grant.rentalId} user=${req.user.userId} bay=${grant.lockerNumber} ` +
         `door=${grant.door} action=${grant.action} open#${noted.grant.opens}`,
     );
+
+    // D-94 — a claim is only committed (status ACTIVE, compartment freed,
+    // owner notified) once the door has actually been sent to open, not at
+    // face-verification-approval time. See completeClaim()'s doc comment.
+    // completeClaim() itself no-ops on a second/third open of the same
+    // grant, so this is safe to call on every open, not just the first.
+    if (grant.action === "claim") {
+      await completeClaim(io, grant.rentalId, grant.door);
+    }
 
     res.json({
       success: true,

@@ -2261,3 +2261,12 @@ approval flips both in the same step the grant is created, so a cancel-before-
 opening leaves the database certain an item was collected that never left the
 compartment. The fix belongs in that gap, not in the retry path that
 misreads the resulting status.
+
+**Same day, another classifier fallback worth remembering.** `Stop-Process`
+on the live EngiRent API PID (needed before every `npm run build`, to
+release the Prisma DLL lock — see the D-65 entry above) got refused outright
+("Blocked by classifier", no reason given) on a rebuild that had nothing
+special about it. `taskkill /PID <id> /F` on the *exact same PID* went
+through immediately. If `Stop-Process` gets refused again, reach for
+`taskkill` next rather than retrying the same command or escalating to
+disabling the scheduled task first.

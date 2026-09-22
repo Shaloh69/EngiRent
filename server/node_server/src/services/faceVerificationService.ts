@@ -485,11 +485,6 @@ export async function applyFaceVerificationOutcome(params: {
       return { action: "none", error: "No locker on record for this rental" };
     }
 
-    await prisma.rental.update({
-      where: { id: rentalId },
-      data: { status: "ACTIVE", claimedAt: new Date() },
-    });
-
     // E5.6 — OPEN THE COMPARTMENT THAT ACTUALLY HOLDS THE ITEM.
     //
     // This hardcoded `main_door`, which was right while an item could only
@@ -530,6 +525,18 @@ export async function applyFaceVerificationOutcome(params: {
     // Granted, not opened: the renter taps "Open Kiosk Now" when they are in
     // front of the bay with a hand free, and can tap it again if the door
     // relocks before they have the item out.
+    //
+    // D-94 — nothing below commits the claim as DONE. It used to: this
+    // branch flipped rental.status to ACTIVE and freed the compartment right
+    // here, at approval time, before the door had ever actually opened. A
+    // renter who cancelled after this point but before tapping "Open Kiosk
+    // Now" left the database certain the item was collected when it was
+    // still sitting in the compartment — and the next retry read ACTIVE as
+    // "returning", not "still claiming", and opened the wrong (empty) door.
+    // The commit (status, compartment, owner notification) now happens in
+    // completeClaim(), called from kioskController.ts's openBay() — the one
+    // place that actually sends the open_door command — on the grant's
+    // first successful open, not on approval.
     const claimGrant = grantBayAccess({
       rentalId,
       userId: rental.renterId,
@@ -539,37 +546,9 @@ export async function applyFaceVerificationOutcome(params: {
       door: claimDoor,
     });
 
-    // Free only the compartment the item is leaving, through the single
-    // writer. Freeing the whole bay would mark an occupied sibling
-    // compartment empty, which is how an item gets a second one dropped on
-    // top of it.
-    await setCompartment(bay.id, claimDoor === "main_door" ? "top" : "bottom", {
-      status: "AVAILABLE",
-      rentalId: null,
-    });
-
     logger.info(
       `Claim for rental ${rentalId}: granted ${claimDoor} on bay ${bay.lockerNumber}`,
     );
-
-    // D-53. Resolved from the locker rather than from `kioskId` (the kiosk
-    // the person is standing at) because the relation is selected as
-    // `{id, lockerNumber}` only — and because the bay that changed is the
-    // deposit locker's, which in a multi-kiosk deployment need not be this
-    // one. Today they are the same; assuming so in code is how the earlier
-    // kiosk-id mismatch stayed invisible.
-    await emitOccupancyForLockerId(io, rental.depositLocker.id);
-
-    await prisma.notification.create({
-      data: {
-        userId: rental.ownerId,
-        title: "Item Claimed",
-        message: `Your ${rental.item.title} has been claimed by the renter.`,
-        type: "RENTAL_STARTED",
-        relatedEntityId: rentalId,
-        relatedEntityType: "rental",
-      },
-    });
 
     io.to(`user:${rental.renterId}`).emit("face:verified", {
       rentalId,
@@ -578,8 +557,6 @@ export async function applyFaceVerificationOutcome(params: {
       lockerNumber: rental.depositLocker.lockerNumber,
       grantExpiresAt: claimGrant.expiresAt,
     });
-    io.to(`user:${rental.ownerId}`).emit("rental:active", { rentalId });
-    logger.info(`Claim approved for rental ${rentalId}`);
     return { action: "claim" };
   }
 
@@ -621,4 +598,67 @@ export async function applyFaceVerificationOutcome(params: {
   }
 
   return { action: "none" };
+}
+
+/**
+ * D-94 — actually commit a claim, once the door has actually opened.
+ *
+ * Called from kioskController.ts's openBay() ("Open Kiosk Now") on the first
+ * successful open of a "claim" grant — the one place that actually sends the
+ * open_door command for a claim. Everything here used to happen at face-
+ * verification-approval time instead, before the renter had done anything
+ * but scan a QR and hold up their phone. A renter who cancelled after
+ * approval but before opening the door left the database certain the item
+ * was collected — status ACTIVE, compartment freed — when it was still
+ * sitting there, and the next retry read ACTIVE as "returning" and opened
+ * the wrong door onto an empty compartment.
+ *
+ * `door` is the grant's own door, not re-derived: the grant already promised
+ * a specific compartment when it was created, and nothing legitimately
+ * changes that compartment's occupancy between grant and open now that this
+ * function — not approval — is what frees it.
+ */
+export async function completeClaim(
+  io: SocketIOServer,
+  rentalId: string,
+  door: "main_door" | "bottom_door",
+): Promise<void> {
+  const rental = await prisma.rental.findUnique({
+    where: { id: rentalId },
+    include: { item: true, depositLocker: { select: { id: true } } },
+  });
+  if (!rental || !rental.depositLocker) {
+    logger.error(`completeClaim: rental ${rentalId} missing or has no depositLocker`);
+    return;
+  }
+  // Idempotency: MAX_OPENS allows the renter to tap "Open Kiosk Now" again
+  // if the door relocks before they have the item out. Only the FIRST open
+  // should commit the claim — a second tap must not re-notify the owner or
+  // try to free an already-free compartment.
+  if (rental.status !== "DEPOSITED") return;
+
+  await prisma.rental.update({
+    where: { id: rentalId },
+    data: { status: "ACTIVE", claimedAt: new Date() },
+  });
+
+  await setCompartment(rental.depositLocker.id, door === "main_door" ? "top" : "bottom", {
+    status: "AVAILABLE",
+    rentalId: null,
+  });
+  await emitOccupancyForLockerId(io, rental.depositLocker.id);
+
+  await prisma.notification.create({
+    data: {
+      userId: rental.ownerId,
+      title: "Item Claimed",
+      message: `Your ${rental.item.title} has been claimed by the renter.`,
+      type: "RENTAL_STARTED",
+      relatedEntityId: rentalId,
+      relatedEntityType: "rental",
+    },
+  });
+
+  io.to(`user:${rental.ownerId}`).emit("rental:active", { rentalId });
+  logger.info(`Claim completed for rental ${rentalId}: door opened, item handed off`);
 }

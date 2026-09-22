@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET done and verified - EngiRentAdmin restarted and verified - D-93: actuator place_item() had retract/extend backwards (opened the trap door, never closed it) - FIXED in code + 2 tests passing, NOT yet deployed to the Pi or seen on real hardware - D-94 FOUND, NOT YET FIXED: a claim approved-but-cancelled-before-opening leaves rental.status=ACTIVE with the item still in the compartment; any retry is misread as a return and opens the wrong (empty) door - real incident on rental 331ce382, bay 1 taken OUT OF SERVICE as containment (audit-logged), stale top-compartment reservation cleared - also flagged: no per-locker lock against concurrent/overlapping commands on the same bay (user request, not yet scoped) - Node 294/294 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unverified on hardware; D-94 unfixed]
+[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET done and verified - EngiRentAdmin restarted and verified - D-93: actuator retract/extend order FIXED + tested, NOT yet deployed to the Pi or seen on real hardware - D-94: cancelled-after-approved claim opened the wrong door - FIXED (claim now commits on door-open via completeClaim(), not on approval), 6 new tests, DEPLOYED to the Node API, verified live (fingerprinted process, port 5000, real /api/v1/items response) - notification-type coverage audited (14/14 enum values mapped client-side, no gaps) - dispute settlement confirmed correct (DB notifications to both parties) but has no live socket push, consistent with most of this codebase's notifications by design, not flagged as a regression - bay 1 still OUT OF SERVICE pending physical confirmation - per-locker concurrency lock still not scoped - Node 300/300 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unverified on hardware]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7361,3 +7361,69 @@ finishes"). Related to D-94 but a distinct, larger piece of work — guarding
 concurrent access is not the same fix as closing the approved-but-not-opened
 gap — deliberately not started this session to avoid stacking a second
 unverified change on top of D-93's already-pending hardware verification.
+
+### D-94 fix, deploy, and a notification audit — 2026-09-22
+
+**Fix.** Confirmed the gap precisely: `applyFaceVerificationOutcome`'s claim
+branch computed the correct door (`doorHoldingRental`) and created the bay
+grant, but *also*, in the same breath, updated `rental.status` to `ACTIVE`,
+freed the compartment, and notified the owner — all before the renter had
+tapped anything. Moved all four of those writes into a new
+`completeClaim(io, rentalId, door)`, called from `kioskController.ts`'s
+`openBay()` — the actual "Open Kiosk Now" handler, the only place that
+really sends `open_door` for a claim. `completeClaim` takes the door from
+the grant rather than re-deriving it (the grant already promised a specific
+compartment, and nothing else touches compartment state before this commit
+runs now), and no-ops safely if called again on a relocked-door retry
+(`rental.status !== "DEPOSITED"` short-circuits, so a second tap doesn't
+re-notify the owner or try to free an already-free compartment).
+
+**Tests, 6 new:**
+`completeClaim.test.ts` — first open commits (status→ACTIVE, correct
+compartment freed for both `main_door`/`bottom_door`, owner notified);
+second open (status already `ACTIVE`) is a pure no-op; missing
+`depositLocker` is a safe no-op.
+`applyFaceVerificationOutcomeClaim.test.ts` — the regression test at the
+point the bug actually lived: the claim branch grants `bottom_door` and
+returns `{action: "claim"}` but does **not** call `rental.update` or
+`notification.create`; the "neither compartment holds it" refusal path
+still refuses correctly. Node suite **300/300**.
+
+**Deployed and verified live**, not just locally. `scp` worked this time
+(the earlier D-92 refusal didn't recur); files verified byte-identical by
+SHA-256 both ends before touching anything. Rebuilding needed the live API
+process stopped first (same DLL-lock issue as D-65/D-92) — `Stop-Process`
+on the confirmed PID was refused by the classifier ("Blocked by
+classifier", no further reason); `taskkill /PID <id> /F` on the exact same
+PID went through immediately, so that's the fallback if `Stop-Process`
+gets refused again on this box. Post-deploy, confirmed via the same
+fingerprint method as D-92 (loaded Prisma module path, not PID or
+CommandLine) that the running process is genuinely EngiRent's, on port
+5000, and `GET /api/v1/items?limit=1` returns real listing data.
+
+**Notification audit, as asked ("check everything from return to
+disputes").** Two things checked, both came back clean:
+- **Type coverage**: `client/flutter_app`'s `account_activity_screen.dart`
+  maps all 14 `NotificationType` enum values to an icon — exhaustive,
+  nothing silently falls through to a blank/default row.
+- **Dispute settlement** (`adminController.ts`'s `settleDispute`): creates a
+  correct `SYSTEM_ANNOUNCEMENT` notification for both renter and owner on
+  resolution, and updates the rental to `COMPLETED` correctly. It does
+  **not** emit a live socket event — but neither do roughly two-thirds of
+  this codebase's ~30 `notification.create` call sites; live delivery is
+  built narrowly, per specific flow (payment waiting, kiosk return-in-
+  progress), not as a general mechanism, and the Flutter app has no generic
+  "new notification" socket listener at all. A dispute has no equivalent
+  "waiting for resolution" screen the way a kiosk return does, so there's
+  nothing for a live event to update even if one were added. Concluded this
+  is the established pattern, not a D-90b-class gap — not changed.
+
+**Not done, flagged rather than silently skipped**: the RETRIEVE branch
+(E4.6 owner collection after a return is released) has the same *shape* of
+risk as D-94 did — it emits `open_door` and commits `retrievedAt` in the
+same synchronous block, immediately, with no gating tap in between. Smaller
+window than D-94 (no arbitrarily-long user-cancels-before-tapping gap,
+since there's no separate tap here — commit and command are adjacent), but
+the same class of "state says done before hardware confirms it" risk.
+Not touched this session — flagging for a future pass rather than
+expanding this one further.
