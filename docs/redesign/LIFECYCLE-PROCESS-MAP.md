@@ -466,7 +466,90 @@ Pi silently absorbing commands that should never have been sent.
 
 ---
 
-## 13. Status reference
+## 13. WHAT THE PERSON SEES — feedback at every step
+
+**The rule:** every step tells the person, in one short line, **what just
+happened, what is happening now, and what to do next**. A step that changes
+state silently is unfinished work, even when the state change is correct.
+
+Three of this week's defects were only *visible* as "the app didn't tell me" —
+D-90b stranded a renter on "Checking" forever, D-94 sent someone to the wrong
+door, and the stuck collection that started this map looked to the user like a
+dead end. In every case the server was right and the person was uninformed.
+
+### What already exists — use it, don't rebuild it
+
+- **`AppToast`** (`core/utils/toast_utils.dart`), 68 call sites across 15
+  files, five variants: `success` · `error` · `info` · `warning` · **`review`**.
+  `review` exists specifically because **PENDING is cyan-teal and must never
+  borrow warning-yellow** (E3.1's ruling). Use it for anything "a human will
+  look at this".
+- **14 `NotificationType` values**, every one mapped to an icon in
+  `account_activity_screen.dart`. No gaps — a new type needs a mapping there.
+- **Per-flow socket events**, listed below. There is deliberately **no generic
+  "new notification" push**: the notification list is pull-based, and live
+  delivery is built only for specific in-flow moments. Keep that split.
+- **Kiosk screens**: `idle · main · how · catalogue · lockers · face ·
+  verifying · working · success · error` (`kiosk_ui_react/src/types.ts`).
+  `working` exists because E3.2 found a 15s door and a 34–46s actuator
+  sequence running **with the main menu on screen**.
+
+### The gaps, found 2026-09-23
+
+- **D-97 — `rental:released` is emitted and nobody listens.** The server sends
+  it to the owner from both release paths (`retrievalService.ts:239,300`); it
+  appears **nowhere** in the Flutter app. That is the *"your item is ready to
+  collect"* moment on the retrieval path — the owner finds out only when they
+  next open the app and pull the notification list. **Fifth instance of the
+  designed-tested-never-connected pattern**, after D-90b, D-94, D-95, D-96.
+- **`kiosk_scan_screen.dart` has zero `AppToast` calls.** The one screen people
+  use while standing at a locker has none of the feedback infrastructure every
+  other screen has. Its state is driven entirely by phase changes.
+
+### Per-step: what the phone says, what the kiosk shows
+
+| Step | Phone | Kiosk | Today |
+|---|---|---|---|
+| Both payments clear → `AWAITING_DEPOSIT` | success toast to owner: "Paid — drop the item off" | — | notification only |
+| Owner scans QR | "Connected — look up at the kiosk" | leaves `idle`/`main` | ✓ `kiosk:face_required` |
+| Face check running | progress, attempt *n* of 4, **120s session visible as a calm countdown** | `face` → `verifying` | partial — no countdown |
+| Face fails | `error` toast naming the reason, non-blaming | `error`, auto-returns | ✓ `face:failed` |
+| Grant issued | **"Open Kiosk Now" must be unmissable** — it is the only way forward | waiting | ✓ |
+| Door opens | "Bay 1 open — 15s" driven by **the kiosk's real per-bay timing**, not a fixed guess | `working` | partial, D-82 open |
+| Item placed | "Photographing…" then the verdict | `working` → `verifying` | ✓ |
+| **APPROVED** | `success` | `success` | ✓ |
+| **PENDING** | **`review` toast**, never warning — "a person is checking, usually minutes" | `success` (item *is* in) | ✓ `return:under_review` |
+| **RETRY** | what would make the next attempt better, and which attempt they're on | `error` → retry | ✓ `deposit:retry` |
+| Deposit approved by admin/full model | renter: "Ready to collect" | — | ✓ `deposit:approved`/`confirmed` |
+| Collection committed | owner: "Collected" · renter: `success` | `success` | ✓ `rental:active` |
+| Return under review | renter: `review` toast | `success` | ✓ (D-90b) |
+| Return disputed | both told, plainly, no blame | `error` | ✓ `return:disputed` |
+| **Item released to owner** | **"Ready to collect at bay N — scan the kiosk QR"** | — | **✗ D-97 — emitted, no listener** |
+| Owner retrieves | `success` | `success` | ✓ |
+| Settled | renter: refund amount **and any deduction, itemised** · owner: payout sent | — | notification only |
+| Bay busy (§12) | "Locker N is finishing something — please wait" | same, on the bay | **✗ doesn't exist yet** |
+
+### Rules for anything written here
+
+1. **Concise.** One line. "Bay 1 open — 15 seconds" beats a paragraph. Someone
+   is holding an instrument in a corridor.
+2. **PENDING is never a failure colour.** `review`, not `warning`. This has a
+   ruling behind it (E3.1) and has been got wrong before.
+3. **The two screens must never disagree.** For a few seconds the person is
+   looking at their phone *and* the kiosk. If they say different things, the
+   person cannot tell which to believe.
+4. **Long waits show progress, not a spinner.** Up to 22s of actuator and a
+   multi-stage ML pipeline. 22 seconds of indeterminate spinner reads as a
+   crash.
+5. **Drive from real state, never a fixed timer.** Per-bay timings genuinely
+   differ (bay 2 is 5s where bay 1 is 15s). A hardcoded duration desyncs on
+   most bays.
+6. **Money is always itemised.** "₱450 refunded (₱50 late fee withheld)", never
+   a bare number — this is the most trust-sensitive message in the product.
+
+---
+
+## 14. Status reference
 
 | Rental status | Means | **Where the item is** | **Where the money is** |
 |---|---|---|---|
@@ -486,8 +569,18 @@ they shipped.
 
 ---
 
-## 14. Open, as of 2026-09-23
+## 15. Open, as of 2026-09-23
 
+- **D-97 — `rental:released` is emitted and nothing listens.** The owner's
+  *"your item is ready to collect"* moment, sent from both release paths
+  (`retrievalService.ts:239,300`), appears nowhere in the Flutter app. They
+  find out only on the next pull of the notification list. Fifth instance of
+  the designed-tested-never-connected pattern. See §13.
+- **Feedback is thin at the moments it matters most.**
+  `kiosk_scan_screen.dart` — the screen someone uses while standing at a
+  locker — has **zero** `AppToast` calls, while 15 other files have 68 between
+  them. The 120s session countdown and per-attempt state are not shown. See
+  §13's table for what each step should say.
 - **D-96 — nothing enforces the exclusivity rule (§12), on either side.** The
   kiosk dispatches every command fire-and-forget with no per-bay lock, and the
   server's own F2 "a hand may be inside" guard is dead because neither of its
@@ -514,52 +607,88 @@ they shipped.
 
 ---
 
-## 15. Starting prompt for the clean-up session
+## 16. Starting prompt for the clean-up session
 
 Paste this after `/clear`:
 
 ```
 Read, in this order: CLAUDE.md, memory.md, docs/PROGRESS.md (status line +
 the newest dated entries), then docs/redesign/LIFECYCLE-PROCESS-MAP.md in
-full. That last one is the end-to-end process map — use it as the spine.
-§12 is the exclusivity rule, §14 is what's open.
+FULL. That map is the spine of this session — §12 is the one-process-per-bay
+rule, §13 is what the person should see at every step, §15 is what's open.
 
-This session has ONE job: close the open items in §14. No new features. No
-redesign.
+This session has ONE job: close §15. Nothing else. No new features, no
+redesign, no refactors of code that isn't in the way. If you find something
+outside that list, write it into docs/PROGRESS.md and keep going.
 
-Work in this order, and stop after each to report:
+Work in this order and STOP after each one to report before moving on:
 
-1. Get the kiosk controller back under systemd. It is running as a bare
-   nohup process right now; systemctl will wrongly say it's dead and a crash
-   won't restart it. This needs the Pi's sudo password from the human — ask
-   for it, don't work around it. Reach the Pi via the jump host (see
-   memory.md's kiosk entry; its LAN IP moves, match on MAC prefix 2C-CF-67).
+1. KIOSK BACK UNDER SYSTEMD.
+   It is running as a bare nohup process; `systemctl status` wrongly reports
+   it dead and a crash will not restart it. Needs the Pi's sudo password —
+   ASK the human for it, do not work around it. Working around it is how it
+   ended up unsupervised. Reach the Pi through the jump host (memory.md's
+   kiosk entry; its LAN IP moves — match on MAC prefix 2C-CF-67, not a
+   remembered address).
 
-2. Build D-96, the exclusivity rule in §12 — it is the safety-critical one.
-   A per-bay lock on the KIOSK held for the whole handler (the Pi is the
-   only place that knows when a stroke has really finished), refusing rather
-   than queueing, with a timeout so a failed command cannot brick a bay.
-   Then feed F2's two dead inputs (noteDoorOpen/noteDoorClosed are exported
-   and never called; hasLiveKioskSession is never passed), and add a
-   bay-busy check to openBay. Test that a second command for a busy bay is
-   REFUSED — and note that the existing F2 tests pass today against a guard
-   that cannot fire, so a passing test is not evidence here.
+2. D-96 — THE EXCLUSIVITY RULE (§12). Safety-critical; do this before any
+   hardware test.
+   - A per-bay lock ON THE KIOSK, held for the whole handler. The Pi is the
+     only place that knows when a stroke has genuinely finished.
+   - A command for a busy bay is REFUSED and acked as refused — never
+     silently queued. A door that opens 40s late is worse than one that
+     refused.
+   - A timeout, so a failed command cannot brick a bay until someone
+     restarts the Pi. F3 (commanded, never acknowledged) already exists for
+     this and must release the lock loudly.
+   - Then feed F2's two dead inputs server-side: noteDoorOpen/noteDoorClosed
+     are exported and never called anywhere; nothing ever passes
+     hasLiveKioskSession. Add a bay-busy check to openBay.
+   - Test that a second command for a busy bay is refused. Note that F2's
+     three existing tests PASS TODAY against a guard that cannot fire — a
+     green test is not evidence here.
 
-3. Prove D-93 on real hardware. The retract-then-extend fix is deployed but
-   has never fired. Do NOT trigger an actuator without telling the human
-   exactly what will move, which bay, and for how long, then waiting for an
-   explicit yes (G11).
+3. D-97 + THE FEEDBACK PASS (§13).
+   - rental:released is emitted from retrievalService.ts:239,300 and NOTHING
+     in the Flutter app listens. That is the owner's "your item is ready to
+     collect". Wire it, and show it.
+   - Then walk §13's table and close the gaps. Use the existing AppToast
+     (success/error/info/warning/review) — do not build a new system. PENDING
+     uses `review`, never `warning`; that has a ruling behind it and has been
+     got wrong before.
+   - kiosk_scan_screen.dart has ZERO AppToast calls today. It is the screen
+     people use while standing at a locker. Fix that first within this step.
+   - Keep every message to one line: what just happened, what's happening,
+     what to do next. Drive from real socket/hardware state, never a fixed
+     timer — per-bay timings genuinely differ (bay 2 is 5s where bay 1 is
+     15s).
 
-4. Prove D-95 on a real return: one rental all the way through deposit →
-   collect → return → completion. Check the item is released to the owner
-   AND that DEPOSIT_REFUND + OWNER_PAYOUT rows appear. Per §13: a COMPLETED
-   status without those two rows is the bug, not the proof.
+4. PROVE D-93 ON REAL HARDWARE.
+   The retract-then-extend fix is deployed to the Pi and has never fired.
+   Do NOT trigger an actuator without first telling the human exactly what
+   will move, which bay, and for how long — then waiting for an explicit yes
+   (G11). An approval earlier in the session does not carry to a later one.
 
-Rules that bind here: the repo wins over the docs; a green test is not a
-fix — verify on screen; never drive hardware without explicit confirmation
-first; security findings get fixed immediately, not filed. Record what you
-find in docs/PROGRESS.md as you go rather than saving it for the end.
+5. PROVE D-95 ON A REAL RETURN.
+   One rental the whole way: deposit → collect → return → completion. Check
+   the item is actually released to the owner AND that DEPOSIT_REFUND and
+   OWNER_PAYOUT rows appear. Per §14: a COMPLETED status without those two
+   rows is the bug, not the proof.
 
-Current live state to re-derive, not assume: run the DB check for rentals,
-lockers and settlement transactions before touching anything.
+Rules that bind here:
+- The repo wins over the docs. Where this map and the code disagree, the
+  code is right — fix the map and say so.
+- A green test is not a fix. Open the thing and look at it. This codebase
+  has now shipped FIVE defects (D-90b, D-94, D-95, D-96, D-97) that were
+  designed, unit-tested and never connected to a caller. Unit tests of pure
+  modules prove logic and say nothing about whether anything calls it.
+- Never drive a door, actuator or self_test without saying what will move,
+  which bay, how long, and getting an explicit yes first.
+- Record findings in docs/PROGRESS.md as you go, not at the end.
+
+Re-derive, do not assume: before touching anything, query the live database
+for rentals, locker compartment state and settlement transactions, and
+confirm which process is really the EngiRent API (fingerprint it by its
+loaded Prisma module path — this box also runs another thesis project whose
+API is an identical `node dist/index.js`).
 ```

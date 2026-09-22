@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §12 is the kiosk exclusivity rule, §14 lists everything open, §15 is the clean-up session's starting prompt** - **D-96 FOUND 2026-09-23, NOT FIXED: nothing enforces one-process-per-bay on either side — the kiosk dispatches every command fire-and-forget with no per-bay lock, and the server's F2 "a hand may be inside" guard is DEAD because neither `hasOpenDoor` (noteDoorOpen/noteDoorClosed exported, never called) nor `hasLiveKioskSession` (no caller passes it) is ever fed; its 3 tests pass against a pure function wired to nothing** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - a fresh test rental (1c836111, "Hand Rivets") is mid-flow, DEPOSITED + APPROVED, item in bay 1 upper, awaiting the renter's collection - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
+[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §12 is the kiosk exclusivity rule, §13 is what the person should see at every step, §15 lists everything open, §16 is the clean-up session's starting prompt** - **D-97 FOUND 2026-09-23, NOT FIXED: `rental:released` (the owner's "your item is ready to collect") is emitted from both release paths and NOTHING in the Flutter app listens — fifth designed-tested-never-connected defect; also `kiosk_scan_screen.dart` has zero AppToast calls while 15 other files have 68** - **D-96 FOUND 2026-09-23, NOT FIXED: nothing enforces one-process-per-bay on either side — the kiosk dispatches every command fire-and-forget with no per-bay lock, and the server's F2 "a hand may be inside" guard is DEAD because neither `hasOpenDoor` (noteDoorOpen/noteDoorClosed exported, never called) nor `hasLiveKioskSession` (no caller passes it) is ever fed; its 3 tests pass against a pure function wired to nothing** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - a fresh test rental (1c836111, "Hand Rivets") is mid-flow, DEPOSITED + APPROVED, item in bay 1 upper, awaiting the renter's collection - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7671,3 +7671,36 @@ yet), and I cannot verify any of the three without the hardware. Stacking a
 third unverified change is what G1 exists to prevent. Full specification of
 what the fix must cover is in `LIFECYCLE-PROCESS-MAP.md` §12, and it is the
 first work item in that document's §15 clean-up prompt.
+
+### D-97 — the "your item is ready to collect" event reaches nobody. FOUND, NOT FIXED, 2026-09-23.
+
+**Asked for**: better notifications/toasts at every step. Inventoried what the
+server emits against what the app listens for before writing any guidance.
+
+Every user-facing socket event is subscribed **except one**:
+`rental:released`, emitted to the owner from both release paths
+(`services/retrievalService.ts:239` in-place, `:300` after a stroke), appears
+**nowhere** in `client/flutter_app`. That is the moment an owner is told their
+item is out of the renter's hands and waiting in a bay for them. They learn it
+only when they next open the app and the notification list is pulled.
+
+**Fifth instance of the same class** — after D-90b, D-94, D-95, D-96. The
+common shape: a pure module or an emitter, unit-tested and correct, with
+nothing on the other end. The tests are honest about the logic and silent
+about the wiring, which is why five of these shipped.
+
+**Also found, same pass:** `kiosk_scan_screen.dart` — the screen a person uses
+while standing at a locker — has **zero** `AppToast` calls, against 68 across
+15 other files. The 120s session countdown and the attempt-*n*-of-4 state are
+not surfaced. Feedback is thinnest exactly where someone is standing in a
+corridor holding equipment.
+
+**What exists and should be reused, not rebuilt:** `AppToast` with five
+variants including `review` (added because PENDING is cyan-teal and must never
+borrow warning-yellow — E3.1's ruling); all 14 `NotificationType` values
+mapped to icons in `account_activity_screen.dart`; per-flow socket events with
+no generic "new notification" push, which is a deliberate split worth keeping.
+
+Full per-step specification of what the phone and the kiosk should each say is
+now `LIFECYCLE-PROCESS-MAP.md` §13. Not built here — it is step 3 of that
+document's §16 clean-up prompt, behind systemd and D-96.
