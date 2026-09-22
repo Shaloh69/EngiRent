@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §12 is the kiosk exclusivity rule, §13 is what the person should see at every step, §15 lists everything open, §16 is the clean-up session's starting prompt** - **D-97 FOUND 2026-09-23, NOT FIXED: `rental:released` (the owner's "your item is ready to collect") is emitted from both release paths and NOTHING in the Flutter app listens — fifth designed-tested-never-connected defect; also `kiosk_scan_screen.dart` has zero AppToast calls while 15 other files have 68** - **D-96 FOUND 2026-09-23, NOT FIXED: nothing enforces one-process-per-bay on either side — the kiosk dispatches every command fire-and-forget with no per-bay lock, and the server's F2 "a hand may be inside" guard is DEAD because neither `hasOpenDoor` (noteDoorOpen/noteDoorClosed exported, never called) nor `hasLiveKioskSession` (no caller passes it) is ever fed; its 3 tests pass against a pure function wired to nothing** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - a fresh test rental (1c836111, "Hand Rivets") is mid-flow, DEPOSITED + APPROVED, item in bay 1 upper, awaiting the renter's collection - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
+[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §12 is the kiosk exclusivity rule, §13 is what the person should see at every step, §15 lists everything open, §16 is the clean-up session's starting prompt** - **D-97 FOUND 2026-09-23, NOT FIXED: `rental:released` (the owner's "your item is ready to collect") is emitted from both release paths and NOTHING in the Flutter app listens — fifth designed-tested-never-connected defect; also `kiosk_scan_screen.dart` has zero AppToast calls while 15 other files have 68** - **D-96 FOUND 2026-09-23, NOT FIXED: nothing enforces one-process-per-bay on either side — the kiosk dispatches every command fire-and-forget with no per-bay lock, and the server's F2 "a hand may be inside" guard is DEAD because neither `hasOpenDoor` (noteDoorOpen/noteDoorClosed exported, never called) nor `hasLiveKioskSession` (no caller passes it) is ever fed; its 3 tests pass against a pure function wired to nothing** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - **CLEAN SLATE 2026-09-23 03:2x: 0 rentals / 0 transactions / 0 verifications, all 4 bays AVAILABLE + operational, 11 users + 3 listings kept; item confirmed physically out by the user so NO actuator was driven; API restarted afterwards so the kiosk's occupancy display agrees with the database** - full recheck passed: git clean, Node 309/309, deployed source SHA-matches repo on all 6 changed files, API/ML/Admin/Web all up, 3 tunnels 200, kiosk socket live - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7704,3 +7704,50 @@ no generic "new notification" push, which is a deliberate split worth keeping.
 Full per-step specification of what the phone and the kiosk should each say is
 now `LIFECYCLE-PROCESS-MAP.md` §13. Not built here — it is step 3 of that
 document's §16 clean-up prompt, behind systemd and D-96.
+
+### Pre-`/clear` reset and full system recheck — 2026-09-23
+
+**Asked for**: "Reset that first before I can do a /clear / Make sure recheck"
+then "Recheck everything to make sure we are not missing something."
+
+**Recheck, all passing.** Git clean, 5 commits ahead. Node suite **309/309**
+across 32 files. Deployed source SHA-256-matches the repo on all six files
+changed this week — `index.ts`, `adminController.ts`,
+`faceVerificationService.ts`, `kioskController.ts` on the server, and
+`actuator_controller.py`, `socket_client.py` on the Pi — so nothing has
+drifted. Node API (fingerprinted by its loaded Prisma module path, not by PID
+or command line — this box also runs another thesis project whose API is an
+identical `node dist/index.js`), ML service on :8001 responding, Admin and Web
+running, all three tunnels 200, kiosk socket live.
+
+**Two things the recheck surfaced.** The one verification on that rental had
+`decision: PENDING` at **48.03** and its background full run scored **49.96** —
+both far below the 85 line. An admin approved it manually, which is
+legitimate, but it is the D-89b glue-gun pattern again: a correct item scoring
+~50 because the listing photos and the locker interior are different scenes.
+And `storage/verifications/` held **24 files against 1 verification row** —
+orphans from the rental-only reset earlier, which cleared database rows but
+not disk.
+
+**The reset itself.** One rental (`1c836111`, "Hand Rivets", DEPOSITED +
+APPROVED) deleted with its 2 transactions, 1 verification and 5 notifications;
+24 orphaned capture files removed; all four bays cleared. Users (11) and
+listings (3) untouched, and the 4 surviving notifications are all "Account
+verified" tied to users, correctly kept. Backed up first to
+`D:\ENG\db-backups\pre-clear-reset-2026-09-22T19-20-37-957Z.json`.
+
+**No actuator was driven.** The user confirmed the item was physically already
+out of bay 1, so clearing the compartment was a correction to match reality
+rather than a claim that something moved. Worth recording *why* that question
+had to be asked at all: the kiosk has **no occupancy sensor** — only
+solenoids, actuators and cameras — so the database is the only record of
+what is in a bay, and a reset performed on a wrong assumption is how an item
+becomes invisible to the system.
+
+**A stale-display catch worth remembering.** Writing straight to the database
+does not update the kiosk: its occupancy comes from a server socket push, and
+its last broadcast still read bay 1 `OCCUPIED` long after the row said
+`AVAILABLE`. The screen in the corridor and the database disagreed. Fixed by
+restarting the Node API, since the server re-broadcasts occupancy when the
+kiosk reconnects — confirmed at 03:22:16 with all four bays `AVAILABLE`.
+**Any future direct database edit to locker state needs the same follow-up.**
