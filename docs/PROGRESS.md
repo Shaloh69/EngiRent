@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22 - D-90 through D-94 as before - bay 1 back in service - D-93 deployed to the Pi, unproven on a real cycle, controller unsupervised (no sudo) - D-95 FOUND+FIXED, NOT YET DEPLOYED: a successfully-returned item was never released back to its owner (no code path ever called requestRelease for R2/OWNER_RETURN_PICKUP) AND a return approved via admin manual review (the NORMAL path per D-87b) never refunded the deposit or paid the owner out (never called finalizeRentalCompletion) - fixed in 4 completion paths (index.ts completeRental, adminController reviewVerification approve+reject, forceCompleteRental), 9 new tests, 309/309 - one real rental (331ce382) confirmed stuck this way, remediation needs G11 (drives the actuator) - per-locker concurrency lock still not scoped - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 built but NOT deployed or verified]
+[PHASE E5 - stack UP 2026-09-22 - D-90 through D-95 as before, D-95 DEPLOYED and verified live 2026-09-22 - bay 1 back in service - D-93 deployed to the Pi, unproven on a real cycle, controller unsupervised (no sudo) - RENTAL RESET 2026-09-22: both existing rentals (incl. the D-95-stuck one, 331ce382) deleted along with their transactions/verifications/reviews/notifications, backed up first; items (3) and users (11) untouched; all 4 lockers confirmed empty/available — user confirmed the locker-1 item was already physically removed, so no actuator command was sent, only a DB correction - per-locker concurrency lock still not scoped - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 deployed but not yet proven on a real return (no rentals exist right now to test it with)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7587,3 +7587,39 @@ retract-then-extend stroke, the exact D-93 sequence, which would double as
 its first real-world proof). Deploying this fix and remediating that one
 rental are both G11 actions not yet taken; asked the user before doing
 either.
+
+**D-95 deployed and verified live, same session.** Standard deploy (scp,
+SHA-256 verified byte-identical, `taskkill` on the fingerprint-confirmed
+real PID since it's the only reliable way to stop it, rebuild, restart,
+re-verified via loaded-module fingerprint + port 5000 + a real
+`/api/v1/items` response) — no G11 needed for the deploy itself, since
+nothing in it runs on startup.
+
+### Rental reset — 2026-09-22, DIRECTLY REQUESTED
+
+**Asked for directly**: "Reset all the Current status of all rentals please
+/ also the item is already removed from the locker 1." The second half
+changed the remediation plan from the previous entry: with the item
+confirmed already physically out, running D-95's fix on the stuck rental
+would have driven bay 1's actuator over an **empty** compartment — sending
+"come collect it" to an owner for an item that's already gone. Deleting the
+rental instead of settling it is correct here specifically because the
+physical world had already moved past what the database recorded, not as a
+general substitute for the real fix.
+
+**Scope, read off the live database before acting**: exactly 2 rentals
+existed — `331ce382` (the D-95-stuck one) and a `PENDING` one nobody had
+touched yet. Deleted both, and everything that only exists because of them
+(3 transactions, 2 verifications, 1 review, 10 notifications), backed up to
+`D:\ENG\db-backups\pre-rental-reset-2026-09-22T17-04-15-859Z.json` first.
+**Users (11) and item listings (3) deliberately left alone** — narrower
+than the earlier full database reset on purpose, since real registrations
+and real listings exist now and "reset all rentals" doesn't ask for those.
+Both affected items set back to `isAvailable: true`. All 4 lockers reset to
+empty/available — a plain database correction, no actuator command sent,
+matching the user's confirmation that locker 1 is physically empty.
+
+**Consequence for D-95's own verification**: there are now zero rentals in
+the database, so D-95's fix has not been proven against a real return
+either — it needs a fresh rental to go all the way through deposit → claim
+→ return → completion before that G1 debt closes.
