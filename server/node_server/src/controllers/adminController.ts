@@ -25,7 +25,7 @@ import { requestRelease } from "../services/retrievalService";
 // E5.4 — a human-approved long-lead deposit is dropped to storage too.
 import { dropToStorage } from "../services/storageDropService";
 import { isLongLeadPickup } from "../services/pickupLaneService";
-import { sendItemReadyForClaim } from "../utils/email";
+import { sendItemReadyForClaim, sendVerificationFailed } from "../utils/email";
 import { FEEDBACK_CATEGORIES } from "./feedbackController";
 import { recordAudit } from "../services/auditLogService";
 import { sendCsv } from "../utils/csv";
@@ -387,6 +387,25 @@ export const forceCompleteRental = async (
       );
     }
 
+    // D-95a — this is the escape hatch admins reach for exactly when a
+    // rental is stuck, which is precisely when the item is most likely to
+    // still be sitting un-released in the bay. No reasonOverride: the entry
+    // status is VERIFICATION or DISPUTED (checked above), and
+    // reasonForStatus() in retrievalPolicy.ts already maps each to the
+    // right ReleaseReason (OWNER_RETURN_PICKUP / RETURN_DISPUTED) — deriving
+    // it from whatever the real status is beats hardcoding one for a
+    // function two different statuses can enter from. Called BEFORE the
+    // transaction below for the same reason as completeRental()'s: once
+    // status is COMPLETED, requestRelease can no longer tell which bay held
+    // it. A DISPUTED rental usually already had its item released at
+    // rejection time (R5) — decideRelease's own idempotency guard
+    // (`releaseRequestedAt !== null`) makes a second call here a safe no-op,
+    // not a double release.
+    const io = req.app.get("io");
+    if (io) {
+      await requestRelease(io, id);
+    }
+
     await prisma.$transaction([
       prisma.rental.update({
         where: { id },
@@ -428,6 +447,14 @@ export const forceCompleteRental = async (
     // an item can have more than one booking over time). Deliberately
     // outside the transaction — see itemAvailabilityService's doc comment.
     await recomputeItemAvailability(rental.itemId);
+
+    // D-95b — the same real money movement completeRental() and
+    // settleDispute() both already do; this force-complete path never did.
+    await finalizeRentalCompletion(id);
+    if (io) {
+      io.to(`user:${rental.renterId}`).emit("rental:completed", { rentalId: id });
+      io.to(`user:${rental.ownerId}`).emit("rental:completed", { rentalId: id });
+    }
 
     logger.info(`Admin force-completed rental ${id} by ${req.user?.email}`);
     res.json({ success: true, message: "Rental marked as completed" });
@@ -538,6 +565,22 @@ export const reviewVerification = async (
       status === "APPROVED" &&
       returnRental.status === "VERIFICATION"
     ) {
+      const io = req.app.get("io");
+
+      // D-95a — E4.6 / R2: the item is released back to the owner (dropped to
+      // the lower compartment if the upper is free, or released in place)
+      // BEFORE the status flip below. requestRelease's own holdingLocker()
+      // keys off rental.status === "VERIFICATION" to know it's the return
+      // bay, not the deposit bay — call it after COMPLETED and it can no
+      // longer tell, and reasonForStatus("COMPLETED") has no release path at
+      // all, so it would just refuse. Same machinery index.ts's completeRental
+      // now uses (below), and the same one E4.6's cron sweep already uses for
+      // R1 — this was fully built and tested, just never called for R2, which
+      // is why a manually-approved return has never once released the item.
+      await requestRelease(io, returnRental.id, {
+        reasonOverride: "OWNER_RETURN_PICKUP",
+      });
+
       await prisma.$transaction([
         prisma.rental.update({
           where: { id: returnRental.id },
@@ -574,6 +617,24 @@ export const reviewVerification = async (
       ]);
       // Checklist Stage 6 — see forceCompleteRental's identical comment.
       await recomputeItemAvailability(returnRental.itemId);
+
+      // D-95b — real money movement, the other half of the same gap.
+      // completeRental() (index.ts, the automatic-APPROVED path) and
+      // settleDispute() both call this; this manual-review path — which is
+      // the NORMAL one, since D-87b made the fast ML tier structurally
+      // unable to approve on its own — never did. Confirmed live: rental
+      // 331ce382 completed this way with a real ₱500 deposit and ₱90 rental
+      // payment on record, and zero DEPOSIT_REFUND/OWNER_PAYOUT rows to show
+      // for it, while its own notifications above claimed both would happen.
+      await finalizeRentalCompletion(returnRental.id);
+      if (io) {
+        io.to(`user:${returnRental.renterId}`).emit("rental:completed", {
+          rentalId: returnRental.id,
+        });
+        io.to(`user:${returnRental.ownerId}`).emit("rental:completed", {
+          rentalId: returnRental.id,
+        });
+      }
     }
 
     // Manual rejection on return → open dispute
@@ -586,6 +647,45 @@ export const reviewVerification = async (
         where: { id: returnRental.id },
         data: { status: "DISPUTED", verificationStatus: "REJECTED" },
       });
+
+      // D-95a, the rejection half. Same gap, mirrored: index.ts's automatic
+      // REJECTED path (E4.6 / R5) releases the disputed item back to the
+      // owner right after flipping status to DISPUTED — "the disputed item
+      // was sealed in a bay marked AVAILABLE" was D-67b. This manual path
+      // duplicated the status flip but not the release, so a manually
+      // rejected return has been sealing the item in the bay the same way.
+      // Called AFTER the status update, matching the automatic path exactly:
+      // reasonForStatus("DISPUTED") is what the policy actually keys the
+      // gate on, not the override below (which only picks what gets stored).
+      const io = req.app.get("io");
+      await requestRelease(io, returnRental.id, {
+        reasonOverride: "RETURN_DISPUTED",
+      });
+
+      // Neither party was told anything happened before this — no
+      // notification, no email. Matching the automatic path's own message.
+      await prisma.notification.create({
+        data: {
+          userId: returnRental.ownerId,
+          title: "Return Disputed",
+          message: `Returned item for ${returnRental.item.title} did not match verification. Admin will review.`,
+          type: "VERIFICATION_FAILED",
+          relatedEntityId: returnRental.id,
+          relatedEntityType: "rental",
+        },
+      });
+      const renterForDispute = await prisma.user.findUnique({
+        where: { id: returnRental.renterId },
+        select: { email: true, firstName: true },
+      });
+      if (renterForDispute) {
+        await sendVerificationFailed(renterForDispute.email, {
+          firstName: renterForDispute.firstName,
+          itemTitle: returnRental.item.title,
+          rentalId: returnRental.id,
+          reason: "return",
+        });
+      }
     }
 
     // ── D-87d: DEPOSIT verifications. ────────────────────────────────────

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET done and verified - D-94 fixed/deployed/verified (see below) - bay 1 back in service - D-93: actuator retract/extend order FIXED + tested + DEPLOYED to the Pi 2026-09-22, clean restart (GPIO/actuators/cameras all init OK, no auto-triggered hardware movement, kiosk reconnected, occupancy correct) - CAUTION: controller is running OUTSIDE systemd supervision right now (manually launched, no sudo available to `systemctl start`; `Restart=on-failure` did not cover the plain SIGTERM used to stop it) — `systemctl status` will wrongly say inactive/dead, and a crash will NOT auto-restart until this is fixed with real sudo access - per-locker concurrency lock still not scoped - Node 300/300 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 deployed but NOT yet proven on a real actuator cycle (no long-lead drop has fired since deploy)]
+[PHASE E5 - stack UP 2026-09-22 - D-90 through D-94 as before - bay 1 back in service - D-93 deployed to the Pi, unproven on a real cycle, controller unsupervised (no sudo) - D-95 FOUND+FIXED, NOT YET DEPLOYED: a successfully-returned item was never released back to its owner (no code path ever called requestRelease for R2/OWNER_RETURN_PICKUP) AND a return approved via admin manual review (the NORMAL path per D-87b) never refunded the deposit or paid the owner out (never called finalizeRentalCompletion) - fixed in 4 completion paths (index.ts completeRental, adminController reviewVerification approve+reject, forceCompleteRental), 9 new tests, 309/309 - one real rental (331ce382) confirmed stuck this way, remediation needs G11 (drives the actuator) - per-locker concurrency lock still not scoped - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 built but NOT deployed or verified]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7491,3 +7491,99 @@ the restart itself needed a separate G11 disclosure — it does not).
   deploy. Only a genuine long-lead-pickup deposit (or an explicit, freshly-
   confirmed manual test — new G11 ask, not covered by this session's
   approval) will actually prove it.
+
+### D-95 — a successful return never got its item back to the owner or its money moved. FOUND, FIXED, TESTED, NOT YET DEPLOYED, 2026-09-22.
+
+**Asked for directly**: "after returning the item is still needs to be
+retrieved from the locker to the owner of that item / also does the
+security deposit when the full item is done / everything / Check." Then,
+after the first pass of findings: "You decide think / what should happen /
+Think this in every scenario / Check / From renter to retrieval / Checks
+for ml / Return then retrieval for renter / ETC / everything" — explicit
+authorization to design and fix, not just report.
+
+**Two real, separate defects, both root-caused against live data before
+touching anything:**
+
+**D-95a — item retrieval.** `retrievalPolicy.ts` (E4.6, ruled and built
+2026-09-12) already has a complete, tested rule for this: a rental in
+`VERIFICATION` status maps to release reason `OWNER_RETURN_PICKUP` (R2), and
+`requestRelease()` (the executor) already correctly handles it —
+`holdingLocker()` already special-cases `VERIFICATION`/`DISPUTED` to read
+the *return* bay, not the deposit bay. All of it fully unit-tested
+(`retrievalPolicy.test.ts`). **Nothing had ever called it for R2.** The
+E4.6 cron sweep only ever queries `status: "DEPOSITED"` (R1); nothing else
+calls `requestRelease` for a plain successful return. So the item just sat
+`OCCUPIED` in the bay forever — no release requested, no "come collect it"
+notification, and no way to trigger one, since `applyFaceVerificationOutcome`
+only recognises retrieval once `releaseRequestedAt` is already set. Exactly
+the D-90b bug *class*: fully designed, fully tested, never wired to a real
+caller.
+
+**D-95b — money.** `finalizeRentalCompletion()` (deposit refund net of
+fees, owner payout) is called by `completeRental()` (index.ts, the
+automatic ML-approved path) and by `settleDispute()`. It was **not** called
+by `reviewVerification()`'s manual-approval branch or by
+`forceCompleteRental()` — and per D-87b, manual review is the *normal*
+outcome for a return, since the fast ML tier "structurally cannot approve."
+Confirmed live before writing a line of fix: rental `331ce382` completed
+this exact way, with a real ₱500 `SECURITY_DEPOSIT` and ₱90
+`RENTAL_PAYMENT` on record (both `COMPLETED`), and **zero**
+`DEPOSIT_REFUND`/`OWNER_PAYOUT` transactions — while its own notifications
+said *"Security deposit will be refunded"* and *"Payment will be
+released."* Neither happened. Nothing errored or flagged it.
+
+**Fixed in all four places a rental actually reaches `COMPLETED`:**
+- `completeRental()` (index.ts) — added `requestRelease()`, already had
+  `finalizeRentalCompletion()`.
+- `reviewVerification()` return-approve (adminController.ts) — added both.
+- `reviewVerification()` return-reject (adminController.ts) — this branch
+  had *neither* `requestRelease` nor any notification/email at all; the
+  automatic rejection path (index.ts, R5) has both. Brought to parity.
+- `forceCompleteRental()` (adminController.ts) — the admin's stuck-rental
+  escape hatch, usable from `VERIFICATION` **or** `DISPUTED`. Arguably the
+  most important of the four to fix: it's reached for exactly when
+  something upstream already went wrong, which is exactly when the item is
+  most likely still sitting un-released. Added both, with no
+  `reasonOverride` — `reasonForStatus()` already derives the right reason
+  from whichever of the two entry statuses is real, and `decideRelease`'s
+  own idempotency guard (`releaseRequestedAt !== null`) makes a second call
+  on an already-released DISPUTED rental a safe no-op, not a double release.
+
+**`settleDispute()` needed no change** — a disputed return already has its
+item released at *rejection* time (R5, now also true of the manual
+rejection path above), so by the time a dispute is settled the item is
+already back with the owner; the function's job is purely financial
+(already correctly calls `finalizeRentalCompletion`).
+
+**Ordering matters and is load-bearing**: `requestRelease` must run
+*before* the `$transaction` that flips status to `COMPLETED` in every one
+of these, not after — `holdingLocker()` and `reasonForStatus()` both key
+off the rental's *current* status, and `reasonForStatus("COMPLETED")`
+returns `null` (no release path at all). Get the order backwards and the
+call silently refuses instead of fixing anything.
+
+**Tests, 9 new**, mocking `requestRelease`/`finalizeRentalCompletion`
+directly rather than their internals (both already have their own test
+coverage — `retrievalPolicy.test.ts`, and this session's own
+`completeClaim.test.ts` pattern):
+`reviewVerificationReturn.test.ts` (5) — approve releases before
+completing, refunds + pays out, emits `rental:completed` to both parties;
+reject releases + notifies + emails, and still marks `DISPUTED` even if
+the release itself is refused (bay busy, etc.) rather than blocking the
+rejection on it.
+`forceCompleteRentalRelease.test.ts` (4) — both entry statuses release
+correctly, money moves, both parties notified. Full Node suite **309/309**.
+
+**Not deployed. Not verified live.** One real rental (`331ce382`) is
+confirmed stuck by this exact bug right now — `releaseRequestedAt`/
+`releasedAt`/`retrievedAt` all null, bay 1's top compartment still
+`OCCUPIED` holding it, zero settlement transactions. Checked: it's the
+*only* `COMPLETED` rental in the database (the reset earlier this session
+means there's nothing older to worry about). Fixing it for real means
+running the new code against it, which — since the item is in the top
+compartment and the bottom is free — will drive bay 1's actuator (a
+retract-then-extend stroke, the exact D-93 sequence, which would double as
+its first real-world proof). Deploying this fix and remediating that one
+rental are both G11 actions not yet taken; asked the user before doing
+either.

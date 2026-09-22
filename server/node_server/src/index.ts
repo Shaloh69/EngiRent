@@ -216,6 +216,18 @@ async function completeRental(rentalId: string): Promise<void> {
   });
   if (!rental) return;
 
+  // D-95a — E4.6 / R2: release the item back to the owner (drop to the lower
+  // compartment, or release in place) BEFORE the status flip below.
+  // requestRelease's holdingLocker() keys off rental.status === "VERIFICATION"
+  // to find the return bay; called after this rental is COMPLETED it can no
+  // longer tell which bay held it, and reasonForStatus("COMPLETED") has no
+  // release path at all. This is the same machinery E4.6's cron sweep already
+  // uses for R1 (uncollected deposits) — fully built, tested, just never
+  // called here, so an ML-approved return has never actually released the
+  // item; it sat OCCUPIED in the bay with nothing telling the owner to come
+  // get it or any way for them to, even if they tried scanning the kiosk QR.
+  await requestRelease(io, rentalId, { reasonOverride: "OWNER_RETURN_PICKUP" });
+
   await prisma.$transaction([
     prisma.rental.update({
       where: { id: rentalId },
