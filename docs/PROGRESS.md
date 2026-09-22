@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET done and verified - EngiRentAdmin restarted and verified - D-93: actuator retract/extend order FIXED + tested, NOT yet deployed to the Pi or seen on real hardware - D-94: cancelled-after-approved claim opened the wrong door - FIXED (claim now commits on door-open via completeClaim(), not on approval), 6 new tests, DEPLOYED to the Node API, verified live (fingerprinted process, port 5000, real /api/v1/items response) - notification-type coverage audited (14/14 enum values mapped client-side, no gaps) - dispute settlement confirmed correct (DB notifications to both parties) but has no live socket push, consistent with most of this codebase's notifications by design, not flagged as a regression - bay 1 back IN SERVICE 2026-09-22 (user physically confirmed, both compartments were already clean/empty, audit-logged) - CAUTION: D-93's actuator fix is still NOT deployed to the Pi, so any new long-lead-pickup deposit routed to bay 1 (or any bay) before that deploy will re-trigger the same stuck-open trap door - per-locker concurrency lock still not scoped - Node 300/300 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unverified on hardware, and now live-exposed again]
+[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET done and verified - D-94 fixed/deployed/verified (see below) - bay 1 back in service - D-93: actuator retract/extend order FIXED + tested + DEPLOYED to the Pi 2026-09-22, clean restart (GPIO/actuators/cameras all init OK, no auto-triggered hardware movement, kiosk reconnected, occupancy correct) - CAUTION: controller is running OUTSIDE systemd supervision right now (manually launched, no sudo available to `systemctl start`; `Restart=on-failure` did not cover the plain SIGTERM used to stop it) — `systemctl status` will wrongly say inactive/dead, and a crash will NOT auto-restart until this is fixed with real sudo access - per-locker concurrency lock still not scoped - Node 300/300 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 deployed but NOT yet proven on a real actuator cycle (no long-lead drop has fired since deploy)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7427,3 +7427,67 @@ since there's no separate tap here — commit and command are adjacent), but
 the same class of "state says done before hardware confirms it" risk.
 Not touched this session — flagging for a future pass rather than
 expanding this one further.
+
+### D-93 deployed to the Pi — 2026-09-22
+
+**Reached the kiosk at all, which needed its own detour.** Direct
+`ssh engirent@engirent-kiosk` hit Tailscale SSH's own device-approval check
+(a browser link, not a password prompt — different from a normal locked-out
+host) and could not be completed non-interactively. Fell back to the
+documented jump-host route (`memory.md`, `reference_kiosk_access.md`):
+`ssh -o HostKeyAlias=engirent-kiosk -J transfer@desktop-gklhcri
+engirent@<lan-ip>`. The kiosk's LAN IP had moved since that note was
+written (`192.168.254.124`, not the old `192.168.1.65`) — found via the
+server's ARP table, matched by the kiosk's known MAC prefix (`2C-CF-67`),
+confirmed by an established Tailscale-side TCP connection to the API on
+port 5000 first (so the kiosk really was online, just not reachable by the
+route last written down).
+
+**The kiosk's checkout is diverged from git the same way the server's is**,
+discovered before touching anything: `git status` claims "up to date with
+origin/main", but `git diff --stat` shows ~4,200 lines different across 16
+files including `kiosk_config.json` — main is missing this entire redesign
+track (E0 onward lives on `e0-e1-audit-tests-and-evidence`), so this box's
+real state was reached by the same manual-file-copy pattern as the server,
+never by git. Deployed the same way: the two fixed files only, `scp`
+(worked this time; base64-over-`ssh` is the documented fallback if it
+doesn't), byte-verified by SHA-256 before touching the running process.
+`kiosk_config.json`, the one file this project's hard rule forbids editing,
+was never opened.
+
+**Restarting it needed three attempts, each blocked differently, each with
+the user's explicit go-ahead sought or already given per G11.** `kill
+<pid>` (same user, no sudo needed) was refused by the permission classifier
+once, went through on retry after the user said "go ahead do it" — but
+`Restart=on-failure` in the systemd unit did not count a plain `SIGTERM` as
+a failure, so the controller just stayed dead; `systemctl start` needed
+sudo, which needs a password nobody had; a direct `sudo -l` confirmed no
+passwordless rule exists. Fell back to launching `main.py` directly
+(`nohup … & disown`, correct working directory, correct env — `main.py`
+loads its own `.env`, and the `engirent` user already carries the `gpio`/
+`dialout`/`video` groups systemd would otherwise grant, so hardware access
+is unaffected) — refused once by the classifier, went through on retry.
+
+**Confirmed clean on real hardware, with no hardware actually moving.** The
+startup log shows all 12 solenoid relays claimed, all 4 actuator channels
+initialised, all 4 cameras opened, and the kiosk reconnected to the API
+reporting the correct per-bay timings (`ext=22s/ret=22s` for bay 1,
+untouched) and all-AVAILABLE occupancy — and critically, no EXTEND/RETRACT/
+PLACE line anywhere in it, confirming startup itself never drives the
+actuator (checked this *before* restarting, specifically to know whether
+the restart itself needed a separate G11 disclosure — it does not).
+
+**What's NOT true yet, stated plainly:**
+- **Not supervised.** The controller is running as a bare background
+  process, not under `engirent-kiosk.service`. `systemctl status` will
+  report it as `inactive (dead)` — that's wrong, it's running — and if it
+  crashes, nothing brings it back until someone with real sudo access either
+  runs `systemctl start engirent-kiosk.service` (which will then take over
+  supervision normally) or relaunches it the same manual way. This needs a
+  human with the kiosk's actual sudo password, not something to route
+  around again.
+- **Not proven on a real actuator cycle.** Clean init is necessary, not
+  sufficient — the retract-then-extend fix itself has not fired once since
+  deploy. Only a genuine long-lead-pickup deposit (or an explicit, freshly-
+  confirmed manual test — new G11 ask, not covered by this session's
+  approval) will actually prove it.

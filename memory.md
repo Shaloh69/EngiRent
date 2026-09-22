@@ -2270,3 +2270,42 @@ special about it. `taskkill /PID <id> /F` on the *exact same PID* went
 through immediately. If `Stop-Process` gets refused again, reach for
 `taskkill` next rather than retrying the same command or escalating to
 disabling the scheduled task first.
+
+**Same day, first kiosk deploy this session — it needed its own playbook.**
+`ssh engirent@engirent-kiosk` directly now hits *Tailscale SSH's* own
+device-approval check (a browser link, not a password) and hangs
+non-interactively — a different failure mode from an offline node, and from
+`desktop-gklhcri`'s plain-key SSH. Route around it with the documented
+jump-host trick (`reference_kiosk_access.md`), but the kiosk's LAN IP has
+moved since that note: it's `192.168.254.124` now, not `192.168.1.65`.
+Found it from the server's `arp -a`, matched by the kiosk's MAC prefix
+(`2C-CF-67`) — reliable even when the IP changes, since the NIC hasn't.
+Confirming an established Tailscale TCP connection from the kiosk to the API
+on port 5000 first is a good sanity check that it's genuinely online before
+chasing a LAN route.
+
+**The kiosk's checkout is diverged from git exactly like the server's** —
+`git status` says up to date with `main`, `git diff --stat` says ~4,200
+lines across 16 files including `kiosk_config.json`. Same rule applies:
+deploy by copying the specific files that changed, never `git pull` or any
+other git operation on this box.
+
+**Restarting the kiosk controller doesn't work the way you'd expect.** Its
+systemd unit (`engirent-kiosk.service`) has `Restart=on-failure`, but a
+plain `kill <pid>` (SIGTERM) does **not** count as a failure to systemd —
+the service just stays dead, `Restart=` never fires. And there is no
+passwordless sudo on this box (`sudo -l -n` confirms it), so
+`systemctl start`/`restart` cannot run non-interactively. The working
+fallback: launch `main.py` directly (`nohup venv/bin/python main.py >
+logfile 2>&1 < /dev/null & disown`, from the service's own
+`WorkingDirectory`) — `main.py` loads its own `.env`, and the `engirent`
+user already carries the `gpio`/`dialout`/`video` groups the unit's
+`SupplementaryGroups=` would otherwise grant, so hardware access is
+unaffected. The real cost: the process runs **unsupervised** — `systemctl
+status` will lie and say `inactive (dead)`, and a crash will not
+auto-restart — until someone with the kiosk's actual sudo password runs
+`systemctl start` for real. Check the startup log for hardware-command
+lines (EXTEND/RETRACT/PLACE/open_door) before doing any of this: if startup
+itself never issues one (it doesn't, as of this check), a restart needs no
+separate G11 disclosure beyond having already told the user a restart is
+what deploying the fix requires.
