@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §13 lists everything still open and §14 is the clean-up session's starting prompt** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - per-locker concurrency lock still not scoped - a fresh test rental (1c836111, "Hand Rivets") is mid-flow, DEPOSITED + APPROVED, item in bay 1 upper, awaiting the renter's collection - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
+[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §12 is the kiosk exclusivity rule, §14 lists everything open, §15 is the clean-up session's starting prompt** - **D-96 FOUND 2026-09-23, NOT FIXED: nothing enforces one-process-per-bay on either side — the kiosk dispatches every command fire-and-forget with no per-bay lock, and the server's F2 "a hand may be inside" guard is DEAD because neither `hasOpenDoor` (noteDoorOpen/noteDoorClosed exported, never called) nor `hasLiveKioskSession` (no caller passes it) is ever fed; its 3 tests pass against a pure function wired to nothing** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - a fresh test rental (1c836111, "Hand Rivets") is mid-flow, DEPOSITED + APPROVED, item in bay 1 upper, awaiting the renter's collection - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7623,3 +7623,51 @@ matching the user's confirmation that locker 1 is physically empty.
 the database, so D-95's fix has not been proven against a real return
 either — it needs a fresh rental to go all the way through deposit → claim
 → return → completion before that G1 debt closes.
+
+### D-96 — nothing stops two processes running on the same bay. FOUND, NOT FIXED, 2026-09-23.
+
+**Asked for**: "adding a rule that the kiosk should finish its process first
+before continuing or cant be overwritten by another one." Went to write the
+rule into `LIFECYCLE-PROCESS-MAP.md` §12 and checked what enforces it today.
+Nothing does, on either side.
+
+**Kiosk.** `on_command` dispatches every command with
+`asyncio.create_task(_run_with_ack(...))` — fire-and-forget, no queue, no
+lock, no per-bay state (`server/kiosk/services/socket_client.py:431-457`).
+Two commands for the same bay run concurrently. `place_item` sleeps between
+its retract and extend phases with nothing preventing another task flipping
+the same relays during the sleep. Bay 1's drop is a **44-second** sequence
+(22s + 22s); an `open_door` landing 2s in unlocks a door onto a compartment
+whose floor is mid-travel. The only `asyncio.Lock` in that file guards the
+offline outbound event queue and is unrelated.
+
+**Server — and this is the worse half.** `retrievalPolicy.ts:209-216` already
+has the correct rule as **F2**, with a comment stating it is *"not negotiable
+by `onDemand`: an owner requesting their item does not make someone else's
+hand safe."* It reads two inputs and **neither is ever supplied**:
+`hasOpenDoor` comes from `isDoorOpen()`, which reads a `Set` that
+`noteDoorOpen`/`noteDoorClosed` fill — both exported, **neither called
+anywhere in the codebase**; `hasLiveKioskSession` is `opts.hasLiveKioskSession
+?? false` and **no caller passes it**. So `decideRelease` can never return
+`bay_busy` in production. Its three tests
+(`__tests__/retrievalPolicy.test.ts:75-99`) pass because they hand the flags
+in by hand — a pure function proven correct and wired to nothing. Separately,
+`openBay` validates the grant but never asks whether the bay is busy, and
+grants are keyed by `rentalId` rather than by bay, so two rentals can hold
+live grants on the same bay simultaneously.
+
+**Fourth instance of the same class this week** — after D-90b (socket events
+emitted, never listened for), D-94 (state committed before the door opened)
+and D-95 (`requestRelease`/`finalizeRentalCompletion` built, tested, never
+called). Designed, tested, never connected. Worth treating as a pattern in
+this codebase rather than three coincidences: the tests here are unit tests of
+pure modules, which prove the logic and say nothing about whether anything
+calls it.
+
+**Not fixed in this session, deliberately.** The fix is a kiosk-side per-bay
+lock plus wiring F2's two inputs — that is a third change to hardware-driving
+code on top of D-93 (deployed, never fired) and D-95 (deployed, no real return
+yet), and I cannot verify any of the three without the hardware. Stacking a
+third unverified change is what G1 exists to prevent. Full specification of
+what the fix must cover is in `LIFECYCLE-PROCESS-MAP.md` §12, and it is the
+first work item in that document's §15 clean-up prompt.

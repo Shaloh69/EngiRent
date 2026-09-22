@@ -80,6 +80,11 @@ Three separate availability ideas, deliberately not collapsed into one flag
    have the owner told to hand the item over.
 5. On the second confirmation: rental → **`AWAITING_DEPOSIT`**, owner notified.
 
+> **Where things are.** **Item:** still with the owner, nowhere near a locker.
+> **Money:** both payments sit `COMPLETED` against the rental — the platform
+> holds them. The deposit is the renter's liability cap from here on; the
+> rental payment is owed to the owner but not yet sent.
+
 ---
 
 ## 4. The kiosk handshake — shared by all three physical steps
@@ -153,6 +158,13 @@ frames → `kiosk:images` → ML item comparison.
 to a bay whose lower compartment is occupied would create an item with nowhere
 to go.
 
+> **Where things are.** **Item:** moves from the owner's hands into the bay's
+> **upper compartment**, the moment the owner closes the door. From here until
+> collection it is in the machine and nobody's hands. The database says so via
+> `topStatus = OCCUPIED` + `topRentalId`, written through the single
+> compartment writer (`services/lockerCompartments.ts`) — never directly.
+> **Money:** unchanged, both payments still held.
+
 ---
 
 ## 6. Item verification — three outcomes, and two tiers
@@ -192,6 +204,15 @@ bay** (D-87d gate, `faceVerificationService.ts`). The app correspondingly hides
 the pickup button and shows a waiting note
 (`rental_model.dart` → `depositAwaitingConfirmation`).
 
+> **Where things are.** **Item:** in the upper compartment throughout — a
+> verification verdict never moves anything by itself. The one exception is a
+> **long-lead** deposit that gets approved: that triggers `dropToStorage`,
+> which strokes the actuator and moves it to the **lower** compartment,
+> freeing the upper bay for someone else (E5.4). **Money:** unchanged. Note
+> what this means if the check drags — the renter has paid in full for an item
+> they cannot yet touch, which is why "PENDING is not a failure" matters as a
+> UI rule and not just a label.
+
 ---
 
 ## 7. Renter collects — `DEPOSITED` → `ACTIVE`
@@ -216,6 +237,13 @@ Mode `retrieve`, subject = renter. **Requires `verificationStatus === "APPROVED"
 > still in the compartment — and the retry was then read as a *return* (because
 > status was already `ACTIVE`), which opened a different, empty door.
 
+> **Where things are.** **Item:** leaves the machine and is now **with the
+> renter**. The compartment it came out of is freed — and *only* that one; the
+> sibling compartment may hold a different student's property and must keep
+> saying so. **Money:** unchanged, still both held. The owner is not paid at
+> collection — they are paid at completion, which is what gives the deposit
+> something to be held against for the whole rental.
+
 ---
 
 ## 8. Renter returns — `ACTIVE` → `VERIFICATION`
@@ -232,6 +260,13 @@ Outcomes (`index.ts`, the `kiosk:images` return branch):
 - **REJECTED** → rental **`DISPUTED`**, owner notified, renter emailed, and the
   item is **released back to the owner immediately** (R5) — the disputed object
   should not stay sealed in a bay while people argue about it.
+
+> **Where things are.** **Item:** back in the machine, **upper compartment of
+> the return bay** — which need not be the bay it was deposited in.
+> `holdingLocker()` knows this: for `VERIFICATION`/`DISPUTED` it reads
+> `returnLocker`, for anything else `depositLocker`. **Money:** unchanged, both
+> still held. Any `LATE_FEE` the daily cron has accrued is already sitting as
+> `COMPLETED` transactions waiting to be netted off at settlement.
 
 ---
 
@@ -276,6 +311,16 @@ retrieve branch opens whichever door holds it and sets `retrievedAt`.
 > know it's the *return* bay, and `reasonForStatus("COMPLETED")` returns `null`
 > — no release path at all. Get the order wrong and it silently refuses.
 
+> **Where things are.** **Item:** either strokes down to the **lower**
+> compartment or stays where it is and is re-labelled `AWAITING_RETRIEVAL` —
+> and that label is the most important one in the system. It does **not** mean
+> available. It means *an item is in here and its owner has not taken it yet*,
+> and it is what stops a second item being dropped on top of someone's
+> property. While an actuator is mid-travel **both** compartments are blocked,
+> because the item is cleanly in neither; `confirmRelease` settles them only on
+> the Pi's acknowledgement. **Money:** unchanged — release is a physical act,
+> not a financial one. The two are settled separately and in that order.
+
 ---
 
 ## 10. Settlement — the money
@@ -312,6 +357,17 @@ Either half failing must not block the other.
 > payment on record and **zero** refund/payout rows, while its own
 > notifications promised both.
 
+> **Where things are.** **Item:** out of the machine and back with its owner
+> (that is §9's job, and it must already have happened — this is why §9 runs
+> *before* the status flip, not after). **Money:** this is the only step where
+> it moves. Deposit minus deductions goes back to the renter; the rental
+> payment goes to the owner; both are recorded as new `Transaction` rows
+> (`DEPOSIT_REFUND`, `OWNER_PAYOUT`) so the ledger shows what happened rather
+> than just ending. **If you are ever checking whether a rental really
+> finished, check for those two rows — not the `COMPLETED` status.** That is
+> exactly the distinction that hid D-95: the status said done, the ledger said
+> nothing had moved, and the notifications sided with the status.
+
 ---
 
 ## 11. The autonomous jobs
@@ -330,23 +386,114 @@ switch — but never the safety checks.
 
 ---
 
-## 12. Status reference
+## 12. THE EXCLUSIVITY RULE — one bay, one process, start to finish
 
-| Rental status | Means | Item is |
+**The rule, stated plainly:**
+
+> Once a bay begins a process, that bay is **occupied by that process until it
+> finishes**. No second process may start on it, and nothing may overwrite it.
+> A bay is busy from the moment work is committed to it until the moment that
+> work is finished or has demonstrably failed — not merely while a motor is
+> turning.
+
+A "process" here is any of: a door-open window, a photo capture, an actuator
+stroke, a deposit/collect/return/retrieve flow in progress, or a self-test.
+
+**Why it is not optional.** The hardware is four bays of solenoids and linear
+actuators in an unattended public corridor. A `drop_item` on bay 1 is a
+**44-second** sequence (22s retract + 22s extend on bay 1's calibration). If an
+`open_door` for bay 1 lands 2 seconds into that, today both run — a door
+unlocking onto a compartment whose floor is mid-travel, with a person reaching
+in because their phone just told them to.
+
+### What actually exists today — and the part that doesn't
+
+**Kiosk side: nothing.** `on_command` dispatches every command with
+`asyncio.create_task(_run_with_ack(...))` — fire-and-forget, no queue, no lock,
+no per-bay state (`server/kiosk/services/socket_client.py:431-457`). Two
+commands for the same bay run concurrently. `ActuatorController.place_item`
+sleeps between its phases with nothing stopping another task flipping the same
+relays during the sleep. The only `asyncio.Lock` in the file guards the
+*offline outbound event queue*, which is unrelated.
+
+**Server side: one guard, designed correctly, and completely dead.**
+`retrievalPolicy.ts:209-216` has exactly the right rule — **F2**, refuse to
+move a bay someone may have a hand inside, with a comment stating it is *"not
+negotiable by `onDemand`: an owner requesting their item does not make someone
+else's hand safe."* It reads two inputs. **Neither is ever supplied:**
+
+| Input | How it should be fed | Reality |
 |---|---|---|
-| `PENDING` | Booked, not fully paid | with the owner |
-| `AWAITING_DEPOSIT` | Paid, owner must deposit | with the owner |
-| `DEPOSITED` | In the locker; collectable **only** once `verificationStatus = APPROVED` | upper, or lower if long-lead |
-| `ACTIVE` | Collected | with the renter |
-| `VERIFICATION` | Returned, being checked | upper compartment of the return bay |
-| `COMPLETED` | Done | released to the owner |
-| `DISPUTED` | A return was rejected | released to the owner pending settlement |
-| `CANCELLED` | Cancelled/auto-cancelled | released if it was ever inside |
+| `hasOpenDoor` | `isDoorOpen()` reads a `Set` filled by `noteDoorOpen`/`noteDoorClosed` | **Both exported, neither is called anywhere.** The Set is always empty |
+| `hasLiveKioskSession` | passed by the caller | **No caller passes it.** `opts.hasLiveKioskSession ?? false` — always `false` |
+
+So `decideRelease` can never return `bay_busy` in production. Its three tests
+pass because they hand the flags in directly
+(`__tests__/retrievalPolicy.test.ts:75-99`) — a pure function proven correct and
+wired to nothing. **This is `CLAUDE.md`'s "a green test is not a fix", exactly.**
+
+And `openBay` (`controllers/kioskController.ts`) checks the *grant* — right
+user, not expired, under the open cap — but never asks whether the bay is busy.
+Bay-access grants are keyed by **`rentalId`**, not by bay, so two rentals can
+legitimately hold live grants on the same bay at once.
+
+**Net: there is no layer anywhere that prevents concurrent actuation on one
+bay.** Recorded as **D-96**.
+
+### What the rule must cover when it is built
+
+1. **A per-bay lock on the kiosk**, held for the *whole* handler, not just the
+   GPIO call. This is the real guard — the Pi is the only place that knows when
+   a stroke is genuinely finished. A command arriving for a busy bay is
+   **refused and acknowledged as refused**, never silently queued: a door that
+   opens 40 seconds late is worse than one that refused.
+2. **Feed F2's two inputs**, so the server stops proposing work it should know
+   better than to propose. `noteDoorOpen`/`noteDoorClosed` called on the real
+   door lifecycle, and `hasLiveKioskSession` passed from the session store.
+3. **A bay-busy check in `openBay`**, so the server refuses before commanding
+   rather than relying on the Pi to catch it.
+4. **The person is told.** "Locker 1 is finishing something — please wait" on
+   both the kiosk screen and the phone. A refusal the user cannot see reads as
+   a broken machine.
+5. **Failure has a deadline.** A lock with no timeout is a bay bricked until
+   someone restarts the Pi. Failure mode F3 (a drop commanded, never
+   acknowledged) already exists for exactly this and must release the lock,
+   loudly, into a state a human can reconcile.
+
+**Defence in depth, deliberately.** The kiosk lock is the one that must be
+right; the server-side checks exist so the two disagree loudly instead of the
+Pi silently absorbing commands that should never have been sent.
 
 ---
 
-## 13. Open, as of 2026-09-23
+## 13. Status reference
 
+| Rental status | Means | **Where the item is** | **Where the money is** |
+|---|---|---|---|
+| `PENDING` | Booked, not fully paid | with the owner | one or neither payment in; nothing owed yet |
+| `AWAITING_DEPOSIT` | Both payments cleared, owner must deposit | with the owner | both held by the platform |
+| `DEPOSITED` | In the locker; collectable **only** once `verificationStatus = APPROVED` | upper compartment — or lower, if a long-lead deposit was dropped | both held |
+| `ACTIVE` | Collected | with the renter | both held; late fees may accrue against the deposit |
+| `VERIFICATION` | Returned, being checked | upper compartment of the **return** bay | both held; fees accrued but not yet netted |
+| `COMPLETED` | Done | released to the owner | **moved** — `DEPOSIT_REFUND` + `OWNER_PAYOUT` rows must exist |
+| `DISPUTED` | A return was rejected | released to the owner pending settlement | both held until settled |
+| `CANCELLED` | Cancelled/auto-cancelled | released if it was ever inside | voided (`REFUNDED`), no PayMongo call |
+
+**Reading this table as a check:** any row where the item column and the
+physical bay disagree is a bug, and any `COMPLETED` rental without both ledger
+rows is a bug. Those two sentences would have caught D-94 and D-95 on the day
+they shipped.
+
+---
+
+## 14. Open, as of 2026-09-23
+
+- **D-96 — nothing enforces the exclusivity rule (§12), on either side.** The
+  kiosk dispatches every command fire-and-forget with no per-bay lock, and the
+  server's own F2 "a hand may be inside" guard is dead because neither of its
+  two inputs is ever fed. Three passing tests prove a pure function that is
+  wired to nothing. This is the highest-severity item here: it is the one that
+  can move a motor while someone is reaching into the bay.
 - **D-93 unproven on hardware.** The retract/extend fix is deployed to the Pi
   and the controller restarted cleanly, but the corrected sequence has not
   fired once on a real drop. Only a genuine long-lead drop, or an explicitly
@@ -357,8 +504,6 @@ switch — but never the safety checks.
   crash will not auto-restart it. Needs someone with the Pi's sudo password.
 - **D-95 unproven on a real return.** Deployed and unit-tested; no rental has
   gone through a full return since.
-- **No per-locker concurrency lock.** Nothing stops two commands running
-  against the same bay at once. Requested, not yet scoped.
 - **The E4.6 retrieve branch** commits `retrievedAt` in the same block that
   emits the door command, with no confirmation between — a smaller version of
   D-94's shape.
@@ -369,7 +514,7 @@ switch — but never the safety checks.
 
 ---
 
-## 14. Starting prompt for the clean-up session
+## 15. Starting prompt for the clean-up session
 
 Paste this after `/clear`:
 
@@ -377,9 +522,10 @@ Paste this after `/clear`:
 Read, in this order: CLAUDE.md, memory.md, docs/PROGRESS.md (status line +
 the newest dated entries), then docs/redesign/LIFECYCLE-PROCESS-MAP.md in
 full. That last one is the end-to-end process map — use it as the spine.
+§12 is the exclusivity rule, §14 is what's open.
 
-This session has ONE job: close the open items in §13 of the process map.
-No new features. No redesign.
+This session has ONE job: close the open items in §14. No new features. No
+redesign.
 
 Work in this order, and stop after each to report:
 
@@ -389,16 +535,25 @@ Work in this order, and stop after each to report:
    for it, don't work around it. Reach the Pi via the jump host (see
    memory.md's kiosk entry; its LAN IP moves, match on MAC prefix 2C-CF-67).
 
-2. Prove D-93 on real hardware. The retract-then-extend fix is deployed but
+2. Build D-96, the exclusivity rule in §12 — it is the safety-critical one.
+   A per-bay lock on the KIOSK held for the whole handler (the Pi is the
+   only place that knows when a stroke has really finished), refusing rather
+   than queueing, with a timeout so a failed command cannot brick a bay.
+   Then feed F2's two dead inputs (noteDoorOpen/noteDoorClosed are exported
+   and never called; hasLiveKioskSession is never passed), and add a
+   bay-busy check to openBay. Test that a second command for a busy bay is
+   REFUSED — and note that the existing F2 tests pass today against a guard
+   that cannot fire, so a passing test is not evidence here.
+
+3. Prove D-93 on real hardware. The retract-then-extend fix is deployed but
    has never fired. Do NOT trigger an actuator without telling the human
    exactly what will move, which bay, and for how long, then waiting for an
    explicit yes (G11).
 
-3. Prove D-95 on a real return: one rental all the way through deposit →
-   collect → return → completion, checking that the item is released to the
-   owner AND that DEPOSIT_REFUND + OWNER_PAYOUT rows actually appear.
-
-4. Then, and only then, scope the per-locker concurrency lock.
+4. Prove D-95 on a real return: one rental all the way through deposit →
+   collect → return → completion. Check the item is released to the owner
+   AND that DEPOSIT_REFUND + OWNER_PAYOUT rows appear. Per §13: a COMPLETED
+   status without those two rows is the bug, not the proof.
 
 Rules that bind here: the repo wins over the docs; a green test is not a
 fix — verify on screen; never drive hardware without explicit confirmation
