@@ -2243,3 +2243,21 @@ the caution is reasonable) — the same check run as `Invoke-RestMethod` against
 `127.0.0.1:<port>` *from inside* an `ssh` session was not blocked. When a
 direct external check gets refused, try the equivalent local check over SSH
 before concluding the API itself is unreachable.
+
+**2026-09-22 — D-93/D-94, actuator direction and the claim-approval gap.**
+Two lessons worth not re-learning. First: never trust a log line that says a
+hardware sequence "completed" as proof of the physical outcome — `place_item()`
+logged EXTEND→RETRACT→"PLACE complete" and I reported it as working; the user
+was standing there and the trap door was actually left open, because RETRACT
+is the motion that OPENS it, not closes it. The log was accurate about what
+commands ran; it said nothing about whether the sequence's net physical effect
+was correct. When the user corrects your read of physical hardware based on
+what they're looking at, that overrides what a success log implies. Second,
+architectural: anywhere a "grant this person a door" flow exists
+(`faceVerificationService.ts`'s claim/retrieve/return branches), do not let
+approving the grant ALSO commit state that assumes the door was used
+(`rental.status`, compartment availability) — D-94 happened because claim
+approval flips both in the same step the grant is created, so a cancel-before-
+opening leaves the database certain an item was collected that never left the
+compartment. The fix belongs in that gap, not in the retry path that
+misreads the resulting status.
