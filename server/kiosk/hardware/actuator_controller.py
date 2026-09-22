@@ -111,14 +111,18 @@ class ActuatorController:
         log.info("ACTUATOR STOP    locker=%s", locker_id)
 
     async def place_item(self, locker_id: int, extend_seconds: float, retract_seconds: float):
-        log.info("PLACE sequence locker=%s extend=%.1fs retract=%.1fs",
-                 locker_id, extend_seconds, retract_seconds)
-        self._do_extend(locker_id)
-        await asyncio.sleep(extend_seconds)
-        self._stop(locker_id)
-        await asyncio.sleep(0.3)
+        """RETRACT opens the trap door (item drops through); EXTEND closes it
+        back. Found backwards on 2026-09-22 — the sequence used to extend
+        first and end on retract, leaving the trap door open after every
+        long-lead-pickup storage drop with nothing to close it again."""
+        log.info("PLACE sequence locker=%s retract=%.1fs extend=%.1fs",
+                 locker_id, retract_seconds, extend_seconds)
         self._do_retract(locker_id)
         await asyncio.sleep(retract_seconds)
+        self._stop(locker_id)
+        await asyncio.sleep(0.3)
+        self._do_extend(locker_id)
+        await asyncio.sleep(extend_seconds)
         self._stop(locker_id)
         log.info("PLACE complete locker=%s", locker_id)
 

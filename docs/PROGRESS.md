@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET 2026-09-22 done and verified (full detail below) - EngiRentAdmin found down after the reset (502 via tunnel, port 3001 not listening, no crash trace in its log) and restarted, verified via the exact reported URL (`/verifications`) returning 200 through the public tunnel - Node 294/294 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 verified via logs/DB/live cron firing and code tracing, not the user's own eyes on a physical screen yet]
+[PHASE E5 - stack UP 2026-09-22 - D-90 through D-92 as before - PRODUCTION DATABASE RESET done and verified - EngiRentAdmin restarted and verified - D-93: actuator place_item() had retract/extend backwards (opened the trap door, never closed it) - FIXED in code + 2 tests passing, NOT yet deployed to the Pi or seen on real hardware - D-94 FOUND, NOT YET FIXED: a claim approved-but-cancelled-before-opening leaves rental.status=ACTIVE with the item still in the compartment; any retry is misread as a return and opens the wrong (empty) door - real incident on rental 331ce382, bay 1 taken OUT OF SERVICE as containment (audit-logged), stale top-compartment reservation cleared - also flagged: no per-locker lock against concurrent/overlapping commands on the same bay (user request, not yet scoped) - Node 294/294 - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unverified on hardware; D-94 unfixed]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7275,3 +7275,89 @@ exactly this kind of process-restart action; neither was actually necessary
 (the restart wasn't needed, per above, and the read-only check was
 re-confirmed instead via the same query run locally on the server over SSH,
 which was not blocked).
+
+### D-93 — the actuator opened the trap door and never closed it. FIXED IN CODE, NOT YET DEPLOYED OR HARDWARE-VERIFIED, 2026-09-22.
+
+**Reported directly, live**: "why did the actuator engage check the logs" — a
+real long-lead-pickup storage drop (E5.4) had just fired on bay 1 for a real
+rental, and the user watched the actuator physically stay extended-open
+afterward. My first pass at the log looked clean (EXTEND, STOP, RETRACT,
+STOP, "PLACE complete", Pi ACK) and I initially reported this as the E5.4
+feature working correctly — **wrong**, caught immediately by the user: "the
+actuator did not re-engage to close / it just opened / it did not retract,"
+then the correction that mattered — "retract opens the trap door" — which
+inverts what the log's own success message implied.
+
+**Root cause, confirmed against `server/kiosk/hardware/actuator_controller.py`
+`place_item()`**: the sequence extended first and ended on retract. RETRACT
+is the motion that opens the trap door; EXTEND closes it. So the sequence as
+written opened the door to drop the item and then simply stopped — nothing
+ever commanded it shut again. The docstring on the caller
+(`socket_client.py`'s `_cmd_drop_item`) documented the same backwards
+assumption ("1. Extend actuator (push item into locker) / 2. Retract
+actuator (return platform)"), which is presumably how this shipped wrong in
+the first place — the mental model was inverted from day one, not a recent
+regression.
+
+**Fix**: swapped the order in `place_item()` — retract first (open, item
+drops through), then extend (close). The `extend_seconds`/`retract_seconds`
+parameters still time the same motions they always did (each locker's own
+saved config value from `kiosk_config.json`, untouched — CLAUDE.md's hard
+rule on those timings applies to the values, not to which motion runs first,
+and neither the values nor the file were touched). Docstring corrected to
+match. 2 new tests (`tests/test_actuator_sequence.py`) pin the call order and
+that the sequence ends on extend, not retract — both pass locally against
+`MOCK_GPIO`.
+
+**NOT deployed to the Pi and NOT verified on real hardware.** This is a
+one-item G1 debt by itself: the next real long-lead-pickup drop is the only
+way to see the corrected sequence on real hardware, and per G11 that is not
+something to trigger without telling the user first, stating exactly what
+will move, and getting an explicit yes.
+
+### D-94 — a cancelled-after-approved claim opens the wrong door on retry. FOUND, NOT YET FIXED, 2026-09-22.
+
+**Also reported live**, interleaved with D-93: "when i clicked open locker
+the top locker unlocked not the bottom one." Root-caused from the full,
+unfiltered log for the specific rental (331ce382), not a sample:
+
+1. Claim face-verification correctly computed and granted `bottom_door` —
+   the item was in storage after D-93's drop, and `doorHoldingRental()`
+   found it there correctly. `rental.status` flips to `ACTIVE` and
+   `claimedAt` is set **as soon as the claim is approved**, and the bottom
+   compartment is marked `AVAILABLE` again **at the same moment** — both
+   happen before the door is ever confirmed opened.
+2. The renter cancelled at the kiosk before tapping to actually open it. The
+   item was never physically handed over, but the database now shows the
+   claim as fully settled.
+3. On retry, `applyFaceVerificationOutcome` picks a flow purely from
+   `rental.status` (by design — see CLAUDE.md's face-subject-from-status
+   rule). `ACTIVE` now reads as "renter returning an item," not "still
+   claiming," so it silently started a fresh RETURN flow: assigned bay 1's
+   (now-empty) top compartment and opened `main_door`. Empty, because the
+   renter's actual item never left the bottom compartment.
+
+**The gap**: there is no state between "claim approved" and "claim
+physically completed." Approval commits two irreversible-looking writes
+(rental status, compartment availability) before the one thing that should
+gate them — the door actually being opened — has happened.
+
+**Live consequence, found and contained, not yet fixed**: bay 1's bottom
+compartment showed `AVAILABLE`/`bottomRentalId: null` in the database while
+the user was initially unsure whether the item was still physically inside
+it — confirmed by the user that it was already retrieved, but the *database*
+had already forgotten it was ever there, which is the real defect regardless
+of this specific outcome. Bay 1 taken **OUT OF SERVICE** as a precaution
+(`setOperational`-equivalent write, audit-logged with the reason), and the
+stale top-compartment reservation left over from the errant return flow
+(`topRentalId` still pointing at this rental with nothing legitimate
+pending) was cleared. Bay 1 stays out of service until a human confirms it
+physically and puts it back — not done here.
+
+**Also raised, same conversation, same root-cause family, not yet scoped**:
+the user asked for a per-locker lock so no two commands can run against the
+same bay at once ("Locker 1 is under a process, please wait until it
+finishes"). Related to D-94 but a distinct, larger piece of work — guarding
+concurrent access is not the same fix as closing the approved-but-not-opened
+gap — deliberately not started this session to avoid stacking a second
+unverified change on top of D-93's already-pending hardware verification.

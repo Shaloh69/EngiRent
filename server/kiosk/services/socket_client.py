@@ -507,8 +507,8 @@ async def _cmd_open_door(data: dict):
 async def _cmd_drop_item(data: dict):
     """
     Actuator place sequence:
-      1. Extend actuator (push item into locker)
-      2. Retract actuator (return platform)
+      1. Retract actuator (opens the trap door, item drops through)
+      2. Extend actuator (closes the trap door back)
     """
     locker_id = int(data["locker_id"])
     cfg = load_timing_config()
