@@ -35,7 +35,7 @@ import {
 import { Request } from "express";
 import { v4 as uuidv4 } from "uuid";
 import {
-  KIOSK_ACTIONABLE_STATUSES,
+  isKioskActionable,
   resolveFaceSubject,
   compareFaceWithMl,
   applyFaceVerificationOutcome,
@@ -649,7 +649,7 @@ export const verifyFaceFromApp = async (
     });
     if (!rental) throw new NotFoundError("Rental not found");
 
-    if (!KIOSK_ACTIONABLE_STATUSES.includes(rental.status as never)) {
+    if (!isKioskActionable(rental)) {
       throw new ValidationError(
         `Rental status "${rental.status}" is not actionable at a kiosk`,
       );

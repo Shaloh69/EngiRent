@@ -272,6 +272,18 @@ Outcomes (`index.ts`, the `kiosk:images` return branch):
 
 ## 9. Release and retrieval — how the owner gets their item back
 
+> **SUPERSEDED FOR A PASSED RETURN — E6.R, 2026-09-24 (user ruling).** A
+> successful return is **no longer dropped** and is **no longer COMPLETED at
+> approval**. Approval (auto or admin) settles the money and hands the item
+> back to its owner **in place, through the main door**
+> (`releaseForOwnerPickup`, no policy gate: nothing moves). The rental **stays
+> `VERIFICATION` + `verificationStatus APPROVED`** until the owner scans the
+> QR, face-verifies and the retrieve branch opens the bay, which is where it
+> becomes **`COMPLETED`** (`returnApprovalService.ts`). Why: a return approved
+> at 22:47 had its R2 drop refused by F10, was never retried, and was then
+> unreachable once COMPLETED (**D-107**). R1/R3/R4/R5 below are unchanged.
+> Stranded items: `POST /admin/rentals/:id/release-for-pickup`.
+
 This is E4.6, and it is the part that was fully built and **never called** for
 a successful return until D-95 (2026-09-22).
 
@@ -324,6 +336,12 @@ retrieve branch opens whichever door holds it and sets `retrievedAt`.
 ---
 
 ## 10. Settlement — the money
+
+> **E6.R, 2026-09-24:** for a passed return, settlement now runs at
+> **approval** (`approveReturn`), not at COMPLETED. The renter's refund does not
+> wait for the owner's pickup. `COMPLETED` now means "the owner has the item
+> back", and both ledger rows already exist by then. `approveReturn` never
+> settles twice (it checks for existing `DEPOSIT_REFUND`/`OWNER_PAYOUT` rows).
 
 `finalizeRentalCompletion` (`services/rentalSettlementService.ts`), two
 independent movements over two different PayMongo mechanisms:
@@ -587,8 +605,8 @@ dead end. In every case the server was right and the person was uninformed.
 | `AWAITING_DEPOSIT` | Both payments cleared, owner must deposit | with the owner | both held by the platform |
 | `DEPOSITED` | In the locker; collectable **only** once `verificationStatus = APPROVED` | upper compartment — or lower, if a long-lead deposit was dropped | both held |
 | `ACTIVE` | Collected | with the renter | both held; late fees may accrue against the deposit |
-| `VERIFICATION` | Returned, being checked | upper compartment of the **return** bay | both held; fees accrued but not yet netted |
-| `COMPLETED` | Done | released to the owner | **moved** — `DEPOSIT_REFUND` + `OWNER_PAYOUT` rows must exist |
+| `VERIFICATION` | Returned, being checked — **or, with `verificationStatus APPROVED` (E6.R), passed and awaiting the owner's pickup** | upper compartment of the **return** bay | held while being checked; **already settled** once APPROVED |
+| `COMPLETED` | Done — **the owner has taken the item back** (E6.R) | with its owner | **moved** — `DEPOSIT_REFUND` + `OWNER_PAYOUT` rows must exist |
 | `DISPUTED` | A return was rejected | released to the owner pending settlement | both held until settled |
 | `CANCELLED` | Cancelled/auto-cancelled | released if it was ever inside | voided (`REFUNDED`), no PayMongo call |
 

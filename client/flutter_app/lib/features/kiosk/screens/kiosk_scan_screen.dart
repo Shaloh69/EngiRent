@@ -104,6 +104,9 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     _subs.add(sock.onReturnUnderReview.listen(_onReturnUnderReview));
     _subs.add(sock.onReturnDisputed.listen(_onReturnDisputed));
     _subs.add(sock.onRentalCompleted.listen(_onRentalCompleted));
+    // E6.R — an approved return no longer completes the rental (the owner's
+    // pickup does), so the renter's success arrives as `return:approved`.
+    _subs.add(sock.onReturnApproved.listen(_onRentalCompleted));
     _subs.add(sock.onKioskScanError.listen(_onScanError));
     _subs.add(sock.onKioskFaceRequired.listen(_onFaceRequired));
 

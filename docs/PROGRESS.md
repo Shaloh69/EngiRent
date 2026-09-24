@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - **PRE-`/clear` #2, 2026-09-24 ~22:15 — read "PRE-`/clear` HANDOFF #2" at the END of this file first** - §15 item 1 DONE + `Restart=always` applied on the Pi - **D-96 DEPLOYED BOTH SIDES; kiosk half VERIFIED on the real bank** (openBay/F2 refusal not yet seen live) - D-101 CLOSED (camera remap; the ring is in locker 4) - **D-102 FIXED+DEPLOYED** (a DB blip no longer kills the API) - **D-103 FIXED+DEPLOYED 22:08, NOT YET SEEN LIVE** ("Item is placed" during a door hold stranded the deposit) - **PHYSICAL TEST MID-FLIGHT: rental `b7497e8b…` AWAITING_DEPOSIT, both payments COMPLETED, bay 1 EMPTY (the user removed the item)** - API PID 4948 (re-derive) - Prerelease29 (1.13.1+29) live on the website - **two outages tonight; the 21:36 one was an EXTERNAL kill of every `node dist\index.js` on the box (EngiRent+EcoCharge+UniThrift)** - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-103 live, D-93 hardware, D-95 real return]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **D-107 FOUND LIVE, NOT FIXED, NEEDS A RULING** (R2 release refused at night is never retried; onDemand never wired) - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 4948 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-93 hardware, D-95 release half]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -8767,6 +8767,248 @@ should log `[D-103] … re-sending` and then capture.
 a concrete reason: a cloud session cannot reach `desktop-gklhcri` or the Pi
 (Tailscale/LAN only, keys on this PC), and every step above needed the live
 logs and a live deploy.
+
+### 2026-09-24 ~22:22-22:30 (post-`/clear` #2) — physical test: DEPOSIT DONE for `b7497e8b…`. D-103 still unseen. D-104 found live.
+
+Re-derived first: API PID 4948 (EngiRent engine path), all 7 tasks Running,
+rental `AWAITING_DEPOSIT` + both payments `COMPLETED` + 0 verifications, kiosk
+PID 36555 connected since 22:08:40 with bay 1 `RESERVED`.
+
+**The deposit, from `node-api3.log`:** 22:22:20 QR scan (mode `place`) →
+face handed to the phone → 22:22:25 face `verified=true confidence=46.3%`,
+"resumes in bay 1, already reserved for it", awaiting the open-bay tap →
+**22:22:31 `POST /kiosk/item-placed` with NO `open-bay` before it** →
+capture#1 `command_id=9E3F585F`, claim taken, 3 frames, released after
+1.4s → 22:23:01 quick check **RETRY 47.44 on attempt 2 → ESCALATED to
+review** (rental `DEPOSITED`/`MANUAL_REVIEW`, verification `a398076a…`) →
+deep review RETRY 46.97 in 23s, "waiting for a human" → kiosk
+`verification_done: pending` → phone showed "item is placed, waiting for
+review" (the §13 PENDING row, seen on screen by the user) → **22:30:16
+APPROVED by the user in the admin console**. Re-derived: `DEPOSITED`,
+`verificationStatus APPROVED`. The ~47 score is the known D-89b.
+
+**The capture shows the item.** Frame 1 (timestamp in its path =
+14:22:32 UTC, so this capture, not an old one) is the yellow/black OMEGA
+rivet tool on bay 1's floor. It matches the listing photo.
+**OPEN QUESTION, unresolved:** the handoff said the user had removed the
+item, and no door was opened in this session. So either it was never
+removed, or bay 1's door opened without being unlocked. Asked the user
+twice. They approved without answering. **If the door is not latching,
+that is a hardware finding on an unattended bank.** Check it before the
+collect leg ends.
+
+**D-103: NOT exercised.** No door hold was active when capture#1 ran, so
+there was nothing to refuse. It is still unseen live.
+
+**D-104 — "Item is placed" is accepted before the door has ever opened.
+FOUND LIVE, NOT FIXED** (G1: D-103 is still unseen).
+- Phone: `kiosk_scan_screen.dart:291` shows "Item is placed — check it"
+  whenever `_needsPhoto`, alongside "Open Kiosk Now", with no requirement
+  that the door was opened first.
+- Server: `itemPlaced` (`kioskController.ts:925`) checks the grant and the
+  capture cap, but **not `grant.opens > 0`**.
+- Effect: a check of a bay nobody has touched, using up a capture and an
+  attempt. Here the attempt counter carried over from the stranded 21:51
+  session ("attempt 2"), so this untouched-bay capture went straight to
+  escalation. Fix: server refuses `item-placed` with `opens === 0` ("Open
+  the locker first"), and the phone hides the button until an open
+  succeeds.
+
+**Log mislabel, minor:** `index.ts:1659` prints `[PI-OFFLINE] Kiosk
+disconnected` for **every** socket disconnect, including phones. Four of
+those fired during this deposit, and the Pi's journal showed none of them
+were the kiosk. Anyone reading that log during an incident will be misled.
+
+**Face confidence 46.3% passed as `verified=true`.** Not investigated. Worth
+a look at the threshold after the test.
+
+**Next: step 1, the renter collects.** The rental is collectable
+(`DEPOSITED` + `APPROVED`).
+
+### D-103 — VERIFIED LIVE ON THE REAL BANK, 2026-09-24 22:39. Closed.
+
+Seen on a **second, concurrent rental** (`3139d8c5…`, "Little Hammer", a
+different owner), in **bay 2**. The server correctly skipped bay 1, which
+holds `b7497e8b…`'s item. The sequence, from `node-api3.log`:
+
+| Time | Line |
+|---|---|
+| 22:39:23 | verdict `retry` → deposit-retry path sends `open_door` bay 2 (no command_id); Pi `Bay claim taken: open_door on bay 2` |
+| 22:39:28 | owner taps "Item is placed": `[BAY-CAPTURE] … bay=2 … capture#2` |
+| 22:39:28 | Pi: **`REFUSED 'capture_image': bay 2 busy with 'open_door' (held 4.9s)`** |
+| 22:39:28 | server: `[D-96] Pi REFUSED 'capture_image' on bay 2 - bay_busy` → **`[D-103] capture 0FF07C61 refused (bay busy) - re-sending in 2s (attempt 2/12)`** |
+| 22:39:28 | Pi: `Bay claim released: open_door on bay 2 (held 5.0s)` |
+| 22:39:31 | Pi: **the same `command_id 0FF07C61`** received, claim taken, **`Captured 3 frames from locker=2`** |
+
+That is exactly the 21:52 failure (a tap during a door hold), which
+previously left the deposit on "Checking" forever. It now captures 3s later
+with no action from the person. **This also verifies D-96's refusal path a
+second time, on a different bay, triggered by a real person rather than an
+admin command.**
+
+**Observations from the same flow:**
+- **Bay 2's 5s hold is short for a person.** The owner's first open
+  (22:38:44) expired unused, and they tapped "Open Kiosk Again" 4s later
+  (open#2). The timing is hardware-calibrated and stays. The fix is on the
+  phone side (§13 "Bay N open — Ns", still partial).
+- **Face "confidence" is `1 - distance/0.6` and passes at distance ≤ 0.5**
+  (`verification.py:430-434`), so ~17% is the pass line. Tonight's 46.3% and
+  38.0% are distances 0.32 and 0.37, comfortably inside. **Closed, not a
+  finding.** A corollary: **0.0% does not mean "no face"**, because any
+  distance ≥ 0.6 clamps to 0. The four 0.0% failures (22:33:30-51) cannot
+  be told apart, because the failed-branch log (`kioskController.ts:694-698`)
+  omits `detected`. Small observability gap, recorded.
+
+### D-105 — every bay 2 photo fails the ML blur gate, so bay 2 deposits score a hard 0. FOUND LIVE 22:39, NOT FIXED.
+
+The Little Hammer check (`191ca63c…`) came back **RETRY 0**. The deep review
+also returned 0, **in 887ms, `degraded:false`**, with **every** method at 0.0
+(pHash, SIFT, SSIM, deep learning). The photo clearly shows the hammer, and it
+matches the listing (blue head, stars-and-stripes grip). Methods that
+independent cannot all score an honest zero.
+
+**Cause, measured:** the only path that zeroes everything is
+`hybrid.py:145`, "All kiosk images failed quality check". `quality.py:61-62`
+takes the Laplacian variance of the full frame (no resize) and requires
+**≥ 50** (`config.py:148`). Measured on the three frames the ML received:
+
+| Frames | Bay | Brightness | Laplacian var (sharpness) |
+|---|---|---|---|
+| `h0-h2` (22:39:31) | **2** | 142-143 | **42.1 / 42.3 / 43.7: all < 50, all fail** |
+| `k0` (22:22:32) | 1 | 135 | 99.1: passes |
+
+So **bay 2's camera, as mounted, cannot pass the blur gate for any item.**
+Brightness is fine. Repositioning the item cannot help: the person is told
+"reposition" (the retry path re-opened the door), and on attempt 2 it
+escalates to a human with a note blaming "background and lighting", which is
+**wrong about the cause**. The quality issues the ML returned (it names the
+blur) are not what the reviewer sees.
+
+**What it is not:** D-89b (the ~47 plateau is a real comparison; this is no
+comparison at all).
+
+**Fix options (a ruling, not done tonight):** (1) refocus or clean bay 2's
+camera, a hardware check first (a fixed-focus USB camera at the wrong
+distance, or a smudged lens); (2) make the gate relative to the bay (a
+white, featureless floor has little texture, so its Laplacian variance is
+low regardless); (3) at minimum, surface the ML's `quality_issues` in the
+review note and the admin UI, so a reviewer is not told "lighting" when
+the camera is blurry. Bays 3 and 4 have not been measured.
+**Confirmed twice more on the same rental's return (22:43):** capture
+`4171BBDC` → RETRY 0, and `8911BBB7` → RETRY 0 → escalated (verification
+`36a95b8d…`). Laplacian var 36.2-39.9 for all three return frames. So bay 2
+has failed 6 of 6 frames tonight.
+
+### `3139d8c5…` collect + return, 2026-09-24 22:42-22:44. D-103 seen a second time. D-106 found.
+
+- **Collect (22:42:06-13):** the renter passed the face check (42.5%) →
+  `granted main_door on bay 2` → UNLOCK, hold 5.0s, AUTO-LOCKED, claim
+  released. The rental went `ACTIVE`. **Bay 1 (the rivet tool) was untouched
+  throughout.** Two rentals ran on one bank with no crossover.
+- **Return (22:43:02-38):** face 43.3% → bay 2 reserved → door → capture#1
+  → RETRY 0 (D-105) → the server re-opened bay 2 → the renter tapped during
+  the hold → **Pi REFUSED (bay busy, held 3.2s) → `[D-103] … re-sending` →
+  22:43:34 the same `8911BBB7` captured 3 frames.** D-103's second live
+  success, this time on the **return** path. Then escalated to review.
+
+### D-106 — a DB blip mid-way through the `kiosk:images` return branch drops every message to the person. FOUND LIVE 22:43:55, NOT FIXED.
+
+At 22:43:50-58 MySQL dropped connections again (`Server has closed the
+connection`; `setCompartment`'s interactive transaction expired at 5235ms of
+5000). It is the same shape as 21:03. **D-102's guard held: the API stayed up**
+(PID 4948, `/items` 200). My own admin login during the blip got a 500.
+The failing call was `setCompartment` in the return branch (`index.ts:1088`,
+`dist/index.js:712`). It sits in the **middle** of a sequence with one
+try/catch around the whole handler, so everything after it was skipped:
+`emitLockerOccupancy`, **`verification_done: pending` to the kiosk**, the
+owner's "Item Returned — Under Review" notification, and **`return:under_review`
+to the renter** (the D-90b message). The DB itself ended consistent: the
+rental was `VERIFICATION`/`MANUAL_REVIEW`, and bay 2 top was `OCCUPIED` by
+`3139d8c5`, re-derived after the blip. **How that compartment write landed
+despite the expired transaction is not explained.** The person-facing half
+was lost silently. The deposit branch (`:808`) has the same shape.
+Fix direction: persist state first, then emit the person-facing messages in a
+`finally`-style block that does not depend on the bookkeeping writes. Or
+retry `setCompartment` once. Recorded, not fixed (the test is still running).
+**Seen on screen by the user:** the renter's phone stayed on "Checking locker
+02" with no way forward. The phone half: `_buildChecking()`
+(`kiosk_scan_screen.dart:137-172`) has no timeout, no status poll and no
+button. It leaves only on a socket push. So one lost emit strands the person
+indefinitely (D-90b's symptom, a new cause). Workaround given: the system
+back gesture (no `PopScope` on the screen). Fix direction for the phone: after
+~20s in `checking`, poll `GET /rentals/:id` and resolve from the real status
+(§13 rule 5).
+
+### D-95 on a real return (`3139d8c5…`, approved 22:47): MONEY HALF PROVEN, RELEASE HALF NOT. D-107 found.
+
+Re-derived after the approval (verification `36a95b8d…` APPROVED by the user
+in the admin console):
+- Rental **`COMPLETED`**.
+- **`DEPOSIT_REFUND` ₱150 `COMPLETED`** (the `SECURITY_DEPOSIT` row became
+  `REFUNDED`) and **`OWNER_PAYOUT` ₱50 `PENDING`**. PENDING is by design:
+  the owner has no payout destination, so the earning is recorded and they
+  are told to add one (`rentalSettlementService.ts:230-248`). **Both D-95
+  ledger rows exist.** The §14 money check passes.
+- **Release: REFUSED.** `[E4.6] release refused … outside_release_window
+  (7:00-21:00)` at 22:47:35. Bay 2 is still `OCCUPIED`, top compartment held
+  by `3139d8c5`. The hammer is physically in bay 2's upper compartment.
+  **The §14 item check fails:** `COMPLETED` should mean "released to the
+  owner". So D-95 is **not** fully proven. Its release half was blocked by
+  policy F10, not by the D-95 code.
+
+**D-107 — a return approved outside 07:00-21:00 strands the item for good.
+FOUND LIVE, NOT FIXED.** Traced in the repo:
+1. The R2 release (`OWNER_RETURN_PICKUP`) is refused by F10
+   (`retrievalPolicy.ts:222-228`). That is right for an unattended drop at
+   night.
+2. **Nothing ever retries it.** The hourly sweep (`index.ts:1702`) only
+   considers `status: "DEPOSITED"` (R1 late collection). §12's own
+   correction already says "nothing retries an R2 refusal".
+3. **It cannot be retried later anyway:** `completeRental` sets `COMPLETED`
+   right after, and `adminController.ts:395-400` notes that "once status is
+   COMPLETED, requestRelease can no longer tell which bay held it".
+4. **The in-person escape is dead:** `decideRelease` has `onDemand` ("an
+   owner asking for their own item, in person, is attended by definition",
+   `retrievalPolicy.ts:218-219`), but **no caller passes `onDemand: true`**
+   (grep). This is the sixth designed-tested-never-connected instance
+   (after D-90b, D-94, D-95, D-96, D-97).
+5. So the owner is never told, and bay 2 stays `OCCUPIED` with no path back
+   to service. Every evening return does this.
+**Needs a ruling:** (a) defer the R2 release instead of dropping it (e.g.
+record `releasePending` and have the hourly sweep retry it inside the window,
+keyed by the return locker rather than the status), and/or (b) wire
+`onDemand` to an owner "collect my item" flow. **For tonight's item:**
+it can only come out by a manual door open (G11) plus
+`POST /admin/kiosks/lockers/by-number/2/release` to clear the record.
+Held for the user.
+
+## E6.R — OWNER PICKUP BEFORE COMPLETION + RENTER-ONLY REVIEWS. Rulings 2026-09-24 ~22:55. Section table derived from the repo the same night (G2).
+
+**The user's rulings** (on screen, after the `3139d8c5` cycle): (1) both phones
+showed "Leave a Review", but **only the renter** should. (2) **The owner gets a
+final "open locker to get the item" step, and only then is the rental
+complete.** Then, via AskUserQuestion: **money settles at return approval**,
+**the owner collects through the MAIN door with no actuator drop**, and **build
+now, pausing the physical test.** This supersedes §9's R2 design (drop to the
+lower compartment, 07-21 window) for successful returns, and it closes D-107
+for them.
+
+| # | Section | Repo today (read tonight) | Change |
+|---|---|---|---|
+| R.1 | In-place release for owner pickup | `requestRelease` has a release-IN-PLACE branch (`retrievalService.ts:318-363`: compartment → `AWAITING_RETRIEVAL`, `releaseRequestedAt`+`releasedAt`+`retrievalLockerId`, "Item ready to collect" notification, `rental:released`), but it is only reachable after `decideRelease`, which refuses R2 at night (F10) | New `releaseForOwnerPickup()` that goes straight to the in-place path (shared helper) against the **return** locker. No policy gate: nothing moves, so F10/auto-release/F2 guard nothing. Idempotent on `releaseRequestedAt` |
+| R.2 | Return approval (auto `completeRental`, `index.ts:209`; admin `reviewVerification` approve, `adminController.ts:~563`) | `requestRelease` R2 → **status COMPLETED** → notifications → `finalizeRentalCompletion` (money) | One shared `approveReturn()`: in-place release → `verificationStatus APPROVED`, **status stays `VERIFICATION`** → money settles now → renter told "return approved, refund processing"; owner told "ready to collect" |
+| R.3 | Kiosk gates | `flow_start` `validStatuses` (`index.ts`) and `verifyFace` `KIOSK_ACTIONABLE_STATUSES` (`kioskController.ts:652`) both admit only AWAITING_DEPOSIT/DEPOSITED/ACTIVE, so the E4.6 retrieve branch (`faceVerificationService.ts:311`) is **unreachable after a return** | One predicate `isKioskActionable(rental)`: those statuses **or** awaiting retrieval (`releaseRequestedAt && !retrievedAt`). `resolveFaceSubject` is **unchanged**: it already makes the owner the only subject in that state (trust architecture untouched). `face_required.action` = `retrieve` in that state |
+| R.4 | Completion moves to pickup | Retrieve branch sets `retrievedAt`, opens the holding door, frees the compartment, and does **not** touch status | After the door command: if the rental is `VERIFICATION` + `APPROVED` + reason `OWNER_RETURN_PICKUP` → **`COMPLETED`**, `completedAt`, item available + `totalRentals++`, "Rental complete" to both, `rental:completed` |
+| R.5 | Recovery for D-107-stranded items | None. `3139d8c5` is COMPLETED with the hammer in bay 2 and no release on record | `POST /admin/rentals/:id/release-for-pickup` → `releaseForOwnerPickup` (works from the return locker, whatever the status). Used once tonight for `3139d8c5` so its owner collects through the normal flow, **with no admin door command** |
+| R.6 | Reviews, server | `reviewController.ts:46-53` lets the owner post an `ITEM` review of their own item, which updates `averageRating` (self-rating) | `ITEM` reviews: **renter only** (403 otherwise). `USER` reviews unchanged (no UI offers them) |
+| R.7 | Phone | `rental_detail_screen.dart:920`: "Leave a Review" for anyone at COMPLETED. No owner action exists after a return. "Dispute this Return" shows for all of VERIFICATION | Review: `COMPLETED && viewer is renter`. `VERIFICATION + APPROVED`: owner → **"Collect Your Item from the Kiosk"** (`retrieve`); renter → note "Return approved, deposit refund on its way; the owner collects the item next"; dispute hidden once approved |
+| R.8 | Out of scope, recorded | `settleDispute`, `forceCompleteRental`, R1/R3/R4/R5 releases keep today's behaviour | Noted, not changed |
+
+**Verification plan (G1: this is ONE change, not seen on screen until):** the
+rivet tool `b7497e8b` collect → return → approve → the owner's phone shows the
+collect button → the owner opens bay 1 → `COMPLETED` + both ledger rows +
+bay 1 free, and the review button on the renter's phone only. Plus
+`3139d8c5` recovered through R.5.
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.

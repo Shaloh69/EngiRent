@@ -314,50 +314,18 @@ export async function requestRelease(
 
   if (where === "bottom" || !lowerIsFree) {
     // RELEASE IN PLACE — no actuator stroke.
-    const door = where === "bottom" ? "bottom_door" : "main_door";
-    const now = new Date();
-    await prisma.rental.update({
-      where: { id: rentalId },
-      data: {
-        releaseReason,
-        releaseRequestedAt: now,
-        retrievalLockerId: bay.id,
-        // Nothing was commanded, so no acknowledgement will ever arrive. The
-        // item is already where the owner will collect it, which is exactly
-        // what `releasedAt` asserts.
-        releasedAt: now,
-      },
-    });
-    await setCompartment(bay.id, where, {
-      status: "AWAITING_RETRIEVAL",
+    await releaseInPlace(io, {
       rentalId,
-    });
-    await emitOccupancyForLockerId(io, bay.id);
-
-    await prisma.notification.create({
-      data: {
-        userId: rental.ownerId,
-        title: "Item ready to collect",
-        message: `${rental.item.title} is ready for you at locker ${bay.lockerNumber}. Scan the kiosk QR to open it.`,
-        type: "ITEM_READY_FOR_CLAIM",
-        relatedEntityId: rentalId,
-        relatedEntityType: "rental",
-      },
-    });
-    io.to(`user:${rental.ownerId}`).emit("rental:released", {
-      rentalId,
-      reason: releaseReason,
-      lockerNumber: bay.lockerNumber,
-    });
-
-    logger.info(
-      `[E4.6] released IN PLACE for rental ${rentalId}, bay ${bay.lockerNumber} ` +
-        `(${door}, no actuator stroke: ` +
-        (where === "bottom"
+      ownerId: rental.ownerId,
+      itemTitle: rental.item.title,
+      bay,
+      where,
+      releaseReason,
+      why:
+        where === "bottom"
           ? "item already in the lower compartment"
-          : "lower compartment occupied, stroking would stack two items") +
-        `), reason ${releaseReason}`,
-    );
+          : "lower compartment occupied, stroking would stack two items",
+    });
     return { released: true, reason: releaseReason, lockerNumber: bay.lockerNumber };
   }
 
@@ -428,6 +396,125 @@ export async function requestRelease(
  * The Pi acknowledged the drop. Only now is the item known to be in the lower
  * compartment, and only now may a bottom door be opened for it.
  */
+/**
+ * Mark an item released WHERE IT ALREADY IS and tell the owner to come for it.
+ * No command goes to the Pi, so nothing moves and no acknowledgement will ever
+ * arrive — which is why `releasedAt` is written together with
+ * `releaseRequestedAt`: the item is already where the owner collects it.
+ */
+async function releaseInPlace(
+  io: Server,
+  p: {
+    rentalId: string;
+    ownerId: string;
+    itemTitle: string;
+    bay: { id: string; lockerNumber: string };
+    where: "top" | "bottom";
+    releaseReason: ReleaseReason;
+    why: string;
+  },
+): Promise<void> {
+  const door = p.where === "bottom" ? "bottom_door" : "main_door";
+  const now = new Date();
+  await prisma.rental.update({
+    where: { id: p.rentalId },
+    data: {
+      releaseReason: p.releaseReason,
+      releaseRequestedAt: now,
+      retrievalLockerId: p.bay.id,
+      releasedAt: now,
+    },
+  });
+  await setCompartment(p.bay.id, p.where, {
+    status: "AWAITING_RETRIEVAL",
+    rentalId: p.rentalId,
+  });
+  await emitOccupancyForLockerId(io, p.bay.id);
+
+  await prisma.notification.create({
+    data: {
+      userId: p.ownerId,
+      title: "Item ready to collect",
+      message: `${p.itemTitle} is ready for you at locker ${p.bay.lockerNumber}. Scan the kiosk QR to open it.`,
+      type: "ITEM_READY_FOR_CLAIM",
+      relatedEntityId: p.rentalId,
+      relatedEntityType: "rental",
+    },
+  });
+  io.to(`user:${p.ownerId}`).emit("rental:released", {
+    rentalId: p.rentalId,
+    reason: p.releaseReason,
+    lockerNumber: p.bay.lockerNumber,
+  });
+
+  logger.info(
+    `[E4.6] released IN PLACE for rental ${p.rentalId}, bay ${p.bay.lockerNumber} ` +
+      `(${door}, no actuator stroke: ${p.why}), reason ${p.releaseReason}`,
+  );
+}
+
+/**
+ * E6.R — a passed return is handed back to its owner IN PLACE, from the return
+ * bay's upper compartment through the main door (the user's ruling,
+ * 2026-09-24). It is never dropped.
+ *
+ * This deliberately skips `decideRelease`. Every guard in that policy protects
+ * an actuator stroke: F10 keeps a drop out of an unattended compartment at
+ * night, auto-release is a switch for scheduled strokes, and F2 refuses to move
+ * a floor someone may have a hand on. An in-place release moves nothing, and
+ * routing it through those guards is what stranded a return approved at 22:47
+ * (D-107): refused by F10, never retried, then unreachable once COMPLETED.
+ *
+ * Keyed on the RETURN locker rather than the rental status, so it also
+ * recovers an item already stranded that way (the admin escape hatch).
+ * Idempotent: a second call on a rental already released is a no-op.
+ */
+export async function releaseForOwnerPickup(
+  io: Server,
+  rentalId: string,
+): Promise<ReleaseOutcome> {
+  const rental = await prisma.rental.findUnique({
+    where: { id: rentalId },
+    include: {
+      item: { select: { title: true } },
+      returnLocker: LOCKER_SELECT,
+    },
+  });
+  if (!rental) return { released: false, refusal: "rental not found" };
+  if (rental.releaseRequestedAt) {
+    return {
+      released: false,
+      refusal: "already released",
+      lockerNumber: rental.returnLocker?.lockerNumber,
+    };
+  }
+  const bay = rental.returnLocker;
+  if (!bay) {
+    logger.error(`[E6.R] owner pickup for rental ${rentalId}: no return locker on record`);
+    return { released: false, refusal: "no return locker on record" };
+  }
+
+  const where = await compartmentHolding(bay.id, rentalId);
+  if (where === null) {
+    logger.error(
+      `[E6.R] owner pickup REFUSED for rental ${rentalId}: bay ${bay.lockerNumber} holds it ` +
+        `in neither compartment. Nothing released.`,
+    );
+    return { released: false, refusal: "item not recorded in either compartment" };
+  }
+
+  await releaseInPlace(io, {
+    rentalId,
+    ownerId: rental.ownerId,
+    itemTitle: rental.item.title,
+    bay,
+    where,
+    releaseReason: "OWNER_RETURN_PICKUP",
+    why: "a passed return is collected by its owner where it sits (E6.R)",
+  });
+  return { released: true, reason: "OWNER_RETURN_PICKUP", lockerNumber: bay.lockerNumber };
+}
+
 export async function confirmRelease(rentalId: string): Promise<void> {
   for (const [cid, rid] of pendingDrops) if (rid === rentalId) pendingDrops.delete(cid);
   const updated = await prisma.rental.updateMany({

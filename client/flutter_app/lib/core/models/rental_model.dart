@@ -27,6 +27,11 @@ class RentalModel {
   // there). So DEPOSITED alone does NOT mean "go and collect it" — the server
   // refuses to open the bay until this reads APPROVED.
   final String? verificationStatus;
+  // E6.R. Set when a passed return has been handed back to its owner in place
+  // (releaseRequestedAt) and once the owner has opened the bay and taken it
+  // (retrievedAt). Only on GET /rentals/:id, like the fields above.
+  final DateTime? releaseRequestedAt;
+  final DateTime? retrievedAt;
 
   RentalModel({
     required this.id,
@@ -40,6 +45,8 @@ class RentalModel {
     this.renter,
     this.transactions = const [],
     this.verificationStatus,
+    this.releaseRequestedAt,
+    this.retrievedAt,
   });
 
   factory RentalModel.fromJson(Map<String, dynamic> json) {
@@ -59,6 +66,12 @@ class RentalModel {
           .map((t) => RentalTransaction.fromJson(t as Map<String, dynamic>))
           .toList(),
       verificationStatus: json['verificationStatus'] as String?,
+      releaseRequestedAt: json['releaseRequestedAt'] != null
+          ? DateTime.parse(json['releaseRequestedAt'] as String)
+          : null,
+      retrievedAt: json['retrievedAt'] != null
+          ? DateTime.parse(json['retrievedAt'] as String)
+          : null,
     );
   }
 
@@ -130,6 +143,16 @@ class RentalModel {
   bool get depositAwaitingConfirmation =>
       status == 'DEPOSITED' && verificationStatus != 'APPROVED';
   bool get isCompleted => status == 'COMPLETED';
+
+  /// E6.R: the return passed and the money has settled, but the rental is not
+  /// complete until the owner opens the bay and takes the item back.
+  bool get returnApproved =>
+      status == 'VERIFICATION' && verificationStatus == 'APPROVED';
+
+  /// E6.R: the owner can go and collect — the item has been handed back to them
+  /// in place and they have not taken it yet.
+  bool get awaitingOwnerPickup =>
+      returnApproved && releaseRequestedAt != null && retrievedAt == null;
   bool get isPending => status == 'PENDING';
 
   /// Checklist Stage 5 — who the "Message" button on this rental should

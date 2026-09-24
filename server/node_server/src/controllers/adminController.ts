@@ -18,10 +18,11 @@ import axios from "axios";
 import fs from "fs";
 import env from "../config/env";
 import { finalizeRentalCompletion } from "../services/rentalSettlementService";
+import { approveReturn } from "../services/returnApprovalService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 // D-87d: a rejected DEPOSIT must release the owner's item from the bay, the
 // same way index.ts's automatic rejection path does — not just flip a column.
-import { requestRelease } from "../services/retrievalService";
+import { releaseForOwnerPickup, requestRelease } from "../services/retrievalService";
 // E5.4 — a human-approved long-lead deposit is dropped to storage too.
 import { dropToStorage } from "../services/storageDropService";
 import { isLongLeadPickup } from "../services/pickupLaneService";
@@ -366,6 +367,46 @@ export const listAllRentals = async (
   }
 };
 
+/**
+ * POST /admin/rentals/:id/release-for-pickup — E6.R's escape hatch for D-107.
+ *
+ * Hands a returned item that is still sitting in its return bay back to its
+ * owner IN PLACE: it records the release and tells the owner to scan the kiosk
+ * QR, and they open the bay themselves through the normal face-verified flow.
+ * No door is commanded and nothing moves here. Built for items stranded before
+ * E6.R — a return approved outside 07:00-21:00 was COMPLETED with its drop
+ * refused and never retried, leaving the item in the bay and the owner untold.
+ */
+export const releaseRentalForPickup = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const io = req.app.get("io");
+    if (!io) throw new ValidationError("Realtime channel unavailable");
+
+    const outcome = await releaseForOwnerPickup(io, id);
+    if (!outcome.released) {
+      throw new ValidationError(`Not released: ${outcome.refusal}`);
+    }
+    await recordAudit(req, {
+      action: "rental.release_for_pickup",
+      targetType: "rental",
+      targetId: id,
+      metadata: { lockerNumber: outcome.lockerNumber },
+    });
+    res.json({
+      success: true,
+      message: `Released for owner pickup at locker ${outcome.lockerNumber}`,
+      data: { lockerNumber: outcome.lockerNumber },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const forceCompleteRental = async (
   req: AuthRequest,
   res: Response,
@@ -558,91 +599,29 @@ export const reviewVerification = async (
       },
     });
 
-    // When a return verification is manually approved → complete rental
+    // When a return verification is manually approved → settle, then hand the
+    // item back to its owner for pickup (E6.R).
+    //
+    // `verificationStatus !== "APPROVED"` on both branches: an approved return
+    // now STAYS in VERIFICATION until the owner collects it, so without this a
+    // second click would settle the money twice, or a late REJECTED would
+    // dispute a rental whose refund and payout have already gone out.
     const returnRental = verification.rental;
-    if (
-      returnRental &&
-      status === "APPROVED" &&
-      returnRental.status === "VERIFICATION"
-    ) {
-      const io = req.app.get("io");
-
-      // D-95a — E4.6 / R2: the item is released back to the owner (dropped to
-      // the lower compartment if the upper is free, or released in place)
-      // BEFORE the status flip below. requestRelease's own holdingLocker()
-      // keys off rental.status === "VERIFICATION" to know it's the return
-      // bay, not the deposit bay — call it after COMPLETED and it can no
-      // longer tell, and reasonForStatus("COMPLETED") has no release path at
-      // all, so it would just refuse. Same machinery index.ts's completeRental
-      // now uses (below), and the same one E4.6's cron sweep already uses for
-      // R1 — this was fully built and tested, just never called for R2, which
-      // is why a manually-approved return has never once released the item.
-      await requestRelease(io, returnRental.id, {
-        reasonOverride: "OWNER_RETURN_PICKUP",
-      });
-
-      await prisma.$transaction([
-        prisma.rental.update({
-          where: { id: returnRental.id },
-          data: {
-            status: "COMPLETED",
-            verificationStatus: "APPROVED",
-            completedAt: new Date(),
-          },
-        }),
-        prisma.item.update({
-          where: { id: returnRental.itemId },
-          data: { isAvailable: true, totalRentals: { increment: 1 } },
-        }),
-        prisma.notification.create({
-          data: {
-            userId: returnRental.renterId,
-            title: "Rental Completed",
-            message: `Return of ${returnRental.item.title} has been approved. Security deposit will be refunded.`,
-            type: "VERIFICATION_SUCCESS",
-            relatedEntityId: returnRental.id,
-            relatedEntityType: "rental",
-          },
-        }),
-        prisma.notification.create({
-          data: {
-            userId: returnRental.ownerId,
-            title: "Item Return Approved",
-            message: `Return of ${returnRental.item.title} has been verified. Payment will be released.`,
-            type: "VERIFICATION_SUCCESS",
-            relatedEntityId: returnRental.id,
-            relatedEntityType: "rental",
-          },
-        }),
-      ]);
-      // Checklist Stage 6 — see forceCompleteRental's identical comment.
-      await recomputeItemAvailability(returnRental.itemId);
-
-      // D-95b — real money movement, the other half of the same gap.
-      // completeRental() (index.ts, the automatic-APPROVED path) and
-      // settleDispute() both call this; this manual-review path — which is
-      // the NORMAL one, since D-87b made the fast ML tier structurally
-      // unable to approve on its own — never did. Confirmed live: rental
-      // 331ce382 completed this way with a real ₱500 deposit and ₱90 rental
-      // payment on record, and zero DEPOSIT_REFUND/OWNER_PAYOUT rows to show
-      // for it, while its own notifications above claimed both would happen.
-      await finalizeRentalCompletion(returnRental.id);
-      if (io) {
-        io.to(`user:${returnRental.renterId}`).emit("rental:completed", {
-          rentalId: returnRental.id,
-        });
-        io.to(`user:${returnRental.ownerId}`).emit("rental:completed", {
-          rentalId: returnRental.id,
-        });
-      }
+    const returnStillUnderReview =
+      returnRental?.status === "VERIFICATION" &&
+      returnRental.verificationStatus !== "APPROVED";
+    if (returnRental && status === "APPROVED" && returnStillUnderReview) {
+      // E6.R (2026-09-24) — the money settles now and the item is handed back
+      // to its owner IN PLACE; the rental completes only when the owner opens
+      // the bay and takes it (returnApprovalService.ts). This used to flip
+      // straight to COMPLETED after an R2 drop request, and a drop refused at
+      // night stranded the item with nothing ever retrying it (D-107). D-95's
+      // guarantee is kept: the refund and payout rows are written here.
+      await approveReturn(req.app.get("io"), returnRental.id);
     }
 
     // Manual rejection on return → open dispute
-    if (
-      returnRental &&
-      status === "REJECTED" &&
-      returnRental.status === "VERIFICATION"
-    ) {
+    if (returnRental && status === "REJECTED" && returnStillUnderReview) {
       await prisma.rental.update({
         where: { id: returnRental.id },
         data: { status: "DISPUTED", verificationStatus: "REJECTED" },

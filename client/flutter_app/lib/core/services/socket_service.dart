@@ -47,6 +47,8 @@ class SocketService {
   final _faceFailed = StreamController<Map<String, dynamic>>.broadcast();
   final _rentalActive = StreamController<Map<String, dynamic>>.broadcast();
   final _returnUnderReview = StreamController<Map<String, dynamic>>.broadcast();
+  // E6.R — a return passed: the renter is done, the owner collects next.
+  final _returnApproved = StreamController<Map<String, dynamic>>.broadcast();
   final _returnDisputed = StreamController<Map<String, dynamic>>.broadcast();
   final _returnRetry = StreamController<Map<String, dynamic>>.broadcast();
   final _kioskScanError = StreamController<Map<String, dynamic>>.broadcast();
@@ -79,6 +81,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onFaceFailed => _faceFailed.stream;
   Stream<Map<String, dynamic>> get onRentalActive => _rentalActive.stream;
   Stream<Map<String, dynamic>> get onReturnUnderReview => _returnUnderReview.stream;
+  Stream<Map<String, dynamic>> get onReturnApproved => _returnApproved.stream;
   Stream<Map<String, dynamic>> get onReturnDisputed => _returnDisputed.stream;
   Stream<Map<String, dynamic>> get onReturnRetry => _returnRetry.stream;
   Stream<Map<String, dynamic>> get onKioskScanError => _kioskScanError.stream;
@@ -163,6 +166,7 @@ class SocketService {
       ..on('face:failed', _handle(_faceFailed))
       ..on('rental:active', _handle(_rentalActive))
       ..on('return:under_review', _handle(_returnUnderReview))
+      ..on('return:approved', _handle(_returnApproved))
       ..on('return:disputed', _handle(_returnDisputed))
       ..on('return:retry', _handle(_returnRetry))
       ..on('kiosk:scan_error', _handle(_kioskScanError))
@@ -253,6 +257,7 @@ class SocketService {
     _faceFailed.close();
     _rentalActive.close();
     _returnUnderReview.close();
+    _returnApproved.close();
     _returnDisputed.close();
     _returnRetry.close();
     _kioskScanError.close();

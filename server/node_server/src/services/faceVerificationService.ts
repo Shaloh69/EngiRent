@@ -41,6 +41,7 @@ import {
   isLongLeadPickup,
 } from "./pickupLaneService";
 import { setCompartment } from "./lockerCompartments";
+import { completeAfterOwnerPickup } from "./returnApprovalService";
 import { signedMediaUrl } from "./storageService";
 import {
   emitLockerOccupancy,
@@ -53,6 +54,25 @@ export const KIOSK_ACTIONABLE_STATUSES = [
   "DEPOSITED",
   "ACTIVE",
 ] as const;
+
+/**
+ * Can this rental start a kiosk session at all?
+ *
+ * The three statuses above, OR an item released and waiting for its owner
+ * whatever the status says (E4.6 / E6.R). Without the second half the retrieve
+ * branch below was unreachable after a return: both kiosk gates refused
+ * VERIFICATION before it got a look, so an owner told "scan the kiosk QR to
+ * open it" could not. Who may open it is still decided by resolveFaceSubject
+ * alone — in this state that is the owner and nobody else.
+ */
+export function isKioskActionable(rental: {
+  status: string;
+  releaseRequestedAt?: Date | null;
+  retrievedAt?: Date | null;
+}): boolean {
+  if (KIOSK_ACTIONABLE_STATUSES.includes(rental.status as never)) return true;
+  return rental.releaseRequestedAt != null && rental.retrievedAt == null;
+}
 
 /* The 20s placement grace that used to live here is gone. It was a blind
  * timer: the server opened a door, counted to twenty and photographed the bay
@@ -395,8 +415,13 @@ export async function applyFaceVerificationOutcome(params: {
       lockerNumber: rental.retrievalLocker.lockerNumber,
     });
     logger.info(
-      `Retrieval approved for rental ${rentalId}, bay ${rental.retrievalLocker.lockerNumber} bottom door`,
+      `Retrieval approved for rental ${rentalId}, bay ${rental.retrievalLocker.lockerNumber} ${retrievalDoor}`,
     );
+
+    // E6.R — a passed return is COMPLETED here, when its owner is let in to
+    // take the item back, not at approval. A no-op for any other retrieval
+    // (a disputed or cancelled rental's status is settled elsewhere).
+    await completeAfterOwnerPickup(io, rentalId);
     return { action: "retrieve" };
   }
 

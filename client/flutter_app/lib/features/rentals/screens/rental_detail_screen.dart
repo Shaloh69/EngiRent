@@ -460,6 +460,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
 
   String _modeToastDesc(String mode) => switch (mode) {
     'place' => 'Item placed in kiosk. Renter can now collect it.',
+    // E6.R — the owner uses the same kiosk step to take a returned item back.
+    'retrieve' when _viewerIsOwner == true =>
+      'Your item is back with you. This rental is complete.',
     'retrieve' => 'Enjoy your rental!',
     'return' => 'Return received. Awaiting verification.',
     _ => '',
@@ -909,7 +912,23 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             gradient: AppColors.primaryGradient,
                             onTap: () => _openKioskScan('return'),
                           ),
-                        if (_rental!.status == 'VERIFICATION')
+                        // E6.R — the return passed and the money has settled;
+                        // the rental completes when the owner takes the item
+                        // back out of the bay, through the main door.
+                        if (_rental!.awaitingOwnerPickup && _viewerIsOwner == true)
+                          _ActionButton(
+                            icon: Icons.inventory_2_rounded,
+                            label: 'Collect Your Item from the Kiosk',
+                            gradient: AppColors.primaryGradient,
+                            onTap: () => _openKioskScan('retrieve'),
+                          ),
+                        if (_rental!.returnApproved && _viewerIsOwner != true)
+                          const _NextStepNote(
+                            text: 'Return approved — your security deposit refund is on '
+                                'its way. The owner collects the item next, and you can '
+                                'leave a review once they have.',
+                          ),
+                        if (_rental!.status == 'VERIFICATION' && !_rental!.returnApproved)
                           _ActionButton(
                             icon: Icons.gavel_rounded,
                             label: 'Dispute this Return',
@@ -918,7 +937,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             ),
                             onTap: _initiateDispute,
                           ),
-                        if (_rental!.status == 'COMPLETED') ...[
+                        // E6.R (user ruling): only the renter reviews the item.
+                        // The server refuses an owner's ITEM review as well.
+                        if (_rental!.status == 'COMPLETED' && _viewerIsOwner == false) ...[
                           _ActionButton(
                             icon: Icons.star_rounded,
                             label: 'Leave a Review',

@@ -1,0 +1,209 @@
+import { mockDeep, DeepMockProxy, mockReset } from "jest-mock-extended";
+import { PrismaClient } from "@prisma/client";
+
+/**
+ * E6.R (user ruling 2026-09-24) — a passed return is handed back to its owner
+ * IN PLACE through the main door, and the rental is COMPLETED only when the
+ * owner is let in to take it.
+ *
+ * Found live as D-107: a return approved at 22:47 was COMPLETED, its R2 drop
+ * refused by the 07:00-21:00 window, never retried, and the item sat in bay 2
+ * with its owner never told. These run the REAL releaseForOwnerPickup and the
+ * REAL retrieve branch of applyFaceVerificationOutcome; only Prisma and the
+ * modules that write compartments / send mail are mocked.
+ */
+
+jest.mock("../../config/database", () => ({
+  __esModule: true,
+  default: mockDeep<PrismaClient>(),
+}));
+jest.mock("../lockerCompartments", () => ({
+  compartmentHolding: jest.fn(),
+  setCompartment: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../lockerOccupancyService", () => ({
+  emitOccupancyForLockerId: jest.fn().mockResolvedValue(undefined),
+  emitLockerOccupancy: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../itemAvailabilityService", () => ({
+  recomputeItemAvailability: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../../utils/email", () => ({
+  sendRentalCompleted: jest.fn().mockResolvedValue(undefined),
+}));
+
+import prisma from "../../config/database";
+import { releaseForOwnerPickup } from "../retrievalService";
+import { applyFaceVerificationOutcome } from "../faceVerificationService";
+import { compartmentHolding, setCompartment } from "../lockerCompartments";
+import { _clearAllBayAccess } from "../kioskBayAccessStore";
+
+const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
+const holdingMock = compartmentHolding as jest.Mock;
+const setCompartmentMock = setCompartment as jest.Mock;
+
+const RENTAL_ID = "rental-1";
+const BAY = { id: "locker-2", lockerNumber: "2", status: "OCCUPIED", isOperational: true, kioskId: "KIOSK-001" };
+
+function fakeIo() {
+  const emit = jest.fn();
+  const to = jest.fn().mockReturnValue({ emit });
+  return { io: { to } as any, to, emit };
+}
+
+describe("releaseForOwnerPickup — in place, nothing moves", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    holdingMock.mockReset();
+    setCompartmentMock.mockClear();
+  });
+
+  it("recovers the live D-107 case: a COMPLETED rental whose item is still in the return bay", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "COMPLETED",
+      ownerId: "owner-1",
+      releaseRequestedAt: null,
+      item: { title: "Little Hammer" },
+      returnLocker: BAY,
+    } as never);
+    holdingMock.mockResolvedValue("top");
+    const { io, to, emit } = fakeIo();
+
+    const out = await releaseForOwnerPickup(io, RENTAL_ID);
+
+    expect(out).toEqual({ released: true, reason: "OWNER_RETURN_PICKUP", lockerNumber: "2" });
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: RENTAL_ID },
+      data: expect.objectContaining({
+        releaseReason: "OWNER_RETURN_PICKUP",
+        releaseRequestedAt: expect.any(Date),
+        releasedAt: expect.any(Date),
+        retrievalLockerId: "locker-2",
+      }),
+    });
+    expect(setCompartmentMock).toHaveBeenCalledWith("locker-2", "top", {
+      status: "AWAITING_RETRIEVAL",
+      rentalId: RENTAL_ID,
+    });
+    // Nothing is commanded: no room but the owner's is ever addressed, and no
+    // kiosk:command of any kind goes out.
+    expect(to).not.toHaveBeenCalledWith("kiosk:KIOSK-001");
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+    expect(to).toHaveBeenCalledWith("user:owner-1");
+    expect(prismaMock.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: "owner-1", title: "Item ready to collect" }),
+    });
+  });
+
+  it("is idempotent — a rental already released is left alone", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "VERIFICATION",
+      ownerId: "owner-1",
+      releaseRequestedAt: new Date(),
+      item: { title: "Little Hammer" },
+      returnLocker: BAY,
+    } as never);
+    const { io } = fakeIo();
+    const out = await releaseForOwnerPickup(io, RENTAL_ID);
+    expect(out.released).toBe(false);
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses rather than guess when neither compartment records the rental", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "VERIFICATION",
+      ownerId: "owner-1",
+      releaseRequestedAt: null,
+      item: { title: "Little Hammer" },
+      returnLocker: BAY,
+    } as never);
+    holdingMock.mockResolvedValue(null);
+    const { io } = fakeIo();
+    const out = await releaseForOwnerPickup(io, RENTAL_ID);
+    expect(out.released).toBe(false);
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
+    expect(prismaMock.notification.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("retrieve branch — the owner's pickup is what completes a passed return", () => {
+  const released = {
+    id: RENTAL_ID,
+    itemId: "item-1",
+    renterId: "renter-1",
+    ownerId: "owner-1",
+    releaseRequestedAt: new Date(),
+    releasedAt: new Date(),
+    retrievedAt: null,
+    item: { title: "Little Hammer" },
+    renter: { firstName: "Ren", email: "renter@students.uclm.edu.ph" },
+    owner: { firstName: "Own", email: "owner@students.uclm.edu.ph" },
+    depositLocker: { id: "locker-2", lockerNumber: "2" },
+    retrievalLocker: { id: "locker-2", lockerNumber: "2", kioskId: "KIOSK-001" },
+  };
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    _clearAllBayAccess();
+    prismaMock.locker.findUnique.mockResolvedValue({
+      topRentalId: RENTAL_ID,
+      bottomRentalId: null,
+    } as never);
+    prismaMock.$transaction.mockResolvedValue([] as never);
+  });
+
+  it("opens the MAIN door and completes an approved return", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      ...released,
+      status: "VERIFICATION",
+      verificationStatus: "APPROVED",
+      releaseReason: "OWNER_RETURN_PICKUP",
+    } as never);
+    const { io, emit } = fakeIo();
+
+    const out = await applyFaceVerificationOutcome({
+      io,
+      rentalId: RENTAL_ID,
+      kioskId: "KIOSK-001",
+      confidence: 0.4,
+    });
+
+    expect(out.action).toBe("retrieve");
+    expect(emit).toHaveBeenCalledWith("kiosk:command", {
+      action: "open_door",
+      locker_id: 2,
+      door: "main_door",
+      rental_id: RENTAL_ID,
+    });
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: RENTAL_ID },
+      data: { status: "COMPLETED", completedAt: expect.any(Date) },
+    });
+    expect(emit).toHaveBeenCalledWith("rental:completed", { rentalId: RENTAL_ID });
+  });
+
+  it("does NOT complete a disputed rental whose item the owner is collecting", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      ...released,
+      status: "DISPUTED",
+      verificationStatus: "REJECTED",
+      releaseReason: "RETURN_DISPUTED",
+    } as never);
+    const { io } = fakeIo();
+
+    const out = await applyFaceVerificationOutcome({
+      io,
+      rentalId: RENTAL_ID,
+      kioskId: "KIOSK-001",
+      confidence: 0.4,
+    });
+
+    expect(out.action).toBe("retrieve");
+    for (const call of prismaMock.rental.update.mock.calls) {
+      expect(JSON.stringify(call[0])).not.toContain("COMPLETED");
+    }
+  });
+});

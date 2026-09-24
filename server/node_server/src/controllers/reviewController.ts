@@ -6,6 +6,7 @@ import {
   UnauthorizedError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
 } from "../utils/errors";
 import logger from "../utils/logger";
 
@@ -48,6 +49,12 @@ export const createReview = async (
 
     if (!isRenter && !isOwner) {
       throw new UnauthorizedError("You are not a participant in this rental");
+    }
+    // E6.R (user ruling 2026-09-24): only the renter reviews the item. An owner
+    // posting an ITEM review was rating their own listing, and the average
+    // below would have counted it.
+    if (reviewType === "ITEM" && !isRenter) {
+      throw new ForbiddenError("Only the renter can review the item");
     }
 
     const recipientId = isRenter ? rental.ownerId : rental.renterId;

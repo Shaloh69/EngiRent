@@ -31,6 +31,9 @@ jest.mock("../../config/database", () => ({
 jest.mock("../../services/faceVerificationService", () => ({
   __esModule: true,
   KIOSK_ACTIONABLE_STATUSES: ["AWAITING_DEPOSIT", "DEPOSITED", "ACTIVE"],
+  // E6.R — the real gate, so these tests exercise what production runs.
+  isKioskActionable: jest.requireActual("../../services/faceVerificationService")
+    .isKioskActionable,
   resolveFaceSubject: jest.fn(),
   compareFaceWithMl: jest.fn(),
   applyFaceVerificationOutcome: jest.fn(),
@@ -143,6 +146,55 @@ describe("verify-face — a live kiosk session is required", () => {
     await verifyFaceFromApp(makeReq(RENTER), makeRes(), next);
 
     expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(compareMock).not.toHaveBeenCalled();
+  });
+
+  // E6.R — an approved return stays in VERIFICATION with its item released for
+  // the owner. This gate used to refuse VERIFICATION outright, which made the
+  // owner's pickup unreachable however the rest was built.
+  it("admits the OWNER of an approved return released for pickup, and checks their face", async () => {
+    openKioskSession(RENTAL_ID, REAL_KIOSK, OWNER);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "VERIFICATION",
+      verificationStatus: "APPROVED",
+      releaseRequestedAt: new Date(),
+      retrievedAt: null,
+      ownerId: OWNER,
+      renterId: RENTER,
+      owner: { profileImage: null, faceEncoding: null },
+      renter: { profileImage: null, faceEncoding: null },
+    } as never);
+    resolveSubjectMock.mockReturnValue({
+      userId: OWNER,
+      storedEncoding: [0.1, 0.2],
+      referenceFaceUrl: "https://example.invalid/face.jpg",
+    });
+    compareMock.mockResolvedValue({ detected: true, verified: false, confidence: 0 });
+    const next = jest.fn();
+
+    await verifyFaceFromApp(makeReq(OWNER), makeRes(), next);
+
+    expect(compareMock).toHaveBeenCalled();
+  });
+
+  it("still refuses a return that is only under review (nothing released)", async () => {
+    openKioskSession(RENTAL_ID, REAL_KIOSK, OWNER);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "VERIFICATION",
+      verificationStatus: "MANUAL_REVIEW",
+      releaseRequestedAt: null,
+      retrievedAt: null,
+      ownerId: OWNER,
+      renterId: RENTER,
+    } as never);
+    const next = jest.fn();
+
+    await verifyFaceFromApp(makeReq(OWNER), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(next.mock.calls[0][0].message).toMatch(/not actionable/i);
     expect(compareMock).not.toHaveBeenCalled();
   });
 

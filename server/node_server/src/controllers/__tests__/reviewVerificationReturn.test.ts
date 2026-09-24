@@ -21,6 +21,7 @@ jest.mock("../../config/database", () => ({
 }));
 jest.mock("../../services/retrievalService", () => ({
   requestRelease: jest.fn().mockResolvedValue({ released: true }),
+  releaseForOwnerPickup: jest.fn().mockResolvedValue({ released: true, lockerNumber: "2" }),
 }));
 jest.mock("../../services/rentalSettlementService", () => ({
   finalizeRentalCompletion: jest.fn().mockResolvedValue(undefined),
@@ -31,6 +32,7 @@ jest.mock("../../services/itemAvailabilityService", () => ({
 jest.mock("../../utils/email", () => ({
   sendItemReadyForClaim: jest.fn().mockResolvedValue(undefined),
   sendVerificationFailed: jest.fn().mockResolvedValue(undefined),
+  sendRentalCompleted: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../../services/storageDropService", () => ({
   dropToStorage: jest.fn().mockResolvedValue(true),
@@ -42,12 +44,13 @@ jest.mock("../../services/auditLogService", () => ({
 import prisma from "../../config/database";
 import { reviewVerification } from "../adminController";
 import { AuthRequest } from "../../middleware/auth";
-import { requestRelease } from "../../services/retrievalService";
+import { releaseForOwnerPickup, requestRelease } from "../../services/retrievalService";
 import { finalizeRentalCompletion } from "../../services/rentalSettlementService";
 import { sendVerificationFailed } from "../../utils/email";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const requestReleaseMock = requestRelease as jest.Mock;
+const releaseForPickupMock = releaseForOwnerPickup as jest.Mock;
 const finalizeMock = finalizeRentalCompletion as jest.Mock;
 const sendVerificationFailedMock = sendVerificationFailed as jest.Mock;
 
@@ -82,46 +85,83 @@ const RETURN_RENTAL = {
   item: { title: "Glue Gun" },
 };
 
-describe("reviewVerification — return, APPROVED (D-95)", () => {
+/**
+ * E6.R (user ruling 2026-09-24) — approval settles the money and hands the item
+ * back to its owner IN PLACE; the rental is completed only when the owner opens
+ * the bay and takes it. Runs the REAL returnApprovalService behind the REAL
+ * reviewVerification; only Prisma, the executor and PayMongo are mocked.
+ */
+describe("reviewVerification — return, APPROVED (D-95 + E6.R)", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     requestReleaseMock.mockClear();
+    releaseForPickupMock.mockClear();
     finalizeMock.mockClear();
     prismaMock.verification.findUnique.mockResolvedValue({
       id: "verification-1",
-      rental: RETURN_RENTAL,
+      rental: { ...RETURN_RENTAL, verificationStatus: "MANUAL_REVIEW" },
       depositRental: null,
     } as never);
+    prismaMock.rental.findUnique.mockResolvedValue(RETURN_RENTAL as never);
+    prismaMock.transaction.count.mockResolvedValue(0 as never);
     prismaMock.$transaction.mockResolvedValue([] as never);
   });
 
-  it("releases the item back to the owner BEFORE completing the rental", async () => {
+  it("hands the item back to the owner IN PLACE and never requests a drop", async () => {
     const { io } = makeIo();
     await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
-
-    expect(requestReleaseMock).toHaveBeenCalledWith(io, "rental-1", {
-      reasonOverride: "OWNER_RETURN_PICKUP",
-    });
-    // The release call must happen before the $transaction that flips
-    // status to COMPLETED — after that, requestRelease can no longer tell
-    // this bay held the return (see the code comment: reasonForStatus
-    // only recognises "VERIFICATION", not "COMPLETED").
-    const releaseCallOrder = requestReleaseMock.mock.invocationCallOrder[0];
-    const transactionCallOrder = prismaMock.$transaction.mock.invocationCallOrder[0];
-    expect(releaseCallOrder).toBeLessThan(transactionCallOrder);
+    expect(releaseForPickupMock).toHaveBeenCalledWith(io, "rental-1");
+    expect(requestReleaseMock).not.toHaveBeenCalled();
   });
 
-  it("refunds the deposit and pays the owner out", async () => {
+  it("refunds the deposit and pays the owner out at approval (D-95)", async () => {
     const { io } = makeIo();
     await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
     expect(finalizeMock).toHaveBeenCalledWith("rental-1");
   });
 
-  it("emits rental:completed to both the renter and the owner", async () => {
-    const { io, to } = makeIo();
+  it("does NOT complete the rental — it stays in VERIFICATION until the owner collects", async () => {
+    const { io } = makeIo();
+    await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: "rental-1" },
+      data: { verificationStatus: "APPROVED" },
+    });
+    for (const call of prismaMock.rental.update.mock.calls) {
+      expect(JSON.stringify(call[0])).not.toContain("COMPLETED");
+    }
+  });
+
+  it("tells the renter the return is approved, and does not announce completion", async () => {
+    const { io, to, emit } = makeIo();
     await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
     expect(to).toHaveBeenCalledWith("user:renter-1");
-    expect(to).toHaveBeenCalledWith("user:owner-1");
+    expect(emit).toHaveBeenCalledWith("return:approved", { rentalId: "rental-1" });
+    expect(emit).not.toHaveBeenCalledWith("rental:completed", expect.anything());
+  });
+
+  it("never settles twice: a second approval of an already-approved return does nothing", async () => {
+    prismaMock.verification.findUnique.mockResolvedValue({
+      id: "verification-1",
+      rental: { ...RETURN_RENTAL, verificationStatus: "APPROVED" },
+      depositRental: null,
+    } as never);
+    const { io } = makeIo();
+    await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
+    expect(finalizeMock).not.toHaveBeenCalled();
+    expect(releaseForPickupMock).not.toHaveBeenCalled();
+  });
+
+  it("a late REJECTED cannot dispute a return whose money has already moved", async () => {
+    prismaMock.verification.findUnique.mockResolvedValue({
+      id: "verification-1",
+      rental: { ...RETURN_RENTAL, verificationStatus: "APPROVED" },
+      depositRental: null,
+    } as never);
+    const { io } = makeIo();
+    await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
+    expect(requestReleaseMock).not.toHaveBeenCalled();
   });
 });
 

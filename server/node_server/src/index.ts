@@ -17,7 +17,6 @@ import { mediaUrlRewriter } from "./middleware/mediaUrlRewriter";
 import prisma from "./config/database";
 import kioskEventBus from "./utils/kioskEventBus";
 import { installKioskEventLog } from "./utils/kioskEventLog";
-import { recomputeItemAvailability } from "./services/itemAvailabilityService";
 import {
   emitLockerOccupancy,
   emitOccupancyForLockerId,
@@ -32,7 +31,7 @@ import { verifyAccessToken } from "./utils/jwt";
 // encoding and reference photo down to the kiosk for local comparison. Both
 // became unnecessary on 2026-09-03: the comparison now runs server-side, so
 // the biometric never leaves this process. See faceVerificationService.
-import { resolveFaceSubject } from "./services/faceVerificationService";
+import { isKioskActionable, resolveFaceSubject } from "./services/faceVerificationService";
 import { runMlVerification } from "./services/mlVerificationService";
 import {
   attachDeepReviewEmitter,
@@ -67,10 +66,9 @@ import {
 import { recordKioskLog } from "./services/kioskLogBuffer";
 import { recordTimingReport } from "./services/kioskTimingStore";
 import { recordAdminSnapshot } from "./services/kioskSnapshotStore";
-import { finalizeRentalCompletion } from "./services/rentalSettlementService";
+import { approveReturn } from "./services/returnApprovalService";
 import {
   sendItemReadyForClaim,
-  sendRentalCompleted,
   sendReturnOverdue,
   sendVerificationFailed,
 } from "./utils/email";
@@ -206,91 +204,14 @@ app.use(errorHandler);
 // 2026-09-06 so D-18 could be regression-tested — importing them from here
 // booted the HTTP and socket servers. Behaviour unchanged; it is a move.
 
-// ── Auto-complete a rental after successful verifications ────────────────────
+// ── A return passed the item check automatically ──────────────────────────
+// E6.R (2026-09-24) — this used to go straight to COMPLETED and try to DROP the
+// item to the lower compartment; at night the drop was refused and the item
+// was stranded (D-107). Now the money settles here, the item is handed back to
+// its owner in place, and the rental completes when the owner collects it —
+// see returnApprovalService.ts.
 async function completeRental(rentalId: string): Promise<void> {
-  const rental = await prisma.rental.findUnique({
-    where: { id: rentalId },
-    include: {
-      item: true,
-      renter: { select: { firstName: true, email: true } },
-      owner: { select: { firstName: true, email: true } },
-    },
-  });
-  if (!rental) return;
-
-  // D-95a — E4.6 / R2: release the item back to the owner (drop to the lower
-  // compartment, or release in place) BEFORE the status flip below.
-  // requestRelease's holdingLocker() keys off rental.status === "VERIFICATION"
-  // to find the return bay; called after this rental is COMPLETED it can no
-  // longer tell which bay held it, and reasonForStatus("COMPLETED") has no
-  // release path at all. This is the same machinery E4.6's cron sweep already
-  // uses for R1 (uncollected deposits) — fully built, tested, just never
-  // called here, so an ML-approved return has never actually released the
-  // item; it sat OCCUPIED in the bay with nothing telling the owner to come
-  // get it or any way for them to, even if they tried scanning the kiosk QR.
-  await requestRelease(io, rentalId, { reasonOverride: "OWNER_RETURN_PICKUP" });
-
-  await prisma.$transaction([
-    prisma.rental.update({
-      where: { id: rentalId },
-      data: { status: "COMPLETED", completedAt: new Date() },
-    }),
-    prisma.item.update({
-      where: { id: rental.itemId },
-      data: { isAvailable: true, totalRentals: { increment: 1 } },
-    }),
-    prisma.notification.create({
-      data: {
-        userId: rental.renterId,
-        title: "Rental Completed",
-        message: `Your rental of ${rental.item.title} is complete. Security deposit refund is being processed.`,
-        type: "VERIFICATION_SUCCESS",
-        relatedEntityId: rentalId,
-        relatedEntityType: "rental",
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        userId: rental.ownerId,
-        title: "Item Returned & Verified",
-        message: `${rental.item.title} has been returned and verified. Rental payment will be released.`,
-        type: "VERIFICATION_SUCCESS",
-        relatedEntityId: rentalId,
-        relatedEntityType: "rental",
-      },
-    }),
-  ]);
-
-  // Checklist Stage 6 — see itemAvailabilityService's doc comment: the
-  // transaction above sets isAvailable: true unconditionally; this corrects
-  // it if a different, non-overlapping rental on the same item already
-  // covers today (only possible now that an item can have more than one
-  // booking over time).
-  await recomputeItemAvailability(rental.itemId);
-
-  // Email both parties
-  await Promise.all([
-    sendRentalCompleted(rental.renter.email, {
-      firstName: rental.renter.firstName,
-      itemTitle: rental.item.title,
-      rentalId,
-    }),
-    sendRentalCompleted(rental.owner.email, {
-      firstName: rental.owner.firstName,
-      itemTitle: rental.item.title,
-      rentalId,
-    }),
-  ]);
-
-  // Real money movement: refund the renter's deposit (minus any damage/late
-  // fees already logged) and pay the owner out — see rentalSettlementService.ts.
-  // Deliberately outside the $transaction above — each half calls an external
-  // PayMongo API and creates its own follow-up notification independently.
-  await finalizeRentalCompletion(rentalId);
-
-  // Notify both parties via socket
-  io.to(`user:${rental.renterId}`).emit("rental:completed", { rentalId });
-  io.to(`user:${rental.ownerId}`).emit("rental:completed", { rentalId });
+  await approveReturn(io, rentalId);
 }
 
 // ── Socket.io ─────────────────────────────────────────────────────────────
@@ -1391,8 +1312,9 @@ io.on("connection", (socket: Socket) => {
           return;
         }
 
-        const validStatuses = ["AWAITING_DEPOSIT", "DEPOSITED", "ACTIVE"];
-        if (!validStatuses.includes(rental.status)) {
+        // E6.R — the same predicate verifyFace uses: the three statuses, or an
+        // item released and waiting for its owner whatever the status says.
+        if (!isKioskActionable(rental)) {
           socket.emit("kiosk:command", {
             action: "flow_error",
             message: `Rental status "${rental.status}" is not actionable at kiosk`,
@@ -1466,11 +1388,13 @@ io.on("connection", (socket: Socket) => {
           // expired. An absolute deadline cannot drift that way.
           expiresAt: session.expiresAt,
           action:
-            rental.status === "AWAITING_DEPOSIT"
-              ? "deposit"
-              : rental.status === "DEPOSITED"
-                ? "claim"
-                : "return",
+            rental.releaseRequestedAt != null && rental.retrievedAt == null
+              ? "retrieve"
+              : rental.status === "AWAITING_DEPOSIT"
+                ? "deposit"
+                : rental.status === "DEPOSITED"
+                  ? "claim"
+                  : "return",
         });
 
         socket.emit("kiosk:command", {

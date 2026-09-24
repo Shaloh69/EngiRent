@@ -9,6 +9,7 @@ import {
   createAdmin,
   listAllRentals,
   forceCompleteRental,
+  releaseRentalForPickup,
   settleDispute,
   listTransactions,
   adminRefund,
@@ -96,6 +97,14 @@ router.post(
   requireAdmin,
   validate([param("id").isUUID()]),
   forceCompleteRental,
+);
+// E6.R — hand a returned item still in its bay back to its owner in place
+// (the D-107 recovery). Moves nothing; the owner opens the bay themselves.
+router.post(
+  "/rentals/:id/release-for-pickup",
+  requireAdmin,
+  validate([param("id").isUUID()]),
+  releaseRentalForPickup,
 );
 
 // Checklist Stage 5 — "attach the transcript to disputes": the reason this
