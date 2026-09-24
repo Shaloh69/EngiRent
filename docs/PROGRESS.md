@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 35072 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-93 hardware, D-95 release half]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 15560 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9089,6 +9089,17 @@ together**: E6.R (the owner pickup completes the rental) and E6.S (below).
   test's `noteDropStarted` left bay 2 "busy" (process-local), so the grant
   test was refused for the wrong reason. Fixed with `__resetBayActivity()` in
   `beforeEach`, after which the same mutation fails the test. `tsc` clean.
+- **Deployed 23:41:** the 5 server copies matched the E6.R-deployed versions
+  first, then all 5 new hashes matched after the copy. Tree killed by root,
+  task restarted: **API PID 15560**, EngiRent engine, `dist` carries
+  `dropUncollectedToLower` + `fileDispute`, kiosk re-registered 23:41:48.
+  `POST /rentals/:id/dispute` unauthenticated → 401 (was 404).
+- **What the new cron will move, unattended:** at **:15 each hour between
+  07:00 and 21:00**, any item handed back to its owner >1h ago and still in a
+  TOP compartment drops to a free lower compartment. **First candidate: the
+  hammer (`3139d8c5`, bay 2), at 07:15** unless its owner collects it first.
+  The pre-existing R1 sweep will drop + cancel the rivet tool (`b7497e8b`,
+  bay 1) at **07:05** unless Ian collects it.
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
