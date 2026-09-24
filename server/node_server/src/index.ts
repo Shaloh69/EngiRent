@@ -51,7 +51,7 @@ import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
 import { runCollectionSweep } from "./services/collectionSweepService";
 import { cancelOverdueUndepositedRentals } from "./services/overdueRentalCleanup";
 import {
-  reconcileUnavailableItems,
+  reconcileItemAvailability,
   recomputeItemAvailability,
 } from "./services/itemAvailabilityService";
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
@@ -1633,8 +1633,8 @@ const DEFAULT_LATE_FEE_RATE_PER_DAY = 50; // SPORTS_EQUIPMENT, OTHER — no doc 
 cron.schedule("5 * * * *", async () => {
   try {
     const { considered, released, cancelled } = await runCollectionSweep(io);
-    const freed = await reconcileUnavailableItems();
-    if (freed > 0) logger.info(`[AVAILABILITY] ${freed} item(s) wrongly unavailable — freed by the sweep`);
+    const fixed = await reconcileItemAvailability();
+    if (fixed > 0) logger.info(`[AVAILABILITY] ${fixed} item(s) had the wrong availability — corrected by the sweep`);
     if (considered === 0) return;
     logger.info(
       `[CRON] E4.6 collection sweep — ${considered} uncollected deposit(s) considered, ` +
@@ -1799,8 +1799,8 @@ const startServer = async (): Promise<void> => {
     await connectDatabase();
 
     // Repairs listings a cancel path left marked unavailable (2026-09-25).
-    reconcileUnavailableItems()
-      .then((n) => n > 0 && logger.info(`[AVAILABILITY] ${n} item(s) wrongly unavailable — freed at startup`))
+    reconcileItemAvailability()
+      .then((n) => n > 0 && logger.info(`[AVAILABILITY] ${n} item(s) had the wrong availability — corrected at startup`))
       .catch((err) => logger.error("[AVAILABILITY] startup reconcile failed:", err));
 
     // Starts recording kiosk events into the rolling in-memory buffer a

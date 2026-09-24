@@ -14,19 +14,19 @@ jest.mock("../../config/database", () => ({
 }));
 
 import prisma from "../../config/database";
-import { reconcileUnavailableItems } from "../itemAvailabilityService";
+import { reconcileItemAvailability } from "../itemAvailabilityService";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
-describe("reconcileUnavailableItems", () => {
+describe("reconcileItemAvailability", () => {
   beforeEach(() => mockReset(prismaMock));
 
   it("frees an item whose only rental is cancelled", async () => {
-    prismaMock.item.findMany.mockResolvedValue([{ id: "hand-rivets" }] as never);
+    prismaMock.item.findMany.mockResolvedValue([{ id: "hand-rivets", isAvailable: false }] as never);
     prismaMock.rental.findFirst.mockResolvedValue(null); // nothing blocking
     prismaMock.item.findUnique.mockResolvedValue({ isAvailable: true } as never);
 
-    await expect(reconcileUnavailableItems()).resolves.toBe(1);
+    await expect(reconcileItemAvailability()).resolves.toBe(1);
     expect(prismaMock.item.update).toHaveBeenCalledWith({
       where: { id: "hand-rivets" },
       data: { isAvailable: true },
@@ -34,23 +34,24 @@ describe("reconcileUnavailableItems", () => {
   });
 
   it("keeps an item unavailable while a rental genuinely holds it", async () => {
-    prismaMock.item.findMany.mockResolvedValue([{ id: "screwdriver" }] as never);
+    prismaMock.item.findMany.mockResolvedValue([{ id: "screwdriver", isAvailable: false }] as never);
     prismaMock.rental.findFirst.mockResolvedValue({ id: "active-rental" } as never);
     prismaMock.item.findUnique.mockResolvedValue({ isAvailable: false } as never);
 
-    await expect(reconcileUnavailableItems()).resolves.toBe(0);
+    await expect(reconcileItemAvailability()).resolves.toBe(0);
     expect(prismaMock.item.update).toHaveBeenCalledWith({
       where: { id: "screwdriver" },
       data: { isAvailable: false },
     });
   });
 
-  it("an item physically with the renter blocks even when the rental is OVERDUE", async () => {
-    prismaMock.item.findMany.mockResolvedValue([{ id: "screwdriver" }] as never);
+  it("an item physically with the renter blocks even when the rental is OVERDUE — and a wrongly AVAILABLE item is corrected", async () => {
+    prismaMock.item.findMany.mockResolvedValue([{ id: "screwdriver", isAvailable: true }] as never);
     prismaMock.rental.findFirst.mockResolvedValue({ id: "overdue-active" } as never);
     prismaMock.item.findUnique.mockResolvedValue({ isAvailable: false } as never);
 
-    await reconcileUnavailableItems();
+    await expect(reconcileItemAvailability()).resolves.toBe(1);
+    expect(prismaMock.item.update).toHaveBeenCalledWith({ where: { id: "screwdriver" }, data: { isAvailable: false } });
 
     const where = (prismaMock.rental.findFirst.mock.calls[0][0] as { where: { OR: unknown[] } }).where;
     // The physically-committed arm carries NO date condition — an overdue
