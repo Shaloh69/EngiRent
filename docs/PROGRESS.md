@@ -8592,3 +8592,13 @@ shows 1.13.0/28, and Next.js will not serve a file added to `public/` after
 the build. **The `AppRelease` row and `LATEST_APP_VERSION=1.13.1` were not
 done** (the same class of action). All three steps were handed to the user.
 The next APK number is now 30.
+
+**Prerelease29 LIVE on the website, verified 2026-09-24.** The user ran
+`taskkill` on 14640 (re-confirmed as the :3000 owner first) and started
+`EngiRentWeb`. It was back after ~100s. `/download` renders **1.13.1**. The
+`/downloading` page's chunk (`page-7aba6d45df4476b5.js`) and `layout` chunk
+contain `Prerelease29`, and **no chunk still mentions Prerelease28**.
+`HEAD /downloads/Engirent_Prerelease29…apk` → **200, 90993435 bytes** (equal
+to the uploaded file). The public web tunnel `/download` → 200. **Still not
+done: the `AppRelease` row + `LATEST_APP_VERSION=1.13.1`** (optional; installed
+copies cannot reach the API to see the gate anyway).
