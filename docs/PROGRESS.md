@@ -9101,6 +9101,45 @@ together**: E6.R (the owner pickup completes the rental) and E6.S (below).
   The pre-existing R1 sweep will drop + cancel the rivet tool (`b7497e8b`,
   bay 1) at **07:05** unless Ian collects it.
 
+### 23:45-23:46 — the hammer's owner collected it (E6.R/S seen in part). D-108: the third DB drop tonight, and it broke the pickup's reply.
+
+**What worked, from the log:** 23:45:41 the owner (`f38b925d`) scanned. The
+kiosk session opened for a **COMPLETED** rental (the `isKioskActionable`
+released-not-taken branch; before tonight it would have been refused). The
+face check was handed to **the owner**, not the renter (`resolveFaceSubject`,
+unchanged). 23:46:06 the retrieve branch → `open_door` **bay 2 main_door**,
+UNLOCK, 5.0s hold, AUTO-LOCKED 23:46:12. Re-derived afterwards: bay 2 is
+`AVAILABLE` top and bottom, and the owner's retry at 23:46:44 was refused
+"not actionable" (so `retrievedAt` is set: collected). Money unchanged
+(refund ₱150 COMPLETED, payout ₱50 PENDING).
+**Not exercised:** E6.R's completion-at-pickup (this rental was already
+COMPLETED before E6.R existed). The rivet-tool cycle is what proves it.
+
+**What went wrong on screen: the phone got HTTP 500 although the door opened.**
+23:46:14 `setCompartment`'s interactive transaction expired (5235/5000 ms)
+inside `applyFaceVerificationOutcome`'s retrieve branch, **after** the door
+command. Then `Server has closed the connection` (the admin login at 23:46:22
+too). Everything after the failed write was skipped, including the grant ("Open
+Kiosk Again") and `face:verified`, so the person saw an error for a pickup that
+had succeeded. This is D-106's shape a second time, in a second place.
+
+**D-108 — MySQL connections drop every hour or so. FOUND, CAUSE NARROWED, NOT FIXED.**
+Tonight at **21:03, 22:43, 23:46**, the same signature each time: an
+interactive transaction stalls about 5s, then `Server has closed the
+connection`, then recovery within seconds. Measured inside the container:
+`wait_timeout` = `interactive_timeout` = **28800** (defaults, so MySQL is
+**not** closing idle connections), `max_connections` 151 with 13 used,
+`Connection_errors_internal` 0, container `Up 28 hours`, and **no Docker
+container events** in the last 3h. So MySQL is healthy, and the drop is in
+the **connection path**: `127.0.0.1:3307` → Docker Desktop's Windows port
+relay (`wslrelay`/`com.docker.backend`, both listening on 3307, noted at
+21:03). Most likely idle pool connections silently dropped by the relay. Fix
+options, **needs a ruling:** (1) retry `setCompartment` (the single writer
+where both live failures landed) once on a closed-connection or
+expired-transaction error; (2) D-106's structural fix, so person-facing emits
+never depend on bookkeeping writes; (3) a keep-warm query; (4) point Prisma
+past the relay. (1)+(2) are code; (3)/(4) are infrastructure.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 
