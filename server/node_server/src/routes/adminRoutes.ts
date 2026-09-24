@@ -10,6 +10,7 @@ import {
   listAllRentals,
   forceCompleteRental,
   releaseRentalForPickup,
+  refundRenterForRejectedDeposit,
   runCollectionSweepNow,
   settleDispute,
   listTransactions,
@@ -101,6 +102,14 @@ router.post(
 );
 // E6.R — hand a returned item still in its bay back to its owner in place
 // (the D-107 recovery). Moves nothing; the owner opens the bay themselves.
+// E6.V — refund a renter whose deposit was rejected before D-109 was fixed.
+router.post(
+  "/rentals/:id/refund-renter",
+  requireAdmin,
+  validate([param("id").isUUID()]),
+  refundRenterForRejectedDeposit,
+);
+
 // Run the hourly R1 collection sweep now (same policy; may drive an actuator).
 router.post(
   "/retrieval/sweep",

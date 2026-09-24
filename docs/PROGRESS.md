@@ -9346,6 +9346,14 @@ awaiting the owner's open-bay tap` → **tap 01:05:38 → bay 1 main door** →
 `Retrieval completed … item handed back to its owner`. The status stays
 CANCELLED (only a passed return completes at pickup, correct).
 
+## E6.V — D-109 RULED 2026-09-25 ~01:10: "Auto refund via PayMongo". Section table (G2).
+
+| # | Section | Repo today | Change |
+|---|---|---|---|
+| V.1 | Refund helper | `finalizeRentalCompletion` refunds only the deposit, and only at completion (PayMongo `createRefund` when a `paymongoPaymentId` + key exist, otherwise a ledger-only `DEPOSIT_REFUND` row). No enum value exists for refunding a RENTAL_PAYMENT (adding one needs a migration: not doing that on production) | New `refundRenterInFull(rentalId, reason)`: for each COMPLETED `RENTAL_PAYMENT` / `SECURITY_DEPOSIT` → PayMongo refund when possible, else ledger → original row **REFUNDED** with `paymentDetails.refund` recorded. The deposit also gets a `DEPOSIT_REFUND` row (same as a return). Idempotent (only COMPLETED rows). A failed refund leaves the row COMPLETED and tells the renter + admins |
+| V.2 | Deposit rejection, both paths | `adminController` manual deposit REJECTED; `index.ts` automatic deposit REJECTED: CANCELLED, nothing about money | Call `refundRenterInFull(…, "deposit rejected")` in both |
+| V.3 | Repair | `1125ad66` is CANCELLED/REJECTED with ₱20 + ₱30 still COMPLETED | `POST /admin/rentals/:id/refund-renter`, only for a CANCELLED rental whose deposit was REJECTED; used once for `1125ad66` |
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 

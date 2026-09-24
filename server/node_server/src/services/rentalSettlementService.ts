@@ -267,3 +267,102 @@ export async function finalizeRentalCompletion(rentalId: string): Promise<void> 
     }
   }
 }
+
+/**
+ * E6.V (user ruling 2026-09-25, D-109): a rental that failed through no fault
+ * of the renter — the owner deposited the wrong item and it was rejected —
+ * refunds the renter IN FULL, automatically: the rental payment and the
+ * security deposit. Before this, both rejection paths cancelled the rental and
+ * left the renter's money marked COMPLETED with nothing sent back.
+ *
+ * Same mechanism as the return refund in finalizeRentalCompletion: a PayMongo
+ * refund when the payment was made through PayMongo, otherwise a ledger-only
+ * refund (manual GCash payments, confirmed by an admin, have no PayMongo id).
+ * Each original row becomes REFUNDED with the refund recorded on it — there is
+ * no enum value for a rental-payment refund, and adding one is a production
+ * migration — and the deposit also gets its DEPOSIT_REFUND row, as a return's
+ * does. Idempotent: only COMPLETED rows are touched. A refund that fails
+ * leaves its row COMPLETED (still owed) and tells the renter and the admins.
+ */
+export async function refundRenterInFull(rentalId: string, reason: string): Promise<number> {
+  const rental = await prisma.rental.findUnique({
+    where: { id: rentalId },
+    include: {
+      item: { select: { title: true } },
+      transactions: {
+        where: { status: "COMPLETED", type: { in: ["RENTAL_PAYMENT", "SECURITY_DEPOSIT"] } },
+      },
+    },
+  });
+  if (!rental) return 0;
+
+  let refunded = 0;
+  for (const txn of rental.transactions) {
+    if (txn.amount <= 0) continue;
+    const viaPayMongo = Boolean(env.PAYMONGO_SECRET_KEY && txn.paymongoPaymentId);
+    try {
+      if (viaPayMongo) {
+        await createRefund({ paymentId: txn.paymongoPaymentId as string, amount: txn.amount, reason: "others" });
+      }
+      const details = {
+        ...((txn.paymentDetails as Record<string, unknown> | null) ?? {}),
+        refund: {
+          reason,
+          amount: txn.amount,
+          at: new Date().toISOString(),
+          via: viaPayMongo ? "PayMongo" : "Ledger (PayMongo not configured or manual payment)",
+        },
+      };
+      await prisma.$transaction([
+        prisma.transaction.update({
+          where: { id: txn.id },
+          data: { status: "REFUNDED", paymentDetails: details },
+        }),
+        ...(txn.type === "SECURITY_DEPOSIT"
+          ? [
+              prisma.transaction.create({
+                data: {
+                  rentalId,
+                  userId: rental.renterId,
+                  type: "DEPOSIT_REFUND" as const,
+                  amount: txn.amount,
+                  status: "COMPLETED" as const,
+                  paidAt: new Date(),
+                  paymentMethod: details.refund.via,
+                },
+              }),
+            ]
+          : []),
+      ]);
+      refunded += txn.amount;
+    } catch (err) {
+      logger.error(`[E6.V] refund of ${txn.type} for rental ${rentalId} failed — still owed:`, err);
+      const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+      await prisma.notification.createMany({
+        data: [rental.renterId, ...admins.map((a) => a.id)].map((userId) => ({
+          userId,
+          title: "Refund delayed",
+          message: `A ₱${txn.amount.toFixed(2)} refund for ${rental.item.title} could not be processed automatically and needs an admin.`,
+          type: "SYSTEM_ANNOUNCEMENT" as const,
+          relatedEntityId: rentalId,
+          relatedEntityType: "rental",
+        })),
+      });
+    }
+  }
+
+  if (refunded > 0) {
+    await prisma.notification.create({
+      data: {
+        userId: rental.renterId,
+        title: "Refunded in full",
+        message: `₱${refunded.toFixed(2)} for ${rental.item.title} has been refunded — ${reason}.`,
+        type: "PAYMENT_RECEIVED",
+        relatedEntityId: rentalId,
+        relatedEntityType: "rental",
+      },
+    });
+    logger.info(`[E6.V] renter refunded ₱${refunded} in full for rental ${rentalId} (${reason})`);
+  }
+  return refunded;
+}

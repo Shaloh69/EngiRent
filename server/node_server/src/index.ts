@@ -70,6 +70,7 @@ import { recordKioskLog } from "./services/kioskLogBuffer";
 import { recordTimingReport } from "./services/kioskTimingStore";
 import { recordAdminSnapshot } from "./services/kioskSnapshotStore";
 import { approveReturn, completeAfterOwnerPickup } from "./services/returnApprovalService";
+import { refundRenterInFull } from "./services/rentalSettlementService";
 import {
   sendItemReadyForClaim,
   sendReturnOverdue,
@@ -643,6 +644,8 @@ io.on("connection", (socket: Socket) => {
               },
             });
             await recomputeItemAvailability(rental.itemId);
+            // E6.V (D-109) — the renter did nothing wrong: refund them in full.
+            await refundRenterInFull(rental_id, "the deposited item did not match the listing");
             // E4.6 / R4 (was D-67a). The bay used to be set AVAILABLE here
             // while the owner's item was still physically inside it, and no
             // door was reopened — so the item was sealed in a bay the database

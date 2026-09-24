@@ -25,6 +25,7 @@ jest.mock("../../services/retrievalService", () => ({
 }));
 jest.mock("../../services/rentalSettlementService", () => ({
   finalizeRentalCompletion: jest.fn().mockResolvedValue(undefined),
+  refundRenterInFull: jest.fn().mockResolvedValue(50),
 }));
 jest.mock("../../services/itemAvailabilityService", () => ({
   recomputeItemAvailability: jest.fn().mockResolvedValue(undefined),
@@ -45,7 +46,7 @@ import prisma from "../../config/database";
 import { reviewVerification } from "../adminController";
 import { AuthRequest } from "../../middleware/auth";
 import { releaseForOwnerPickup, requestRelease } from "../../services/retrievalService";
-import { finalizeRentalCompletion } from "../../services/rentalSettlementService";
+import { finalizeRentalCompletion, refundRenterInFull } from "../../services/rentalSettlementService";
 import { sendVerificationFailed } from "../../utils/email";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -211,5 +212,40 @@ describe("reviewVerification — return, REJECTED (D-95)", () => {
         data: { status: "DISPUTED", verificationStatus: "REJECTED" },
       }),
     );
+  });
+});
+
+/**
+ * E6.V (user ruling 2026-09-25, D-109): the OWNER deposited the wrong item (the
+ * rivet tool in place of the screwdriver, rental 1125ad66) and the admin
+ * rejected it. The rental was cancelled and the renter's money stayed COMPLETED.
+ */
+describe("reviewVerification — deposit, REJECTED (E6.V)", () => {
+  it("cancels, hands the item back to the owner, and refunds the renter in full", async () => {
+    mockReset(prismaMock);
+    releaseForPickupMock.mockClear();
+    (refundRenterInFull as jest.Mock).mockClear();
+    prismaMock.verification.findUnique.mockResolvedValue({
+      id: "verification-1",
+      rental: null,
+      depositRental: {
+        id: "rental-9",
+        status: "DEPOSITED",
+        itemId: "item-9",
+        renterId: "renter-1",
+        ownerId: "owner-1",
+        item: { title: "Phillip Screw Driver" },
+      },
+    } as never);
+    const { io } = makeIo();
+
+    await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
+
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: "rental-9" },
+      data: { status: "CANCELLED", verificationStatus: "REJECTED" },
+    });
+    expect(releaseForPickupMock).toHaveBeenCalledWith(io, "rental-9", "DEPOSIT_REJECTED");
+    expect(refundRenterInFull).toHaveBeenCalledWith("rental-9", expect.stringContaining("did not match"));
   });
 });

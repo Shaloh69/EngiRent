@@ -17,7 +17,7 @@ import {
 import axios from "axios";
 import fs from "fs";
 import env from "../config/env";
-import { finalizeRentalCompletion } from "../services/rentalSettlementService";
+import { finalizeRentalCompletion, refundRenterInFull } from "../services/rentalSettlementService";
 import { approveReturn } from "../services/returnApprovalService";
 import { runCollectionSweep } from "../services/collectionSweepService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
@@ -393,6 +393,40 @@ export const runCollectionSweepNow = async (
     });
     logger.info(`[E4.6] collection sweep run on demand by ${req.user?.email}: ${JSON.stringify(result)}`);
     res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /admin/rentals/:id/refund-renter — E6.V repair for D-109: a deposit
+ * rejected before the fix left the renter's payments COMPLETED on a cancelled
+ * rental. Only for exactly that case (CANCELLED + deposit REJECTED), and
+ * idempotent: only rows still COMPLETED are refunded.
+ */
+export const refundRenterForRejectedDeposit = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const rental = await prisma.rental.findUnique({
+      where: { id },
+      select: { status: true, verificationStatus: true, depositVerificationId: true },
+    });
+    if (!rental) throw new NotFoundError("Rental not found");
+    if (rental.status !== "CANCELLED" || rental.verificationStatus !== "REJECTED" || !rental.depositVerificationId) {
+      throw new ValidationError("Only a cancelled rental whose deposit was rejected can be refunded here");
+    }
+    const refunded = await refundRenterInFull(id, "the deposited item did not match the listing");
+    await recordAudit(req, {
+      action: "rental.refund_renter",
+      targetType: "rental",
+      targetId: id,
+      metadata: { refunded },
+    });
+    res.json({ success: true, data: { refunded } });
   } catch (error) {
     next(error);
   }
@@ -840,6 +874,8 @@ export const reviewVerification = async (
         });
 
         await recomputeItemAvailability(depositRental.itemId);
+        // E6.V (D-109) — the renter did nothing wrong: refund them in full.
+        await refundRenterInFull(depositRental.id, "the deposited item did not match the listing");
 
         logger.info(
           `Deposit for rental ${depositRental.id} REJECTED by ${req.user?.email} — ` +
