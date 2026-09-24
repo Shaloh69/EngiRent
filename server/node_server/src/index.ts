@@ -1872,6 +1872,17 @@ const startServer = async (): Promise<void> => {
   }
 };
 
+// D-102 (2026-09-24): Node's default for an unhandled rejection is to kill the
+// process, and nothing on the server restarts this API by itself (the
+// Scheduled Task does not relaunch it). One ~seconds-long database blip on
+// 2026-09-24 took the whole API down until a human noticed. Any async socket
+// handler or cron job that lets a rejection escape would do the same. Log it
+// loudly and keep serving. Every other request, and the kiosk socket, is
+// unaffected by one failed operation.
+process.on("unhandledRejection", (reason) => {
+  logger.error("[D-102] Unhandled promise rejection — process kept alive:", reason);
+});
+
 process.on("SIGTERM", () => {
   logger.info("SIGTERM received — closing server");
   httpServer.close(() => logger.info("HTTP server closed"));

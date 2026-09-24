@@ -8651,3 +8651,32 @@ Through the **public API tunnel** (the phone's path): `/items` 200,
 `/app-config` 200, and a **real student login** returned `success=True`,
 `role=STUDENT` with an access token. Kiosk KIOSK-001 reconnected and
 re-reported occupancy (all four AVAILABLE) and per-bay timings at 21:20:02.
+
+**D-102 FIXED AND DEPLOYED 2026-09-24 ~21:35** (the user said "do it now").
+- `routes/index.ts` `/app-config`: try/catch → `next(error)`, the pattern every
+  controller already uses. A grep found it was the **only** async route
+  handler without `next`.
+- `index.ts`: a `process.on("unhandledRejection")` guard that logs
+  `[D-102] … process kept alive` instead of dying. Nothing on this box
+  relaunches a dead API (the Scheduled Task does not), so a crash is an outage
+  that lasts until a human looks. This covers socket handlers and cron jobs
+  too, not just this route.
+- **Test** `routes/__tests__/appConfigResilience.test.ts` (3): through the
+  REAL router + REAL `errorHandler` via supertest, with Prisma rejecting with
+  the exact P1001 from tonight's log. **Mutation-checked:** against HEAD's
+  handler, all 3 fail (the request never answers, `Exceeded timeout`); with
+  the fix, all 3 pass. Node **327/327** (+3), `tsc` clean.
+- **Found while deploying:** the server's `routes/index.ts` was **behind the
+  repo**. It lacked `/app-config`'s `downloadUrl` field (committed earlier,
+  never deployed; the same shape as D-32). This deploy brings it in.
+- Deployed: both hashes match (`a4377110e847b9a9`, `97881658b4d1f033`).
+  PID 30228 was confirmed as EngiRent (engine path + parent `svc-node.bat`),
+  its tree was killed, and the task was started. **New PID 31988**, EngiRent
+  engine. `dist/routes/index.js` contains `next(error)` and `dist/index.js`
+  contains the `unhandledRejection` guard. Via the public tunnel:
+  `/app-config` 200 with `downloadUrl` (`latestVersion 1.13.0`), `/items` 200,
+  **a real student login succeeded**. The kiosk re-reported occupancy at
+  21:35:08.
+- **Not proven live:** that a real DB blip is now survived. That would need
+  deliberately breaking the production database, which is not worth doing.
+  The mutation-checked test is the evidence.
