@@ -2433,3 +2433,37 @@ greeting starting `8.0.46`).
 `client/admin/.env.local`. The login token is at `data.tokens.accessToken`.
 The kiosk ID is `KIOSK-001`. `POST /admin/kiosks/<id>/command` returns "sent"
 for ANY id, so confirm arrival in the Pi's journal.
+
+## 2026-09-25 (small hours) — the full rental cycle ran on the real bank; five lessons
+
+**The owner now collects a returned item in person before a rental is
+COMPLETED** (user ruling, E6.R), and it is proven on hardware: approval settles
+the money and hands the item back in place, and the owner's kiosk pickup is
+what completes it. Rejected deposits and returns are handed back the same way
+(E6.S). An item left uncollected drops to the lower compartment at the next
+:15 inside 07-21, so the top stays free. D-93's retract-then-extend drop ran
+on bay 1 (00:18).
+
+1. **MySQL connections drop about hourly through Docker Desktop's port relay
+   (D-108)**: 21:03, 22:43, 23:46, 00:19. MySQL itself stays healthy
+   (defaults, no errors, no container events). A dropped connection can
+   return **wrong data**: a retry read an existing locker as "not found". And
+   a transaction reported "expired" had actually committed, twice. The code
+   now retries the compartment write once and never lets a post-door failure
+   reach the person, but the relay is the real fix.
+2. **Check for a live kiosk flow before every API restart.** Every restart
+   wipes the in-memory kiosk sessions and bay grants. One restart landed
+   inside a renter's return and forced a rescan. Look at the last ~40 log
+   lines for flow_start / APP-FACE / BAY-OPEN / BAY-CAPTURE and their times.
+3. **"Every guard that protects a stroke" is the wrong gate for a release
+   that moves nothing.** A return approved at 22:47 was refused by the
+   07-21 window, never retried, and stranded (D-107).
+4. **A mutation that breaks compilation proves nothing** ("0 total" in jest).
+   Use a type-valid mutation. And reset process-local state
+   (`__resetBayActivity`) between tests: one leaked "drop running" record let a
+   guard's mutation survive.
+5. **Availability had two bugs that hid each other.** Cancel paths never
+   recomputed it, and the recompute ignored overdue rentals. The
+   reconciliation now re-checks every item both ways at startup and hourly.
+   On-demand sweep for testing: `POST /admin/retrieval/sweep {rentalId}`.
+
