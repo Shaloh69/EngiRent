@@ -8680,3 +8680,42 @@ re-reported occupancy (all four AVAILABLE) and per-bay timings at 21:20:02.
 - **Not proven live:** that a real DB blip is now survived. That would need
   deliberately breaking the production database, which is not worth doing.
   The mutation-checked test is the evidence.
+
+### 2026-09-24 ~21:36 — SECOND OUTAGE: EngiRent's API was KILLED from outside, along with EcoCharge's and UniThrift's
+
+**Symptom:** the user said the app was "still the same version". Checking
+showed the public download is right (the site links only to Prerelease29,
+and the file served publicly hashes to `f7f2731c866c511a`), **but the API
+tunnel was 502 again.**
+
+**Evidence that this was an external kill, not a crash:**
+- The API (PID 31988, with the D-102 fix) answered through the tunnel at
+  21:35:43 (a real login). The tunnel's first "actively refused" after that
+  is **21:36:44**. The API log has **no crash, no stack, and no D-102 guard
+  line**, just silence after 21:35:43. The task's lastResult is `-1`.
+- **EcoCharge's API (`node dist\index.js`, PID 8464) is also gone.**
+- **UniThrift's API** (`E:\UniThrift\…\run-api.bat`, which restarts node 5s
+  after any exit and logs `API exited`) shows only a fresh `API starting` at
+  **21:39:20** and **no `API exited` line**, so its loop was killed too and
+  the task was relaunched by hand.
+- Ruled out: `EcoChargeWatchdog` (it only Stop/Start-ScheduledTasks its own
+  five EcoCharge tasks), UniThrift's launcher (no kill logic), and
+  `svc-node.bat` (`npm run build && npm start`, no kill logic).
+
+**Conclusion:** at ~21:36 something killed **every `node dist\index.js` on
+the box** by image name or command-line pattern, not by PID. The web/admin
+`next start` processes survived. The most likely source is whoever was working
+on UniThrift at that moment. It is the same trap the continuation prompt warns
+about ("EcoCharge runs an identical `node dist/index.js`"), now across three
+projects. **Not fixable from this repo.** The fix is procedural: on this box,
+kill by PID after checking the loaded module path, never by name or pattern.
+This also casts doubt on the 21:03 outage: UniThrift started at 21:01:41.
+
+**Corroboration + restoration.** The EcoCharge watchdog's own log:
+`21:37:50 API probe failed (1/3)` … `21:39:55 restarting task EcoChargeAPI`.
+EcoCharge's API went down within the same minute as EngiRent's. EngiRent has
+no watchdog, so it stayed down until restarted here: `Start-ScheduledTask
+EngiRentNode`, up after ~120s as **PID 14176** (started 21:43:55, EngiRent
+engine). Through the tunnel: `/items` 200, `/app-config` 200
+(`latestVersion 1.13.0`), **a real student login succeeded**. The kiosk
+re-registered at 21:44:04.
