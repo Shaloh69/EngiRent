@@ -997,6 +997,15 @@ export const adminRefund = async (
     if (!transaction) throw new NotFoundError("Transaction not found");
     if (transaction.status !== "COMPLETED")
       throw new ValidationError("Only completed transactions can be refunded");
+    // D-110 (found live 2026-09-25): only money a renter PAID can be refunded.
+    // A DEPOSIT_REFUND row is itself a refund — "refunding" it marked it
+    // REFUNDED and minted another, and three clicks in 16s produced a chain of
+    // three ₱30 refund notices for one deposit. An OWNER_PAYOUT is money out.
+    if (transaction.type !== "RENTAL_PAYMENT" && transaction.type !== "SECURITY_DEPOSIT") {
+      throw new ValidationError(
+        "Only a rental payment or a security deposit can be refunded — this row is already money going out",
+      );
+    }
 
     const itemTitle = transaction.rental.item.title;
 

@@ -9354,6 +9354,23 @@ CANCELLED (only a passed return completes at pickup, correct).
 | V.2 | Deposit rejection, both paths | `adminController` manual deposit REJECTED; `index.ts` automatic deposit REJECTED: CANCELLED, nothing about money | Call `refundRenterInFull(…, "deposit rejected")` in both |
 | V.3 | Repair | `1125ad66` is CANCELLED/REJECTED with ₱20 + ₱30 still COMPLETED | `POST /admin/rentals/:id/refund-renter`, only for a CANCELLED rental whose deposit was REJECTED; used once for `1125ad66` |
 
+**E6.V DEPLOYED 01:12 (API PID 12036) and used once:** `POST /admin/rentals/1125ad66…/refund-renter`
+→ 200 `refunded: 20`. Re-derived, all five rows: RENTAL_PAYMENT ₱20 **REFUNDED**
+(`paymentDetails.refund` via Ledger: manual GCash, no PayMongo id), and
+SECURITY_DEPOSIT ₱30 REFUNDED. **The deposit had already been refunded by the
+admin console's manual refund at 01:07**, so the helper correctly skipped it
+(idempotent). **Ian refunded ₱50 in total, once each.** The automatic path on a
+fresh rejection is not yet seen live.
+
+**D-110 — the admin manual refund accepted a REFUND row. FOUND LIVE, FIXED.**
+Three `DEPOSIT_REFUND` rows, "Admin Manual Refund", at 01:07:24 / :33 / :40:
+`adminRefund` took any COMPLETED transaction, so each click on the new refund
+row marked it REFUNDED and minted another, and the renter got three "Refund
+Processed ₱30" notices for one deposit. The books netted to one, but a person
+paying back by hand from those notices would have sent ₱90. It would also
+have "refunded" an OWNER_PAYOUT. Now only RENTAL_PAYMENT / SECURITY_DEPOSIT
+(`adminRefundTypes.test.ts`, 4). Node **378/378**.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 
