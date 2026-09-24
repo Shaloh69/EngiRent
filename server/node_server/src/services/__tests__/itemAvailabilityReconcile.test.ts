@@ -44,4 +44,17 @@ describe("reconcileUnavailableItems", () => {
       data: { isAvailable: false },
     });
   });
+
+  it("an item physically with the renter blocks even when the rental is OVERDUE", async () => {
+    prismaMock.item.findMany.mockResolvedValue([{ id: "screwdriver" }] as never);
+    prismaMock.rental.findFirst.mockResolvedValue({ id: "overdue-active" } as never);
+    prismaMock.item.findUnique.mockResolvedValue({ isAvailable: false } as never);
+
+    await reconcileUnavailableItems();
+
+    const where = (prismaMock.rental.findFirst.mock.calls[0][0] as { where: { OR: unknown[] } }).where;
+    // The physically-committed arm carries NO date condition — an overdue
+    // rental's end date is in the past while the renter still holds the item.
+    expect(where.OR[0]).toEqual({ status: { in: ["DEPOSITED", "ACTIVE", "VERIFICATION"] } });
+  });
 });

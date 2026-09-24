@@ -83,9 +83,20 @@ export async function recomputeItemAvailability(itemId: string): Promise<void> {
   const blocking = await prisma.rental.findFirst({
     where: {
       itemId,
-      status: { in: [...BLOCKING_RENTAL_STATUSES] },
-      startDate: { lte: now },
-      endDate: { gte: now },
+      OR: [
+        // The item is physically committed — in a bay, with the renter, or
+        // back in a bay awaiting its owner — whatever the dates say. An
+        // OVERDUE rental's end date is in the past while the renter still has
+        // the item (found 2026-09-25: the screwdriver, 28 min overdue, was
+        // offered as available while Ian held it).
+        { status: { in: ["DEPOSITED", "ACTIVE", "VERIFICATION"] } },
+        // A booking not yet handed over only blocks during its own dates.
+        {
+          status: { in: ["PENDING", "AWAITING_DEPOSIT"] },
+          startDate: { lte: now },
+          endDate: { gte: now },
+        },
+      ],
     },
     select: { id: true },
   });
