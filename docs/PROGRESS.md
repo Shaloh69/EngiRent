@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **D-107 FOUND LIVE, NOT FIXED, NEEDS A RULING** (R2 release refused at night is never retried; onDemand never wired) - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 4948 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-93 hardware, D-95 release half]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), APK 1.13.2+30 building, NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 4948 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-93 hardware, D-95 release half]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9009,6 +9009,34 @@ rivet tool `b7497e8b` collect → return → approve → the owner's phone shows
 collect button → the owner opens bay 1 → `COMPLETED` + both ledger rows +
 bay 1 free, and the review button on the renter's phone only. Plus
 `3139d8c5` recovered through R.5.
+
+### E6.R — BUILT, SERVER DEPLOYED 2026-09-24 23:09, APP BUILDING. Not yet seen on screen.
+
+- Commits `2fb541e` (server + app + tests + map banners) and `6652790` (the
+  owner button keys off `releasedAt && !retrievedAt`, not status: the first
+  cut would have hidden it from the D-107 recovery's owner, since that
+  rental is already COMPLETED, and from every owner of an item released
+  after a dispute/cancellation. None of them had a pickup button before).
+- Node **344/344** (+12, three mutation checks each failed the right test),
+  Flutter model tests 6/6 new + 13 existing, `tsc` and `flutter analyze`
+  clean. **Found while writing it:** the phone's "Dispute this Return" posts
+  to `/rentals/:id/dispute`, **a route that does not exist** (dead button;
+  now hidden once a return is approved; recorded, not fixed).
+- **Deployed:** the 7 server copies matched repo HEAD before the copy
+  (CRLF-normalised hashes), then all 8 files (+ the new
+  `returnApprovalService.ts`) matched after it. The EngiRent tree was
+  killed by its `svc-node.bat` root (engine path verified), and the task
+  restarted. **API PID 35072**, EngiRent engine, `dist` contains
+  `completeAfterOwnerPickup` + `isKioskActionable`. Kiosk re-registered
+  23:09:53.
+- **R.5 used live, 23:10:12:** `POST /admin/rentals/3139d8c5…/release-for-pickup`
+  → 200. Log: `released IN PLACE … bay 2 (main_door, no actuator stroke …)`.
+  Bay 2 → `AWAITING_RETRIEVAL`, the owner notified. **No hardware moved.** The
+  hammer's owner can now collect it through the normal flow once they have
+  1.13.2+30.
+- **Rivet tool `b7497e8b` warning:** the 23:05 sweep already counted it as an
+  uncollected deposit, refused only by the window. **At 07:05 the R1 sweep
+  will drop it and auto-cancel the rental** unless Ian collects it first.
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.

@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-09-24",
+    version: "1.13.2",
+    tag: "feature",
+    title: "Owners collect their item back before a rental is complete",
+    bullets: [
+      "When a return passes, the renter's security deposit refund goes out straight away, and the owner gets a “Collect Your Item from the Kiosk” button — the rental is only marked complete once the owner has opened the locker and taken the item back",
+      "Found during a real test on 2026-09-24: a return approved in the evening was marked complete while the item was still sitting in the locker, and nothing ever told its owner to come and get it",
+      "Only the renter can review the item now — the owner was being offered a review of their own listing",
+    ],
+  },
+  {
+    date: "2026-09-24",
     version: "1.13.1",
     tag: "infra",
     title: "The app can reach the server again",

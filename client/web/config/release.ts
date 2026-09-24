@@ -28,15 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.13.1",
-  buildNumber: 29,
-  fileName: "Engirent_Prerelease29.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.13.2",
+  buildNumber: 30,
+  fileName: "Engirent_Prerelease30.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-09-24",
   sizeMb: 86.8,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Reconnects to the EngiRent server — the previous build was pointed at a server address that no longer exists, so it could not sign in or load anything",
-    "No feature changes: this is the 1.13.0 app, rebuilt against the current server address",
+    "When a return passes, the owner gets a “Collect Your Item from the Kiosk” button — the rental completes once they have taken the item back",
+    "The renter's deposit refund no longer waits for the owner to collect",
+    "Only the renter can review the item",
   ],
 };
 
