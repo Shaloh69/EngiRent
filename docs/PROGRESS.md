@@ -9316,6 +9316,28 @@ the reply took 17s (00:56:16 → :33) because each DB step was slow (the D-108
 relay). The phone's door countdown could start late. The option is to reply
 first and complete after. Held.
 
+### 2026-09-25 01:00 — the OWNER deposited the wrong item (test `1125ad66`). The check could not tell. D-109 found.
+
+The user's test: the owner put the **OMEGA rivet tool** into bay 1 in place of
+the "Phillip Screw Driver" (photo checked). The quick check scored **44.29**,
+which is **inside the range the real screwdriver scored on the same bay
+(44.29 / 50.37 / 55.27)**, and it escalated to review as any deposit does.
+**The automatic check cannot tell these two items apart** (both black-and-yellow
+handles on a white floor: D-89b in its sharpest form). Only the human
+reviewer catches it. (A renter returning a wrong item is a separate process,
+per the user; not tested here.)
+
+**D-109 — a REJECTED deposit never refunds or voids the renter's money.
+FOUND BY READING, NOT FIXED.** Both reject paths (`adminController`
+reviewVerification deposit REJECTED; `index.ts` automatic deposit REJECTED):
+rental → CANCELLED, item handed back to the owner in place (E6.S), both parties
+notified, availability recomputed. **But the RENTAL_PAYMENT and
+SECURITY_DEPOSIT rows stay COMPLETED**: no refund, no void, no row. The renter
+paid for a rental the owner broke. (By contrast, the R1 no-show sweep does
+`voidRentalTransactions`, bookkeeping only by design.) **Needs a ruling:** a real
+PayMongo refund of both to the renter (like `finalizeRentalCompletion`'s
+refund half), or a void plus an admin follow-up.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 
