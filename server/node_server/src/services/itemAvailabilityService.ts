@@ -58,6 +58,26 @@ export async function findOverlappingRentals(
  * and this correcting it is an acceptable trade for not touching the
  * existing payment/verification transactions themselves to add this.
  */
+/**
+ * 2026-09-25 — re-check every item currently marked unavailable. Three cancel
+ * paths (the R1 no-show sweep, the never-deposited auto-cancel and the
+ * automatic deposit rejection) flipped a rental to CANCELLED without
+ * recomputing, so "Hand Rivets" stayed unavailable after its rental was
+ * cancelled and the tool was back with its owner. Those paths recompute now;
+ * this repairs anything they (or a path not yet found) left behind. Cheap:
+ * one query per unavailable item.
+ */
+export async function reconcileUnavailableItems(): Promise<number> {
+  const stuck = await prisma.item.findMany({ where: { isAvailable: false }, select: { id: true } });
+  let freed = 0;
+  for (const { id } of stuck) {
+    await recomputeItemAvailability(id);
+    const after = await prisma.item.findUnique({ where: { id }, select: { isAvailable: true } });
+    if (after?.isAvailable) freed += 1;
+  }
+  return freed;
+}
+
 export async function recomputeItemAvailability(itemId: string): Promise<void> {
   const now = new Date();
   const blocking = await prisma.rental.findFirst({

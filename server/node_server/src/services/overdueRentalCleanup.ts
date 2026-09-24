@@ -1,4 +1,5 @@
 import prisma from "../config/database";
+import { recomputeItemAvailability } from "./itemAvailabilityService";
 import logger from "../utils/logger";
 
 /**
@@ -90,6 +91,7 @@ export async function cancelOverdueUndepositedRentals(): Promise<OverdueSweepRes
     },
     select: {
       id: true,
+      itemId: true,
       renterId: true,
       ownerId: true,
       endDate: true,
@@ -105,6 +107,7 @@ export async function cancelOverdueUndepositedRentals(): Promise<OverdueSweepRes
         data: { status: "CANCELLED" },
       });
       const voided = await voidRentalTransactions(rental.id);
+      await recomputeItemAvailability(rental.itemId);
 
       const dueDate = rental.endDate.toLocaleDateString("en-PH");
       await prisma.notification.create({

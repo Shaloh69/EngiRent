@@ -13,11 +13,13 @@ jest.mock("../../config/database", () => ({
 }));
 jest.mock("../retrievalService", () => ({ requestRelease: jest.fn() }));
 jest.mock("../overdueRentalCleanup", () => ({ voidRentalTransactions: jest.fn().mockResolvedValue(2) }));
+jest.mock("../itemAvailabilityService", () => ({ recomputeItemAvailability: jest.fn().mockResolvedValue(undefined) }));
 
 import prisma from "../../config/database";
 import { runCollectionSweep } from "../collectionSweepService";
 import { requestRelease } from "../retrievalService";
 import { voidRentalTransactions } from "../overdueRentalCleanup";
+import { recomputeItemAvailability } from "../itemAvailabilityService";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const releaseMock = requestRelease as jest.Mock;
@@ -31,12 +33,14 @@ describe("runCollectionSweep", () => {
   });
 
   it("cancels and voids a deposit released for late collection", async () => {
-    prismaMock.rental.findMany.mockResolvedValue([{ id: "r1" }] as never);
+    prismaMock.rental.findMany.mockResolvedValue([{ id: "r1", itemId: "item-1" }] as never);
     releaseMock.mockResolvedValue({ released: true, reason: "LATE_COLLECTION", lockerNumber: "1" });
     const out = await runCollectionSweep(io);
     expect(out).toEqual({ considered: 1, released: 1, cancelled: 1, refusals: [] });
     expect(prismaMock.rental.update).toHaveBeenCalledWith({ where: { id: "r1" }, data: { status: "CANCELLED" } });
     expect(voidRentalTransactions).toHaveBeenCalledWith("r1");
+    // The listing must be offered again (Hand Rivets, 2026-09-25).
+    expect(recomputeItemAvailability).toHaveBeenCalledWith("item-1");
   });
 
   it("changes nothing when the policy refuses, and says why", async () => {

@@ -50,6 +50,10 @@ import {
 import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
 import { runCollectionSweep } from "./services/collectionSweepService";
 import { cancelOverdueUndepositedRentals } from "./services/overdueRentalCleanup";
+import {
+  reconcileUnavailableItems,
+  recomputeItemAvailability,
+} from "./services/itemAvailabilityService";
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
   releaseForOwnerPickup,
@@ -638,6 +642,7 @@ io.on("connection", (socket: Socket) => {
                 verificationStatus: "REJECTED",
               },
             });
+            await recomputeItemAvailability(rental.itemId);
             // E4.6 / R4 (was D-67a). The bay used to be set AVAILABLE here
             // while the owner's item was still physically inside it, and no
             // door was reopened — so the item was sealed in a bay the database
@@ -1628,6 +1633,8 @@ const DEFAULT_LATE_FEE_RATE_PER_DAY = 50; // SPORTS_EQUIPMENT, OTHER — no doc 
 cron.schedule("5 * * * *", async () => {
   try {
     const { considered, released, cancelled } = await runCollectionSweep(io);
+    const freed = await reconcileUnavailableItems();
+    if (freed > 0) logger.info(`[AVAILABILITY] ${freed} item(s) wrongly unavailable — freed by the sweep`);
     if (considered === 0) return;
     logger.info(
       `[CRON] E4.6 collection sweep — ${considered} uncollected deposit(s) considered, ` +
@@ -1790,6 +1797,11 @@ const PORT = parseInt(env.PORT);
 const startServer = async (): Promise<void> => {
   try {
     await connectDatabase();
+
+    // Repairs listings a cancel path left marked unavailable (2026-09-25).
+    reconcileUnavailableItems()
+      .then((n) => n > 0 && logger.info(`[AVAILABILITY] ${n} item(s) wrongly unavailable — freed at startup`))
+      .catch((err) => logger.error("[AVAILABILITY] startup reconcile failed:", err));
 
     // Starts recording kiosk events into the rolling in-memory buffer a
     // KIOSK_PROBLEM feedback report can later snapshot (see utils/

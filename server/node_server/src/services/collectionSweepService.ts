@@ -2,6 +2,7 @@ import type { Server } from "socket.io";
 import prisma from "../config/database";
 import { requestRelease } from "./retrievalService";
 import { voidRentalTransactions } from "./overdueRentalCleanup";
+import { recomputeItemAvailability } from "./itemAvailabilityService";
 
 /**
  * E4.6 / R1 — deposits the renter never collected. Moved out of index.ts's
@@ -23,7 +24,7 @@ export async function runCollectionSweep(
       depositedAt: { not: null },
       ...(onlyRentalId ? { id: onlyRentalId } : {}),
     },
-    select: { id: true },
+    select: { id: true, itemId: true },
   });
 
   let released = 0;
@@ -46,6 +47,7 @@ export async function runCollectionSweep(
         data: { status: "CANCELLED" },
       });
       await voidRentalTransactions(rental.id);
+      await recomputeItemAvailability(rental.itemId);
       cancelled += 1;
     }
   }
