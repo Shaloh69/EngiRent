@@ -18,9 +18,18 @@ jest.mock("../../config/database", () => ({
   __esModule: true,
   default: mockDeep<PrismaClient>(),
 }));
-jest.mock("../lockerCompartments", () => ({
-  setCompartment: jest.fn().mockResolvedValue(undefined),
-}));
+// recordCompartmentAfterCommit is the real composition in miniature: the same
+// write through setCompartment, returning whether it landed (E6.T / D-108).
+jest.mock("../lockerCompartments", () => {
+  const setCompartment = jest.fn().mockResolvedValue(undefined);
+  return {
+    setCompartment,
+    recordCompartmentAfterCommit: jest.fn(async (...args: unknown[]) => {
+      await (setCompartment as (...a: unknown[]) => Promise<void>)(...args);
+      return true;
+    }),
+  };
+});
 jest.mock("../lockerOccupancyService", () => ({
   emitOccupancyForLockerId: jest.fn().mockResolvedValue(undefined),
   emitLockerOccupancy: jest.fn().mockResolvedValue(undefined),

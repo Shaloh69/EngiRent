@@ -1,5 +1,6 @@
 import type { LockerStatus, Prisma } from "@prisma/client";
 import prisma from "../config/database";
+import logger from "../utils/logger";
 import { deriveLockerStatus } from "./pickupLaneService";
 
 /**
@@ -94,7 +95,64 @@ export async function setCompartment(
   };
 
   if (client) return run(client);
-  await prisma.$transaction(run);
+  try {
+    await prisma.$transaction(run);
+  } catch (err) {
+    // D-108 — the connection to MySQL (through Docker Desktop's port relay on
+    // this box) drops every hour or so: the transaction stalls, expires, and
+    // the next query reports the server closed the connection. Both live
+    // failures on 2026-09-24 landed here. One retry on a fresh pooled
+    // connection is safe: `run` re-reads the bay and writes absolute values,
+    // so a repeat lands on exactly the same state even if the first attempt
+    // did commit.
+    if (!isTransientDbError(err)) throw err;
+    logger.warn(
+      `[D-108] setCompartment(${lockerId}, ${side}) hit a dropped DB connection — retrying once`,
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    await prisma.$transaction(run);
+  }
+}
+
+/** A dropped or stalled connection, as opposed to a real data error. */
+export function isTransientDbError(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  if (code && ["P1001", "P1017", "P2024", "P2028"].includes(code)) return true;
+  const message = (err as { message?: string } | null)?.message ?? "";
+  return (
+    message.includes("Server has closed the connection") ||
+    message.includes("Transaction already closed")
+  );
+}
+
+/**
+ * The same write as `setCompartment`, for the moments AFTER a person has
+ * already been committed to — a door has opened, a verdict is stored. A
+ * failure here must not cut off what the person is told next (D-106 on
+ * 2026-09-24: the renter's phone stranded on "Checking"; D-108 the same night:
+ * an owner told their pickup failed while the door stood open). It is logged
+ * loudly for reconciliation and does not throw.
+ *
+ * Never use this where the write IS the reservation a door is about to open
+ * onto — there a failure must stop the door.
+ */
+export async function recordCompartmentAfterCommit(
+  lockerId: string,
+  side: Compartment,
+  change: CompartmentChange,
+  extra: Prisma.LockerUpdateInput = {},
+): Promise<boolean> {
+  try {
+    await setCompartment(lockerId, side, change, extra);
+    return true;
+  } catch (err) {
+    logger.error(
+      `[D-108] compartment write FAILED after the person was already committed — reconcile ` +
+        `locker ${lockerId} ${side} → ${change.status} (rental ${change.rentalId ?? "none"}):`,
+      err,
+    );
+    return false;
+  }
 }
 
 /**

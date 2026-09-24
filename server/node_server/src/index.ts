@@ -47,7 +47,7 @@ import {
   confirmStorageDrop,
   storageDropForCommand,
 } from "./services/storageDropService";
-import { setCompartment } from "./services/lockerCompartments";
+import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
 import {
   cancelOverdueUndepositedRentals,
   voidRentalTransactions,
@@ -68,7 +68,7 @@ import {
 import { recordKioskLog } from "./services/kioskLogBuffer";
 import { recordTimingReport } from "./services/kioskTimingStore";
 import { recordAdminSnapshot } from "./services/kioskSnapshotStore";
-import { approveReturn } from "./services/returnApprovalService";
+import { approveReturn, completeAfterOwnerPickup } from "./services/returnApprovalService";
 import {
   sendItemReadyForClaim,
   sendReturnOverdue,
@@ -729,7 +729,7 @@ io.on("connection", (socket: Socket) => {
             // E5 — the deposited item is in the UPPER compartment. Through the
             // single writer so the compartment columns that assignment reads
             // stay in step with the whole-bay status (lockerCompartments.ts).
-            await setCompartment(
+            await recordCompartmentAfterCommit(
               locker.id,
               "top",
               { status: "OCCUPIED", rentalId: rental_id },
@@ -1011,7 +1011,7 @@ io.on("connection", (socket: Socket) => {
 
           if (locker) {
             // E5 — the returned item sits in the UPPER compartment.
-            await setCompartment(
+            await recordCompartmentAfterCommit(
               locker.id,
               "top",
               { status: "OCCUPIED", rentalId: rental_id },
@@ -1161,7 +1161,7 @@ io.on("connection", (socket: Socket) => {
             // E5 — the renter took the item out through main_door, so only the
             // UPPER compartment is freed. Writing the whole-bay status to
             // AVAILABLE here would also have hidden a stored item below.
-            await setCompartment(rental.depositLockerId, "top", {
+            await recordCompartmentAfterCommit(rental.depositLockerId, "top", {
               status: "AVAILABLE",
               rentalId: null,
             });
@@ -1687,6 +1687,24 @@ cron.schedule("5 * * * *", async () => {
 // minutes after the sweep above, so the two never stroke in the same tick.
 cron.schedule("15 * * * *", async () => {
   try {
+    // E6.T / D-108 — an owner who collected while the database dropped can be
+    // left retrieved-but-not-COMPLETED; finish it here. Idempotent: completion
+    // only acts on VERIFICATION + APPROVED + OWNER_RETURN_PICKUP.
+    const collected = await prisma.rental.findMany({
+      where: {
+        status: "VERIFICATION",
+        verificationStatus: "APPROVED",
+        releaseReason: "OWNER_RETURN_PICKUP",
+        retrievedAt: { not: null },
+      },
+      select: { id: true },
+    });
+    for (const rental of collected) {
+      if (await completeAfterOwnerPickup(io, rental.id)) {
+        logger.warn(`[D-108] rental ${rental.id} completed by the sweep: its pickup reply had failed`);
+      }
+    }
+
     const waiting = await prisma.rental.findMany({
       where: { releasedAt: { not: null }, retrievedAt: null },
       select: { id: true },

@@ -9140,6 +9140,25 @@ expired-transaction error; (2) D-106's structural fix, so person-facing emits
 never depend on bookkeeping writes; (3) a keep-warm query; (4) point Prisma
 past the relay. (1)+(2) are code; (3)/(4) are infrastructure.
 
+## E6.T — D-108 (1)+(2), ruled "yes please" 2026-09-24 ~23:55. Section table (G2), derived from the repo tonight.
+
+| # | Section | Repo today | Change |
+|---|---|---|---|
+| T.1 | `setCompartment` (`lockerCompartments.ts`), the single compartment writer | One `prisma.$transaction(run)`; a dropped connection throws `P2028`/`P1017` straight to the caller. **Both live failures (22:43, 23:46) landed here** | When it owns the transaction, retry **once** after a short pause on a transient connection error (`P1001/P1017/P2024/P2028`, or "Server has closed the connection" / "Transaction already closed"). Safe: `run` re-reads the bay and writes absolute values, so a repeat lands on the same state |
+| T.2 | Post-commit compartment writes: `index.ts` deposit verdict (`:732`), return verdict (`:1014`, D-106), legacy socket claim (`:1164`); `faceVerificationService` retrieve branch (`:392`, the 23:46 failure) and `completeClaim` (`:670`) | A throw skips every person-facing step after it (`verification_done`, `return:under_review`, grant, `face:verified`, notifications) although the door opened / the verdict is stored | New `recordCompartmentAfterCommit()`: the same write, but a failure is logged loudly as `[D-108] … reconcile` and **does not throw**, so the person is always told |
+| T.3 | Pre-door reservations: `kioskController.ts:91`, `faceVerificationService.ts:270` (`assignLocker`) | Throw on failure | **Unchanged on purpose.** A door must not open onto a bay the records did not reserve. T.1's retry covers the transient case |
+| T.4 | E6.R completion after the owner's pickup | `completeAfterOwnerPickup` runs after the door opened; a throw 500s the phone and leaves the rental `VERIFICATION` with `retrievedAt` set, which nothing revisits | Caught and logged in the retrieve branch. The `:15` cron also completes any `VERIFICATION`+`APPROVED`+`OWNER_RETURN_PICKUP` rental with `retrievedAt` set (idempotent) |
+
+**E6.T BUILT ~00:10.** T.1 retry + `isTransientDbError`; T.2
+`recordCompartmentAfterCommit` at exactly the five post-commit sites (the two
+pre-door reservations still use the throwing `setCompartment`); T.4 the
+post-door completion is caught, and the `:15` sweep completes
+retrieved-but-not-completed returns. Node **360/360** (+6: retry succeeds,
+retries once only, no retry on data errors, the non-throwing variant both
+ways, the 23:46 case end-to-end through the real retrieve branch). Two
+mutations, retry disabled and the post-door catch rethrowing, each failed the
+right tests.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 

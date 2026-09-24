@@ -40,7 +40,7 @@ import {
   doorHoldingRental,
   isLongLeadPickup,
 } from "./pickupLaneService";
-import { setCompartment } from "./lockerCompartments";
+import { recordCompartmentAfterCommit, setCompartment } from "./lockerCompartments";
 import { completeAfterOwnerPickup } from "./returnApprovalService";
 import { signedMediaUrl } from "./storageService";
 import {
@@ -389,7 +389,7 @@ export async function applyFaceVerificationOutcome(params: {
     // Free ONLY the compartment the owner is taking the item from, through the
     // single writer. The other compartment may hold a different student's
     // item and must keep saying so.
-    await setCompartment(
+    await recordCompartmentAfterCommit(
       rental.retrievalLocker.id,
       retrievalDoor === "main_door" ? "top" : "bottom",
       { status: "AVAILABLE", rentalId: null },
@@ -421,7 +421,13 @@ export async function applyFaceVerificationOutcome(params: {
     // E6.R — a passed return is COMPLETED here, when its owner is let in to
     // take the item back, not at approval. A no-op for any other retrieval
     // (a disputed or cancelled rental's status is settled elsewhere).
-    await completeAfterOwnerPickup(io, rentalId);
+    // The door is already open: a failure here must not reach the phone as an
+    // error (D-108, 23:46). The :15 sweep finishes any completion that fails.
+    try {
+      await completeAfterOwnerPickup(io, rentalId);
+    } catch (err) {
+      logger.error(`[D-108] completion after pickup failed for rental ${rentalId} — the sweep will retry:`, err);
+    }
     return { action: "retrieve" };
   }
 
@@ -667,7 +673,7 @@ export async function completeClaim(
     data: { status: "ACTIVE", claimedAt: new Date() },
   });
 
-  await setCompartment(rental.depositLocker.id, door === "main_door" ? "top" : "bottom", {
+  await recordCompartmentAfterCommit(rental.depositLocker.id, door === "main_door" ? "top" : "bottom", {
     status: "AVAILABLE",
     rentalId: null,
   });

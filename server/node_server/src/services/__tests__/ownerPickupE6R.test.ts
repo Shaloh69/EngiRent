@@ -17,10 +17,19 @@ jest.mock("../../config/database", () => ({
   __esModule: true,
   default: mockDeep<PrismaClient>(),
 }));
-jest.mock("../lockerCompartments", () => ({
-  compartmentHolding: jest.fn(),
-  setCompartment: jest.fn().mockResolvedValue(undefined),
-}));
+// recordCompartmentAfterCommit is the real composition in miniature: the same
+// write through setCompartment, returning whether it landed (E6.T / D-108).
+jest.mock("../lockerCompartments", () => {
+  const setCompartment = jest.fn().mockResolvedValue(undefined);
+  return {
+    compartmentHolding: jest.fn(),
+    setCompartment,
+    recordCompartmentAfterCommit: jest.fn(async (...args: unknown[]) => {
+      await (setCompartment as (...a: unknown[]) => Promise<void>)(...args);
+      return true;
+    }),
+  };
+});
 jest.mock("../lockerOccupancyService", () => ({
   emitOccupancyForLockerId: jest.fn().mockResolvedValue(undefined),
   emitLockerOccupancy: jest.fn().mockResolvedValue(undefined),
@@ -346,5 +355,53 @@ describe("releaseForOwnerPickup — a rejected deposit is handed back from the D
       data: expect.objectContaining({ releaseReason: "DEPOSIT_REJECTED", retrievalLockerId: "locker-1" }),
     });
     expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+  });
+});
+
+/**
+ * D-108 / E6.T — 23:46 on 2026-09-24: the DB dropped right after the retrieve
+ * branch opened bay 2, the rest of the branch was skipped, and the owner's
+ * phone got HTTP 500 for a pickup that had worked. Once the door has opened,
+ * nothing after it may reach the person as a failure.
+ */
+describe("retrieve branch — a DB drop after the door opens still tells the owner", () => {
+  it("emits face:verified and returns retrieve although the compartment write and the completion fail", async () => {
+    mockReset(prismaMock);
+    _clearAllBayAccess();
+    prismaMock.locker.findUnique.mockResolvedValue({ topRentalId: RENTAL_ID, bottomRentalId: null } as never);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      itemId: "item-1",
+      renterId: "renter-1",
+      ownerId: "owner-1",
+      status: "VERIFICATION",
+      verificationStatus: "APPROVED",
+      releaseReason: "OWNER_RETURN_PICKUP",
+      releaseRequestedAt: new Date(),
+      releasedAt: new Date(),
+      retrievedAt: null,
+      item: { title: "Little Hammer" },
+      renter: { firstName: "Ren", email: "r@x" },
+      owner: { firstName: "Own", email: "o@x" },
+      depositLocker: { id: "locker-2", lockerNumber: "2" },
+      retrievalLocker: { id: "locker-2", lockerNumber: "2", kioskId: "KIOSK-001" },
+    } as never);
+    const { recordCompartmentAfterCommit } = jest.requireMock("../lockerCompartments");
+    (recordCompartmentAfterCommit as jest.Mock).mockResolvedValueOnce(false);
+    prismaMock.$transaction.mockRejectedValueOnce(
+      Object.assign(new Error("Server has closed the connection."), { code: "P1017" }),
+    );
+    const { io, emit } = fakeIo();
+
+    const out = await applyFaceVerificationOutcome({
+      io,
+      rentalId: RENTAL_ID,
+      kioskId: "KIOSK-001",
+      confidence: 0.4,
+    });
+
+    expect(out.action).toBe("retrieve");
+    expect(emit).toHaveBeenCalledWith("kiosk:command", expect.objectContaining({ action: "open_door" }));
+    expect(emit).toHaveBeenCalledWith("face:verified", expect.objectContaining({ action: "retrieve" }));
   });
 });
