@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-24 evening - **§15 item 1 DONE** (kiosk under systemd, proven by a real reboot) - **§15 item 2 D-96: DEPLOYED BOTH SIDES; KIOSK HALF VERIFIED ON THE REAL BANK 20:30** (2nd capture on bay 3 REFUSED bay_busy, the server logged it as a refusal, the claim cleared); openBay/F2 refusal paths not yet seen live - **D-101 FIXED: user moved cameras 3/4, all four ended up on one USB controller (ENOSPC); one moved back to the 2nd controller, map updated, all 4 capture; locker 3 vs 4 inferred** - API PID 25244, kiosk PID 36555, KIOSK_ID is `KIOSK-001` (not kiosk-1) - **STEP 3 (D-97 + §13 feedback) NOT STARTED** - D-98, D-99 recorded, not fixed - D-100 structural fix RULED OPTIONAL - CLEAN SLATE: 0 rentals - UNCOMMITTED on e0-e1-audit-tests-and-evidence (HEAD ae0a6b6) - the APK bakes a dead API URL (default `mpg-clothing-maui-chicago`); the live API tunnel is `developmental-plumbing-cellular-vocational` - G1 DEBT: D-93 unproven on hardware; D-95 unproven on a real return]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - **PRE-`/clear` #2, 2026-09-24 ~22:15 — read "PRE-`/clear` HANDOFF #2" at the END of this file first** - §15 item 1 DONE + `Restart=always` applied on the Pi - **D-96 DEPLOYED BOTH SIDES; kiosk half VERIFIED on the real bank** (openBay/F2 refusal not yet seen live) - D-101 CLOSED (camera remap; the ring is in locker 4) - **D-102 FIXED+DEPLOYED** (a DB blip no longer kills the API) - **D-103 FIXED+DEPLOYED 22:08, NOT YET SEEN LIVE** ("Item is placed" during a door hold stranded the deposit) - **PHYSICAL TEST MID-FLIGHT: rental `b7497e8b…` AWAITING_DEPOSIT, both payments COMPLETED, item POSSIBLY PHYSICALLY IN BAY 1** - API PID 4948 (re-derive) - Prerelease29 (1.13.1+29) live on the website - **two outages tonight; the 21:36 one was an EXTERNAL kill of every `node dist\index.js` on the box (EngiRent+EcoCharge+UniThrift)** - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-103 live, D-93 hardware, D-95 real return]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -8767,3 +8767,110 @@ should log `[D-103] … re-sending` and then capture.
 a concrete reason: a cloud session cannot reach `desktop-gklhcri` or the Pi
 (Tailscale/LAN only, keys on this PC), and every step above needed the live
 logs and a live deploy.
+
+
+## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
+
+**Re-derive everything below; it was true at the clear.**
+
+| Thing | State at the clear | How to re-derive |
+|---|---|---|
+| Branch / commits | `e0-e1-audit-tests-and-evidence`, all work committed, **not pushed** | `git log --oneline -12` |
+| API | up, **PID 4948**, EngiRent engine; D-96 + D-102 + D-103 in `dist` | `:5000` owner → loaded `query_engine` path must be under `D:\ENG\EngiRent\` |
+| Kiosk | `KIOSK-001`, systemd `active`, `Restart=always`, PID 36555, all 4 cameras capture | jump host, MAC `2c-cf-67`, `journalctl -u engirent-kiosk` |
+| Tunnels | api `developmental-plumbing-cellular-vocational`, admin `diagram-approaches-analysis-drag`, web `when-preview-send-consent` | `D:\ENG\startbat-logs\tunnel-*.log`, **rotate on restart** |
+| App | **Prerelease29 = 1.13.1+29** on the website, bakes the api tunnel above | the `/downloading` chunk names the file |
+| **Test rental** | **`b7497e8b-7976-4058-ad06-bc5ab551308c`, `AWAITING_DEPOSIT`**, RENTAL_PAYMENT ₱30 + SECURITY_DEPOSIT ₱20 both `COMPLETED`, **0 verifications** | admin `/admin/rentals`, `/admin/transactions` |
+| **Bay 1** | **the owner placed the item before the check stranded; it may be physically inside while the DB says AWAITING_DEPOSIT** | **ask the user**, or look at a capture photo |
+
+**Tonight's defects, all recorded above:** D-101 (camera USB bandwidth,
+closed), D-102 (async `/app-config` + no `unhandledRejection` guard, fixed),
+D-103 (`itemPlaced` fire-and-forget capture refused during a door hold,
+fixed but unseen live). **A server-side gap found with D-103 and NOT fixed:**
+five `open_door` emitters bypass `noteDoorOpen` (`index.ts:676, :933, :1224`,
+`faceVerificationService.ts:363`, `kioskController.ts:107`).
+
+**Operational facts learned tonight (also in `memory.md`):**
+- Admin login for scripted calls: local gitignored `client/admin/.env.local`.
+  Kiosk commands go to **`KIOSK-001`**. The endpoint says "sent" for ANY id.
+- `svc-node.bat` = `npm run build && npm start`: **every API restart deploys
+  whatever source is on the server.** Restart = find the tree root whose
+  command line contains `svc-node.bat` (walk parents from the :5000 PID),
+  `taskkill /PID <root> /T /F`, `Start-ScheduledTask EngiRentNode`, and wait
+  for `/api/v1/items` 200 (~40-120s).
+- **Other projects share this box and have killed EngiRent.** At ~21:36 every
+  `node dist\index.js` (EngiRent, EcoCharge, UniThrift) died at once with no
+  log. EcoCharge has a watchdog that restarted it; EngiRent has none. If the
+  API dies silently, check the other projects' task start times first.
+- The auto-mode classifier refused: `scp`/ssh-transfer deploys before the
+  user added allow rules; the website restart; the Pi unit-file edit. It
+  **allowed** API restarts and `scp` deploys after the rules. When refused,
+  hand the command to the user as ONE line for PowerShell (no `\` line
+  continuations).
+
+### Continuation prompt for the next session — paste after `/clear`
+
+```
+Read, in this order: CLAUDE.md, memory.md (the 2026-09-24 entries matter
+most), docs/PROGRESS.md — the status line, then "PRE-/clear HANDOFF #2" at
+the very end, then every dated entry from 2026-09-24 (D-96 verified, D-101,
+Prerelease29, the two outages, D-102, D-103). Then
+docs/redesign/LIFECYCLE-PROCESS-MAP.md §12, §13, §15.
+
+We are MID-WAY THROUGH A PHYSICAL TEST of one full rental, and it stopped at
+the deposit. Resume it; do not start new feature work.
+
+STATE — re-derive it, do not trust this paragraph:
+  - Rental b7497e8b-7976-4058-ad06-bc5ab551308c is AWAITING_DEPOSIT, both
+    payments COMPLETED, 0 verifications. The owner already put the item in
+    bay 1 before the check got stranded (D-103), so THE ITEM MAY BE
+    PHYSICALLY IN BAY 1 while the DB says it is not. Ask the user first.
+  - API PID 4948 at the clear. Identify it by its loaded Prisma engine path
+    under D:\ENG\EngiRent\, never by PID or command line: EcoCharge and
+    UniThrift both run an identical `node dist\index.js` on this box.
+  - Kiosk is KIOSK-001 (not kiosk-1). Admin credentials for scripted calls
+    are in the local gitignored client/admin/.env.local. Never print them.
+  - Everything is committed on e0-e1-audit-tests-and-evidence, NOT pushed.
+
+FIRST JOB — FINISH THE DEPOSIT AND SEE D-103 WORK LIVE.
+  The user redoes the deposit from "Scan kiosk QR" (the API restart cleared
+  the old kiosk session). Watch D:\ENG\startbat-logs\node-api3.log live.
+  D-103 is proven when a capture refused with bay_busy is followed by a
+  "[D-103] ... re-sending" line and then "Captured 3 frames" for that rental.
+  If the user never taps during a door hold, D-103 stays unseen: say so, do
+  not claim it. Expect the item check to score ~50 and need manual approval
+  in the admin console (known D-89b): approve it and move on.
+
+THEN, stopping after each to report:
+  1. COLLECT (renter) -> RETURN -> approve -> COMPLETED. D-95 is proven only
+     by the item released back to the owner AND DEPOSIT_REFUND + OWNER_PAYOUT
+     rows existing. COMPLETED with no such rows IS the bug.
+  2. D-93 (retract-then-extend) fires only on a long-lead drop into the lower
+     compartment. G11: say what moves, which bay, how long; wait for an
+     explicit yes. Approval does not carry forward.
+  3. Only after the test: D-97 + the §13 feedback pass (kiosk_scan_screen.dart
+     has zero AppToast calls; rental:released has no Flutter listener).
+
+RECORDED, NOT FIXED — leave them unless they block the test:
+  - Five open_door emitters bypass noteDoorOpen (index.ts:676/933/1224,
+    faceVerificationService.ts:363, kioskController.ts:107). The Pi's guard
+    still protects the hardware; only the server-side record is incomplete.
+  - D-98 (kiosk says "online" while disconnected), D-99 (face_failed
+    NameError on the Pi).
+  - Disk C: on the server has ~14 GB free.
+
+RULES THAT BIND:
+  - The repo wins over the docs. A green test is not a fix. Every fix
+    tonight was found live, not by tests.
+  - G11: never drive a door, actuator or self_test without saying what moves,
+    which bay, how long, and getting an explicit yes.
+  - If the API dies silently, suspect the other projects on the box first
+    (at ~21:36 all three node APIs were killed at once). Restart it yourself
+    (standing instruction): kill the tree rooted at svc-node.bat,
+    Start-ScheduledTask EngiRentNode, wait for /api/v1/items 200.
+  - Every API restart REBUILDS from the server's source, so it deploys
+    whatever is there. Check the server copies against the repo first.
+  - When the classifier refuses something, do not look for another route:
+    hand the user ONE-LINE PowerShell commands.
+  - Record findings in docs/PROGRESS.md as you go.
+```

@@ -2396,3 +2396,40 @@ The admin console and the Flutter APK both bake the API URL at build time, so
 every tunnel rotation breaks both until each is rebuilt. That is structural —
 either a stable named tunnel or a runtime-configurable base URL — not
 something to keep repairing by hand.
+
+
+## 2026-09-24 (evening) — Physical test began; three live defects and two outages
+
+**The physical test finds what tests do not.** D-103 (a deposit stranded on
+"Checking" forever) was found within minutes of a real person using the
+kiosk: they tapped "Item is placed" 13.4s into a 15s door hold, the Pi
+refused the capture (D-96, correct), and nothing retried. Every one of
+tonight's fixes (D-101 cameras, D-102 crash-on-DB-blip, D-103) was found
+live, not by a test.
+
+**This box is shared, and neighbours can take EngiRent down.** EcoCharge and
+UniThrift run on `desktop-gklhcri` too, each with an identical
+`node dist\index.js`. At ~21:36 all three APIs died at once with nothing in
+any log: something killed by name, not PID. EcoCharge has a watchdog
+(`D:\EcoCharge\ops_health_watchdog.ps1`) that restarted it within 3 minutes.
+**EngiRent has none** and stays down until someone looks. When EngiRent's
+API dies silently, compare other projects' task start times before debugging
+EngiRent.
+
+**Every API restart is a deploy.** `D:\ENG\svc-node.bat` is
+`npm run build && npm start`. A restart rebuilds whatever source is on the
+server, so check the server's copies against the repo before any restart.
+The server's `routes/index.ts` was found behind the repo (it was missing
+`/app-config`'s `downloadUrl`), the same shape as D-32.
+
+**Clean API restart:** walk parents from the :5000 PID to the `cmd` whose
+command line contains `svc-node.bat`, `taskkill /PID <that> /T /F`, then
+`Start-ScheduledTask EngiRentNode`. A restart during a DB hiccup can hang
+silently in `connectDatabase()` (no output, no listener). Kill the tree and
+retry once MySQL answers (a raw TCP read of `127.0.0.1:3307` returns a
+greeting starting `8.0.46`).
+
+**Scripted admin calls:** credentials in the local gitignored
+`client/admin/.env.local`. The login token is at `data.tokens.accessToken`.
+The kiosk ID is `KIOSK-001`. `POST /admin/kiosks/<id>/command` returns "sent"
+for ANY id, so confirm arrival in the Pi's journal.
