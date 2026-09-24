@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 26604 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - **D-93 VERIFIED ON HARDWARE 00:18 (bay 1 retract→extend, rivet `b7497e8b` dropped + CANCELLED)** - release window restored 07-21 at 00:18:49 - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 8436 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - **D-93 VERIFIED ON HARDWARE 00:18 (bay 1 retract→extend, rivet `b7497e8b` dropped + CANCELLED)** - release window restored 07-21 at 00:18:49 - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9234,6 +9234,33 @@ at that very moment (308s).
 **§13 finding (not fixed):** for an owner pickup the door opens on face-verify
 by itself, yet the phone still offers "Open Kiosk Now". The tap can only be
 refused, so the screen should say "Door open — take your item" instead.
+
+### 2026-09-25 00:24-00:33 — "the item is still rented": listing availability was wrong both ways. FIXED + DEPLOYED.
+
+**Reported by the user:** Hand Rivets still showed as rented after its rental
+was cancelled and the tool was back with its owner. Re-derived: `isAvailable
+= false` with its only rental CANCELLED.
+- **Cause 1:** three cancel paths set CANCELLED without
+  `recomputeItemAvailability`: the R1 sweep, the never-deposited auto-cancel
+  (`overdueRentalCleanup`), and the automatic deposit rejection
+  (`index.ts`). They recompute now (`f21eb5c`).
+- **Cause 2, exposed by the first repair:** `recomputeItemAvailability` only
+  counted rentals whose `startDate ≤ now ≤ endDate`, so an **overdue** ACTIVE
+  rental stopped blocking. The screwdriver (`cbd2718f`, ended 00:00, still
+  with Ian) flipped to available. Now DEPOSITED/ACTIVE/VERIFICATION block
+  whatever the dates, and PENDING/AWAITING_DEPOSIT keep the window
+  (`8ae5728`).
+- **Self-heal:** `reconcileItemAvailability()` re-checks every item both ways,
+  at startup and on the :05 sweep (`a8f2f52`). Node **366/366**.
+- **Deployed three times (API PIDs 28236 → 26552 → 8436).** Final: 00:33:15
+  `[AVAILABILITY] 1 item(s) had the wrong availability — corrected at
+  startup`. Re-derived: screwdriver **false** (rented), Hand Rivets / Little
+  Hammer / Tester **true**.
+- **Process lapse, owned:** the 00:27:55 restart landed **inside Ian's
+  screwdriver return** (flow_start 00:27:23, face verified 00:27:42), which
+  wiped his session a second time. The next two restarts were preceded by a
+  live-flow check of the log (0 lines). **Rule from here: check for a live
+  kiosk flow before every API restart.**
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
