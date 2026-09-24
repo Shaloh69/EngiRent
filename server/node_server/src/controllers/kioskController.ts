@@ -23,6 +23,8 @@ import {
   noteCapture,
 } from "../services/kioskBayAccessStore";
 import { doorOpenSeconds } from "../services/kioskTimingStore";
+// D-96 — the server's own view of what each bay is doing right now.
+import { bayBusyWith, noteDoorOpen } from "../services/retrievalService";
 import { completeClaim } from "../services/faceVerificationService";
 import {
   signedMediaUrl,
@@ -830,6 +832,30 @@ export const openBay = async (
     const io = req.app.get("io");
     if (!io) throw new ValidationError("Realtime channel unavailable");
 
+    // D-96 / §12 — refuse BEFORE commanding. The kiosk's own per-bay lock is
+    // the guard that must be right, but a server that knowingly sends a
+    // command into a busy bay is relying on the Pi to catch its mistakes, and
+    // the two should disagree loudly rather than quietly.
+    //
+    // Two cases, and they are not the same:
+    //  * a `drop` — the actuator is mid-travel, the floor of that compartment
+    //    is literally moving. Refused for EVERYONE, including the rental the
+    //    drop belongs to.
+    //  * a `door_open` held by a DIFFERENT rental — someone else was told
+    //    that bay is theirs. Refused. The same rental re-tapping is allowed
+    //    through: that is a person whose door relocked while they were still
+    //    standing there, which is exactly what the 12-open allowance is for.
+    const busy = bayBusyWith(grant.kioskId, grant.lockerNumber);
+    if (busy && (busy.kind === "drop" || busy.rentalId !== grant.rentalId)) {
+      logger.warn(
+        `[D-96] openBay REFUSED rental=${grant.rentalId} user=${req.user.userId} ` +
+          `bay=${grant.lockerNumber}: busy with '${busy.kind}' for rental ${busy.rentalId}`,
+      );
+      throw new ValidationError(
+        `Locker ${grant.lockerNumber} is finishing something — please wait a moment and tap again`,
+      );
+    }
+
     const realSeconds = doorOpenSeconds(grant.kioskId, grant.lockerNumber, grant.door);
 
     io.to(`kiosk:${grant.kioskId}`).emit("kiosk:command", {
@@ -838,6 +864,18 @@ export const openBay = async (
       door: grant.door,
       rental_id: grant.rentalId,
     });
+
+    // D-96 — the bay is busy from the moment the command goes out, not from
+    // some later confirmation: the solenoid is energised within milliseconds
+    // and a hand can be inside it. Cleared by the Pi's ack for this door, and
+    // self-expiring if that ack never arrives so a lost message cannot leave
+    // the bay permanently un-openable.
+    noteDoorOpen(
+      grant.kioskId,
+      grant.lockerNumber,
+      grant.rentalId,
+      realSeconds ?? DOOR_OPEN_SECONDS_HINT,
+    );
 
     logger.info(
       `[BAY-OPEN] rental=${grant.rentalId} user=${req.user.userId} bay=${grant.lockerNumber} ` +

@@ -3,6 +3,7 @@ import prisma from "../config/database";
 import logger from "../utils/logger";
 import { emitOccupancyForLockerId } from "./lockerOccupancyService";
 import { compartmentHolding, setCompartment } from "./lockerCompartments";
+import { hasLiveGrantOnBay } from "./kioskBayAccessStore";
 import {
   decideRelease,
   readRetrievalPolicy,
@@ -41,17 +42,119 @@ export function rentalForCommand(commandId: string): string | undefined {
   return pendingDrops.get(commandId);
 }
 
-/** Bays whose doors the kiosk currently reports open, keyed `kioskId:bay`. */
-const openDoors = new Set<string>();
+/**
+ * WHAT EACH BAY IS DOING RIGHT NOW — the server's half of §12's exclusivity
+ * rule (D-96).
+ *
+ * This replaces a `Set` of open doors that **nothing ever wrote to**: both
+ * `noteDoorOpen` and `noteDoorClosed` were exported and never called, so F2 —
+ * `retrievalPolicy`'s "a hand may be inside" guard — could never fire in
+ * production, while its unit tests passed by handing the flag in directly.
+ *
+ * **Every record carries its own expiry, and that is not a detail.** The
+ * record is cleared by an acknowledgement from the Pi, and an acknowledgement
+ * is exactly the thing that fails to arrive when something has gone wrong
+ * (failure mode F3). Without a deadline, one lost ack would mark a bay busy
+ * until the API restarted — a bay bricked by bookkeeping. Expiry is evaluated
+ * lazily on read, so it needs no timer and survives being read after a long
+ * idle.
+ *
+ * **The kiosk's own per-bay lock is still the guard that must be right** —
+ * the Pi is the only place that knows when a stroke has genuinely finished.
+ * This exists so the server stops *proposing* work it should know better than
+ * to propose, and so the two sides disagree loudly instead of the Pi silently
+ * absorbing commands that should never have been sent.
+ */
+type BayActivity = {
+  /** `door_open` — a solenoid is held open and a hand may be inside.
+   *  `drop` — the actuator is mid-travel; the floor of the compartment is
+   *  moving. */
+  kind: "door_open" | "drop";
+  rentalId: string;
+  since: number;
+  expiresAt: number;
+};
 
-export function noteDoorOpen(kioskId: string, lockerNumber: string): void {
-  openDoors.add(`${kioskId}:${lockerNumber}`);
+const bayActivity = new Map<string, BayActivity>();
+
+const bayKey = (kioskId: string, lockerNumber: string) => `${kioskId}:${lockerNumber}`;
+
+/** Margin on top of a command's real duration before the record self-clears.
+ *  Generous: clearing early would re-open the guard while hardware is still
+ *  moving, which is the failure this whole module exists to prevent. */
+const ACTIVITY_MARGIN_MS = 20_000;
+
+/** A drop is 34-46s of travel depending on the bay. Used only when the caller
+ *  has no better number; the Pi owns the real calibration. */
+const DROP_FALLBACK_MS = 60_000;
+
+export function bayBusyWith(
+  kioskId: string,
+  lockerNumber: string,
+): BayActivity | undefined {
+  const key = bayKey(kioskId, lockerNumber);
+  const activity = bayActivity.get(key);
+  if (!activity) return undefined;
+  if (Date.now() >= activity.expiresAt) {
+    // Lazily reaped. Logged because a record that expires instead of being
+    // acknowledged means an ack never came back — worth being able to find.
+    bayActivity.delete(key);
+    logger.warn(
+      `[D-96] bay ${lockerNumber} activity '${activity.kind}' for rental ${activity.rentalId} ` +
+        `expired without an acknowledgement after ${Math.round((Date.now() - activity.since) / 1000)}s — ` +
+        `releasing the bay so it cannot be stuck busy`,
+    );
+    return undefined;
+  }
+  return activity;
 }
+
+export function noteDoorOpen(
+  kioskId: string,
+  lockerNumber: string,
+  rentalId: string,
+  holdSeconds: number,
+): void {
+  bayActivity.set(bayKey(kioskId, lockerNumber), {
+    kind: "door_open",
+    rentalId,
+    since: Date.now(),
+    expiresAt: Date.now() + holdSeconds * 1000 + ACTIVITY_MARGIN_MS,
+  });
+}
+
 export function noteDoorClosed(kioskId: string, lockerNumber: string): void {
-  openDoors.delete(`${kioskId}:${lockerNumber}`);
+  const key = bayKey(kioskId, lockerNumber);
+  if (bayActivity.get(key)?.kind === "door_open") bayActivity.delete(key);
 }
+
+export function noteDropStarted(
+  kioskId: string,
+  lockerNumber: string,
+  rentalId: string,
+): void {
+  bayActivity.set(bayKey(kioskId, lockerNumber), {
+    kind: "drop",
+    rentalId,
+    since: Date.now(),
+    expiresAt: Date.now() + DROP_FALLBACK_MS + ACTIVITY_MARGIN_MS,
+  });
+}
+
+export function noteDropFinished(kioskId: string, lockerNumber: string): void {
+  const key = bayKey(kioskId, lockerNumber);
+  if (bayActivity.get(key)?.kind === "drop") bayActivity.delete(key);
+}
+
+/** F2's `hasOpenDoor` input. A door standing open is the strongest evidence
+ *  there is that a hand may be inside the bay. */
 export function isDoorOpen(kioskId: string, lockerNumber: string): boolean {
-  return openDoors.has(`${kioskId}:${lockerNumber}`);
+  return bayBusyWith(kioskId, lockerNumber)?.kind === "door_open";
+}
+
+/** Test seam only — the map is process-local and otherwise self-expiring. */
+export function __resetBayActivity(): void {
+  bayActivity.clear();
 }
 
 /** Which bay is physically holding this rental's item right now? */
@@ -141,7 +244,12 @@ export async function requestRelease(
           isOperational: locker.isOperational,
         }
       : null,
-    hasLiveKioskSession: opts.hasLiveKioskSession ?? false,
+    // D-96 — both of F2's inputs are now actually fed. `?? false` used to be
+    // the whole story on the first of these, and nothing ever called the
+    // writer behind the second, so the guard could not fire in production.
+    hasLiveKioskSession:
+      opts.hasLiveKioskSession ??
+      (locker ? hasLiveGrantOnBay(locker.kioskId, locker.lockerNumber, rentalId) : false),
     hasOpenDoor: locker ? isDoorOpen(locker.kioskId, locker.lockerNumber) : false,
   };
 
@@ -276,6 +384,13 @@ export async function requestRelease(
   await setCompartment(bay.id, "bottom", { status: "RESERVED", rentalId });
   await emitOccupancyForLockerId(io, bay.id);
 
+  // D-96 — the bay is busy from here until the Pi acknowledges. The
+  // compartment rows above already say "do not assign anything here"; this
+  // says the stronger thing, "do not COMMAND anything here", which is what
+  // stops `openBay` unlocking a door onto a floor that is mid-travel. Cleared
+  // in `confirmRelease`, and self-expiring if that ack never comes.
+  noteDropStarted(bay.kioskId, bay.lockerNumber, rentalId);
+
   // No durations are sent. The Pi reads extend/retract seconds from its own
   // kiosk_config.json, which is hand-calibrated per bay (17-23s) and is the
   // only correct source — see D-72 for what happens when the server invents one.
@@ -328,7 +443,10 @@ export async function confirmRelease(rentalId: string): Promise<void> {
     // (requestRelease), because the item was mid-travel.
     const rental = await prisma.rental.findUnique({
       where: { id: rentalId },
-      select: { retrievalLockerId: true },
+      select: {
+        retrievalLockerId: true,
+        retrievalLocker: { select: { kioskId: true, lockerNumber: true } },
+      },
     });
     if (rental?.retrievalLockerId) {
       await setCompartment(rental.retrievalLockerId, "top", {
@@ -339,6 +457,10 @@ export async function confirmRelease(rentalId: string): Promise<void> {
         status: "AWAITING_RETRIEVAL",
         rentalId,
       });
+    }
+    // D-96 — the actuator has stopped. The bay is commandable again.
+    if (rental?.retrievalLocker) {
+      noteDropFinished(rental.retrievalLocker.kioskId, rental.retrievalLocker.lockerNumber);
     }
   }
 }

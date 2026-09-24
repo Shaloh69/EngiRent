@@ -96,6 +96,61 @@ export function revokeBayAccess(rentalId: string): void {
   grants.delete(rentalId);
 }
 
+/**
+ * Is anyone else currently holding this bay? — F2's `hasLiveKioskSession`
+ * input (D-96, §12).
+ *
+ * **This is the grant store and not the session store, and that is a
+ * correction to the spec rather than a shortcut.** `LIFECYCLE-PROCESS-MAP.md`
+ * §12 said to feed the flag "from the session store", but `KioskSession`
+ * holds no bay at all — at `kiosk:flow_start` no bay has been assigned yet,
+ * so it cannot answer a per-bay question. A `BayAccess` grant can: it names
+ * the kiosk, the bay and the door, and it means a specific person has been
+ * told that bay is theirs and may be standing in front of it.
+ *
+ * `exceptRentalId` exists for one reason. A release is triggered *by* a
+ * rental — most often R2, the moment a return passes — and that rental's own
+ * grant is usually still live, because the person finished with the bay
+ * seconds ago. Counting it would refuse essentially every return-triggered
+ * release, and nothing retries an R2 refusal, so the owner would simply never
+ * be told their item was ready. Someone *else's* grant is the dangerous one,
+ * and that is what this counts. The "hand may be inside right now" case is
+ * covered separately and without exception by `isDoorOpen`.
+ */
+export function hasLiveGrantOnBay(
+  kioskId: string,
+  lockerNumber: string,
+  exceptRentalId?: string,
+): boolean {
+  const now = Date.now();
+  for (const grant of grants.values()) {
+    if (grant.kioskId !== kioskId) continue;
+    if (grant.lockerNumber !== lockerNumber) continue;
+    if (exceptRentalId && grant.rentalId === exceptRentalId) continue;
+    if (isExpired(grant, now)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Which live grant holds this bay, if any — for messages and logs that need
+ *  to say more than yes/no. */
+export function grantHoldingBay(
+  kioskId: string,
+  lockerNumber: string,
+  exceptRentalId?: string,
+): BayAccess | undefined {
+  const now = Date.now();
+  for (const grant of grants.values()) {
+    if (grant.kioskId !== kioskId) continue;
+    if (grant.lockerNumber !== lockerNumber) continue;
+    if (exceptRentalId && grant.rentalId === exceptRentalId) continue;
+    if (isExpired(grant, now)) continue;
+    return grant;
+  }
+  return undefined;
+}
+
 /** Returns the updated grant, or a refusal reason. Counting happens here so a
  *  caller cannot forget to count. */
 export function noteOpen(

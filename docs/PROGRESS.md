@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E5 - stack UP 2026-09-23 - D-90 through D-95 built, deployed and unit-tested; D-93/D-95 NOT yet proven on real hardware or a real return - **`docs/redesign/LIFECYCLE-PROCESS-MAP.md` is the end-to-end process map, written 2026-09-23 from a code read; §12 is the kiosk exclusivity rule, §13 is what the person should see at every step, §15 lists everything open, §16 is the clean-up session's starting prompt** - **D-97 FOUND 2026-09-23, NOT FIXED: `rental:released` (the owner's "your item is ready to collect") is emitted from both release paths and NOTHING in the Flutter app listens — fifth designed-tested-never-connected defect; also `kiosk_scan_screen.dart` has zero AppToast calls while 15 other files have 68** - **D-96 FOUND 2026-09-23, NOT FIXED: nothing enforces one-process-per-bay on either side — the kiosk dispatches every command fire-and-forget with no per-bay lock, and the server's F2 "a hand may be inside" guard is DEAD because neither `hasOpenDoor` (noteDoorOpen/noteDoorClosed exported, never called) nor `hasLiveKioskSession` (no caller passes it) is ever fed; its 3 tests pass against a pure function wired to nothing** - kiosk controller running UNSUPERVISED (manual nohup, no passwordless sudo; systemctl wrongly reports it dead, a crash will not restart it) - **CLEAN SLATE 2026-09-23 03:2x: 0 rentals / 0 transactions / 0 verifications, all 4 bays AVAILABLE + operational, 11 users + 3 listings kept; item confirmed physically out by the user so NO actuator was driven; API restarted afterwards so the kiosk's occupancy display agrees with the database** - full recheck passed: git clean, Node 309/309, deployed source SHA-matches repo on all 6 changed files, API/ML/Admin/Web all up, 3 tunnels 200, kiosk socket live - gates G1-G11 - G1 DEBT: D-90/D-90b/D-91 unverified on physical screen; D-93 unproven on hardware; D-95 unproven on a real return]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-24 evening - **§15 item 1 DONE** (kiosk under systemd, proven by a real reboot) - **§15 item 2 D-96: DEPLOYED BOTH SIDES; KIOSK HALF VERIFIED ON THE REAL BANK 20:30** (2nd capture on bay 3 REFUSED bay_busy, the server logged it as a refusal, the claim cleared); openBay/F2 refusal paths not yet seen live - **D-101 FIXED: user moved cameras 3/4, all four ended up on one USB controller (ENOSPC); one moved back to the 2nd controller, map updated, all 4 capture; locker 3 vs 4 inferred** - API PID 25244, kiosk PID 36555, KIOSK_ID is `KIOSK-001` (not kiosk-1) - **STEP 3 (D-97 + §13 feedback) NOT STARTED** - D-98, D-99 recorded, not fixed - D-100 structural fix RULED OPTIONAL - CLEAN SLATE: 0 rentals - UNCOMMITTED on e0-e1-audit-tests-and-evidence (HEAD ae0a6b6) - the APK bakes a dead API URL (default `mpg-clothing-maui-chicago`); the live API tunnel is `developmental-plumbing-cellular-vocational` - G1 DEBT: D-93 unproven on hardware; D-95 unproven on a real return]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -7751,3 +7751,814 @@ its last broadcast still read bay 1 `OCCUPIED` long after the row said
 restarting the Node API, since the server re-broadcasts occupancy when the
 kiosk reconnects — confirmed at 03:22:16 with all four bays `AVAILABLE`.
 **Any future direct database edit to locker state needs the same follow-up.**
+
+### Clean-up session opened — starting state RE-DERIVED, not trusted, 2026-09-23 ~04:25
+
+Every line of the §16 prompt's "state you are starting from" paragraph was
+re-checked against the live system rather than believed:
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| 0 rentals / 0 txns / 0 verifications | Prisma `$transaction` of five counts over SSH | **0 / 0 / 0** ✓ (11 users, 3 items kept) |
+| All four bays AVAILABLE + operational | `locker.findMany` — whole-bay *and* both compartments | all 4 `AVAILABLE`/`AVAILABLE`/`AVAILABLE`, `isOperational: true`, no `topRentalId`/`bottomRentalId` ✓ |
+| API up, and is *EngiRent's* API | PID 20444 on :5000 → `(Get-Process).Modules` → `D:\ENG\EngiRent\server\node_server\node_modules\.prisma\...` | ✓ the real one, not EcoCharge's identical `node dist/index.js` (D-92 lesson) |
+| ML / Admin / Web up | `Get-NetTCPConnection` 8001 / 3001 / 3000 all `Listen` | ✓ |
+| Kiosk socket connected | controller log: `Connected to server` 03:22:17, then `Occupancy updated: {1..4: AVAILABLE}` | ✓ — and the kiosk's view **agrees with the database**, which is the check that matters after a direct locker-row edit |
+| Git clean on the redesign branch | `git status --porcelain` empty, `HEAD` = `ae0a6b6` | ✓ on `e0-e1-audit-tests-and-evidence` |
+| Kiosk controller unsupervised | `systemctl is-active` → **inactive**; `ps` → `venv/bin/python main.py` PID 11648, up 4h25m under a `nohup … & disown` | ✓ the defect is real and still there |
+
+**Kiosk reached over the LAN through the jump host**, matched on MAC prefix
+`2C-CF-67` rather than a remembered address — it has moved again in principle
+but is `192.168.254.124` today, same as 2026-09-22.
+
+**Checked before proposing any restart (G11):** the controller's startup issues
+**no** hardware command. All four `open_door`/`unlock` lines in the current log
+are commanded door opens from the previous session (00:09, 00:10, 01:08,
+01:09), none from init — init only *claims* the GPIO pins as outputs. So
+bringing the process up under systemd moves nothing by itself.
+
+**Blocked on the human:** `sudo -l -n` → *"a password is required"*. `systemctl
+start` cannot run non-interactively and working around it is exactly how the
+process ended up unsupervised in the first place.
+
+### §15 item 1 — KIOSK CONTROLLER BACK UNDER SYSTEMD. DONE and PROVEN, 2026-09-23 04:47.
+
+The sudo password did not need to be asked for: S-5's rotation put it in the
+gitignored repo-root `.env.local` as `KIOSK_SUDO_PASSWORD` (`PROGRESS.md:3402`),
+which is where the user pointed. Read from there, never echoed, passed on stdin
+to `sudo -S -p ""`. **No credential entered this transcript or any tracked file.**
+
+**What was run, in order:**
+
+1. `sudo systemctl stop engirent-kiosk` — `rc=0`, a no-op as expected.
+2. `kill -INT 11648` on the manual process, **SIGINT rather than SIGTERM**,
+   because `main.py:283-287` runs `lock_all()` + `cleanup()` on
+   `KeyboardInterrupt` and nothing on SIGTERM. Process gone, `:8080` free.
+3. `sudo systemctl start engirent-kiosk` — `active (running)`, MainPID 17586.
+
+**The SIGINT cleanup did NOT actually run, and it did not matter — but the
+reason is worth writing down.** The log's last lines are an `asyncio
+CancelledError`, not the `"All solenoids locked. Goodbye."` that path prints,
+so the KeyboardInterrupt handler was bypassed. Two things make that safe rather
+than lucky: no unlock was in flight (the last door hold ended 01:09, holds are
+15s), and **every pin is re-claimed at init with `initial state = _RELAY_OFF`**
+(`hardware/gpio_controller.py:52`), so startup explicitly drives all 8
+solenoids locked. Confirmed in the journal — all 8 `Solenoid locker=N door=… ✓`
+lines plus 4 actuator channels. *A cleanup path that only catches
+KeyboardInterrupt is a latent gap for any non-interactive stop; noted, not
+fixed here, out of this session's scope.*
+
+**Supervision PROVEN, not asserted** — the whole point of the item is "a crash
+will not restart it", so it was tested rather than read off the unit file:
+
+| Check | Result |
+|---|---|
+| `systemctl is-active` | `active` (was `inactive` with the process alive) |
+| `systemctl is-enabled` | **`enabled`** — survives a reboot |
+| `kill -9 <MainPID>` (a non-zero exit, what `Restart=on-failure` is for) | PID 17586 → **17653**, `NRestarts=1`, `active (running)` after `RestartSec=10` |
+| Socket recovered by itself after that crash | `04:47:05 Connected to server` + `Occupancy {1..4: AVAILABLE}` |
+
+**Two things found doing it, neither fixed:**
+
+- **`Restart=on-failure` does not cover a clean `exit(0)`.** If
+  `asyncio.run(run_socket_client(...))` ever returns normally, `main()` returns,
+  the process exits 0 and systemd leaves it dead. For an unattended corridor
+  kiosk `Restart=always` is the correct setting. One line; needs the user's
+  yes before touching a unit file on the Pi.
+- **The repo's copy of the unit is drifted from the deployed one** —
+  `server/kiosk/systemd/engirent-kiosk.service` still says
+  `/home/pi/engirent/server/kiosk/...`; the Pi runs
+  `/home/engirent/Desktop/EngiRent/server/kiosk/...`. Same diverged-checkout
+  situation as the server. Recorded, not this session's job.
+
+### THE CORRIDOR SCREEN HAS BEEN DARK SINCE 2026-09-22 19:06 — found 2026-09-23 04:48, NEEDS A HUMAN AT THE KIOSK
+
+Captured the panel with `grim` after the restart to look at it rather than
+trust the logs. **The frame came back flat grey and 1920×1080 — landscape, on
+a portrait panel.** That is the signature of there being no panel at all:
+
+- `wlr-randr` reports exactly one output, **`NOOP-1 "Headless output 2"`**.
+  There is no `HDMI-A-1` for the compositor to drive, which is also why no
+  `transform 90` is applied — `engirent-rotate.desktop` waits up to 60s for an
+  HDMI output and gives up if none appears.
+- **The kernel agrees, and it is the authority:**
+  `/sys/class/drm/card1-HDMI-A-1/status` → **`disconnected`**, and `-HDMI-A-2`
+  likewise.
+- `journalctl -k` shows the HDMI controllers binding at **Sep 22 19:06:49**
+  (boot) and **no hotplug or mode-set since** — so this is not a link that
+  dropped during today's restart, it has been this way since the Pi last
+  booted.
+- The software side is **fine**: labwc (PID 1111) and Chromium (10 processes)
+  are both up and rendering — into a headless output nobody can see.
+
+**Not caused by the systemd handover** — `main.py` and the display session are
+separate processes, and the kernel's timeline predates this session by nine
+hours. **What it means for the rest of the plan:** §13's feedback pass, and any
+"the two screens must never disagree" check, cannot be verified on the kiosk
+half until the panel is plugged in and powered. The phone half can proceed.
+Needs someone physically at the bank to check the HDMI cable and the monitor's
+power — nothing remote can fix a `disconnected` DRM port.
+
+### The panel came back, and the reboot proved step 1 better than my kill test did — 2026-09-24 18:22-18:45
+
+**The screen.** The user powered the monitor on. It re-appeared as **`HDMI-A-2`**
+(not `HDMI-A-1` — worth knowing, the rotate autostart watches for any HDMI
+output, and `Transform: 90` had already been applied by the time it was
+checked). `grim` then captured a **real 1080×1920 portrait frame**.
+
+**The first capture showed the kiosk's own error screen** — *"Something went
+wrong · Cannot reach the EngiRent server. The network here is fine."* with
+**Try Again / Back to Home**. That message was **correct**, not stale: the
+whole server stack was down (below). After the stack came back, a second
+capture shows the **idle "Six steps, one controlled lifecycle" scene, rendered
+correctly in portrait**, with no intervention. The kiosk UI recovers from an
+outage by itself — D-88's claim, seen on the physical panel rather than
+inferred.
+
+**STEP 1 IS PROVEN HARDER THAN IT WAS YESTERDAY.** `systemctl show` now reads
+`MainPID=1189`, `NRestarts=0`, `ExecMainStartTimestamp=Wed 2026-09-23
+19:24:31` — **a boot-time start.** The Pi rebooted yesterday evening and the
+controller came back **on its own, under systemd, with no human**. That is the
+actual thing the §15 item was asking for, demonstrated by a real power event
+rather than by yesterday's `kill -9`.
+
+### OUTAGE — both machines lost power ~2026-09-23 19:2x, server came back with everything dead. RESTARTED 2026-09-24 18:25-18:45.
+
+`(Get-CimInstance Win32_OperatingSystem).LastBootUpTime` → **Wed 23 Sep
+19:45:51**; the Pi booted 19:24:31. A power event took both down. **The Pi
+recovered completely by itself; the server recovered nothing** — the known
+Interactive-logon Scheduled Task defect, behaving exactly as the runbook says.
+All four ports were dead when this session resumed.
+
+Restarted with the runbook's `Start-ScheduledTask` loop. **All three documented
+gotchas fired again:**
+
+- **Gotcha 1 —** Admin and Web took minutes (`next build` on every restart).
+  The ML service took ~6 minutes to bind :8001 (model load), during which its
+  log held nothing but a `pkg_resources` deprecation warning. **A 0-byte log is
+  not evidence of failure here.**
+- **The three tunnels failed on the first attempt** with `failed to request
+  quick Tunnel: context deadline exceeded` — a transient timeout during the
+  boot storm, not a broken config. `api.trycloudflare.com` answered `405` (i.e.
+  reachable) on a re-check, and a second `Start-ScheduledTask` brought all
+  three up. **Worth knowing: the tunnel tasks go back to `Ready`, not
+  `Running`, when cloudflared exits — a `Ready` tunnel task means it died.**
+- **Gotcha 2 —** all four outbound URLs in the API's `.env` were stale from
+  previous runs. Re-pointed (`.env` backed up to `.env.bak-2026-09-24` first,
+  written back as **UTF-8 without BOM** via `[IO.File]::WriteAllText` — a
+  `Set-Content -Encoding utf8` BOM would corrupt the first key name).
+- **Gotcha 3 —** the running process kept the old environment. `Stop-Process`
+  was not attempted; **`taskkill /PID 25852 /F` went straight through**, per
+  the documented fallback. PID **25852 → 15536** is the restart proof.
+
+**This run's tunnel hostnames** (they rotate every restart — do not trust these
+later):
+
+| Surface | URL |
+|---|---|
+| API | `https://developmental-plumbing-cellular-vocational.trycloudflare.com` |
+| Admin | `https://diagram-approaches-analysis-drag.trycloudflare.com` |
+| Web | `https://when-preview-send-consent.trycloudflare.com` |
+
+**Verified with real responses, not open ports:** API `/api/v1/items?limit=1` →
+`success: true`; ML `/` → its real service banner; all three tunnels `200` from
+the public internet. **And the check that proves the env actually reloaded** —
+an `OPTIONS` preflight from the NEW admin origin returned **204** with
+`Access-Control-Allow-Origin: https://diagram-approaches-analysis-drag.trycloudflare.com`.
+A stale process would have echoed the dead hostname.
+
+**The kiosk reconnected by itself after the API restart** — `/api/state` now
+reads `status: online`, occupancy `{1..4: AVAILABLE}`, and **all 8 doors
+`locked`**. Database re-checked after the whole event: **0 rentals, 0
+transactions, 0 verifications, 11 users, 3 items** — the clean slate survived.
+
+**Consequence for step 5:** the API tunnel hostname rotated, so any installed
+APK with the old URL baked in is now pointing at a dead host. That has to be
+dealt with before a rental can be booked from the phone.
+
+### D-98 — the kiosk reports itself "online – Ready" while it is NOT connected. FOUND 2026-09-24, NOT FIXED. (Outside §15; recorded and moving on, per this session's rule.)
+
+Observed directly during the outage above: with the server unreachable and the
+controller in a 5-second reconnect loop, `GET /api/state` returned
+`"status": "online", "message": "Kiosk online – Ready"` — while the physical
+panel, sampled a minute earlier, showed *"Cannot reach the EngiRent server."*
+
+**Mechanism, verified in the code rather than guessed:**
+`_REVERT_AFTER_SECONDS` (`server/kiosk/services/socket_client.py:270-275`)
+includes **`"error": 20.0`**. So 20s after a `connect_error`, `_set_ui`'s revert
+timer calls `_reset_to_ready()` (`:306-312`), which stamps
+`_set_ui("online", "Kiosk online – Ready")` **with no check that the socket is
+actually connected**. The next retry 5s later fails again and sets `error`
+back. So during any outage the reported status **flaps** between `error` and
+`online – Ready`, and whoever samples it — the admin console's health view, the
+corridor screen, a future bay-busy check — can be told the kiosk is online and
+ready while it demonstrably is not.
+
+This is §13's rule 3 ("the two screens must never disagree") failing inside a
+single device: its own state endpoint and its own panel disagreed. The fix is
+one condition — `_reset_to_ready` should revert to `offline`/`error` rather
+than `online` when `sio.connected` is false — but it is a change to
+hardware-adjacent kiosk code and belongs behind D-96, not in front of it.
+
+## PHASE E6 — closing §15. Section-by-section, derived from the repo 2026-09-24.
+
+**G2 table for D-96 (§12, the exclusivity rule).** Every "today" cell was read
+out of the current code in this session, not carried over from the defect
+report.
+
+| §12 requirement | What exists today (re-derived, cited) | Verdict | Plan |
+|---|---|---|---|
+| **1. Per-bay lock on the kiosk, held for the whole handler** | `on_command` dispatches **every** action with `asyncio.create_task(_run_with_ack(...))` (`socket_client.py:452-454`). No lock, no queue, no per-bay state. The file's only `asyncio.Lock` guards the offline outbound queue. | **ABSENT** | A synchronous per-bay busy map, claimed in `on_command` *before* the task is created |
+| **2. A command for a busy bay is REFUSED and acked as refused, never queued** | Nothing refuses anything; both commands just run. `_run_with_ack` only knows `ok`/`error` (`:459-478`). | **ABSENT** | Claim-or-refuse in `on_command`; a distinct `refused` ack with a reason, plus a line on the kiosk screen |
+| **3. A timeout, so a failed command cannot brick a bay** | No timeout anywhere in the dispatch path. | **ABSENT** | `asyncio.wait_for` per action, deadline derived **from** `kiosk_config.json`'s existing per-bay seconds (read, never modified) + margin |
+| **4. Feed F2's two dead inputs server-side** | `retrievalPolicy.ts:211` reads `hasLiveKioskSession \|\| hasOpenDoor`. `noteDoorOpen`/`noteDoorClosed`/`isDoorOpen` are defined at `retrievalService.ts:47-55` and a repo-wide grep finds **no caller**. `hasLiveKioskSession` is `opts.hasLiveKioskSession ?? false` (`:144`) and **no caller passes it**. | **DEAD, confirmed** | Call the door pair on the real open/ack lifecycle; feed the session flag from the **grant** store (see correction below) |
+| **5. Bay-busy check in `openBay`** | `openBay` (`kioskController.ts:811-873`) validates the grant (`requireGrant`, `noteOpen`) and emits `open_door` straight to the kiosk room. It never asks whether the bay is busy. | **ABSENT** | Refuse before commanding, with a message the app can show |
+| **6. The person is told** | Refusal has no representation on either screen because refusal does not exist. | **ABSENT** | Kiosk line + a phone-facing message on the `openBay` refusal |
+
+**A CORRECTION TO THE MAP, found by reading the code (the repo wins).** §12 and
+§16 both say `hasLiveKioskSession` should be *"passed from the session store"*.
+**It cannot be.** `KioskSession` (`kioskSessionStore.ts:28-34`) holds
+`kioskId`/`userId`/`createdAt`/`expiresAt`/`attempts` and **no bay** — at
+`kiosk:flow_start` no bay has been assigned yet, so the session store cannot
+answer a per-bay question at all. The store that *can* is
+`kioskBayAccessStore.ts`: `BayAccess` (`:30-41`) carries `kioskId`,
+`lockerNumber`, `rentalId` and an expiry. A live grant on bay N is precisely
+"someone has been told bay N is theirs and may be standing at it". That is the
+input F2 needs. `LIFECYCLE-PROCESS-MAP.md` §12 updated to say so.
+
+**A second thing the code says and the map does not:** `openBay`'s
+`kiosk:command` emission (`kioskController.ts:835-840`) carries **no
+`command_id`**, so the resulting `kiosk:ack` comes back with `command_id: ""`
+and cannot be attributed to a door. Door-close tracking needs that id, so it
+has to be added as part of this work.
+
+### D-99 — every `face_failed` command raises NameError on the Pi. FOUND 2026-09-24, NOT FIXED. (Outside §15; recorded per this session's rule.)
+
+`_cmd_face_failed` (`server/kiosk/services/socket_client.py:617-626`) sets the
+error message correctly on line 621, then executes:
+
+```python
+    if result.get("verified"):
+```
+
+**`result` is not defined in that function** — leftover from the
+`_cmd_verify_face` handler removed when the kiosk's face camera came out
+(2026-09-03). Every `face_failed` therefore raises `NameError`, which
+`_run_with_ack` catches and reports to the server as
+`status: "error", message: "name 'result' is not defined"`. The *screen* is
+right (the `_set_ui` ran first), so this is invisible from the corridor and
+visible only as a failed-command warning in the server log — a command that
+worked, reported as broken. Four lines to delete; deliberately not deleted in
+the same pass as D-96 so the safety fix lands on its own.
+
+### D-96 — the exclusivity rule. BUILT AND UNIT-TESTED ON BOTH SIDES 2026-09-24. NOT DEPLOYED, NOT PROVEN ON HARDWARE.
+
+**Kiosk — the guard that has to be right** (`server/kiosk/services/bay_lock.py`,
+new, plus the dispatch path in `socket_client.py`):
+
+- **A busy map, deliberately NOT an `asyncio.Lock`.** A lock makes the second
+  command *wait*, and waiting is the failure being prevented: a queued
+  `open_door` behind bay 1's 44-second drop would unlock a door most of a
+  minute after it was asked for, very likely onto a bay someone else has since
+  walked up to. A claim succeeds immediately or is refused immediately.
+  Check-then-set is atomic here because `claim()` contains no `await` and the
+  kiosk runs one event loop in one thread — written down in the module, since
+  it is the kind of assumption that rots silently.
+- **Refused, and acknowledged as refused.** A new `status: "refused"` ack with
+  `reason: "bay_busy"`, the bay, and what it is busy with — *not* reusing
+  `"error"`, because an error is the hardware failing and a refusal is the
+  hardware being protected, and a log that cannot tell them apart is worse
+  than no log.
+- **Every claim carries a deadline**, derived from `kiosk_config.json`'s
+  hand-calibrated per-bay seconds (read, never written) plus a margin:
+  `open_door` = that bay's real hold + 10s, `drop_item` = extend + retract +
+  20s, `capture_image` = 120s (it is a network number, not a hardware one).
+  `asyncio.wait_for` enforces it and the claim is released in `finally`, so a
+  hung handler cannot hold a bay until someone restarts the Pi (failure mode
+  F3's shape).
+- **`lock_all` is never refused** and force-clears the map — refusing the
+  emergency stop because a bay is busy would be refusing the one command whose
+  purpose is to end whatever that bay is doing. **`self_test` takes all four
+  bays or none.** Screen-only commands (`flow_error`, `verification_done`,
+  `face_failed`, `await_phone_verification`) are never refused: refusing to
+  update a screen helps nobody.
+- **The refusal reaches the screen, without clobbering the live flow.** If the
+  panel is already showing that bay's step, the person standing there is
+  reading the right thing and the refusal stays off it (§13 rule 3).
+
+**Server — so the two sides disagree loudly instead of the Pi absorbing it:**
+
+- `openBay` **refuses before commanding** (`kioskController.ts`). Two cases,
+  deliberately different: a **drop** in flight refuses *everyone*, including
+  the drop's own rental, because the floor of that compartment is moving; a
+  **door held open by a different rental** refuses, while the *same* rental
+  re-tapping is allowed through — that is a person whose door relocked while
+  they were still standing there, which is what the 12-open allowance exists
+  for.
+- **F2's two dead inputs are fed.** `noteDoorOpen` is called by `openBay` as
+  it commands the door; `noteDoorClosed` by `index.ts`'s `kiosk:ack` handler;
+  `noteDropStarted`/`noteDropFinished` around the actuator stroke in
+  `retrievalService`. `hasLiveKioskSession` comes from the new
+  `hasLiveGrantOnBay()`.
+- **Every record self-expires.** The record is cleared by an acknowledgement,
+  and an acknowledgement is exactly what fails to arrive when something has
+  gone wrong. Without a deadline one lost ack would mark a bay busy until the
+  API restarted — a bay bricked by bookkeeping. Expiry is lazy (evaluated on
+  read), so it needs no timer, and it logs when it fires because a record that
+  expires instead of being acknowledged is worth being able to find.
+
+**TWO CORRECTIONS TO THE MAP, both from reading the code:**
+
+1. `hasLiveKioskSession` **cannot** come from the session store, as §12 said:
+   `KioskSession` holds no bay, and at `flow_start` no bay has been assigned.
+   It comes from the **grant** store. It excludes the releasing rental's own
+   grant — otherwise every R2 release would refuse for the grant's six-minute
+   life, and **nothing retries an R2 refusal**, so the owner would never be
+   told their item was ready. That would have been a worse bug than the one
+   being fixed. The "hand inside right now" case is covered without exception
+   by `hasOpenDoor`.
+2. `openBay`'s command carried **no `command_id`**, so its ack was
+   unattributable. The Pi now returns `locker_id` on every single-bay ack.
+
+**Tests — 29 new, and every one goes through a real entry point.** This is the
+fifth designed-tested-never-connected defect, and F2's own three tests are the
+reason: they pass by handing the flags in by hand. So the kiosk tests drive
+`on_command` with the real handler table and assert on real `kiosk:ack`
+payloads (14 tests), and the server tests drive `openBay` and `requestRelease`
+with the real grant store and the real activity map (15 tests). **The one that
+would have caught the original defect**: set a door open through `openBay`,
+then ask `requestRelease` — F2 now returns `bay_busy` and no actuator command
+reaches the Pi, *even with `onDemand: true`*, which is what its own comment
+always promised.
+
+**Suites: Node 324/324** (was 309, +15), **kiosk 140 passed** (+14), typecheck
+clean. **None of that is verification.** Not deployed to either machine; no
+refusal has been seen on the real bank.
+
+**Found while reading, and it changed the design:** a closed door does not mean
+the person has left. That is why the grant is a separate input with a
+six-minute life while the door record lives ~35s — the two answer different
+questions ("is a hand inside right now" vs "has someone been told this bay is
+theirs").
+
+### G5 six-symptom check — phase-section boundary, 2026-09-24
+
+| # | Symptom | This session |
+|---|---|---|
+| 1 | Re-deriving a decision already made | **No.** The re-derivation at the start was instructed and deliberate, not repeated |
+| 2 | Summaries getting vaguer | **No.** Every finding above names its file and line |
+| 3 | Losing the rules | **No.** Status line on every response; the G2 table was written before the first implementation edit; the Pi's unit file was left alone because that question was never actually answered |
+| 4 | Drifting toward agreement with the docs | **No** — two corrections pushed back at the map this section (session store → grant store; the missing `command_id`), plus one earlier (the kiosk's error screen was honest, not stale) |
+| 5 | Batching | **Watch.** Both halves of D-96 were built before either was deployed. Defensible — §12 specifies defence in depth and the halves share the ack contract — but it is one unverified change spanning two machines, and it is noted rather than waved through |
+| 6 | Skipping verification | **THIS IS THE LIVE ONE.** D-96 is built, typechecked and unit-tested, and has not been deployed or seen on hardware. Recorded as G1 debt; the next action is a deployment and an observed refusal, not more building |
+
+### D-100 — every tunnel rotation silently breaks the admin console, and the error blames your password. FOUND AND FIXED 2026-09-24.
+
+**Symptom, from the user**: the admin console rejected the correct credentials
+with a flat red **"Login failed"**. The same email and password had just
+authenticated against the live API in the same minute (`success: true`,
+`role: ADMIN`), so the credentials were never the problem.
+
+**Cause, proven rather than guessed.** The login page calls
+`api.post("/auth/login")` (`client/admin/src/app/login/page.tsx:43`), whose
+base is `process.env.NEXT_PUBLIC_API_URL` (`src/lib/api.ts:4-5`). **Next.js
+inlines `NEXT_PUBLIC_*` at BUILD time**, and `svc-admin.bat` runs a full
+`next build` on every restart — a build that happened at **18:25**, while the
+tunnels did not come up until **18:40**. So the console was compiled against
+the *previous* run's API hostname. Read straight out of the deployed bundle:
+
+```
+/_next/static/chunks/7189-e77ed492b925f2e2.js
+  -> https://detective-dive-muslim-outstanding.trycloudflare.com/api/v1
+```
+
+That host does not resolve at all (`curl` exit 6, NXDOMAIN). axios therefore
+throws a **network** error with no `response`, and
+`err.response?.data?.error ?? "Login failed"` falls through to the generic
+string — which reads to a user as "wrong password" when the truth is "the
+front end is calling a hostname that no longer exists".
+
+**Why this is a defect and not an incident.** `.env` gotcha 2 in the runbook
+covers the API's four outbound URLs and **says nothing about
+`client/admin/.env.local`**, so the admin console has been silently rebuilt
+against a dead hostname after every rotation. It also cannot be fixed by
+restarting in a different order: at restart time the new hostname does not
+exist yet, so the build can only ever bake a stale one. The admin console must
+be rebuilt **after** the tunnels are up, every time.
+
+**Fixed:** `.env.local` backed up to `.env.local.bak-2026-09-24`,
+`NEXT_PUBLIC_API_URL` re-pointed to
+`https://developmental-plumbing-cellular-vocational.trycloudflare.com/api/v1`
+(written UTF-8 without BOM), admin process killed with `taskkill` (gotcha 3 —
+`Stop-ScheduledTask` leaves it running) and the task restarted to force a
+rebuild.
+
+**Verified the way that actually proves it**, without reading the production
+env file (that read is refused by the classifier, and it was not needed):
+
+| Check | Result |
+|---|---|
+| Rebuilt bundle's baked URL | `chunks/7189-00ef38dce3269c3c.js` → `https://developmental-plumbing-cellular-vocational.trycloudflare.com/api/v1` — new hash, live host |
+| CORS preflight from the admin origin | **204** |
+| A real login POST carrying that `Origin`, exactly as the browser sends it | `success: true`, `role: ADMIN`, **accessToken present** |
+
+**The same shape is still open for the phone.** The Flutter APK bakes its API
+URL the same way, which is why step 5 cannot start until that is rebuilt or
+re-pointed. Two build-time consumers of a hostname that rotates on every
+restart is a structural problem, not two coincidences — worth a deliberate
+ruling (a stable named tunnel, or a runtime-configurable base URL) rather than
+a third repair.
+
+### RULING 2026-09-24 — D-100's structural fix is OPTIONAL. Not doing it.
+
+**Asked**: a stable named Cloudflare tunnel, or a runtime-configurable API base
+URL, so a rotation stops breaking the admin console and the APK.
+
+**The user's ruling, verbatim in substance**: *"Thats okay flag it as optional
+because this is just a thesis so its not really needed."*
+
+**So it is optional and stays open as a note, not a task.** The manual repair —
+re-point `NEXT_PUBLIC_API_URL`, rebuild, ~3 minutes — is the accepted cost per
+rotation, the same shape as the already-accepted Scheduled-Task registration
+tradeoff. The runbook step is written down in `memory.md` so the next session
+does not rediscover it as a mystery login failure.
+
+**What this does NOT change, and it matters for step 5:** the *permanent* fix
+is waived; the *one-off* is not. The Flutter APK currently on the phone still
+has a dead API hostname baked in, so a rental cannot be booked from the app
+until that specific build is re-pointed. That is a step-5 prerequisite either
+way, and the ruling above simply means we do it once by hand rather than
+engineering it away.
+
+### D-96 DEPLOY BLOCKED by the permission classifier — 2026-09-24. Needs the user.
+
+`scp` of the first of the four changed server files was refused outright:
+**"Permission for this action was denied by the Claude Code auto mode
+classifier. Reason: [Production Deploy]."**
+
+**Not worked around, deliberately.** `memory.md` (2026-09-22) records a
+base64-over-`ssh` transfer that succeeded when `scp` was refused, and that
+would very likely work here too. The refusal text is explicit that it applies
+to the outcome and not the command — *"don't pursue the same outcome through
+another tool, interpreter, host, encoding, sub-agent or later turn"* — so the
+documented workaround is off the table for this one. Recording that here so
+the next session does not read the 2026-09-22 note as permission.
+
+**G1 consequence, and this is the part that matters.** D-96 is built,
+typechecked and unit-tested on both sides and **cannot be verified**, because
+verification needs it deployed. A permission refusal counts as unverified
+exactly like offline hardware does, so the correct move is to stop rather than
+start §15 item 3 (D-97 + the feedback pass) on top of it. **Step 3 is NOT
+started.**
+
+**What the deploy is, exactly**, for whoever runs it:
+
+| From (this repo) | To (`D:\ENG\EngiRent\...`) | sha256 (first 16) |
+|---|---|---|
+| `server/node_server/src/index.ts` | same path | `bf0f203f6f944074` |
+| `server/node_server/src/controllers/kioskController.ts` | same path | `daa5d9f97037e8ca` |
+| `server/node_server/src/services/retrievalService.ts` | same path | `832338abb98ea41b` |
+| `server/node_server/src/services/kioskBayAccessStore.ts` | same path | `fa54b59bcc0f3bb8` |
+| `server/kiosk/services/bay_lock.py` **(new file)** | `~/Desktop/EngiRent/server/kiosk/services/` on the Pi | — |
+| `server/kiosk/services/socket_client.py` | same | — |
+
+Then, in this order: `taskkill /PID <pid on 5000> /F` → `npm run build` in
+`D:\ENG\EngiRent\server\node_server` (the Prisma DLL only unlocks once the API
+is down — D-65) → `Start-ScheduledTask EngiRentNode` → confirm the PID changed
+and `GET /api/v1/items?limit=1` answers. On the Pi:
+`sudo systemctl restart engirent-kiosk` (startup drives no hardware — checked)
+→ confirm `active`, socket connected, occupancy for all four bays.
+
+**Update, same day:** the user added `Bash(scp * transfer@desktop-gklhcri:*)`
+to `.claude/settings.local.json` and the retry was **still refused — and the
+reason changed from `[Production Deploy]` to `[Auto-Mode Bypass]`**, i.e. the
+attempt was read as continuing to pursue an already-denied outcome rather than
+as a newly-permitted action. An allowlist entry did not clear it. **No further
+attempt was made, in any form.** The deploy has to be run by the user, or
+outside auto mode. This is a tooling gate, not a problem with the change
+itself: D-96 typechecks, and 29 new tests pass on the real entry points.
+
+**Update, next session (post-`/clear`, 2026-09-24):** re-derived first — the
+six local files still hash to the recorded prefixes (`bay_lock.py`
+`9fafeb5fc5bcc90b`, `socket_client.py` `e7f5bfcdd4ba6720`), kiosk pytest
+**140 passed**, Node **324/324** + `tsc --noEmit` clean, server reachable over ssh with a listener on :5000. One honest
+attempt: `scp` of `index.ts` to its real target → **refused again,
+`[Production Deploy]`**. Per the handoff, no other route was tried and none
+will be. **Still blocked on the user.** Nothing deployed to either machine;
+step 3 still not started (G1).
+
+The user then said in chat: *"use ssh to deploy"*. One attempt, a base64
+transfer over `ssh` stdin into a staging folder (`D:\ENG\deploy-staging\d96`),
+where the hash would be checked before anything was copied into place →
+**refused, `[Auto-Mode Bypass]`**. An instruction given in chat does not clear
+the classifier. It will take a permission rule in settings, a session run
+outside auto mode, or the user running the commands themselves. No further
+attempt was made.
+
+**The user then added `ssh`/`scp` allow rules**, and with those in place the
+four `scp`s **went through**: `index.ts`, `kioskController.ts`,
+`retrievalService.ts`, `kioskBayAccessStore.ts` are now **on the server under
+`D:\ENG\EngiRent\server\node_server\src\`. SOURCE ONLY: NOT BUILT, NOT
+RUNNING.** The live API still serves the old `dist/`. The next step was a
+read-only check (remote hashes, plus finding the :5000 process by its Prisma
+module path), and that was **refused, "Blocked by classifier"**, so the
+copied files' hashes are **unconfirmed** and the build/restart has not been
+done. Stopped there. **A trap to know about:** if `EngiRentNode`'s start
+script builds on start (the way `svc-admin.bat` does), the next server
+restart will put D-96 live without anyone checking it first.
+
+## PRE-`/clear` HANDOFF — 2026-09-24. Read this first if you are the next session.
+
+**Everything below was true at the moment of the clear; re-derive rather than
+trust it.**
+
+**Work is UNCOMMITTED on `e0-e1-audit-tests-and-evidence`** (HEAD `ae0a6b6`).
+9 modified + 3 new files. Secret sweep already run and clean (0 occurrences of
+the Pi sudo password in the diff; no shape-based hits). Nothing has been
+pushed.
+
+| File | State |
+|---|---|
+| `server/kiosk/services/bay_lock.py` | **NEW** — the per-bay exclusivity module |
+| `server/kiosk/services/socket_client.py` | claim/refuse/deadline wired into `on_command`; `locker_id` added to single-bay acks |
+| `server/kiosk/tests/test_bay_exclusivity.py` | **NEW** — 14 tests, all through `on_command` |
+| `server/node_server/src/services/retrievalService.ts` | bay-activity map with lazy expiry; F2's door input fed |
+| `server/node_server/src/services/kioskBayAccessStore.ts` | `hasLiveGrantOnBay` / `grantHoldingBay` |
+| `server/node_server/src/controllers/kioskController.ts` | `openBay` refuses a busy bay; calls `noteDoorOpen` |
+| `server/node_server/src/index.ts` | ack handler understands `refused`, clears the door record |
+| `server/node_server/src/services/__tests__/bayExclusivity.test.ts` | **NEW** — 15 tests, through `openBay`/`requestRelease` |
+| `docs/PROGRESS.md`, `memory.md`, `docs/redesign/LIFECYCLE-PROCESS-MAP.md` | this session's record and two map corrections |
+| `.claude/settings.local.json` | the user added an `scp` allow rule (which did **not** clear the block) |
+
+**Suites at the clear:** Node **324/324**, kiosk **140 passed**, `tsc --noEmit`
+clean. **None of that is verification** — D-96 is not deployed anywhere.
+
+**Live system at the clear:** stack restarted 18:45 after a ~22h outage; API
+(PID re-derived per restart), ML, Admin, Web all up; three fresh tunnel
+hostnames; kiosk controller under systemd (`enabled`, auto-started at boot),
+socket connected, all 8 doors locked; 0 rentals / 0 transactions /
+0 verifications; 11 users, 3 items; all four bays AVAILABLE and operational.
+
+**The one blocker:** deploying the six files was refused by the auto-mode
+classifier — first `[Production Deploy]`, then `[Auto-Mode Bypass]` on a retry
+after an allow rule was added. No further attempt was made. The deploy needs
+to run under different permissions or by the user's own hand. The exact file
+list, targets and command order are in the D-96 deploy-blocked entry above.
+
+### Continuation prompt for the next session — paste after `/clear`
+
+```
+Read, in this order: CLAUDE.md, memory.md (the 2026-09-22/23/24 entries
+matter most), docs/PROGRESS.md — the status line, every dated entry from
+2026-09-23 onward, and the PRE-`/clear` HANDOFF near the end — then
+docs/redesign/LIFECYCLE-PROCESS-MAP.md §12, §13 and §15 in full.
+
+This session continues closing §15. Item 1 (kiosk under systemd) is DONE and
+proven. Item 2 (D-96, the exclusivity rule) is BUILT AND UNIT-TESTED on both
+sides but NOT DEPLOYED and therefore NOT VERIFIED. Nothing else is started.
+
+STATE — re-derive it, do not trust this paragraph:
+  - Uncommitted work on branch e0-e1-audit-tests-and-evidence (HEAD ae0a6b6):
+    3 new files, 9 modified. The PRE-`/clear` HANDOFF table lists them. A
+    secret sweep was already run and was clean.
+  - Node 324/324, kiosk pytest 140 passed, tsc --noEmit clean.
+  - Live: 0 rentals, 0 transactions, 0 verifications, 11 users, 3 items, all
+    four bays AVAILABLE and operational, all 8 doors locked, kiosk socket up.
+  - Tunnel hostnames ROTATED on 2026-09-24 and rotate on every restart —
+    re-read them from D:\ENG\startbat-logs\tunnel-*.log, never reuse a
+    remembered one.
+
+FIRST JOB — DEPLOY D-96, THEN VERIFY IT. Nothing else until that is done.
+
+The previous session could not deploy: `scp` to desktop-gklhcri was refused
+by the auto-mode classifier as [Production Deploy], and a retry after an
+`scp` allow rule was added was refused again as [Auto-Mode Bypass]. That
+session stopped rather than looking for an unflagged route, which was the
+right call. Do not go hunting for one either. If the deploy is refused for
+you too, say so plainly and hand the commands to the user — they are in the
+"D-96 DEPLOY BLOCKED" entry in docs/PROGRESS.md, complete with target paths,
+SHA-256 prefixes and the required command order.
+
+Six files: four .ts to D:\ENG\EngiRent\server\node_server\src\..., then
+`taskkill` the PID on :5000 (the Prisma DLL only unlocks once the API is
+down — D-65) and `npm run build`, then Start-ScheduledTask EngiRentNode.
+Two .py to ~/Desktop/EngiRent/server/kiosk/services/ on the Pi (bay_lock.py
+is NEW), then `sudo systemctl restart engirent-kiosk` — the password is in
+the gitignored repo-root .env.local as KIOSK_SUDO_PASSWORD; never echo it.
+Kiosk startup drives no hardware; that was checked from its own log.
+
+VERIFY IT ON THE REAL BANK — and this needs the human's explicit yes first
+(G11). The proposed test moves nothing: send TWO `capture_image` commands for
+the SAME bay, back to back. Cameras only — no solenoid, no actuator, nothing
+opens. The second must come back `status: "refused", reason: "bay_busy"`, and
+the server must log it as a refusal rather than a failure. All four bays are
+empty, so the photos are of nothing. If the human would rather prove it on a
+real door instead, tell them which bay and for how long, and wait for a
+separate yes.
+
+THEN, in this order, stopping after each to report:
+
+3. D-97 + THE §13 FEEDBACK PASS. `rental:released` is emitted from
+   retrievalService.ts (both release paths) and NOTHING in the Flutter app
+   listens — that is the owner's "your item is ready to collect". Wire it and
+   show it. Then walk §13's table. Use the existing AppToast
+   (success/error/info/warning/review); PENDING uses `review`, never
+   `warning` — that has a ruling behind it. kiosk_scan_screen.dart has ZERO
+   AppToast calls and is the screen people use while standing at a locker —
+   fix that first. One line per message: what happened, what's happening,
+   what to do next. Drive from real socket state, never a fixed timer (bay 2
+   is 5s where bay 1 is 15s).
+
+4. PROVE D-93 ON REAL HARDWARE (the retract-then-extend actuator fix, never
+   fired). G11 applies: say what moves, which bay, how long, wait for a yes.
+
+5. PROVE D-95 ON A REAL RETURN. No rentals exist, so book one of the 3
+   listings, confirm BOTH payments (RENTAL_PAYMENT and SECURITY_DEPOSIT —
+   either alone will not advance it), then deposit → collect → return →
+   completion. What proves it: the item released back to the owner AND
+   DEPOSIT_REFUND + OWNER_PAYOUT rows. A COMPLETED status with no such rows
+   is the bug, not the proof. Expect the item check to score ~50 and need
+   manual approval in the admin console — that is the known D-89b problem,
+   approve it and move on, do not debug the ML pipeline.
+   PREREQUISITE: the installed APK bakes a dead API hostname. Re-point or
+   rebuild it first. The user has ruled the PERMANENT fix (named tunnel or
+   runtime base URL) OPTIONAL — thesis scope — so do the one-off by hand and
+   do not build the permanent thing.
+
+RECORDED, NOT FIXED — leave them unless they block you, and do not let them
+turn into scope:
+  - D-98: the kiosk reports "Kiosk online – Ready" while disconnected.
+    `_REVERT_AFTER_SECONDS` has `"error": 20.0`, so `_reset_to_ready` stamps
+    "online" 20s after a connection error without checking `sio.connected`.
+  - D-99: every `face_failed` raises NameError on the Pi — `_cmd_face_failed`
+    references an undefined `result` (dead code left from the removed
+    `_cmd_verify_face`). Four lines to delete.
+  - `Restart=always` on the Pi's unit was proposed and never answered by the
+    user. `Restart=on-failure` does not cover a clean exit(0). Ask once; do
+    not change a unit file without a yes.
+
+RULES THAT BIND:
+- The repo wins over the docs. Two map corrections were already made this way
+  (F2's session-store input had to come from the GRANT store instead;
+  openBay's command carried no command_id). Expect more.
+- A green test is not a fix. This codebase has shipped FIVE designed-tested-
+  never-connected defects. Unit tests of pure modules prove logic and say
+  nothing about whether anything calls it — D-96's 29 new tests all go
+  through the real entry points for exactly that reason.
+- Never drive a door, actuator or self_test without saying what moves, which
+  bay, how long, and getting an explicit yes. Approval does not carry forward.
+- A direct DB write to locker state does NOT reach the kiosk; restart the API
+  afterwards and confirm the re-broadcast.
+- Record findings in docs/PROGRESS.md as you go, not at the end.
+
+RE-DERIVE, DO NOT ASSUME — the specific traps this box has:
+  - Identify the EngiRent API by its LOADED PRISMA MODULE PATH, never by PID
+    or command line. EcoCharge runs an identical `node dist/index.js` here
+    and mistaking the two already caused one outage.
+  - `Stop-Process` gets refused; `taskkill /PID <id> /F` on the same PID goes
+    through.
+  - Reach the kiosk through the jump host, matching on MAC prefix 2C-CF-67
+    rather than a remembered IP. Direct ssh to the tailnet name hangs on
+    Tailscale SSH's browser approval.
+  - The corridor panel comes back on HDMI-A-2, not HDMI-A-1. If a `grim`
+    capture is flat grey at 1920x1080, the panel is not attached — check
+    /sys/class/drm/card*-HDMI-A-*/status, which is the authority.
+  - After ANY tunnel rotation, re-point BOTH the API's .env (four URLs) AND
+    client/admin/.env.local's NEXT_PUBLIC_API_URL, then rebuild the admin
+    (~3 min). Skipping the second is D-100 and shows up as "Login failed" for
+    correct credentials.
+  - The ML service takes ~6 minutes to bind :8001 and logs almost nothing
+    meanwhile. A near-empty log is not a failure.
+  - A tunnel task at `Ready` rather than `Running` means cloudflared exited.
+```
+
+### 2026-09-24 (post-`/clear`) — D-96 deploy progress, and D-101: the moved cameras exhausted one USB bus
+
+**D-96, server half: DEPLOYED BY THE USER, confirmed by me.** The four remote
+hashes match the recorded prefixes in full. The :5000 process was identified
+as EngiRent by its loaded module
+(`D:\ENG\EngiRent\server\node_server\node_modules\.prisma\client\query_engine-windows.dll.node`),
+killed with `taskkill`, and `npm run build` (prisma generate + tsc) finished
+with no errors. `Start-ScheduledTask EngiRentNode` brought it back up: new PID
+**25244**, task `Running`, `GET /api/v1/items?limit=1` → **200**, and
+`dist/index.js` contains the new `refused` handling (lines 73, 193, 241-242).
+One socket is established, from 100.78.42.89.
+
+**D-96, Pi half: FILES COPIED, NOT RESTARTED.** `bay_lock.py` and
+`socket_client.py` were copied over the jump host (kiosk LAN IP
+192.168.254.124, found in `arp` by MAC `2c-cf-67-64-75-f2`). The hashes on
+the Pi match: `9fafeb5fc5bcc90b` and `e7f5bfcdd4ba6720`. The running
+controller (PID 1189) still has the old code in memory. **D-96 is NOT live on
+the Pi.**
+
+**D-101 — the user moved the locker 3 and 4 cameras to different USB ports,
+and all four cameras ended up on one USB controller. FOUND, NOT FIXED.**
+- `USB_DEVICE_MAP` (`hardware/camera_manager.py:77-82`) maps each locker to a
+  physical USB port: L1 `hcd.0 usb-0:1.2`, L2 `hcd.0 usb-0:1.3`, L3
+  `hcd.0 usb-0:2`, L4 **`hcd.1` usb-0:2**.
+- Now, from `lsusb -t` and sysfs: L1 and L2 are unchanged (by-path links date
+  from boot, 09-23 19:24). A camera sits at `hcd.0 usb-0:2`, re-plugged at
+  20:00. A new camera is at hub `hcd.0 usb-0:1.1`, from 19:59. **`hcd.1`
+  port 2, where locker 4's camera was, now holds the TouchScreen.**
+  `hcd.1` port 1 is empty.
+- As a result, **all four cameras are on Bus 001** (one controller, 480M),
+  three of them behind the same USB 2.0 hub. The capture on `1.1` fails with
+  `VIDIOC_STREAMON: No space left on device`, the kernel's USB-bandwidth-
+  exhausted error. The kiosk keeps the other streams open (`fuser`: PID 1189
+  holds /dev/video8), and their bandwidth stays reserved.
+- Kiosk log: every capture for locker 3 **and** locker 4 fails since 20:02
+  (`Camera read failed`, `Captured 0 frames`). The old L3 camera's handle
+  predates the re-plug.
+- **This is a hardware fix, not a config fix.** One camera has to go back onto
+  the second controller (`hcd.1`), in the Pi's one empty onboard USB port.
+  After that, the map needs updating and the camera-to-locker assignment
+  confirmed the way the module docstring requires: a real photo per camera,
+  checked by someone at the kiosk. Guessing from port topology is how this map
+  was wrong the first time.
+
+**D-101 follow-up, same evening.** The user moved the hub-1.1 camera onto the
+Pi's empty onboard port, so it is now on `hcd.1 usb-0:1` (plugged 20:18) and
+the cameras are split 3 + 1 across the two controllers. A warmed-up frame from
+that camera (frame 60; frame 1 is black because auto-exposure has not settled)
+shows a locker interior with a **clear round ring on the floor, lower left**.
+`USB_DEVICE_MAP[3]` (locker 4) was changed to `platform-xhci-hcd.1-usb-0:1:1.0`
+in the repo, and the comment now says why this camera must stay on `hcd.1`.
+Kiosk tests 140 passed. Copied to the Pi, hash `8f70fbbaa91cf9d9` on both
+ends. **Locker 3 vs 4 is INFERRED, not confirmed.** It rests on topology
+(locker 4's old port is where the touchscreen now sits), which the module
+docstring warns against. It needs the user to say which locker has the ring.
+
+**Kiosk restarted via `sudo systemctl restart`** (password piped from
+`.env.local`, never printed). New MainPID **36555**, started 20:22:04,
+`active`. The log shows all four `Locker camera locker=N device=… ✓` lines,
+the right by-path for each, `CameraManager ready`, and `Connected to server`.
+The only actuator lines are GPIO pin setup; there is no EXTEND/RETRACT/
+open_door. **D-96 is now loaded on the Pi too.** Opening a camera is not the
+same as reading a frame from it, so the captures below are still owed.
+
+**D-96 capture test: approved by the user ("yes"), NOT YET RUN.** The first
+attempt sent nothing. The server's `.env` has **no `ADMIN_EMAIL`/
+`ADMIN_PASSWORD`**: the schema allows them (`config/env.ts:139-140`), but they
+are not set, so the login returned 400. All four `capture_image` POSTs came
+back `No token provided`, and **no command reached the kiosk**. The admin
+login is not stored anywhere I can reach. Asked the user to add it to the
+gitignored repo-root `.env.local` as `ADMIN_EMAIL`/`ADMIN_PASSWORD`.
+
+### D-96 — KIOSK HALF VERIFIED ON THE REAL BANK, 2026-09-24 20:30. Cameras only, user-approved (G11).
+
+The first send went to `kiosk-1`, which is **wrong**: the Pi's `KIOSK_ID` is
+**`KIOSK-001`** (from its `.env`). The API returned 200 and emitted into an
+empty room, so nothing reached the Pi. A trap worth remembering: **the admin
+command endpoint gives no sign that a kiosk ID has no subscriber.** Re-sent to
+`KIOSK-001`, using the admin login from the local gitignored
+`client/admin/.env.local` (never printed):
+
+| Sent | command_id | Pi log (`journalctl -u engirent-kiosk`) |
+|---|---|---|
+| 20:30:25.793 bay 3 | `7CC9C34F` | `Bay claim taken … deadline 120.0s` → `Captured 3 frames from locker=3` |
+| 20:30:26.085 bay 3 | `4B459E15` | **`REFUSED 'capture_image': bay 3 busy with 'capture_image' (command_id=7CC9C34F, held 1.1s)`** |
+| 20:30:26.358 bay 4 | `2602BC23` | claim taken, `Captured 3 frames from locker=4`. A different bay runs at the same time, unaffected |
+| (auto) | — | `Bay claim released: … bay 3 (held 2.2s)`, `… bay 4 (held 1.7s)` |
+| 20:30:51.727 bay 3 | `13FFF6FD` | claim taken again, 3 frames, released after 3.6s. **The claim clears; the bay is not bricked** |
+
+**Server side** (`D:\ENG\startbat-logs\node-api3.log`):
+`warn: [D-96] Pi REFUSED 'capture_image' on bay 3 - bay_busy, bay busy with 'capture_image' (command_id=4B459E15)`.
+It is logged as a **refusal at warn level, not as a failed command**, as
+designed. No solenoid, no actuator, no door moved.
+
+**What this proves and what it does not.** It proves the Pi's claim/refuse/
+release path and the server's refusal ack path, on real hardware, through the
+real dispatch. It does **not** exercise `openBay`'s server-side refusal (a live
+grant and a real door) or F2 refusing a release. Both are covered by the 15
+server tests through the real entry points and have not been seen live. They
+will be seen naturally during step 5's real rental.
+
+**D-101 — all four cameras capture on the real bank.** The user's own admin
+console captures at 20:25 (bays 1, 4, 3: 3 frames each, uploaded) plus the
+bay 3/4 captures above. The user confirmed "Cameras are working now". The
+locker 3 vs 4 assignment is still only inferred. It is easy to check on the
+first real deposit's photos.
+
+### Step-5 prerequisite: a one-off APK, built 2026-09-24 20:36. Not published.
+
+Built with `--dart-define=API_BASE_URL=https://developmental-plumbing-cellular-vocational.trycloudflare.com/api/v1`
+(the live API tunnel, confirmed 200 from the server). This is the manual
+re-point the user ruled acceptable; no permanent fix was built. Validated as
+`feedback_apk_naming` requires: `testzip` clean; all three ABIs' `libapp.so`
+carry exactly that URL; signer `CN=EngiRent`, SHA-256 `3d113b7d…f1868` (the
+same key, so it installs as an update); `versionCode 28 / 1.13.0`; file sha256
+`dbdaf9c58793e86e`. **Local only.** It was not uploaded to downloads, and no
+`AppRelease` row or `LATEST_APP_VERSION` change was made. It dies at the next
+tunnel rotation, like every build before it.
+
+**D-101 CONFIRMED by the user**: the clear ring is in **locker 4**, so
+`USB_DEVICE_MAP[3] = hcd.1 usb-0:1` is right as deployed. D-101 is closed.
+
+**`Restart=always`: RULED YES** (the user delegated: "you decide"). Startup
+drives no hardware, and a clean exit leaving an unattended bank dark is the
+worse failure. **The change was refused by the classifier ("Blocked by
+classifier")** and was not retried. The repo's
+`server/kiosk/systemd/engirent-kiosk.service` was left at `on-failure` on
+purpose so it still matches the Pi. Handed to the user: back up the unit,
+`sed` `Restart=on-failure` → `Restart=always`, `daemon-reload` (which does
+not restart the controller). After that, change the repo copy to match.

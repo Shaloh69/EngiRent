@@ -2309,3 +2309,90 @@ lines (EXTEND/RETRACT/PLACE/open_door) before doing any of this: if startup
 itself never issues one (it doesn't, as of this check), a restart needs no
 separate G11 disclosure beyond having already told the user a restart is
 what deploying the fix requires.
+
+## 2026-09-24 — Power event took both machines; the Pi self-healed, the server didn't
+
+Both boxes lost power ~2026-09-23 19:2x (Pi booted 19:24:31, server 19:45:51).
+**The difference in outcome is the whole argument for supervision:** the kiosk
+Pi came back with `engirent-kiosk.service` started automatically by systemd
+(`NRestarts=0`, boot-time `ExecMainStartTimestamp`) — because it had been put
+under systemd and `enable`d hours earlier. The server came back with all seven
+`EngiRent*` tasks dead, the known Interactive-logon defect, and stayed down
+about 22 hours until someone looked.
+
+**Restart notes that are new, on top of the existing runbook:**
+
+- **The ML service took ~6 minutes to bind :8001** (model load). Its log held
+  only a `pkg_resources` deprecation warning that whole time. A 0-byte or
+  near-empty service log during startup is not evidence of failure — check the
+  port, and give ML minutes not seconds.
+- **The three Cloudflare tunnel tasks failed on the first attempt** —
+  `failed to request quick Tunnel: context deadline exceeded` — because the
+  whole box was still coming up. `api.trycloudflare.com` returning **405** to a
+  plain GET is the cheap proof that the internet is fine (405 = reachable, the
+  endpoint just refuses GET). A second `Start-ScheduledTask` got all three.
+- **A tunnel task sitting at `Ready` rather than `Running` means cloudflared
+  exited.** The four service tasks show `Running`; a `Ready` tunnel task is a
+  dead tunnel, not a waiting one.
+- **Editing the server's `.env`: write it back as UTF-8 WITHOUT a BOM.**
+  `[IO.File]::WriteAllText($p,$c,(New-Object Text.UTF8Encoding($false)))`.
+  PowerShell 5.1's `Set-Content -Encoding utf8` writes a BOM, which would end
+  up inside the first key's name and silently break that variable.
+- **`taskkill /PID <id> /F` again went straight through** where `Stop-Process`
+  has been refused before. Didn't even try `Stop-Process` this time.
+
+**The kiosk's error screen during an outage is honest, and it self-heals.**
+Captured on the physical panel: *"Something went wrong · Cannot reach the
+EngiRent server. The network here is fine."* with Try Again / Back to Home,
+and after the stack came back, the idle scene again **with no intervention**.
+
+**But its `/api/state` lies during the same outage — recorded as D-98.**
+`_REVERT_AFTER_SECONDS` includes `"error": 20.0`, so 20s after a connection
+error `_reset_to_ready()` stamps `status: "online", message: "Kiosk online –
+Ready"` without checking `sio.connected`. During an outage the status flaps
+between `error` and `online – Ready`. Anything that samples that endpoint —
+admin health view, a future bay-busy check — can be told the kiosk is ready
+while it cannot reach the server at all.
+
+**A dark corridor screen is not always a software problem.** Before the monitor
+was switched on, `wlr-randr` showed only `NOOP-1 "Headless output 2"` and
+`grim` returned a flat grey **1920×1080** frame — landscape, on a portrait
+panel. The kernel is the authority and settles it in one line:
+`/sys/class/drm/card*-HDMI-A-*/status`. Also worth knowing: **the panel comes
+back on `HDMI-A-2`**, not `HDMI-A-1`.
+
+## 2026-09-24 — Gotcha 2 was incomplete: the ADMIN CONSOLE also bakes the API URL
+
+The restart runbook's gotcha 2 covers the API's own `.env`
+(`API_PUBLIC_URL`/`CLIENT_*_URL`). **It misses
+`D:\ENG\EngiRent\client\admin\.env.local`'s `NEXT_PUBLIC_API_URL`**, and
+Next.js inlines `NEXT_PUBLIC_*` at **build** time. `svc-admin.bat` runs a full
+`next build` on every restart — but that build happens *before* the Cloudflare
+tunnel exists, so it can only ever bake the PREVIOUS run's hostname.
+
+**What it looks like when it bites:** the admin console shows a flat red
+**"Login failed"** for completely correct credentials. The login page falls
+back to that string whenever there is no `err.response`, and a dead hostname
+produces a network error with no response at all. It reads as "wrong
+password". It is not — it is the front end calling a host that no longer
+resolves.
+
+**So the restart procedure has a fifth step, after the four already written
+down:** once the tunnels are up and their hostnames are known, update
+`client/admin/.env.local`'s `NEXT_PUBLIC_API_URL` too, then `taskkill` the
+process on :3001 and `Start-ScheduledTask EngiRentAdmin` to force a rebuild
+(~3 min).
+
+**How to check it without reading the production env file** (that read is
+refused by the classifier, and it is the wrong check anyway — what matters is
+what the *browser* gets): fetch the login page over the public tunnel, pull
+the `/_next/static/chunks/*.js` URLs out of the HTML, and grep them for
+`trycloudflare.com/api/v1`. The chunk hash changes on a real rebuild, so it
+also proves the rebuild happened. Then prove the whole path with a preflight
+(`OPTIONS` → 204) and a real login POST carrying the admin `Origin`.
+
+**The generalisable point: two build-time consumers of a rotating hostname.**
+The admin console and the Flutter APK both bake the API URL at build time, so
+every tunnel rotation breaks both until each is rebuilt. That is structural —
+either a stable named tunnel or a runtime-configurable base URL — not
+something to keep repairing by hand.

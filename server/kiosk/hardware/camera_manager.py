@@ -78,7 +78,10 @@ USB_DEVICE_MAP: dict[int, str] = {
     0: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.2:1.0"),  # Locker 1
     1: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.3:1.0"),  # Locker 2
     2: _BY_PATH.format("platform-xhci-hcd.0-usb-0:2:1.0"),    # Locker 3
-    3: _BY_PATH.format("platform-xhci-hcd.1-usb-0:2:1.0"),    # Locker 4
+    # Moved 2026-09-24: the touchscreen now occupies hcd.1 port 2. This camera
+    # MUST stay on the second controller (hcd.1) — with all four on hcd.0 the
+    # bus runs out of bandwidth and STREAMON fails with ENOSPC (D-101).
+    3: _BY_PATH.format("platform-xhci-hcd.1-usb-0:1:1.0"),    # Locker 4
 }
 
 LOCKER_RESOLUTION = (1280, 720)   # MJPEG 30fps — supported by all cameras

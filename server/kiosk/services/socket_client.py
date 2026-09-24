@@ -42,8 +42,22 @@ from hardware.gpio_controller import SolenoidController
 from hardware.actuator_controller import ActuatorController
 from hardware.camera_manager import CameraManager
 from services.image_uploader import upload_locker_images
+from services.bay_lock import (
+    EMERGENCY_ACTIONS,
+    BayClaim,
+    BayRefusal,
+    BayRegistry,
+    bays_for,
+    timeout_for,
+)
 
 log = logging.getLogger("kiosk.socket")
+
+# D-96 / §12 — one bay, one process, start to finish. Claimed synchronously in
+# `on_command` before the handler task is created, released in that task's
+# `finally`. See services/bay_lock.py for why this is a busy map and not a
+# lock.
+_bays = BayRegistry()
 
 sio = socketio.AsyncClient(reconnection=False, logger=False)
 
@@ -450,23 +464,134 @@ async def on_command(data: dict):
     }
 
     handler = handlers.get(action)
-    if handler:
-        asyncio.create_task(_run_with_ack(handler, action, command_id, data))
-    else:
+    if not handler:
         log.warning("Unknown action: %s", action)
         await _emit_error(f"Unknown action: {action}")
+        return
 
+    # D-96 / §12 — THE EXCLUSIVITY RULE. The Pi is the only place that knows
+    # when a stroke has genuinely finished, so this is the guard that has to be
+    # right; the server-side checks exist so the two disagree loudly rather
+    # than the Pi silently absorbing a command that should never have been
+    # sent.
+    #
+    # `lock_all` is the emergency stop: it is never refused, and it clears the
+    # map, because it has just driven every relay to its safe state.
+    if action in EMERGENCY_ACTIONS:
+        cleared = _bays.force_release_all()
+        if cleared:
+            log.warning(
+                "EMERGENCY '%s' — force-releasing %d in-flight claim(s): %s",
+                action, len(cleared), "; ".join(c.describe() for c in cleared),
+            )
+        asyncio.create_task(_run_with_ack(handler, action, command_id, data))
+        return
 
-async def _run_with_ack(handler, action: str, command_id: str, data: dict):
-    """Wraps a command handler and emits kiosk:ack on success or failure.
-    Uses safe_emit so the ack is queued if the connection drops mid-command."""
+    bays = bays_for(action, data)
+    if bays is None:
+        # Screen-only commands (flow_error, verification_done, face_failed,
+        # await_phone_verification). No relay, nothing to serialise.
+        asyncio.create_task(_run_with_ack(handler, action, command_id, data))
+        return
+
+    locker_cfg = None
     try:
-        await handler(data)
+        locker_cfg = load_timing_config()["lockers"][str(bays[0])]
+    except (KeyError, TypeError):
+        # Timings missing for this bay — timeout_for falls back to safe
+        # defaults rather than refusing a command over a config gap.
+        pass
+    timeout_seconds = timeout_for(action, data, locker_cfg)
+
+    claim, refusal = _bays.claim(bays, action, command_id, timeout_seconds)
+    if claim is None:
+        await _refuse_command(action, command_id, data, refusal)
+        return
+
+    log.info(
+        "Bay claim taken: %s (command_id=%s, deadline %.1fs)",
+        claim.describe(), command_id or "none", timeout_seconds,
+    )
+    asyncio.create_task(_run_with_ack(handler, action, command_id, data, claim=claim))
+
+
+async def _refuse_command(action: str, command_id: str, data: dict,
+                          refusal: BayRefusal) -> None:
+    """Refuse a command for a busy bay — and say so, to everyone.
+
+    Never queued. The ack carries its own `status: "refused"` rather than
+    reusing `"error"`, because the two mean opposite things to whoever reads
+    the log: an error is the hardware failing, a refusal is the hardware being
+    protected.
+    """
+    log.warning("REFUSED '%s': %s", action, refusal.log_line())
+
+    # §12 item 4 — the person is told. But do not stamp this over the screen
+    # of the flow that is actually running on that bay: if the panel is
+    # already showing that bay's live step, the person standing there is
+    # reading the right thing and a refusal aimed at someone else would only
+    # confuse them.
+    if _ui_state.get("active_locker") != refusal.bay:
+        _set_ui("busy", refusal.message(), refusal.bay)
+
+    await safe_emit("kiosk:ack", {
+        "kiosk_id": KIOSK_ID,
+        "command_id": command_id,
+        "action": action,
+        "status": "refused",
+        "reason": "bay_busy",
+        "locker_id": refusal.bay,
+        "busy_with": refusal.busy_with,
+        "message": refusal.message(),
+    })
+
+
+async def _run_with_ack(handler, action: str, command_id: str, data: dict,
+                        claim: BayClaim | None = None):
+    """Wraps a command handler and emits kiosk:ack on success or failure.
+    Uses safe_emit so the ack is queued if the connection drops mid-command.
+
+    D-96: when the command holds a bay claim it also gets a deadline. A
+    handler that hangs would otherwise hold its bay until someone restarts the
+    Pi — a bay bricked by a software fault. The claim is released in `finally`
+    so that is true on every path out, including the timeout.
+    """
+    # The server clears its own per-bay record from this ack, so a single-bay
+    # command has to say WHICH bay it was — the ack payload historically
+    # carried only kiosk/command/action, which left a door-close
+    # unattributable. Omitted for `self_test`, which holds all four and would
+    # be lying if it named one.
+    bay_id = claim.bays[0] if claim is not None and len(claim.bays) == 1 else None
+
+    try:
+        if claim is not None:
+            await asyncio.wait_for(handler(data), timeout=claim.timeout_seconds)
+        else:
+            await handler(data)
         await safe_emit("kiosk:ack", {
             "kiosk_id": KIOSK_ID,
             "command_id": command_id,
             "action": action,
             "status": "ok",
+            **({"locker_id": bay_id} if bay_id is not None else {}),
+        })
+    except asyncio.TimeoutError:
+        # Loudly, per §12 item 5 — this is failure mode F3's shape and must
+        # land somewhere a human can reconcile it, not vanish.
+        bays = ", ".join(str(b) for b in claim.bays) if claim else "?"
+        log.error(
+            "TIMEOUT: '%s' on bay %s did not finish within %.1fs — releasing the bay",
+            action, bays, claim.timeout_seconds if claim else -1,
+        )
+        _set_ui("error", f"Locker {bays} did not finish — please tell staff")
+        await safe_emit("kiosk:ack", {
+            "kiosk_id": KIOSK_ID,
+            "command_id": command_id,
+            "action": action,
+            "status": "error",
+            "reason": "timeout",
+            "message": f"'{action}' exceeded its {claim.timeout_seconds:.0f}s deadline" if claim else "timed out",
+            **({"locker_id": bay_id} if bay_id is not None else {}),
         })
     except Exception as exc:
         log.error("Command '%s' failed: %s", action, exc)
@@ -476,7 +601,12 @@ async def _run_with_ack(handler, action: str, command_id: str, data: dict):
             "action": action,
             "status": "error",
             "message": str(exc),
+            **({"locker_id": bay_id} if bay_id is not None else {}),
         })
+    finally:
+        if claim is not None:
+            _bays.release(claim)
+            log.info("Bay claim released: %s (held %.1fs)", claim.describe(), claim.held_for)
 
 
 # ── Command handlers ───────────────────────────────────────────────────────────

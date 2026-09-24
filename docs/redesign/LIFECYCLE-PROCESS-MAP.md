@@ -422,10 +422,29 @@ move a bay someone may have a hand inside, with a comment stating it is *"not
 negotiable by `onDemand`: an owner requesting their item does not make someone
 else's hand safe."* It reads two inputs. **Neither is ever supplied:**
 
-| Input | How it should be fed | Reality |
-|---|---|---|
-| `hasOpenDoor` | `isDoorOpen()` reads a `Set` filled by `noteDoorOpen`/`noteDoorClosed` | **Both exported, neither is called anywhere.** The Set is always empty |
-| `hasLiveKioskSession` | passed by the caller | **No caller passes it.** `opts.hasLiveKioskSession ?? false` — always `false` |
+| Input | How it should be fed | Reality when this was written | **Now (2026-09-24)** |
+|---|---|---|---|
+| `hasOpenDoor` | `isDoorOpen()` reads a `Set` filled by `noteDoorOpen`/`noteDoorClosed` | **Both exported, neither is called anywhere.** The Set is always empty | **Fed.** `openBay` writes it as it commands the door; `index.ts`'s `kiosk:ack` handler clears it; the record self-expires so a lost ack cannot brick a bay |
+| `hasLiveKioskSession` | passed by the caller | **No caller passes it.** `opts.hasLiveKioskSession ?? false` — always `false` | **Fed** — from the **grant** store, not the session store. See the correction below |
+
+> **CORRECTION, 2026-09-24 — this section used to say "pass it from the session
+> store", and that is not possible.** `KioskSession`
+> (`services/kioskSessionStore.ts`) holds `kioskId`, `userId`, `createdAt`,
+> `expiresAt`, `attempts` — **no bay**. At `kiosk:flow_start`, when the session
+> opens, no bay has been assigned yet, so the session store cannot answer a
+> per-bay question at all. The store that can is `kioskBayAccessStore.ts`: a
+> `BayAccess` grant names the kiosk, the bay and the door, and means a specific
+> person has been told that bay is theirs. `hasLiveGrantOnBay()` is the input,
+> and it excludes the releasing rental's *own* grant — otherwise every
+> return-triggered release (R2) would refuse for the grant's six-minute life,
+> and nothing retries an R2 refusal, so the owner would simply never be told
+> their item was ready. The "a hand is inside *right now*" case is covered
+> without exception by `hasOpenDoor`.
+
+> **Also found by reading the code:** `openBay`'s `kiosk:command` emission
+> carried **no `command_id`**, so the resulting ack could not be attributed to
+> a door. The Pi now returns `locker_id` on every single-bay ack instead, which
+> is what lets the server close its own record.
 
 So `decideRelease` can never return `bay_busy` in production. Its three tests
 pass because they hand the flags in directly
@@ -439,6 +458,17 @@ legitimately hold live grants on the same bay at once.
 
 **Net: there is no layer anywhere that prevents concurrent actuation on one
 bay.** Recorded as **D-96**.
+
+> **BUILT 2026-09-24 — in code and unit-tested on both sides, NOT yet proven on
+> hardware.** All six requirements below are implemented:
+> `server/kiosk/services/bay_lock.py` (new) plus the dispatch path in
+> `socket_client.py` on the Pi; `retrievalService.ts`,
+> `kioskBayAccessStore.ts`, `kioskController.ts` and `index.ts` on the server.
+> 14 kiosk tests and 15 server tests, all driving the **real** entry points —
+> `on_command` and `openBay` — rather than the pure modules, precisely because
+> that is the mistake F2 itself made. Node 324/324, kiosk 140 passed.
+> **A green test is not a fix**: until a refusal has been seen on the real
+> bank, this is built, not done.
 
 ### What the rule must cover when it is built
 

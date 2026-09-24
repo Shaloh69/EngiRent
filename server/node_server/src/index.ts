@@ -57,6 +57,7 @@ import {
   requestRelease,
   confirmRelease,
   rentalForCommand,
+  noteDoorClosed,
 } from "./services/retrievalService";
 import {
   consumeKioskSession,
@@ -407,11 +408,43 @@ io.on("connection", (socket: Socket) => {
       kiosk_id: string;
       command_id: string;
       action: string;
-      status: "ok" | "error";
+      // D-96 — "refused" is its own outcome and not a flavour of "error".
+      // An error is the hardware failing; a refusal is the hardware being
+      // protected, and the two must not read the same in a log.
+      status: "ok" | "error" | "refused";
       message?: string;
+      reason?: string;
+      locker_id?: number;
+      busy_with?: string;
     }) => {
       if (!isKiosk(socket)) return;
-      const { kiosk_id, command_id, action, status, message } = data;
+      const { kiosk_id, command_id, action, status, message, reason, locker_id, busy_with } =
+        data;
+
+      // D-96 — close the server's own per-bay record. This is the other half
+      // of `openBay`'s `noteDoorOpen`: without it the record would only ever
+      // clear by expiry, and the F2 guard would report a door open for
+      // twenty seconds after it had shut.
+      //
+      // Every outcome clears it, deliberately. A refusal means the door never
+      // opened at all; an error or a timeout means it is not going to open;
+      // and "ok" means the hold has finished and the solenoid has re-locked
+      // (the Pi acks `open_door` only after `unlock_for` returns).
+      if (action === "open_door" && locker_id !== undefined) {
+        noteDoorClosed(kiosk_id, String(locker_id));
+      }
+
+      if (status === "refused") {
+        logger.warn(
+          `[D-96] Pi REFUSED '${action}'` +
+            (locker_id !== undefined ? ` on bay ${locker_id}` : "") +
+            ` — ${reason ?? "no reason given"}` +
+            (busy_with ? `, bay busy with '${busy_with}'` : "") +
+            ` (command_id=${command_id || "none"})`,
+        );
+        kioskEventBus.emit("kiosk_ack", { ...data, ts: Date.now() });
+        return;
+      }
 
       // E4.6 / F3 — `releasedAt` is written ONLY here, on a real acknowledgement
       // from the Pi. Until this fires the item is not known to have changed
