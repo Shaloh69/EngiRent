@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-25 00:45 - **PHYSICAL TEST DONE for tonight** - **E6.R VERIFIED end-to-end** (screwdriver `cbd2718f`: approved → settled → owner collected → COMPLETED; refund+payout rows) - **D-93 VERIFIED on hardware** (bay 1 retract→extend 22+22s, 00:18) - **D-103 CLOSED** (seen 4×) - E6.S (in-place pickup for rejects/disputes, :15 drop-if-uncollected cron, dispute route) + E6.T (D-108 retry, post-door never fails) + availability fixes + **E6.U VERIFIED ON SCREEN 00:56** (owner pickup opens on their tap) - API PID 24456 (re-derive) - Prerelease30 (1.13.2+30) live - release window 07-21 (restored 00:18:49) - OPEN: **D-108 root cause (Docker relay drops MySQL connections ~hourly, can return wrong data)**, D-104, D-105 (bay 2 camera blur → 0% + disguised as a verdict; fix awaiting yes), D-106 phone fallback poll, §13 owner-pickup button copy, D-97, D-98, D-99 - all work committed, NOT pushed - G1 DEBT: E6.S dispute + owner-never-collects drop on screen; D-109 ruling pending]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-25 00:45 - **PHYSICAL TEST DONE for tonight** - **E6.R VERIFIED end-to-end** (screwdriver `cbd2718f`: approved → settled → owner collected → COMPLETED; refund+payout rows) - **D-93 VERIFIED on hardware** (bay 1 retract→extend 22+22s, 00:18) - **D-103 CLOSED** (seen 4×) - E6.S (in-place pickup for rejects/disputes, :15 drop-if-uncollected cron, dispute route) + E6.T (D-108 retry, post-door never fails) + availability fixes + **E6.U VERIFIED ON SCREEN 00:56** (owner pickup opens on their tap) - API PID 27624 (re-derive) - Prerelease30 (1.13.2+30) live - release window 07-21 (restored 00:18:49) - **E6.V (rejected deposit refunds the renter in full) + D-110 (admin refund only on paid money) DEPLOYED 01:15; Ian refunded ₱50 for 1125ad66** - **E6.S deposit-reject path SEEN LIVE** - OPEN: **D-108 root cause (Docker relay drops MySQL connections ~hourly, can return wrong data)**, D-104, D-105 (bay 2 camera blur → 0% + disguised as a verdict; fix awaiting yes), D-106 phone fallback poll, §13 owner-pickup button copy, D-97, D-98, D-99 - all work committed, NOT pushed - G1 DEBT: E6.S dispute + owner-never-collects drop on screen; D-109 ruling pending]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9369,7 +9369,7 @@ row marked it REFUNDED and minted another, and the renter got three "Refund
 Processed ₱30" notices for one deposit. The books netted to one, but a person
 paying back by hand from those notices would have sent ₱90. It would also
 have "refunded" an OWNER_PAYOUT. Now only RENTAL_PAYMENT / SECURITY_DEPOSIT
-(`adminRefundTypes.test.ts`, 4). Node **378/378**.
+(`adminRefundTypes.test.ts`, 4). Node **378/378**. **Deployed 01:15, API PID 27624** (live-flow check clean; hash matched before and after).
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
