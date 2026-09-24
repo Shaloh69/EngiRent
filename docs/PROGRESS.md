@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED ~00:15** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 32624 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 32624 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9149,7 +9149,7 @@ past the relay. (1)+(2) are code; (3)/(4) are infrastructure.
 | T.3 | Pre-door reservations: `kioskController.ts:91`, `faceVerificationService.ts:270` (`assignLocker`) | Throw on failure | **Unchanged on purpose.** A door must not open onto a bay the records did not reserve. T.1's retry covers the transient case |
 | T.4 | E6.R completion after the owner's pickup | `completeAfterOwnerPickup` runs after the door opened; a throw 500s the phone and leaves the rental `VERIFICATION` with `retrievedAt` set, which nothing revisits | Caught and logged in the retrieve branch. The `:15` cron also completes any `VERIFICATION`+`APPROVED`+`OWNER_RETURN_PICKUP` rental with `retrievedAt` set (idempotent) |
 
-**E6.T BUILT ~00:10.** T.1 retry + `isTransientDbError`; T.2
+**E6.T BUILT ~23:50.** T.1 retry + `isTransientDbError`; T.2
 `recordCompartmentAfterCommit` at exactly the five post-commit sites (the two
 pre-door reservations still use the throwing `setCompartment`); T.4 the
 post-door completion is caught, and the `:15` sweep completes
@@ -9158,7 +9158,7 @@ retries once only, no retry on data errors, the non-throwing variant both
 ways, the 23:46 case end-to-end through the real retrieve branch). Two
 mutations, retry disabled and the post-door catch rethrowing, each failed the
 right tests.
-**E6.T DEPLOYED ~00:15.** The three server copies matched the previously
+**E6.T DEPLOYED 23:55 (kiosk re-registered 23:55:09).** The three server copies matched the previously
 deployed versions, and all three new hashes matched after the copy. Tree
 killed by root, restarted: **API PID 32624**, EngiRent engine, `dist`
 carries the new functions. **Not provable on demand:** it needs the next
