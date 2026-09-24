@@ -10,6 +10,7 @@ void main() {
     String status = 'VERIFICATION',
     String? verificationStatus,
     String? releaseRequestedAt,
+    String? releasedAt,
     String? retrievedAt,
   }) {
     return {
@@ -28,6 +29,7 @@ void main() {
       },
       'verificationStatus': ?verificationStatus,
       'releaseRequestedAt': ?releaseRequestedAt,
+      'releasedAt': ?releasedAt,
       'retrievedAt': ?retrievedAt,
     };
   }
@@ -36,6 +38,7 @@ void main() {
     final r = RentalModel.fromJson(rentalJson(
       verificationStatus: 'APPROVED',
       releaseRequestedAt: '2026-09-24T14:47:35.000Z',
+      releasedAt: '2026-09-24T14:47:35.000Z',
     ));
     expect(r.returnApproved, isTrue);
     expect(r.awaitingOwnerPickup, isTrue);
@@ -52,7 +55,26 @@ void main() {
     final r = RentalModel.fromJson(rentalJson(
       verificationStatus: 'APPROVED',
       releaseRequestedAt: '2026-09-24T14:47:35.000Z',
+      releasedAt: '2026-09-24T14:47:35.000Z',
       retrievedAt: '2026-09-24T15:02:00.000Z',
+    ));
+    expect(r.awaitingOwnerPickup, isFalse);
+  });
+
+  test('the D-107 recovery: a COMPLETED rental released in place is collectable', () {
+    final r = RentalModel.fromJson(rentalJson(
+      status: 'COMPLETED',
+      verificationStatus: 'APPROVED',
+      releaseRequestedAt: '2026-09-24T15:10:12.000Z',
+      releasedAt: '2026-09-24T15:10:12.000Z',
+    ));
+    expect(r.awaitingOwnerPickup, isTrue);
+  });
+
+  test('a drop the Pi has not confirmed is not collectable yet', () {
+    final r = RentalModel.fromJson(rentalJson(
+      status: 'DISPUTED',
+      releaseRequestedAt: '2026-09-24T15:10:12.000Z',
     ));
     expect(r.awaitingOwnerPickup, isFalse);
   });

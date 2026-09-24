@@ -27,10 +27,12 @@ class RentalModel {
   // there). So DEPOSITED alone does NOT mean "go and collect it" — the server
   // refuses to open the bay until this reads APPROVED.
   final String? verificationStatus;
-  // E6.R. Set when a passed return has been handed back to its owner in place
-  // (releaseRequestedAt) and once the owner has opened the bay and taken it
-  // (retrievedAt). Only on GET /rentals/:id, like the fields above.
+  // E6.R. Set when an item has been handed back to its owner and is sitting
+  // where they collect it (releasedAt — for an in-place release, at once; for
+  // an actuator drop, only when the Pi confirms it), and once the owner has
+  // opened the bay and taken it (retrievedAt). Only on GET /rentals/:id.
   final DateTime? releaseRequestedAt;
+  final DateTime? releasedAt;
   final DateTime? retrievedAt;
 
   RentalModel({
@@ -46,6 +48,7 @@ class RentalModel {
     this.transactions = const [],
     this.verificationStatus,
     this.releaseRequestedAt,
+    this.releasedAt,
     this.retrievedAt,
   });
 
@@ -68,6 +71,9 @@ class RentalModel {
       verificationStatus: json['verificationStatus'] as String?,
       releaseRequestedAt: json['releaseRequestedAt'] != null
           ? DateTime.parse(json['releaseRequestedAt'] as String)
+          : null,
+      releasedAt: json['releasedAt'] != null
+          ? DateTime.parse(json['releasedAt'] as String)
           : null,
       retrievedAt: json['retrievedAt'] != null
           ? DateTime.parse(json['retrievedAt'] as String)
@@ -150,9 +156,11 @@ class RentalModel {
       status == 'VERIFICATION' && verificationStatus == 'APPROVED';
 
   /// E6.R: the owner can go and collect — the item has been handed back to them
-  /// in place and they have not taken it yet.
-  bool get awaitingOwnerPickup =>
-      returnApproved && releaseRequestedAt != null && retrievedAt == null;
+  /// and they have not taken it yet. Deliberately NOT tied to a status: the
+  /// same is true of an item released after a dispute or a cancellation, or one
+  /// recovered from a return stranded before E6.R (already COMPLETED), and none
+  /// of those owners had any way to reach the kiosk before this.
+  bool get awaitingOwnerPickup => releasedAt != null && retrievedAt == null;
   bool get isPending => status == 'PENDING';
 
   /// Checklist Stage 5 — who the "Message" button on this rental should

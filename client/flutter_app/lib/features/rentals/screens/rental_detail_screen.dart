@@ -912,9 +912,10 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                             gradient: AppColors.primaryGradient,
                             onTap: () => _openKioskScan('return'),
                           ),
-                        // E6.R — the return passed and the money has settled;
-                        // the rental completes when the owner takes the item
-                        // back out of the bay, through the main door.
+                        // E6.R — the item is sitting where its owner collects it
+                        // (a passed return, or one released after a dispute or
+                        // cancellation). For a passed return, this pickup is
+                        // what completes the rental.
                         if (_rental!.awaitingOwnerPickup && _viewerIsOwner == true)
                           _ActionButton(
                             icon: Icons.inventory_2_rounded,
