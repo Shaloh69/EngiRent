@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 32624 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - **KIOSK-001 RELEASE WINDOW TEMPORARILY OFF since 00:11 for the 01:05 bay-1 drop test — RESTORE 7-21** - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 26604 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - **D-93 VERIFIED ON HARDWARE 00:18 (bay 1 retract→extend, rivet `b7497e8b` dropped + CANCELLED)** - release window restored 07-21 at 00:18:49 - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9179,6 +9179,48 @@ cancels `b7497e8b`. **Restore right after:**
 `{"retrieval":{"release_window_start_hour":7,"release_window_end_hour":21}}`.
 While open, the :15 E6.S sweep can also stroke at night (no candidates at
 00:11).
+
+**RESTORED 00:18:49** (`{"retrieval":{"release_window_start_hour":7,"release_window_end_hour":21}}`,
+200, and the Pi received it). The window was off 00:11 → 00:18, and the
+only stroke in that time was the one below.
+
+### D-93 — VERIFIED ON THE REAL BANK, 2026-09-25 00:18-00:19. Bay 1, the rivet tool (`b7497e8b`).
+
+The user asked for it "today", not at 07:05. A small on-demand trigger was built
+(`POST /admin/retrieval/sweep`, commit `35341f2`: the hourly R1 sweep moved
+unchanged into `collectionSweepService`, 363/363), deployed (API **PID
+26604**), and run for this one rental at 00:18:33, after the kiosk
+re-registered (00:17:17) and bay 1 was re-derived (top OCCUPIED by
+`b7497e8b`, bottom AVAILABLE). G11: explicit "yes" to bay 1, retract 22s +
+extend 22s, and the cancellation.
+
+| Time | Pi journal (via `node-api3.log`) |
+|---|---|
+| 00:18:33 | `drop_item` `DROPMUFQKMLF`, bay claim taken (deadline 64s), `PLACE sequence locker=1 retract=22.0s extend=22.0s`, **`ACTUATOR RETRACT locker=1`** |
+| 00:18:55 | `ACTUATOR STOP`, then **`ACTUATOR EXTEND locker=1`** (retract ran exactly 22.0s) |
+| 00:19:17 | `ACTUATOR STOP`, `PLACE complete`, bay claim released (held 44.3s), ack OK |
+| 00:19:19 | server: `release acknowledged` |
+
+**Retract first, then extend: D-93's corrected order, seen on hardware for the
+first time.** The kiosk screen showed "dropping — Locker 1 — placing item…".
+Re-derived after: rental **CANCELLED** (R1 + D-91), RENTAL_PAYMENT ₱30 and
+SECURITY_DEPOSIT ₱20 **REFUNDED** (bookkeeping only, no PayMongo call, by
+design), bay 1 **top AVAILABLE, bottom AWAITING_RETRIEVAL** holding
+`b7497e8b`. **Still owed:** a person seeing the item in the lower compartment
+(the owner's bottom-door pickup proves it).
+
+**D-108 seen again, INSIDE the drop's ack (`confirmRelease`), and the retry
+fired live:** 00:19:31 `[D-108] setCompartment(bay 1, bottom) hit a dropped DB
+connection — retrying once` → `prisma:error transaction failed to roll back` →
+**the retry's re-read returned the bay as "not found"** (an existing row: the
+broken connection returned *wrong data*, not just an error) → threw. **The
+first attempt had in fact committed** (bottom = AWAITING_RETRIEVAL, re-derived),
+the same "reported failed, actually landed" shape as 22:43. Consequence:
+`noteDropFinished` was skipped, so bay 1's server-side "drop running" record
+lingers until it self-expires. The Pi's own claim was released at 00:19:17.
+The drops are not "idle for a long time" either: this one came 2 minutes
+after a fresh restart. **The root cause (the Docker relay) is now the real fix
+to make.**
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
