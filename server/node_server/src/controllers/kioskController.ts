@@ -26,7 +26,7 @@ import { doorOpenSeconds } from "../services/kioskTimingStore";
 // D-96 — the server's own view of what each bay is doing right now.
 import { bayBusyWith, noteDoorOpen } from "../services/retrievalService";
 import { sendBayCapture } from "../services/bayCaptureRetry";
-import { completeClaim } from "../services/faceVerificationService";
+import { completeClaim, completeRetrieval } from "../services/faceVerificationService";
 import {
   signedMediaUrl,
   saveBuffer,
@@ -890,6 +890,10 @@ export const openBay = async (
     // grant, so this is safe to call on every open, not just the first.
     if (grant.action === "claim") {
       await completeClaim(io, grant.rentalId, grant.door);
+    }
+    // E6.U — the owner's pickup commits here too, on the real door open.
+    if (grant.action === "retrieve") {
+      await completeRetrieval(io, grant.rentalId, grant.door);
     }
 
     res.json({

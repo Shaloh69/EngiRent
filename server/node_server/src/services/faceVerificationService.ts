@@ -316,8 +316,6 @@ export async function applyFaceVerificationOutcome(params: {
   });
   if (!rental) return { action: "none", error: "Rental not found" };
 
-  const kioskRoom = `kiosk:${kioskId}`;
-
   // ── Retrieve: E4.6, and it is checked FIRST because it outranks the status.
   //
   // The user's ruling: once the actuator has dropped an item into the lower
@@ -374,31 +372,12 @@ export async function applyFaceVerificationOutcome(params: {
       };
     }
 
-    await prisma.rental.update({
-      where: { id: rentalId },
-      data: { retrievedAt: new Date() },
-    });
-
-    io.to(kioskRoom).emit("kiosk:command", {
-      action: "open_door",
-      locker_id: parseInt(rental.retrievalLocker.lockerNumber, 10),
-      door: retrievalDoor,
-      rental_id: rentalId,
-    });
-
-    // Free ONLY the compartment the owner is taking the item from, through the
-    // single writer. The other compartment may hold a different student's
-    // item and must keep saying so.
-    await recordCompartmentAfterCommit(
-      rental.retrievalLocker.id,
-      retrievalDoor === "main_door" ? "top" : "bottom",
-      { status: "AVAILABLE", rentalId: null },
-    );
-    await emitOccupancyForLockerId(io, rental.retrievalLocker.id);
-
-    // The door opens straight away here: the item is already where the owner
-    // will collect it and the owner is standing at it. The grant exists so
-    // "Open Kiosk Now" can re-open it if it relocks.
+    // E6.U (user report 2026-09-25: "it went to rental complete, no open
+    // locker") — the face check only GRANTS, exactly like a claim since D-94.
+    // "Open Kiosk Now" is what opens the door, marks the item retrieved, frees
+    // the compartment and completes a passed return (completeRetrieval, run
+    // from openBay). Opening here meant the door ran — 5s on bay 2 — without
+    // a tap, and the phone jumped straight to "complete".
     grantBayAccess({
       rentalId,
       userId: rental.ownerId,
@@ -415,19 +394,9 @@ export async function applyFaceVerificationOutcome(params: {
       lockerNumber: rental.retrievalLocker.lockerNumber,
     });
     logger.info(
-      `Retrieval approved for rental ${rentalId}, bay ${rental.retrievalLocker.lockerNumber} ${retrievalDoor}`,
+      `Retrieval approved for rental ${rentalId}, bay ${rental.retrievalLocker.lockerNumber} ` +
+        `${retrievalDoor}; awaiting the owner's open-bay tap`,
     );
-
-    // E6.R — a passed return is COMPLETED here, when its owner is let in to
-    // take the item back, not at approval. A no-op for any other retrieval
-    // (a disputed or cancelled rental's status is settled elsewhere).
-    // The door is already open: a failure here must not reach the phone as an
-    // error (D-108, 23:46). The :15 sweep finishes any completion that fails.
-    try {
-      await completeAfterOwnerPickup(io, rentalId);
-    } catch (err) {
-      logger.error(`[D-108] completion after pickup failed for rental ${rentalId} — the sweep will retry:`, err);
-    }
     return { action: "retrieve" };
   }
 
@@ -649,6 +618,48 @@ export async function applyFaceVerificationOutcome(params: {
  * changes that compartment's occupancy between grant and open now that this
  * function — not approval — is what frees it.
  */
+/**
+ * E6.U — the owner's pickup is committed when the door is actually sent to
+ * open ("Open Kiosk Now"), not at face-verification: the same rule D-94 made
+ * for a claim. Marks the item retrieved, frees ONLY the compartment it is
+ * taken from (the other may hold another student's item), and completes a
+ * passed return (E6.R). Safe on every open: the retrieved mark is conditional,
+ * so a re-open does nothing further.
+ */
+export async function completeRetrieval(
+  io: SocketIOServer,
+  rentalId: string,
+  door: "main_door" | "bottom_door",
+): Promise<void> {
+  const marked = await prisma.rental.updateMany({
+    where: { id: rentalId, retrievedAt: null, releasedAt: { not: null } },
+    data: { retrievedAt: new Date() },
+  });
+  if (marked.count === 0) return;
+
+  const rental = await prisma.rental.findUnique({
+    where: { id: rentalId },
+    select: { retrievalLockerId: true },
+  });
+  if (rental?.retrievalLockerId) {
+    await recordCompartmentAfterCommit(
+      rental.retrievalLockerId,
+      door === "main_door" ? "top" : "bottom",
+      { status: "AVAILABLE", rentalId: null },
+    );
+    await emitOccupancyForLockerId(io, rental.retrievalLockerId);
+  }
+
+  // The door is already open: a failure here must not reach the phone as an
+  // error (D-108). The :15 sweep finishes any completion that fails.
+  try {
+    await completeAfterOwnerPickup(io, rentalId);
+  } catch (err) {
+    logger.error(`[D-108] completion after pickup failed for rental ${rentalId} — the sweep will retry:`, err);
+  }
+  logger.info(`Retrieval completed for rental ${rentalId}: door opened, item handed back to its owner`);
+}
+
 export async function completeClaim(
   io: SocketIOServer,
   rentalId: string,

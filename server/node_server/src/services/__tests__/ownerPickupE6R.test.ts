@@ -43,9 +43,9 @@ jest.mock("../../utils/email", () => ({
 
 import prisma from "../../config/database";
 import { __resetBayActivity, dropUncollectedToLower, releaseForOwnerPickup } from "../retrievalService";
-import { applyFaceVerificationOutcome } from "../faceVerificationService";
+import { applyFaceVerificationOutcome, completeRetrieval } from "../faceVerificationService";
 import { compartmentHolding, setCompartment } from "../lockerCompartments";
-import { _clearAllBayAccess, grantBayAccess } from "../kioskBayAccessStore";
+import { _clearAllBayAccess, getBayAccess, grantBayAccess } from "../kioskBayAccessStore";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const holdingMock = compartmentHolding as jest.Mock;
@@ -157,6 +157,7 @@ describe("retrieve branch — the owner's pickup is what completes a passed retu
   beforeEach(() => {
     mockReset(prismaMock);
     _clearAllBayAccess();
+    setCompartmentMock.mockClear();
     prismaMock.locker.findUnique.mockResolvedValue({
       topRentalId: RENTAL_ID,
       bottomRentalId: null,
@@ -164,7 +165,7 @@ describe("retrieve branch — the owner's pickup is what completes a passed retu
     prismaMock.$transaction.mockResolvedValue([] as never);
   });
 
-  it("opens the MAIN door and completes an approved return", async () => {
+  it("face-verify only GRANTS the main door — no door moves, nothing is committed (E6.U)", async () => {
     prismaMock.rental.findUnique.mockResolvedValue({
       ...released,
       status: "VERIFICATION",
@@ -181,17 +182,48 @@ describe("retrieve branch — the owner's pickup is what completes a passed retu
     });
 
     expect(out.action).toBe("retrieve");
-    expect(emit).toHaveBeenCalledWith("kiosk:command", {
-      action: "open_door",
-      locker_id: 2,
-      door: "main_door",
-      rental_id: RENTAL_ID,
+    // The user's report, 2026-09-25: "it went to rental complete, no open
+    // locker". The door is the owner's tap now, as for a claim (D-94).
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
+    expect(prismaMock.rental.updateMany).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith("face:verified", expect.objectContaining({ action: "retrieve" }));
+    const grant = getBayAccess(RENTAL_ID);
+    expect(grant?.action).toBe("retrieve");
+    expect(grant?.door).toBe("main_door");
+  });
+
+  it("the tap (completeRetrieval) marks it retrieved, frees the TOP compartment and completes the return", async () => {
+    prismaMock.rental.updateMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      ...released,
+      retrievalLockerId: "locker-2",
+      status: "VERIFICATION",
+      verificationStatus: "APPROVED",
+      releaseReason: "OWNER_RETURN_PICKUP",
+    } as never);
+    const { io, emit } = fakeIo();
+
+    await completeRetrieval(io, RENTAL_ID, "main_door");
+
+    expect(prismaMock.rental.updateMany).toHaveBeenCalledWith({
+      where: { id: RENTAL_ID, retrievedAt: null, releasedAt: { not: null } },
+      data: { retrievedAt: expect.any(Date) },
     });
+    expect(setCompartmentMock).toHaveBeenCalledWith("locker-2", "top", { status: "AVAILABLE", rentalId: null });
     expect(prismaMock.rental.update).toHaveBeenCalledWith({
       where: { id: RENTAL_ID },
       data: { status: "COMPLETED", completedAt: expect.any(Date) },
     });
     expect(emit).toHaveBeenCalledWith("rental:completed", { rentalId: RENTAL_ID });
+  });
+
+  it("a re-open after the pickup commits nothing twice", async () => {
+    prismaMock.rental.updateMany.mockResolvedValue({ count: 0 } as never);
+    const { io } = fakeIo();
+    await completeRetrieval(io, RENTAL_ID, "main_door");
+    expect(setCompartmentMock).not.toHaveBeenCalled();
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
   });
 
   it("does NOT complete a disputed rental whose item the owner is collecting", async () => {
@@ -364,44 +396,30 @@ describe("releaseForOwnerPickup — a rejected deposit is handed back from the D
  * phone got HTTP 500 for a pickup that had worked. Once the door has opened,
  * nothing after it may reach the person as a failure.
  */
-describe("retrieve branch — a DB drop after the door opens still tells the owner", () => {
-  it("emits face:verified and returns retrieve although the compartment write and the completion fail", async () => {
+describe("completeRetrieval — a DB drop after the door opens never fails the tap", () => {
+  it("does not throw although the compartment write and the completion fail (D-108)", async () => {
     mockReset(prismaMock);
-    _clearAllBayAccess();
-    prismaMock.locker.findUnique.mockResolvedValue({ topRentalId: RENTAL_ID, bottomRentalId: null } as never);
+    prismaMock.rental.updateMany.mockResolvedValue({ count: 1 } as never);
     prismaMock.rental.findUnique.mockResolvedValue({
       id: RENTAL_ID,
       itemId: "item-1",
       renterId: "renter-1",
       ownerId: "owner-1",
+      retrievalLockerId: "locker-2",
       status: "VERIFICATION",
       verificationStatus: "APPROVED",
       releaseReason: "OWNER_RETURN_PICKUP",
-      releaseRequestedAt: new Date(),
-      releasedAt: new Date(),
-      retrievedAt: null,
       item: { title: "Little Hammer" },
       renter: { firstName: "Ren", email: "r@x" },
       owner: { firstName: "Own", email: "o@x" },
-      depositLocker: { id: "locker-2", lockerNumber: "2" },
-      retrievalLocker: { id: "locker-2", lockerNumber: "2", kioskId: "KIOSK-001" },
     } as never);
     const { recordCompartmentAfterCommit } = jest.requireMock("../lockerCompartments");
     (recordCompartmentAfterCommit as jest.Mock).mockResolvedValueOnce(false);
     prismaMock.$transaction.mockRejectedValueOnce(
       Object.assign(new Error("Server has closed the connection."), { code: "P1017" }),
     );
-    const { io, emit } = fakeIo();
+    const { io } = fakeIo();
 
-    const out = await applyFaceVerificationOutcome({
-      io,
-      rentalId: RENTAL_ID,
-      kioskId: "KIOSK-001",
-      confidence: 0.4,
-    });
-
-    expect(out.action).toBe("retrieve");
-    expect(emit).toHaveBeenCalledWith("kiosk:command", expect.objectContaining({ action: "open_door" }));
-    expect(emit).toHaveBeenCalledWith("face:verified", expect.objectContaining({ action: "retrieve" }));
+    await expect(completeRetrieval(io, RENTAL_ID, "main_door")).resolves.toBeUndefined();
   });
 });

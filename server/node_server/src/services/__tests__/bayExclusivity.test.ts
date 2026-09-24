@@ -32,6 +32,7 @@ jest.mock("../lockerOccupancyService", () => ({
 }));
 jest.mock("../faceVerificationService", () => ({
   completeClaim: jest.fn().mockResolvedValue(undefined),
+  completeRetrieval: jest.fn().mockResolvedValue(undefined),
   KIOSK_ACTIONABLE_STATUSES: [],
   resolveFaceSubject: jest.fn(),
   compareFaceWithMl: jest.fn(),
@@ -361,5 +362,40 @@ describe("D-96 — F2 can finally refuse a real release", () => {
 
     const outcome = await requestRelease(io, "rental-R", { onDemand: true });
     expect(outcome.released).toBe(true);
+  });
+});
+
+/**
+ * E6.U (user report 2026-09-25: "it went to rental complete, no open locker").
+ * The owner's pickup is committed by the real door open, through the real
+ * controller — the same rule D-94 made for a claim.
+ */
+describe("E6.U — openBay commits an owner's pickup on the real door open", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    _clearAllBayAccess();
+  });
+
+  it("opens the granted door and runs completeRetrieval with it", async () => {
+    const { completeRetrieval } = jest.requireMock("../faceVerificationService");
+    (completeRetrieval as jest.Mock).mockClear();
+    grantBayAccess({
+      rentalId: "owner-pickup",
+      userId: "owner-1",
+      kioskId: KIOSK,
+      action: "retrieve",
+      lockerNumber: "2",
+      door: "main_door",
+    });
+    const { io, emit } = fakeIo();
+
+    const next = await callOpenBay("owner-pickup", "owner-1", io);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(
+      "kiosk:command",
+      expect.objectContaining({ action: "open_door", locker_id: 2, door: "main_door" }),
+    );
+    expect(completeRetrieval).toHaveBeenCalledWith(io, "owner-pickup", "main_door");
   });
 });

@@ -9262,6 +9262,39 @@ was cancelled and the tool was back with its owner. Re-derived: `isAvailable
   live-flow check of the log (0 lines). **Rule from here: check for a live
   kiosk flow before every API restart.**
 
+### E6.R VERIFIED END-TO-END, 2026-09-25 00:34-00:37 (screwdriver `cbd2718f`) + E6.U planned from the user's report
+
+Ian's return: 00:34:43 capture#1 → RETRY 0 (D-105) → bay 2 re-opened →
+00:35:08 capture#2 → escalated to review → **00:35:58 `released IN PLACE …
+bay 2 (main_door, no actuator stroke …) OWNER_RETURN_PICKUP`** → **00:36:15
+`[E6.R] return APPROVED … settled, awaiting owner pickup`** (the user
+approved `fc23452b`) → 00:36:48 the owner scanned → 00:36:57 `Retrieval
+approved … bay 2 main_door` → **00:37:05 `[E6.R] rental cbd2718f COMPLETED:
+owner collected the item`**. Re-derived: **COMPLETED**, **DEPOSIT_REFUND ₱30
+COMPLETED + OWNER_PAYOUT ₱20 PENDING** (no payout destination), bay 2
+AVAILABLE top and bottom, the screwdriver listing available again.
+**E6.R's server half is proven on the real bank.**
+
+**The user's report:** "when i finished facescan it went to rental complete
+no open locker". Cause: the E4.6 retrieve branch opens the door **at
+face-verify** and E6.R completes the rental there too, so the phone jumps
+straight to complete and bay 2's 5s door runs without a tap. The renter's
+claim was fixed the other way long ago (D-94: the face check GRANTS, `openBay`
+opens and commits).
+
+| # | Change (E6.U) |
+|---|---|
+| U.1 | Retrieve branch at face-verify: **grant only** (the door that holds the item), `face:verified` → the phone shows "Open Kiosk Now". No door, no `retrievedAt`, no compartment write, no completion |
+| U.2 | `openBay` with a `retrieve` grant: door command (as for every action) → `completeRetrieval()`: `retrievedAt` (idempotent, conditional on null), free that compartment (`recordCompartmentAfterCommit`), occupancy, then `completeAfterOwnerPickup` (caught). The same shape as `completeClaim` |
+| U.3 | No phone change: the bay phase already shows "Open Kiosk Now" for every action, and `rental:completed` → success |
+
+**E6.U BUILT.** `completeRetrieval` (conditional `retrievedAt`, frees only
+that compartment, completion caught), called from `openBay` for a `retrieve`
+grant. The retrieve branch now grants and emits `face:verified` only. Node
+**369/369** (+3: grant-only at face-verify, commit on the tap, no double commit
+on re-open, the wiring through the real `openBay`). The wiring mutation fails
+the test.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 
