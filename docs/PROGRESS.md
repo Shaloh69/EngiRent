@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 32624 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - post-`/clear` #2, 2026-09-24 ~22:30 - **PHYSICAL TEST: rental `b7497e8b…` DEPOSITED + APPROVED (22:30:16), next = renter COLLECT** - **D-103 VERIFIED LIVE 22:39 (bay 2, refused→re-sent→captured) — CLOSED** - **D-104 FOUND LIVE, NOT FIXED** ('Item is placed' accepted before any door open) - **D-105 FOUND LIVE, NOT FIXED** (bay 2 photos fail the ML blur gate → hard 0; 2nd rental `3139d8c5…` 'Little Hammer' full cycle → COMPLETED 22:47, **D-95 ledger rows EXIST (refund ₱150 COMPLETED, payout ₱50 PENDING by design) but release REFUSED (outside 07-21 window) → hammer STRANDED in bay 2**) - **E6.T (D-108 retry + post-door never fails the person) DEPLOYED 23:55** - **E6.S DEPLOYED 23:41 (in-place pickup for rejects/disputes, :15 drop-if-owner-never-collects cron, dispute route) — NOT SEEN ON SCREEN** - **D-107 RULED + FIXED for returns as E6.R (owner collects in place before COMPLETED; renter-only reviews) — SERVER DEPLOYED 23:09 (PID 35072), **Prerelease30 (1.13.2+30) LIVE on the website 23:2x** (public chunks carry only Prerelease30, APK 200 / 90993439 B), NOT SEEN ON SCREEN** - 3139d8c5 hammer released in place for its owner via the new admin endpoint - **D-106 FOUND LIVE, NOT FIXED** (DB blip mid-return drops kiosk/renter/owner messages; D-102 guard held) - **OPEN: how the item got into bay 1 with no door opened (latch?)** - D-96 kiosk half VERIFIED - D-101 CLOSED - D-102 FIXED+DEPLOYED - API PID 32624 (re-derive) - Prerelease29 live - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - **KIOSK-001 RELEASE WINDOW TEMPORARILY OFF since 00:11 for the 01:05 bay-1 drop test — RESTORE 7-21** - G1 DEBT (overridden by user): E6.R + E6.S on screen, D-93 hardware]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9164,6 +9164,21 @@ killed by root, restarted: **API PID 32624**, EngiRent engine, `dist`
 carries the new functions. **Not provable on demand:** it needs the next
 real connection drop. The next `[D-108] … retrying once` line in the log is
 the evidence.
+
+### ⚠ TEMPORARY KIOSK POLICY CHANGE, 2026-09-25 00:11 — MUST BE RESTORED
+
+For an early D-93 drop test (G11: the user said an explicit **"yes"** after
+being told bay 1, retract 22s + extend 22s, and that `b7497e8b` is
+auto-cancelled): `PUT /admin/kiosks/KIOSK-001/config`
+`{"retrieval":{"release_window_start_hour":0,"release_window_end_hour":0}}`
+(start = end means **no window**). The stored config held only this block
+(the GET had shown defaults), so everything else is still default. The Pi
+logged "no 'lockers' key — keeping local kiosk_config.json": **timings
+untouched.** Expected: the 01:05 R1 sweep drops the rivet tool in bay 1 and
+cancels `b7497e8b`. **Restore right after:**
+`{"retrieval":{"release_window_start_hour":7,"release_window_end_hour":21}}`.
+While open, the :15 E6.S sweep can also stroke at night (no candidates at
+00:11).
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
