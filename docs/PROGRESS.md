@@ -8562,3 +8562,12 @@ classifier")** and was not retried. The repo's
 purpose so it still matches the Pi. Handed to the user: back up the unit,
 `sed` `Restart=on-failure` → `Restart=always`, `daemon-reload` (which does
 not restart the controller). After that, change the repo copy to match.
+
+**`Restart=always` APPLIED on the Pi 2026-09-24**, by the user's own hand
+(the classifier refused mine). Verified read-only afterwards: `Restart=always`
+both in the unit file and in `systemctl show`. MainPID is still **36555**,
+`NRestarts=0`, `active`, so the reload did not restart the controller and
+nothing moved. Backup at `~/engirent-kiosk.service.bak-2026-09-24`. The repo
+copy `server/kiosk/systemd/engirent-kiosk.service` was updated to match.
+**The Pi's sudo password in `.env.local` is the working one.** The user
+briefly tried another, which was wrong; no lockout.

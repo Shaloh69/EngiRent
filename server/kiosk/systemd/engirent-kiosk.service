@@ -9,7 +9,10 @@ User=pi
 WorkingDirectory=/home/pi/engirent/server/kiosk
 EnvironmentFile=/home/pi/engirent/server/kiosk/.env
 ExecStart=/home/pi/engirent/server/kiosk/venv/bin/python main.py
-Restart=on-failure
+# always, not on-failure: a clean exit(0) or a plain SIGTERM is not a "failure" to
+# systemd, so on-failure could leave an unattended bank dark. Startup drives no
+# hardware, so an automatic restart is safe. Applied on the Pi 2026-09-24.
+Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
