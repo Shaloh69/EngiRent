@@ -169,6 +169,7 @@ describe("reviewVerification — return, REJECTED (D-95)", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     requestReleaseMock.mockClear();
+    releaseForPickupMock.mockClear();
     sendVerificationFailedMock.mockClear();
     prismaMock.verification.findUnique.mockResolvedValue({
       id: "verification-1",
@@ -185,9 +186,10 @@ describe("reviewVerification — return, REJECTED (D-95)", () => {
     const { io } = makeIo();
     await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
 
-    expect(requestReleaseMock).toHaveBeenCalledWith(io, "rental-1", {
-      reasonOverride: "RETURN_DISPUTED",
-    });
+    // E6.S — handed back IN PLACE for the owner, at any hour; never a
+    // policy-gated drop, which was refused at night and never retried.
+    expect(releaseForPickupMock).toHaveBeenCalledWith(io, "rental-1", "RETURN_DISPUTED");
+    expect(requestReleaseMock).not.toHaveBeenCalled();
     expect(prismaMock.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ userId: "owner-1", title: "Return Disputed" }),

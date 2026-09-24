@@ -33,10 +33,10 @@ jest.mock("../../utils/email", () => ({
 }));
 
 import prisma from "../../config/database";
-import { releaseForOwnerPickup } from "../retrievalService";
+import { __resetBayActivity, dropUncollectedToLower, releaseForOwnerPickup } from "../retrievalService";
 import { applyFaceVerificationOutcome } from "../faceVerificationService";
 import { compartmentHolding, setCompartment } from "../lockerCompartments";
-import { _clearAllBayAccess } from "../kioskBayAccessStore";
+import { _clearAllBayAccess, grantBayAccess } from "../kioskBayAccessStore";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const holdingMock = compartmentHolding as jest.Mock;
@@ -205,5 +205,146 @@ describe("retrieve branch — the owner's pickup is what completes a passed retu
     for (const call of prismaMock.rental.update.mock.calls) {
       expect(JSON.stringify(call[0])).not.toContain("COMPLETED");
     }
+  });
+});
+
+/**
+ * E6.S (user ruling 2026-09-24): if the owner never comes, the item drops to
+ * the lower compartment so the upper one is free for the next deposit; a bay
+ * is only blocked when BOTH compartments are occupied. This is an UNATTENDED
+ * actuator stroke, so every guard an unattended stroke has always had applies.
+ */
+describe("dropUncollectedToLower — the owner never came", () => {
+  // 10:00 local: inside the default 07:00-21:00 window.
+  const DAYTIME = new Date(2026, 8, 25, 10, 0, 0);
+  const LOCAL_2330 = new Date(2026, 8, 24, 23, 30, 0);
+
+  function waiting(releasedHoursAgo: number, now: Date) {
+    return {
+      id: RENTAL_ID,
+      ownerId: "owner-1",
+      releaseReason: "OWNER_RETURN_PICKUP",
+      releasedAt: new Date(now.getTime() - releasedHoursAgo * 3_600_000),
+      retrievedAt: null,
+      item: { title: "Little Hammer" },
+      retrievalLocker: BAY,
+    };
+  }
+
+  beforeEach(() => {
+    mockReset(prismaMock);
+    holdingMock.mockReset();
+    setCompartmentMock.mockClear();
+    _clearAllBayAccess();
+    // Each drop leaves a process-local "drop running" record on its bay; left
+    // over, it refuses the next test for the wrong reason and hides the guard
+    // that test exists to prove (found by mutation: the grant check survived).
+    __resetBayActivity();
+    prismaMock.kioskConfig.findUnique.mockResolvedValue(null);
+    holdingMock.mockResolvedValue("top");
+    prismaMock.locker.findUnique.mockResolvedValue({
+      bottomStatus: "AVAILABLE",
+      bottomRentalId: null,
+    } as never);
+  });
+
+  it("drops an item left up top past the grace, in daytime, onto a free lower compartment", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue(waiting(2, DAYTIME) as never);
+    const { io, to, emit } = fakeIo();
+
+    const out = await dropUncollectedToLower(io, RENTAL_ID, DAYTIME);
+
+    expect(out.released).toBe(true);
+    expect(to).toHaveBeenCalledWith("kiosk:KIOSK-001");
+    expect(emit).toHaveBeenCalledWith(
+      "kiosk:command",
+      expect.objectContaining({ action: "drop_item", locker_id: 2, rental_id: RENTAL_ID }),
+    );
+    // In transit until the Pi acks: the retrieve branch must fail closed.
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: RENTAL_ID },
+      data: { releaseRequestedAt: DAYTIME, releasedAt: null },
+    });
+    expect(setCompartmentMock).toHaveBeenCalledWith("locker-2", "bottom", {
+      status: "RESERVED",
+      rentalId: RENTAL_ID,
+    });
+  });
+
+  it("waits out the owner's grace", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue(waiting(0.5, DAYTIME) as never);
+    const { io, emit } = fakeIo();
+    const out = await dropUncollectedToLower(io, RENTAL_ID, DAYTIME);
+    expect(out.released).toBe(false);
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+  });
+
+  it("never strokes unattended at night (F10)", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue(waiting(3, LOCAL_2330) as never);
+    const { io, emit } = fakeIo();
+    const out = await dropUncollectedToLower(io, RENTAL_ID, LOCAL_2330);
+    expect(out.released).toBe(false);
+    expect(out.refusal).toMatch(/release window/);
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+  });
+
+  it("does not stack two items: an occupied lower compartment keeps the item up top", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue(waiting(2, DAYTIME) as never);
+    prismaMock.locker.findUnique.mockResolvedValue({
+      bottomStatus: "OCCUPIED",
+      bottomRentalId: "someone-else",
+    } as never);
+    const { io, emit } = fakeIo();
+    const out = await dropUncollectedToLower(io, RENTAL_ID, DAYTIME);
+    expect(out.released).toBe(false);
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
+  });
+
+  it("never strokes while anyone holds a grant on the bay — the owner may be standing at it", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue(waiting(2, DAYTIME) as never);
+    grantBayAccess({
+      rentalId: RENTAL_ID,
+      userId: "owner-1",
+      kioskId: "KIOSK-001",
+      action: "retrieve",
+      lockerNumber: "2",
+      door: "main_door",
+    });
+    const { io, emit } = fakeIo();
+    const out = await dropUncollectedToLower(io, RENTAL_ID, DAYTIME);
+    expect(out.released).toBe(false);
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
+  });
+});
+
+describe("releaseForOwnerPickup — a rejected deposit is handed back from the DEPOSIT bay", () => {
+  beforeEach(() => {
+    mockReset(prismaMock);
+    holdingMock.mockReset();
+    setCompartmentMock.mockClear();
+  });
+
+  it("finds the item in the deposit bay when there is no return bay (R4)", async () => {
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "CANCELLED",
+      ownerId: "owner-1",
+      releaseRequestedAt: null,
+      item: { title: "Little Hammer" },
+      returnLocker: null,
+      depositLocker: { ...BAY, id: "locker-1", lockerNumber: "1" },
+    } as never);
+    holdingMock.mockResolvedValue("top");
+    const { io, emit } = fakeIo();
+
+    const out = await releaseForOwnerPickup(io, RENTAL_ID, "DEPOSIT_REJECTED");
+
+    expect(out).toEqual({ released: true, reason: "DEPOSIT_REJECTED", lockerNumber: "1" });
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: RENTAL_ID },
+      data: expect.objectContaining({ releaseReason: "DEPOSIT_REJECTED", retrievalLockerId: "locker-1" }),
+    });
+    expect(emit).not.toHaveBeenCalledWith("kiosk:command", expect.anything());
   });
 });

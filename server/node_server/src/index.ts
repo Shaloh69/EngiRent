@@ -55,6 +55,8 @@ import {
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
   requestRelease,
+  releaseForOwnerPickup,
+  dropUncollectedToLower,
   confirmRelease,
   rentalForCommand,
   noteDoorClosed,
@@ -643,11 +645,12 @@ io.on("connection", (socket: Socket) => {
             // while the owner's item was still physically inside it, and no
             // door was reopened — so the item was sealed in a bay the database
             // called empty, and the next deposit could be assigned to it.
-            // Release it to the owner instead: the actuator drops it into the
-            // lower compartment and the bay becomes AWAITING_RETRIEVAL.
-            await requestRelease(io, rental_id, {
-              reasonOverride: "DEPOSIT_REJECTED",
-            });
+            // Release it to the owner instead.
+            // E6.S (user ruling 2026-09-24) - handed back IN PLACE for the owner to collect
+            // in person, at any hour; it drops later only if they never come
+            // (dropUncollectedToLower). A policy-gated drop here was refused at night
+            // and never retried (D-107's shape).
+            await releaseForOwnerPickup(io, rental_id, "DEPOSIT_REJECTED");
             await prisma.notification.create({
               data: {
                 userId: rental.renterId,
@@ -902,9 +905,11 @@ io.on("connection", (socket: Socket) => {
             // disputed item — the object the dispute is about — was sealed in
             // a bay marked AVAILABLE. Release it to the owner pending
             // settlement.
-            await requestRelease(io, rental_id, {
-              reasonOverride: "RETURN_DISPUTED",
-            });
+            // E6.S (user ruling 2026-09-24) - handed back IN PLACE for the owner to collect
+            // in person, at any hour; it drops later only if they never come
+            // (dropUncollectedToLower). A policy-gated drop here was refused at night
+            // and never retried (D-107's shape).
+            await releaseForOwnerPickup(io, rental_id, "RETURN_DISPUTED");
             await prisma.notification.create({
               data: {
                 userId: rental.ownerId,
@@ -1670,6 +1675,34 @@ cron.schedule("5 * * * *", async () => {
     );
   } catch (err) {
     logger.error(`[CRON] E4.6 collection sweep failed: ${(err as Error).message}`);
+  }
+});
+
+// E6.S — items handed back to their owner who has not come for them. The user's
+// ruling (2026-09-24): the upper compartment must be free for the next deposit,
+// so an item left up there past the grace is dropped to the lower one, and a
+// bay is only blocked when BOTH compartments hold something. Every judgement
+// (grace, window, bay busy, lower compartment free) lives in
+// dropUncollectedToLower; this loop only finds candidates. Its own slot, ten
+// minutes after the sweep above, so the two never stroke in the same tick.
+cron.schedule("15 * * * *", async () => {
+  try {
+    const waiting = await prisma.rental.findMany({
+      where: { releasedAt: { not: null }, retrievedAt: null },
+      select: { id: true },
+    });
+    if (waiting.length === 0) return;
+    let dropped = 0;
+    for (const rental of waiting) {
+      const outcome = await dropUncollectedToLower(io, rental.id);
+      if (outcome.released) dropped += 1;
+      else logger.info(`[E6.S] not dropping rental ${rental.id}: ${outcome.refusal}`);
+    }
+    logger.info(
+      `[CRON] E6.S uncollected-by-owner sweep — ${waiting.length} waiting, ${dropped} dropped`,
+    );
+  } catch (err) {
+    logger.error(`[CRON] E6.S uncollected-by-owner sweep failed: ${(err as Error).message}`);
   }
 });
 

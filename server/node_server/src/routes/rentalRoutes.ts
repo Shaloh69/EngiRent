@@ -7,6 +7,7 @@ import {
   updateRentalStatus,
   cancelRental,
   extendRental,
+  fileDispute,
 } from "../controllers/rentalController";
 import { getConversation, sendMessage } from "../controllers/messageController";
 import { authenticate, requireVerified } from "../middleware/auth";
@@ -69,6 +70,17 @@ router.post(
 );
 
 // Extend/shorten a rental (checklist Stage 9)
+// E6.S — the phone's "Dispute this Return" has always posted here.
+router.post(
+  "/:id/dispute",
+  authenticate,
+  validate([
+    param("id").isUUID().withMessage("Valid rental ID is required"),
+    body("reason").isString().isLength({ max: 1000 }).withMessage("Reason is too long"),
+  ]),
+  fileDispute,
+);
+
 router.patch(
   "/:id/dates",
   authenticate,

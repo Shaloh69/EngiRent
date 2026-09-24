@@ -6,6 +6,8 @@ import { compartmentHolding, setCompartment } from "./lockerCompartments";
 import { hasLiveGrantOnBay } from "./kioskBayAccessStore";
 import {
   decideRelease,
+  hoursSince,
+  isWithinReleaseWindow,
   readRetrievalPolicy,
   ReleaseCandidate,
   ReleaseDecision,
@@ -454,9 +456,10 @@ async function releaseInPlace(
 }
 
 /**
- * E6.R — a passed return is handed back to its owner IN PLACE, from the return
- * bay's upper compartment through the main door (the user's ruling,
- * 2026-09-24). It is never dropped.
+ * E6.R / E6.S — hand an item back to its OWNER where it sits: a passed return
+ * (OWNER_RETURN_PICKUP), a rejected deposit (DEPOSIT_REJECTED) or a disputed
+ * return (RETURN_DISPUTED). It is never dropped here (user rulings,
+ * 2026-09-24: the owner collects in person, at any hour).
  *
  * This deliberately skips `decideRelease`. Every guard in that policy protects
  * an actuator stroke: F10 keeps a drop out of an unattended compartment at
@@ -465,40 +468,47 @@ async function releaseInPlace(
  * routing it through those guards is what stranded a return approved at 22:47
  * (D-107): refused by F10, never retried, then unreachable once COMPLETED.
  *
- * Keyed on the RETURN locker rather than the rental status, so it also
- * recovers an item already stranded that way (the admin escape hatch).
+ * Finds the item in whichever bay holds it — the return bay first, then the
+ * deposit bay — from the compartment columns, not the rental status, so it
+ * also recovers an item already stranded that way (the admin escape hatch).
  * Idempotent: a second call on a rental already released is a no-op.
+ *
+ * If the owner never comes, `dropUncollectedToLower` moves it down later so
+ * the upper compartment is free again.
  */
 export async function releaseForOwnerPickup(
   io: Server,
   rentalId: string,
+  releaseReason: ReleaseReason = "OWNER_RETURN_PICKUP",
 ): Promise<ReleaseOutcome> {
   const rental = await prisma.rental.findUnique({
     where: { id: rentalId },
     include: {
       item: { select: { title: true } },
       returnLocker: LOCKER_SELECT,
+      depositLocker: LOCKER_SELECT,
     },
   });
   if (!rental) return { released: false, refusal: "rental not found" };
   if (rental.releaseRequestedAt) {
-    return {
-      released: false,
-      refusal: "already released",
-      lockerNumber: rental.returnLocker?.lockerNumber,
-    };
-  }
-  const bay = rental.returnLocker;
-  if (!bay) {
-    logger.error(`[E6.R] owner pickup for rental ${rentalId}: no return locker on record`);
-    return { released: false, refusal: "no return locker on record" };
+    return { released: false, refusal: "already released" };
   }
 
-  const where = await compartmentHolding(bay.id, rentalId);
-  if (where === null) {
+  let bay: { id: string; lockerNumber: string } | null = null;
+  let where: "top" | "bottom" | null = null;
+  for (const candidate of [rental.returnLocker, rental.depositLocker]) {
+    if (!candidate) continue;
+    const found = await compartmentHolding(candidate.id, rentalId);
+    if (found) {
+      bay = candidate;
+      where = found;
+      break;
+    }
+  }
+  if (!bay || !where) {
     logger.error(
-      `[E6.R] owner pickup REFUSED for rental ${rentalId}: bay ${bay.lockerNumber} holds it ` +
-        `in neither compartment. Nothing released.`,
+      `[E6.R] owner pickup REFUSED for rental ${rentalId}: no bay records it in either ` +
+        `compartment. Nothing released.`,
     );
     return { released: false, refusal: "item not recorded in either compartment" };
   }
@@ -509,10 +519,128 @@ export async function releaseForOwnerPickup(
     itemTitle: rental.item.title,
     bay,
     where,
-    releaseReason: "OWNER_RETURN_PICKUP",
-    why: "a passed return is collected by its owner where it sits (E6.R)",
+    releaseReason,
+    why: "the owner collects it in person where it sits (E6.R/E6.S)",
   });
-  return { released: true, reason: "OWNER_RETURN_PICKUP", lockerNumber: bay.lockerNumber };
+  return { released: true, reason: releaseReason, lockerNumber: bay.lockerNumber };
+}
+
+/**
+ * E6.S — the owner never came. Move their item from the UPPER compartment down
+ * to the lower one so the upper is free for the next deposit (user ruling,
+ * 2026-09-24: "only block if a locker's top and bottom are both occupied").
+ *
+ * DRIVES HARDWARE, unattended — so every guard an unattended stroke has always
+ * had applies here: the per-kiosk grace, auto-release, F10 (07:00-21:00) and
+ * F2 (no door open, no drop running, and NO live grant on the bay, including
+ * this owner's own: someone holding a grant may be standing at it right now).
+ * Refuses rather than strokes on anything unexpected.
+ *
+ * The item is in transit from the command until the Pi's ack, so `releasedAt`
+ * is cleared first: the retrieve branch then fails closed ("release not
+ * confirmed") instead of opening a door onto a moving floor, and the existing
+ * `confirmRelease` settles both compartments on the ack exactly as it does for
+ * any other drop. A lost ack surfaces through `findUnacknowledgedReleases` (F3).
+ */
+export async function dropUncollectedToLower(
+  io: Server,
+  rentalId: string,
+  now: Date = new Date(),
+): Promise<ReleaseOutcome> {
+  const rental = await prisma.rental.findUnique({
+    where: { id: rentalId },
+    include: {
+      item: { select: { title: true } },
+      retrievalLocker: LOCKER_SELECT,
+    },
+  });
+  if (!rental) return { released: false, refusal: "rental not found" };
+  if (!rental.releasedAt || rental.retrievedAt) {
+    return { released: false, refusal: "not waiting for its owner" };
+  }
+  const bay = rental.retrievalLocker;
+  if (!bay) return { released: false, refusal: "no retrieval bay on record" };
+
+  const configRow = await prisma.kioskConfig.findUnique({ where: { kioskId: bay.kioskId } });
+  const policy = readRetrievalPolicy(configRow?.config);
+
+  const waited = hoursSince(rental.releasedAt, now);
+  if (waited < policy.collection_grace_hours) {
+    return { released: false, refusal: `owner still within the ${policy.collection_grace_hours}h grace` };
+  }
+  if (!bay.isOperational || bay.status === "OUT_OF_SERVICE") {
+    return { released: false, refusal: `bay ${bay.lockerNumber} is not operational` };
+  }
+  if (!policy.auto_release_enabled) {
+    return { released: false, refusal: "automatic release is switched off for this kiosk" };
+  }
+  if (!isWithinReleaseWindow(now, policy)) {
+    return {
+      released: false,
+      refusal: `outside the release window ${policy.release_window_start_hour}:00-${policy.release_window_end_hour}:00`,
+    };
+  }
+  if (bayBusyWith(bay.kioskId, bay.lockerNumber) || hasLiveGrantOnBay(bay.kioskId, bay.lockerNumber)) {
+    return {
+      released: false,
+      refusal: `bay ${bay.lockerNumber} has a live session, an open door or a drop running`,
+    };
+  }
+
+  const where = await compartmentHolding(bay.id, rentalId);
+  if (where !== "top") {
+    // Already below, or not recorded: nothing to move, and never stroke blind.
+    return {
+      released: false,
+      refusal: where === "bottom" ? "already in the lower compartment" : "item not recorded in the bay",
+    };
+  }
+  const bayRow = await prisma.locker.findUnique({
+    where: { id: bay.id },
+    select: { bottomStatus: true, bottomRentalId: true },
+  });
+  if (bayRow?.bottomStatus !== "AVAILABLE" || bayRow?.bottomRentalId) {
+    // The lower compartment holds something else: stroking would stack two
+    // students' property. The item stays up top and this bay is genuinely full.
+    return { released: false, refusal: "lower compartment occupied — the item stays where it is" };
+  }
+
+  const commandId = `DROP${Date.now().toString(36).toUpperCase()}`;
+  pendingDrops.set(commandId, rentalId);
+  await prisma.rental.update({
+    where: { id: rentalId },
+    data: { releaseRequestedAt: now, releasedAt: null },
+  });
+  await setCompartment(bay.id, "top", { status: "AWAITING_RETRIEVAL", rentalId });
+  await setCompartment(bay.id, "bottom", { status: "RESERVED", rentalId });
+  await emitOccupancyForLockerId(io, bay.id);
+  noteDropStarted(bay.kioskId, bay.lockerNumber, rentalId);
+
+  // No durations are sent — the Pi reads its own hand-calibrated per-bay timings.
+  io.to(`kiosk:${bay.kioskId}`).emit("kiosk:command", {
+    action: "drop_item",
+    command_id: commandId,
+    locker_id: parseInt(bay.lockerNumber, 10),
+    rental_id: rentalId,
+  });
+
+  await prisma.notification.create({
+    data: {
+      userId: rental.ownerId,
+      title: "Item moved to the collection door",
+      message:
+        `${rental.item.title} was not collected, so it has been moved to the lower ` +
+        `collection door of locker ${bay.lockerNumber}. Scan the kiosk QR to open it.`,
+      type: "ITEM_READY_FOR_CLAIM",
+      relatedEntityId: rentalId,
+      relatedEntityType: "rental",
+    },
+  });
+  logger.info(
+    `[E6.S] uncollected item of rental ${rentalId} DROPPED to the lower compartment of bay ` +
+      `${bay.lockerNumber} after ${waited.toFixed(2)}h (command ${commandId})`,
+  );
+  return { released: true, reason: rental.releaseReason ?? undefined, lockerNumber: bay.lockerNumber };
 }
 
 export async function confirmRelease(rentalId: string): Promise<void> {

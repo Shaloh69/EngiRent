@@ -7,6 +7,7 @@ import {
   ValidationError,
 } from "../utils/errors";
 import logger from "../utils/logger";
+import { releaseForOwnerPickup } from "../services/retrievalService";
 import {
   findOverlappingRentals,
   recomputeItemAvailability,
@@ -471,6 +472,106 @@ export const cancelRental = async (
       success: true,
       message: "Rental cancelled successfully",
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /rentals/:id/dispute — E6.S (user ruling 2026-09-24: "wire Dispute
+ * this Return"). The phone has posted here since the button existed, and the
+ * route did not, so every dispute failed.
+ *
+ * Only the renter or the owner, and only while the return is still being
+ * checked: once a return is APPROVED its money has already moved (E6.R), and
+ * contesting that is an admin matter, not a button. The rental becomes
+ * DISPUTED — which is what the admin console's Settle action requires — and the
+ * item is handed back to its owner in place, as for any rejected return. The
+ * reason is kept on the return's verification row (no schema change) so the
+ * admin reviewing the dispute reads it next to the photos.
+ */
+export const fileDispute = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.user) throw new ForbiddenError("Authentication required");
+    const id = req.params.id as string;
+    const reason = String(req.body?.reason ?? "").trim();
+    if (reason.length < 5) {
+      throw new ValidationError("Please describe the problem (at least a few words)");
+    }
+
+    const rental = await prisma.rental.findUnique({
+      where: { id },
+      include: { item: { select: { title: true } } },
+    });
+    if (!rental) throw new NotFoundError("Rental not found");
+    const isRenter = rental.renterId === req.user.userId;
+    const isOwner = rental.ownerId === req.user.userId;
+    if (!isRenter && !isOwner) throw new ForbiddenError("Access denied");
+
+    // Conditional on the state it was checked in, so a dispute and an admin's
+    // approval racing each other cannot both win.
+    const updated = await prisma.rental.updateMany({
+      where: { id, status: "VERIFICATION", verificationStatus: { not: "APPROVED" } },
+      data: { status: "DISPUTED" },
+    });
+    if (updated.count === 0) {
+      throw new ValidationError(
+        "Only a return that is still being checked can be disputed",
+      );
+    }
+
+    const who = isRenter ? "renter" : "owner";
+    if (rental.verificationId) {
+      const v = await prisma.verification.findUnique({
+        where: { id: rental.verificationId },
+        select: { reviewNotes: true },
+      });
+      await prisma.verification.update({
+        where: { id: rental.verificationId },
+        data: {
+          reviewNotes: [v?.reviewNotes, `Dispute filed by the ${who}: ${reason.slice(0, 1000)}`]
+            .filter(Boolean)
+            .join("\n"),
+        },
+      });
+    }
+
+    const io = req.app.get("io");
+    if (io) await releaseForOwnerPickup(io, id, "RETURN_DISPUTED");
+
+    const otherParty = isRenter ? rental.ownerId : rental.renterId;
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    });
+    await prisma.notification.createMany({
+      data: [
+        {
+          userId: otherParty,
+          title: "Return disputed",
+          message: `The ${who} disputed the return of ${rental.item.title}. An admin will review it.`,
+          type: "VERIFICATION_FAILED" as const,
+          relatedEntityId: id,
+          relatedEntityType: "rental",
+        },
+        ...admins.map((a) => ({
+          userId: a.id,
+          title: "New dispute to settle",
+          message: `The ${who} disputed the return of ${rental.item.title}: ${reason.slice(0, 200)}`,
+          type: "SYSTEM_ANNOUNCEMENT" as const,
+          relatedEntityId: id,
+          relatedEntityType: "rental",
+        })),
+      ],
+    });
+    io?.to(`user:${otherParty}`).emit("return:disputed", { rentalId: id });
+
+    logger.info(`[E6.S] rental ${id} DISPUTED by the ${who} (${req.user.userId})`);
+    res.json({ success: true, message: "Dispute filed — an admin will review it" });
   } catch (error) {
     next(error);
   }

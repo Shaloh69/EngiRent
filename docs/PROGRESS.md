@@ -9058,6 +9058,38 @@ and bottom are both occupied.**"
 until the hammer pickup (`3139d8c5`, bay 2) has been seen working on the
 phone.
 
+**G1 OVERRIDDEN BY THE USER, 2026-09-24 ~23:30:** "Build them now please".
+Built on top of the unverified E6.R, so **two changes are now owed on screen
+together**: E6.R (the owner pickup completes the rental) and E6.S (below).
+
+### E6.S — BUILT 2026-09-24 ~23:45. Server-only: the Prerelease30 app needs no change.
+
+- **S.1:** `releaseForOwnerPickup(io, id, reason)` finds the item in the return
+  bay, then the deposit bay, from the compartment columns. All four R4/R5
+  sites (`index.ts` auto deposit reject + auto return reject, `adminController`
+  manual return reject + manual deposit reject) now hand the item back in
+  place. Their stale "the actuator drops it" comments were corrected.
+- **S.2:** `dropUncollectedToLower` plus its own cron slot at **:15** (the R1
+  sweep returns early when it has nothing, so a pass inside it would never
+  run). Guards: grace (1h default), auto-release, F10 07-21, not operational,
+  `bayBusyWith` + **any** live grant on the bay (including the owner's own),
+  item must be in TOP, lower must be AVAILABLE with no rental. It clears
+  `releasedAt` before the command (the retrieve branch fails closed while the
+  item is in transit), and the existing `confirmRelease` settles top → free,
+  bottom → AWAITING_RETRIEVAL on the Pi's ack.
+- **S.3:** `POST /rentals/:id/dispute` (`fileDispute`): participant only,
+  conditional `updateMany` on `VERIFICATION` + not APPROVED (a racing admin
+  approval cannot also win), reason ≥ 5 chars appended to the verification's
+  `reviewNotes`, then S.1 hand-back, the other party + all admins notified,
+  `return:disputed` to the other party. `PATCH /rentals/:id/status` was checked
+  on the way: it only allows → CANCELLED from PENDING/AWAITING_DEPOSIT, so it is
+  not a side door.
+- **Tests:** Node **354/354** (+10: 5 drop guards, R4 from the deposit bay, 4
+  dispute). **A mutation of the grant guard SURVIVED at first**: the previous
+  test's `noteDropStarted` left bay 2 "busy" (process-local), so the grant
+  test was refused for the wrong reason. Fixed with `__resetBayActivity()` in
+  `beforeEach`, after which the same mutation fails the test. `tsc` clean.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 

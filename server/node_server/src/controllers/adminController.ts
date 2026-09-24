@@ -637,9 +637,11 @@ export const reviewVerification = async (
       // reasonForStatus("DISPUTED") is what the policy actually keys the
       // gate on, not the override below (which only picks what gets stored).
       const io = req.app.get("io");
-      await requestRelease(io, returnRental.id, {
-        reasonOverride: "RETURN_DISPUTED",
-      });
+      // E6.S (user ruling 2026-09-24) - handed back IN PLACE for the owner to collect
+      // in person, at any hour; it drops later only if they never come
+      // (dropUncollectedToLower). A policy-gated drop here was refused at night
+      // and never retried (D-107's shape).
+      await releaseForOwnerPickup(io, returnRental.id, "RETURN_DISPUTED");
 
       // Neither party was told anything happened before this — no
       // notification, no email. Matching the automatic path's own message.
@@ -759,8 +761,7 @@ export const reviewVerification = async (
         // Mirrors the automatic REJECTED path in index.ts (E4.6 / R4): the
         // owner's item is physically inside a bay, so it must be released back
         // to them rather than the bay simply being marked empty with the item
-        // sealed inside. `requestRelease` drops it to the lower compartment and
-        // sets the bay AWAITING_RETRIEVAL.
+        // sealed inside.
         await prisma.rental.update({
           where: { id: depositRental.id },
           data: { status: "CANCELLED", verificationStatus: "REJECTED" },
@@ -768,9 +769,11 @@ export const reviewVerification = async (
 
         const io = req.app.get("io");
         if (io) {
-          await requestRelease(io, depositRental.id, {
-            reasonOverride: "DEPOSIT_REJECTED",
-          });
+          // E6.S (user ruling 2026-09-24) - handed back IN PLACE for the owner to collect
+          // in person, at any hour; it drops later only if they never come
+          // (dropUncollectedToLower). A policy-gated drop here was refused at night
+          // and never retried (D-107's shape).
+          await releaseForOwnerPickup(io, depositRental.id, "DEPOSIT_REJECTED");
           for (const userId of [depositRental.renterId, depositRental.ownerId]) {
             io.to(`user:${userId}`).emit("deposit:rejected", {
               rentalId: depositRental.id,
