@@ -8,6 +8,7 @@ import cron from "node-cron";
 import env from "./config/env";
 import { connectDatabase } from "./config/database";
 import logger from "./utils/logger";
+import { handleCaptureAck } from "./services/bayCaptureRetry";
 import routes from "./routes";
 import mediaRoutes from "./routes/mediaRoutes";
 import { errorHandler, notFound } from "./middleware/errorHandler";
@@ -433,6 +434,10 @@ io.on("connection", (socket: Socket) => {
       if (action === "open_door" && locker_id !== undefined) {
         noteDoorClosed(kiosk_id, String(locker_id));
       }
+
+      // D-103 — a tracked "Item is placed" capture refused because the door
+      // is still unlocking is re-sent once the bay is free, not dropped.
+      handleCaptureAck(io, data);
 
       if (status === "refused") {
         logger.warn(

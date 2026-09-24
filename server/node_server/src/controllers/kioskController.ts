@@ -25,6 +25,7 @@ import {
 import { doorOpenSeconds } from "../services/kioskTimingStore";
 // D-96 — the server's own view of what each bay is doing right now.
 import { bayBusyWith, noteDoorOpen } from "../services/retrievalService";
+import { sendBayCapture } from "../services/bayCaptureRetry";
 import { completeClaim } from "../services/faceVerificationService";
 import {
   signedMediaUrl,
@@ -949,12 +950,9 @@ export const itemPlaced = async (
     const io = req.app.get("io");
     if (!io) throw new ValidationError("Realtime channel unavailable");
 
-    io.to(`kiosk:${grant.kioskId}`).emit("kiosk:command", {
-      action: "capture_image",
-      locker_id: parseInt(grant.lockerNumber, 10),
-      num_frames: 3,
-      rental_id: grant.rentalId,
-    });
+    // D-103: sent with a command_id and tracked, so a refusal because the
+    // door is still unlocking is re-sent once the bay is free, not dropped.
+    sendBayCapture(io, grant.kioskId, parseInt(grant.lockerNumber, 10), grant.rentalId, 3);
 
     logger.info(
       `[BAY-CAPTURE] rental=${grant.rentalId} user=${req.user.userId} bay=${grant.lockerNumber} ` +

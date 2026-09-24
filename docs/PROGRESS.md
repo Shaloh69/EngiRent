@@ -8719,3 +8719,51 @@ EngiRentNode`, up after ~120s as **PID 14176** (started 21:43:55, EngiRent
 engine). Through the tunnel: `/items` 200, `/app-config` 200
 (`latestVersion 1.13.0`), **a real student login succeeded**. The kiosk
 re-registered at 21:44:04.
+
+### D-103 — "Item is placed" during a door hold left the deposit stuck on "Checking" forever. FOUND LIVE, FIXED, DEPLOYED 2026-09-24 22:08.
+
+**Found during the user's physical test**, rental `b7497e8b…`, bay 1. From
+the API log: `21:51:49` the first check came back **retry**, and the server
+sent `verification_done: retry` + `open_door` (bay 1 = 15s hold, from
+`index.ts` deposit-retry path, with **no command_id**). At `21:52:03` the owner
+tapped "Item is placed" → `[BAY-CAPTURE] capture#2` → **Pi REFUSED
+`capture_image`: bay 1 busy with `open_door` (held 13.4s)**. D-96 did
+exactly its job. But `itemPlaced` fire-and-forgot the capture, answered the
+phone "Checking the locker", and **nothing ever retried**, so there was no
+photo, no verdict, and the phone waited indefinitely.
+
+**D-96 made this reachable; it did not cause the design flaw.** Before D-96
+the capture would have run concurrently with the unlock hold (photographing
+through an unlatched door). **A related gap, also found:** the server's
+door record is written only by `openBay`. Five other `open_door` emitters
+(`index.ts` deposit-retry `:676` and return-retry `:933`, `:1224`,
+`faceVerificationService.ts:363`, `kioskController.ts:107`) never call
+`noteDoorOpen`, so the server-side half of D-96 misses those holds. The Pi's
+guard still covers them. Recorded, not fixed in this pass.
+
+**Fix (server only; the Pi's refuse-don't-queue is unchanged):** new
+`services/bayCaptureRetry.ts`. `itemPlaced` now calls
+`sendBayCapture()`, which adds a `command_id` and tracks it. The `kiosk:ack`
+handler calls `handleCaptureAck()`: a `refused/bay_busy` on a tracked capture
+is **re-sent every 2s, up to 12 attempts (~24s)**, which covers bay 1's 15s
+hold plus its ack. `ok`/`error`/other refusals stop tracking. Admin one-off
+captures are untracked and never retried.
+
+**Tests** `services/__tests__/bayCaptureRetry.test.ts` (5), through the REAL
+`itemPlaced` with a REAL grant: command_id present; the live 21:52 case
+re-sends the identical payload after the delay; stops after `ok` (a late
+refusal cannot resurrect it); gives up at the cap; does not retry a
+non-bay_busy refusal or an admin capture. **Mutation-checked:** with the old
+`itemPlaced` emit, the suite fails (0 passing). Node **332/332**, `tsc` clean.
+
+**Deployed:** hashes match on the server (`270dc868…`, `97c9a074…`,
+`c1e31ff7…`). The EngiRent tree was killed by root (verified by engine path),
+and the task restarted: **PID 4948**, `dist` contains `bayCaptureRetry.js` and
+both call sites. Tunnel 200. The kiosk re-registered at 22:08:40. **Not yet
+seen working live.** The next "Item is placed" tapped during a door hold
+should log `[D-103] … re-sending` and then capture.
+
+**The user asked to hand this to a Claude Code cloud session.** Declined, for
+a concrete reason: a cloud session cannot reach `desktop-gklhcri` or the Pi
+(Tailscale/LAN only, keys on this PC), and every step above needed the live
+logs and a live deploy.
