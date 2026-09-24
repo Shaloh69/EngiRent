@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-25 00:45 - **PHYSICAL TEST DONE for tonight** - **E6.R VERIFIED end-to-end** (screwdriver `cbd2718f`: approved → settled → owner collected → COMPLETED; refund+payout rows) - **D-93 VERIFIED on hardware** (bay 1 retract→extend 22+22s, 00:18) - **D-103 CLOSED** (seen 4×) - E6.S (in-place pickup for rejects/disputes, :15 drop-if-uncollected cron, dispute route) + E6.T (D-108 retry, post-door never fails) + availability fixes + **E6.U (owner pickup opens on their tap, not at face-verify) DEPLOYED 00:44, NOT YET SEEN** - API PID 24456 (re-derive) - Prerelease30 (1.13.2+30) live - release window 07-21 (restored 00:18:49) - OPEN: **D-108 root cause (Docker relay drops MySQL connections ~hourly, can return wrong data)**, D-104, D-105 (bay 2 camera blur → 0% + disguised as a verdict; fix awaiting yes), D-106 phone fallback poll, §13 owner-pickup button copy, D-97, D-98, D-99 - all work committed, NOT pushed - G1 DEBT: E6.U on screen, E6.S dispute/reject/drop paths on screen]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-25 00:45 - **PHYSICAL TEST DONE for tonight** - **E6.R VERIFIED end-to-end** (screwdriver `cbd2718f`: approved → settled → owner collected → COMPLETED; refund+payout rows) - **D-93 VERIFIED on hardware** (bay 1 retract→extend 22+22s, 00:18) - **D-103 CLOSED** (seen 4×) - E6.S (in-place pickup for rejects/disputes, :15 drop-if-uncollected cron, dispute route) + E6.T (D-108 retry, post-door never fails) + availability fixes + **E6.U VERIFIED ON SCREEN 00:56** (owner pickup opens on their tap) - API PID 24456 (re-derive) - Prerelease30 (1.13.2+30) live - release window 07-21 (restored 00:18:49) - OPEN: **D-108 root cause (Docker relay drops MySQL connections ~hourly, can return wrong data)**, D-104, D-105 (bay 2 camera blur → 0% + disguised as a verdict; fix awaiting yes), D-106 phone fallback poll, §13 owner-pickup button copy, D-97, D-98, D-99 - all work committed, NOT pushed - G1 DEBT: E6.S dispute/reject/drop paths on screen]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9300,6 +9300,21 @@ the new hashes after. **API PID 24456**, EngiRent engine, `dist` carries
 `completeRetrieval`, kiosk re-registered 00:44:10. **Not yet seen:** the
 next owner pickup should show "Open Kiosk Now", and only the tap opens the
 door.
+
+**E6.U VERIFIED ON SCREEN, 00:56 (screwdriver redo `f70f3360`, bay 1).**
+00:56:07 face → `Retrieval approved … bay 1 main_door; awaiting the owner's
+open-bay tap` (no door, nothing committed) → **00:56:16 the owner tapped "Open
+Kiosk Now"** → UNLOCK bay 1 main 15.0s → 00:56:31 AUTO-LOCK → **00:56:33
+`[E6.R] … COMPLETED: owner collected the item`**. The user: "it had no
+problem". Re-derived: COMPLETED, `retrievedAt` 00:56:16, DEPOSIT_REFUND ₱30
+COMPLETED, OWNER_PAYOUT ₱20 PENDING, all four bays AVAILABLE. The full cycle
+on this rental: deposit (real 50.37 → review → approved) → collect → return
+(real 55.27 → review → approved: settled, in place) → owner tap → COMPLETED.
+D-103 recovered twice more (7 refusals each, the longest yet).
+**Noted, not a problem on screen:** `openBay` awaited `completeRetrieval`, and
+the reply took 17s (00:56:16 → :33) because each DB step was slow (the D-108
+relay). The phone's door countdown could start late. The option is to reply
+first and complete after. Held.
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
