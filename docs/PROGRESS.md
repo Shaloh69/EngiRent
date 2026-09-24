@@ -9222,6 +9222,19 @@ The drops are not "idle for a long time" either: this one came 2 minutes
 after a fresh restart. **The root cause (the Docker relay) is now the real fix
 to make.**
 
+**The owner collected from the BOTTOM door, 00:23.** The Prerelease30
+"Collect Your Item" button showed for the CANCELLED rental (released, not
+taken; not keyed to status). 00:23:32 scan → face check went to the **owner**
+(`7c8c8400`) → `Retrieval approved … bay 1 bottom_door` → the door opened
+(15.0s, claim released 00:23:53). At 00:23:40 the phone's "Open Kiosk Now"
+was also tapped: `openBay` sent a second open, and **the Pi REFUSED it (bay
+busy with open_door, held 2.3s)**. D-96 correctly prevented a double command.
+The lingering server-side "drop" record from the D-108-interrupted ack expired
+at that very moment (308s).
+**§13 finding (not fixed):** for an owner pickup the door opens on face-verify
+by itself, yet the phone still offers "Open Kiosk Now". The tap can only be
+refused, so the screen should say "Door open — take your item" instead.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 
