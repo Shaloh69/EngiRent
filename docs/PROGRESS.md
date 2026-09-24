@@ -9038,6 +9038,26 @@ bay 1 free, and the review button on the renter's phone only. Plus
   uncollected deposit, refused only by the window. **At 07:05 the R1 sweep
   will drop it and auto-cancel the rental** unless Ian collects it first.
 
+## E6.S — RULINGS 2026-09-24 ~23:25: in-place pickup everywhere, drop if the owner never comes, wire Dispute. Section table (G2), derived from the repo tonight.
+
+**The user's rulings, verbatim in substance:** (1) the in-place owner pickup
+applies to rejected returns and rejected deposits too, **at any hour, not
+only at night**. (2) **Wire "Dispute this Return".** (3) **If the owner never
+collects, the item drops** to the lower compartment, "so the kiosk locker up
+top will always be available for new inserts. **Only block if a locker's top
+and bottom are both occupied.**"
+
+| # | Section | Repo today | Change |
+|---|---|---|---|
+| S.1 | R4 deposit rejected / R5 return disputed | `requestRelease` with F10 etc. (`index.ts:649` auto deposit reject, `:906` auto return reject; `adminController` manual rejects). Refused at night, never retried (D-107's shape) | Same in-place hand-back as E6.R (`releaseForOwnerPickup`, generalised to whichever bay holds the item, with the reason passed in). The owner collects through the door that holds it, at any hour |
+| S.2 | Owner never collects | Nothing: the item waits in the top compartment indefinitely, the bay's top is blocked, no reminder | The hourly sweep also takes rentals with `releasedAt` set, `retrievedAt` null, **the item in the TOP compartment**, released more than `collection_grace_hours` (1h, per-kiosk policy) ago → **actuator drop to the lower compartment** if it is free. Unattended actuation keeps F10 (07-21), auto-release and F2. The owner then collects from the bottom door (the retrieve branch already opens the door that holds it). If the lower compartment is occupied, it stays; that bay is then genuinely full. `canAcceptDeposit` (`pickupLaneService.ts:98-106`) already needs only the top (long-lead needs both), so a free top = bay usable |
+| S.3 | "Dispute this Return" | Phone posts `{reason}` to `/rentals/:id/dispute`: **no such route** (dead button). `settleDispute` requires `DISPUTED` (`adminController.ts:~1180`) | New `POST /rentals/:id/dispute`: renter or owner only; rental `VERIFICATION` and **not yet approved**; reason required. → `DISPUTED`, S.1 hand-back to the owner, the reason is appended to the return verification's `reviewNotes` (no schema change), notifications to the other party and admins, audit row |
+| S.4 | Phone | Dispute submission always failed | Works. The owner's collect button already keys off released-not-taken, so it covers disputes too |
+
+**G1 note:** E6.R is still unseen on screen. The E6.S implementation waits
+until the hammer pickup (`3139d8c5`, bay 2) has been seen working on the
+phone.
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 
