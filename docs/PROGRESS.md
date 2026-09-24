@@ -8602,3 +8602,52 @@ contain `Prerelease29`, and **no chunk still mentions Prerelease28**.
 to the uploaded file). The public web tunnel `/download` → 200. **Still not
 done: the `AppRelease` row + `LATEST_APP_VERSION=1.13.1`** (optional; installed
 copies cannot reach the API to see the gate anyway).
+
+### 2026-09-24 ~21:03 — OUTAGE: the API went down and the app showed "login failed". D-102 found.
+
+**Reported by the user:** the new app (Prerelease29) still says login failed.
+A full read-only server check found everything up **except the EngiRent API**:
+:5000 not listening, `EngiRentNode` at `Ready` with lastResult=1, public API
+tunnel → **502**. ML/Admin/Web, all three tunnels, and the admin console's
+baked URL (the live API tunnel) were fine. Disk C: has only **14.3 GB free
+of 237.7**, worth watching.
+
+**Cause, from the API log:** at ~21:03 Prisma threw `P1001 Can't reach
+database server at 127.0.0.1:3307` inside `GET /api/v1/app-config`, and
+**the whole Node process died** (`Node.js v24.13.0` is the last line).
+
+- **The database:** `engirent-mysql` (Docker, `0.0.0.0:3307->3306`) shows
+  `Up 25 hours`; it never restarted. 3307 has two host listeners (`wslrelay`
+  19444 and `com.docker.backend` 17844). The failure lined up with a
+  **UniThrift** stack being started on the same box at 21:01:41
+  (`E:\UniThrift`, its own `unithrift-mysql` container, a `prisma migrate
+  deploy`) and with the user reporting a Tailscale reconnect. A MySQL
+  greeting came back through 3307 normally again by ~21:20. **Root cause of
+  the brief outage: not proven.** A Docker/WSL port-relay hiccup is the
+  leading suspect.
+- **The API restart hung.** The first restart (21:07) rebuilt and then sat in
+  `await connectDatabase()` (`index.ts` startServer) with no output and no
+  listener, as PID 20916 (confirmed as EngiRent's via its parent chain up to
+  `svc-node.bat`). That tree was killed with `taskkill /T` and the task
+  started again.
+- **Confirmed: `svc-node.bat` rebuilds (`prisma generate && tsc`) on every
+  start.** Any restart deploys whatever source is on the server. That is the
+  risk flagged earlier this session, now observed.
+
+**D-102 — one database error kills the whole API. FOUND, NOT FIXED.**
+`routes/index.ts` `router.get("/app-config", async …)` awaits two Prisma
+calls with **no try/catch and no `next(err)`**. Express 4 (`^4.21.2`) does
+not catch a rejected promise from an async handler, and the repo has **no
+`unhandledRejection` handler** (grep: none), so Node 24's default kills the
+process. `/app-config` is called by **every app launch** (the update gate),
+so any brief DB blip becomes a full outage that needs a human, which is
+exactly what happened here. The fix is small (try/catch → `next(error)`,
+like the other handlers). It needs a deploy and a restart, so it is held
+for the user's go-ahead rather than stacked (G1).
+
+**API RESTORED 2026-09-24 21:20.** New PID **30228**, identified as EngiRent by
+its loaded engine (`D:\ENG\EngiRent\server\node_server\…\query_engine-windows.dll.node`).
+Through the **public API tunnel** (the phone's path): `/items` 200,
+`/app-config` 200, and a **real student login** returned `success=True`,
+`role=STUDENT` with an access token. Kiosk KIOSK-001 reconnected and
+re-reported occupancy (all four AVAILABLE) and per-bay timings at 21:20:02.
