@@ -48,13 +48,10 @@ import {
   storageDropForCommand,
 } from "./services/storageDropService";
 import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
-import {
-  cancelOverdueUndepositedRentals,
-  voidRentalTransactions,
-} from "./services/overdueRentalCleanup";
+import { runCollectionSweep } from "./services/collectionSweepService";
+import { cancelOverdueUndepositedRentals } from "./services/overdueRentalCleanup";
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
-  requestRelease,
   releaseForOwnerPickup,
   dropUncollectedToLower,
   confirmRelease,
@@ -1630,47 +1627,10 @@ const DEFAULT_LATE_FEE_RATE_PER_DAY = 50; // SPORTS_EQUIPMENT, OTHER — no doc 
  */
 cron.schedule("5 * * * *", async () => {
   try {
-    const uncollected = await prisma.rental.findMany({
-      where: {
-        status: "DEPOSITED",
-        releaseRequestedAt: null,
-        depositedAt: { not: null },
-      },
-      select: { id: true },
-    });
-    if (uncollected.length === 0) return;
-
-    let released = 0;
-    let cancelled = 0;
-    for (const rental of uncollected) {
-      // Every guard lives in the policy: grace period, release window, bay
-      // busy, bay out of service, lower compartment already full. This loop
-      // deliberately knows none of them.
-      const outcome = await requestRelease(io, rental.id);
-      if (outcome.released) {
-        released += 1;
-        // D-91 — closing the gap right next to where the drop itself
-        // happens: an uncollected deposit released back to its owner used to
-        // just sit here marked DEPOSITED forever afterwards — releasedAt set,
-        // status untouched, the item long gone but the rental never said so.
-        // Scoped to LATE_COLLECTION specifically: every OTHER reason
-        // requestRelease can be called for already has its own status
-        // transition before release even runs (R2 return-pickup is a normal
-        // in-flight step, not a failure; R3/R4/R5 are already
-        // CANCELLED/DISPUTED by the time their release fires). Only R1 was
-        // the dead end.
-        if (outcome.reason === "LATE_COLLECTION") {
-          await prisma.rental.update({
-            where: { id: rental.id },
-            data: { status: "CANCELLED" },
-          });
-          await voidRentalTransactions(rental.id);
-          cancelled += 1;
-        }
-      }
-    }
+    const { considered, released, cancelled } = await runCollectionSweep(io);
+    if (considered === 0) return;
     logger.info(
-      `[CRON] E4.6 collection sweep — ${uncollected.length} uncollected deposit(s) considered, ` +
+      `[CRON] E4.6 collection sweep — ${considered} uncollected deposit(s) considered, ` +
         `${released} released, ${cancelled} auto-cancelled`,
     );
   } catch (err) {

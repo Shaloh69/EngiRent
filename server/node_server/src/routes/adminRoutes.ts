@@ -10,6 +10,7 @@ import {
   listAllRentals,
   forceCompleteRental,
   releaseRentalForPickup,
+  runCollectionSweepNow,
   settleDispute,
   listTransactions,
   adminRefund,
@@ -100,6 +101,14 @@ router.post(
 );
 // E6.R — hand a returned item still in its bay back to its owner in place
 // (the D-107 recovery). Moves nothing; the owner opens the bay themselves.
+// Run the hourly R1 collection sweep now (same policy; may drive an actuator).
+router.post(
+  "/retrieval/sweep",
+  requireAdmin,
+  validate([body("rentalId").optional().isUUID()]),
+  runCollectionSweepNow,
+);
+
 router.post(
   "/rentals/:id/release-for-pickup",
   requireAdmin,

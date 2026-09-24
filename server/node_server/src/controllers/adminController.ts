@@ -19,6 +19,7 @@ import fs from "fs";
 import env from "../config/env";
 import { finalizeRentalCompletion } from "../services/rentalSettlementService";
 import { approveReturn } from "../services/returnApprovalService";
+import { runCollectionSweep } from "../services/collectionSweepService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 // D-87d: a rejected DEPOSIT must release the owner's item from the bay, the
 // same way index.ts's automatic rejection path does — not just flip a column.
@@ -362,6 +363,36 @@ export const listAllRentals = async (
         },
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /admin/retrieval/sweep — run the hourly R1 collection sweep NOW
+ * (2026-09-25; before this it could only be exercised by waiting for :05).
+ * Same code as the cron (collectionSweepService), so every policy guard
+ * applies — grace, release window, bay busy, lower compartment free — and it
+ * can DRIVE THE ACTUATOR. Optional `rentalId` limits it to one rental.
+ */
+export const runCollectionSweepNow = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const io = req.app.get("io");
+    if (!io) throw new ValidationError("Realtime channel unavailable");
+    const rentalId = typeof req.body?.rentalId === "string" ? req.body.rentalId : undefined;
+    const result = await runCollectionSweep(io, rentalId);
+    await recordAudit(req, {
+      action: "retrieval.sweep_now",
+      targetType: "rental",
+      targetId: rentalId ?? "all",
+      metadata: result,
+    });
+    logger.info(`[E4.6] collection sweep run on demand by ${req.user?.email}: ${JSON.stringify(result)}`);
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
