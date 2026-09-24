@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - **PRE-`/clear` #2, 2026-09-24 ~22:15 — read "PRE-`/clear` HANDOFF #2" at the END of this file first** - §15 item 1 DONE + `Restart=always` applied on the Pi - **D-96 DEPLOYED BOTH SIDES; kiosk half VERIFIED on the real bank** (openBay/F2 refusal not yet seen live) - D-101 CLOSED (camera remap; the ring is in locker 4) - **D-102 FIXED+DEPLOYED** (a DB blip no longer kills the API) - **D-103 FIXED+DEPLOYED 22:08, NOT YET SEEN LIVE** ("Item is placed" during a door hold stranded the deposit) - **PHYSICAL TEST MID-FLIGHT: rental `b7497e8b…` AWAITING_DEPOSIT, both payments COMPLETED, item POSSIBLY PHYSICALLY IN BAY 1** - API PID 4948 (re-derive) - Prerelease29 (1.13.1+29) live on the website - **two outages tonight; the 21:36 one was an EXTERNAL kill of every `node dist\index.js` on the box (EngiRent+EcoCharge+UniThrift)** - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-103 live, D-93 hardware, D-95 real return]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - **PRE-`/clear` #2, 2026-09-24 ~22:15 — read "PRE-`/clear` HANDOFF #2" at the END of this file first** - §15 item 1 DONE + `Restart=always` applied on the Pi - **D-96 DEPLOYED BOTH SIDES; kiosk half VERIFIED on the real bank** (openBay/F2 refusal not yet seen live) - D-101 CLOSED (camera remap; the ring is in locker 4) - **D-102 FIXED+DEPLOYED** (a DB blip no longer kills the API) - **D-103 FIXED+DEPLOYED 22:08, NOT YET SEEN LIVE** ("Item is placed" during a door hold stranded the deposit) - **PHYSICAL TEST MID-FLIGHT: rental `b7497e8b…` AWAITING_DEPOSIT, both payments COMPLETED, bay 1 EMPTY (the user removed the item)** - API PID 4948 (re-derive) - Prerelease29 (1.13.1+29) live on the website - **two outages tonight; the 21:36 one was an EXTERNAL kill of every `node dist\index.js` on the box (EngiRent+EcoCharge+UniThrift)** - STEP 3 (D-97 + §13 feedback) NOT STARTED - D-98, D-99 open - all work committed, NOT pushed - G1 DEBT: D-103 live, D-93 hardware, D-95 real return]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -8781,7 +8781,7 @@ logs and a live deploy.
 | Tunnels | api `developmental-plumbing-cellular-vocational`, admin `diagram-approaches-analysis-drag`, web `when-preview-send-consent` | `D:\ENG\startbat-logs\tunnel-*.log`, **rotate on restart** |
 | App | **Prerelease29 = 1.13.1+29** on the website, bakes the api tunnel above | the `/downloading` chunk names the file |
 | **Test rental** | **`b7497e8b-7976-4058-ad06-bc5ab551308c`, `AWAITING_DEPOSIT`**, RENTAL_PAYMENT ₱30 + SECURITY_DEPOSIT ₱20 both `COMPLETED`, **0 verifications** | admin `/admin/rentals`, `/admin/transactions` |
-| **Bay 1** | **the owner placed the item before the check stranded; it may be physically inside while the DB says AWAITING_DEPOSIT** | **ask the user**, or look at a capture photo |
+| **Bay 1** | **EMPTY: the user confirmed the item has been REMOVED** (after the D-103 strand). DB and bay agree: nothing deposited | a capture of bay 1 before the next deposit |
 
 **Tonight's defects, all recorded above:** D-101 (camera USB bandwidth,
 closed), D-102 (async `/app-config` + no `unhandledRejection` guard, fixed),
@@ -8822,9 +8822,10 @@ the deposit. Resume it; do not start new feature work.
 
 STATE — re-derive it, do not trust this paragraph:
   - Rental b7497e8b-7976-4058-ad06-bc5ab551308c is AWAITING_DEPOSIT, both
-    payments COMPLETED, 0 verifications. The owner already put the item in
-    bay 1 before the check got stranded (D-103), so THE ITEM MAY BE
-    PHYSICALLY IN BAY 1 while the DB says it is not. Ask the user first.
+    payments COMPLETED, 0 verifications. The owner had put the item in
+    bay 1 before the check got stranded (D-103); THE USER HAS SINCE
+    REMOVED IT, so bay 1 is empty and matches the DB. The deposit starts
+    clean from "Scan kiosk QR".
   - API PID 4948 at the clear. Identify it by its loaded Prisma engine path
     under D:\ENG\EngiRent\, never by PID or command line: EcoCharge and
     UniThrift both run an identical `node dist\index.js` on this box.
