@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-25 00:45 - **PHYSICAL TEST DONE for tonight** - **E6.R VERIFIED end-to-end** (screwdriver `cbd2718f`: approved → settled → owner collected → COMPLETED; refund+payout rows) - **D-93 VERIFIED on hardware** (bay 1 retract→extend 22+22s, 00:18) - **D-103 CLOSED** (seen 4×) - E6.S (in-place pickup for rejects/disputes, :15 drop-if-uncollected cron, dispute route) + E6.T (D-108 retry, post-door never fails) + availability fixes + **E6.U VERIFIED ON SCREEN 00:56** (owner pickup opens on their tap) - API PID 24456 (re-derive) - Prerelease30 (1.13.2+30) live - release window 07-21 (restored 00:18:49) - OPEN: **D-108 root cause (Docker relay drops MySQL connections ~hourly, can return wrong data)**, D-104, D-105 (bay 2 camera blur → 0% + disguised as a verdict; fix awaiting yes), D-106 phone fallback poll, §13 owner-pickup button copy, D-97, D-98, D-99 - all work committed, NOT pushed - G1 DEBT: E6.S dispute/reject/drop paths on screen]
+[PHASE E6 (closing LIFECYCLE-PROCESS-MAP §15) - 2026-09-25 00:45 - **PHYSICAL TEST DONE for tonight** - **E6.R VERIFIED end-to-end** (screwdriver `cbd2718f`: approved → settled → owner collected → COMPLETED; refund+payout rows) - **D-93 VERIFIED on hardware** (bay 1 retract→extend 22+22s, 00:18) - **D-103 CLOSED** (seen 4×) - E6.S (in-place pickup for rejects/disputes, :15 drop-if-uncollected cron, dispute route) + E6.T (D-108 retry, post-door never fails) + availability fixes + **E6.U VERIFIED ON SCREEN 00:56** (owner pickup opens on their tap) - API PID 24456 (re-derive) - Prerelease30 (1.13.2+30) live - release window 07-21 (restored 00:18:49) - OPEN: **D-108 root cause (Docker relay drops MySQL connections ~hourly, can return wrong data)**, D-104, D-105 (bay 2 camera blur → 0% + disguised as a verdict; fix awaiting yes), D-106 phone fallback poll, §13 owner-pickup button copy, D-97, D-98, D-99 - all work committed, NOT pushed - G1 DEBT: E6.S dispute + owner-never-collects drop on screen; D-109 ruling pending]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9337,6 +9337,14 @@ paid for a rental the owner broke. (By contrast, the R1 no-show sweep does
 `voidRentalTransactions`, bookkeeping only by design.) **Needs a ruling:** a real
 PayMongo refund of both to the renter (like `finalizeRentalCompletion`'s
 refund half), or a void plus an admin follow-up.
+
+**E6.S reject path SEEN LIVE, 01:04-01:05:** the user rejected `6bf3778b` →
+`released IN PLACE … bay 1 (main_door …) reason DEPOSIT_REJECTED`, rental
+**CANCELLED/REJECTED** (re-derived: the payments are still COMPLETED, which is
+D-109 on real data) → the owner scanned 01:05:30 → face → `Retrieval approved …
+awaiting the owner's open-bay tap` → **tap 01:05:38 → bay 1 main door** →
+`Retrieval completed … item handed back to its owner`. The status stays
+CANCELLED (only a passed return completes at pickup, correct).
 
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
