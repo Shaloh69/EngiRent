@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-09-24",
+    version: "1.13.1",
+    tag: "infra",
+    title: "The app can reach the server again",
+    bullets: [
+      "After the server came back from a power cut on 2026-09-23, it came up at a new address, and the installed app was still calling the old one — so it looked offline and could not sign in",
+      "This build points at the current address. Nothing else changed: it is the same app as 1.13.0",
+    ],
+  },
+  {
     date: "2026-09-22",
     version: "1.13.0",
     tag: "fix",

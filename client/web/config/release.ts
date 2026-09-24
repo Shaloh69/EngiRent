@@ -28,15 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.13.0",
-  buildNumber: 28,
-  fileName: "Engirent_Prerelease28.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-09-22",
+  version: "1.13.1",
+  buildNumber: 29,
+  fileName: "Engirent_Prerelease29.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-09-24",
   sizeMb: 86.8,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Fixed: returning an item at the kiosk could leave your phone stuck on \u201cChecking\u201d forever once the check needed a person to confirm it",
-    "The same fix covers a return that is rejected, and one that clears outright \u2014 your phone now always tells you what happened",
+    "Reconnects to the EngiRent server — the previous build was pointed at a server address that no longer exists, so it could not sign in or load anything",
+    "No feature changes: this is the 1.13.0 app, rebuilt against the current server address",
   ],
 };
 

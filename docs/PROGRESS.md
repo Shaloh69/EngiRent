@@ -8571,3 +8571,24 @@ nothing moved. Backup at `~/engirent-kiosk.service.bak-2026-09-24`. The repo
 copy `server/kiosk/systemd/engirent-kiosk.service` was updated to match.
 **The Pi's sudo password in `.env.local` is the working one.** The user
 briefly tried another, which was wrong; no lockout.
+
+### Prerelease29 (1.13.1+29): built, validated, uploaded. The website restart was REFUSED. 2026-09-24.
+
+The user reported "the current app is offline": Prerelease28 bakes a dead
+tunnel. Rebuilt as **1.13.1+29** (only the API address changes; no code
+changes since 1.13.0) against
+`developmental-plumbing-cellular-vocational…/api/v1`. Validated: testzip clean,
+all three ABIs carry that URL, signer SHA-256 `3d113b7d…f1868`,
+`versionCode 29 / 1.13.1`, file `f7f2731c866c511a`. **Uploaded** to
+`D:\ENG\EngiRent\client\web\public\downloads\Engirent_Prerelease29…apk`,
+and the server hash matches. `release.ts` and `changelog.ts` (an honest
+"reach the server again" entry, tag `infra`) were uploaded after confirming
+the server's old copies were identical to repo HEAD apart from CRLF. Server
+hashes match.
+
+**`taskkill` + `Start-ScheduledTask EngiRentWeb` was refused, `[Production
+Deploy]`.** Not retried. Until the website rebuilds, the download page still
+shows 1.13.0/28, and Next.js will not serve a file added to `public/` after
+the build. **The `AppRelease` row and `LATEST_APP_VERSION=1.13.1` were not
+done** (the same class of action). All three steps were handed to the user.
+The next APK number is now 30.
