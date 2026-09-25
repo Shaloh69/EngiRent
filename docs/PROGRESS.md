@@ -9568,6 +9568,46 @@ restart of `EngiRentMl` (~6 min model load) and a live-flow check first. Any
 bank test is G11. **The kiosk Pi has been OFFLINE since ~01:00 on 2026-09-25**,
 so no new captures until someone powers it, but none are needed to start.
 
+### Pipeline v2 design: the user's "detect the object, crop it, match it", plus research (2026-09-25 ~21:10)
+
+**The kiosk is ONLINE again:** KIOSK-001 re-registered 21:07:49, all bays
+AVAILABLE.
+
+**What exists (read tonight):** `isolate_item` = **GrabCut with a centre
+prior** plus the largest region (`utils/background.py:152`), classical. The deep
+stage = **ResNet-50 ImageNet global features** (`features/deep.py:37`). Plus SIFT,
+SSIM, pHash, colour/texture, OCR (Tesseract). torch 2.5.1 / torchvision 0.20.1 are
+already installed. There is no learned detector or segmenter.
+
+**The user's idea is right: localise → crop → match, on BOTH images.** Proposed
+stages, each measured on the harness before and after:
+
+| Stage | Proposal | Why |
+|---|---|---|
+| 0 Quality | Blur/brightness on the **item region**, per-bay thresholds; a rejection is reported as a reason, never as 0% | D-105 |
+| 1a Localise, kiosk | **Empty-bay reference per locker** (the camera and background are fixed): difference → mask → crop. Fallback: a learned salient segmenter | The most robust option here, needs no training. GrabCut's centre prior fails on off-centre items and the red strip |
+| 1b Localise, listing | Learned background removal (**BiRefNet**, or rembg's ISNet/U²-Net if the CPU cost is too high) | Owner photos have arbitrary backgrounds (bedsheets, tables) |
+| 2 Semantic check | **CLIP/SigLIP zero-shot on the crop against the listing's title/category** ("a photo of a screwdriver" vs alternatives). Optional open-vocabulary detector (**OWLv2**, lighter; Grounding DINO is the accuracy ceiling but heavy) prompted with the title to both find and name the object | This separates **the rivet tool from the screwdriver** at the category level: exactly tonight's failure |
+| 3 Instance embedding | Replace ResNet-50 with **DINOv2** (ViT-S/14 or B/14) on the crops; best-of-N across listing photos × kiosk frames | DINOv2 encodes instance-level knowledge far better than ImageNet ResNet or CLIP |
+| 4 Geometric verification | **SuperPoint/ALIKED + LightGlue + RANSAC inlier count** between the crops | **Research caution:** DINOv2 alone tends to match same-*category* lookalikes (shape/semantics over identity), which is the false positive we must avoid. Local-feature inliers check it is the same physical object/model |
+| 5 Colour + shape | Keep the colour histogram, but **inside the mask**; add contour/aspect/Hu moments | Cheap and complementary |
+| 6 Fusion + calibration | Logistic regression (or isotonic) over the stage scores, fitted on the labelled pairs → probability → 0-100. **Fast tier** = stages 0-3 (+5); **full tier** = all, including LightGlue + OCR | This is what makes "≥ 75 / 80-95 for correct" and "low for wrong" hold by construction |
+
+**Free negatives:** pair every kiosk frame with **every other listing's
+photos** (22 listings × ~84 frames ≈ 1,800 pairs, one true listing per frame).
+Plus the real hard negatives (the rivet tool deposited as the screwdriver, the
+empty bay). Put the same-category lookalikes in the hard set explicitly.
+
+**Check first, next session:** does the server PC have a GPU? (The ML service
+already takes ~6 min to load, on CPU.) Every model must fit the CPU budget and
+the load time; prefer small variants (DINOv2 ViT-S, SigLIP/CLIP base,
+LightGlue with a keypoint cap) and measure latency on the harness.
+Sources: DINOv2 instance-level strength and its re-ID caveat
+(arxiv.org/pdf/2508.21222, arxiv.org/pdf/2311.02734); open-vocabulary detection
+overview (forasoft.com: Grounding DINO / OWLv2 / Florence-2); LightGlue
+(arxiv.org/pdf/2306.13643); BiRefNet vs rembg (dev.to comparison, the Cloudflare
+background-removal evaluation).
+
 ### Continuation prompt for the next session — paste after `/clear`
 
 ```
@@ -9590,9 +9630,10 @@ STEPS:
      confirm its label.
   3. Build an offline eval harness over the REAL fast and full pipelines;
      record the BEFORE numbers in PROGRESS.md.
-  4. G2 section table for the ML phase, then improve: item isolation
-     (empty-bay reference per locker), the blur gate (D-105), comparison on
-     the item crop, calibration. Re-measure after every change.
+  4. G2 section table for the ML phase from HANDOFF #3's "Pipeline v2
+     design" (localise -> crop -> semantic check -> DINOv2 -> LightGlue ->
+     calibrated fusion). Check GPU/CPU budget first. Re-measure after every
+     change; add each stage only if the separation improves.
   5. Deploy only with a live-flow check; EngiRentMl takes ~6 min to load.
 
 Re-derive everything; the stack may be down again (reboots take it down,
