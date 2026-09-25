@@ -9519,8 +9519,7 @@ scores without holding the wrong ones down would just automate D-89b's failure.
 Report accuracy as the **separation** (worst correct vs best wrong, per tier),
 not the correct score alone.
 
-**Real data on the server** (`D:\ENG\EngiRent\server
-ode_server\storage\`):
+**Real data on the server** (`D:\ENG\EngiRent\server\node_server\storage\`):
 `verifications/` holds 84 kiosk frames (3 per capture, 1280×720), `items/` holds 22 listing photos.
 **Never copy `storage/users/` (faces). Keep every image out of git: the repo is
 PUBLIC.** Put them in a gitignored eval folder or the scratchpad.
