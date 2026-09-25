@@ -138,3 +138,6 @@ AI_SYSTEM_DOCUMENTATION.pdf
 
 # Mermaid bundle cached for design/tools/render-diagrams.mjs (~3MB, re-fetchable)
 design/tools/.cache/
+
+# ML eval dataset: real kiosk/listing photos, never committed (the repo is public)
+server/python_server/services/ml/eval/data/

@@ -9608,34 +9608,116 @@ overview (forasoft.com: Grounding DINO / OWLv2 / Florence-2); LightGlue
 (arxiv.org/pdf/2306.13643); BiRefNet vs rembg (dev.to comparison, the Cloudflare
 background-removal evaluation).
 
+### Rulings 2026-09-25 ~21:30, and the ML plan they add
+
+**The user:** the server has **no GPU**. "If ever it takes that long just add a
+direct timer." Detect an item that is **not centred** and **re-open the door**
+so the person can centre it. Use the real photos, **moved to a separate
+folder**. "Add more to the pipeline for better scores, not just improving."
+
+- **Timer (interpretation, confirm with the user):** heavier CPU models are
+  acceptable. While a check runs, the phone and the kiosk show a **live
+  timer/progress** driven by the server's real stage progress (§13 rule 4: long
+  waits show progress, never a bare spinner). The server keeps a per-tier time
+  budget, so a check that overruns fails into review instead of hanging.
+- **Dataset: DONE tonight.** Copied (not moved: the admin reviews point at the
+  originals) into the gitignored
+  `server/python_server/services/ml/eval/data/real_2026-09-24/`: 84 kiosk frames
+  in `kiosk/<item>__<rental>/cap_<time>/frame-N.jpg` (36 correct, 6 wrong item,
+  6 empty bay, 36 unlabelled admin captures, all provisional), 14 listing photos
+  in `listings/<item>/` + 8 spares, and `manifest.csv`. Layout and columns:
+  `server/python_server/services/ml/eval/README.md` (tracked).
+- **Placement / centering stage (new, stage P):** from the localisation mask
+  (the empty-bay difference): bounding box + centroid → a verdict: `OK` /
+  `OFF_CENTER` (centroid far from the floor's centre) / `TRUNCATED` (the box
+  touches the frame edge: the hammer's cut-off head is a real example) /
+  `EMPTY` (no item: this also closes **D-104**, "Item is placed" on an untouched
+  bay) / `MULTIPLE` (two objects). If it is not `OK` → Node returns a
+  **reposition** result: the existing retry path re-opens the door, and the phone
+  and kiosk say **where to move it** ("move it to the centre / fully inside the
+  frame" / "no item found"). **Placement retries must NOT count toward the
+  attempt-2 escalation** (their own cap, e.g. 3), or a badly placed item goes to
+  review instead of being fixed. Thresholds tuned on the real frames.
+- **More stages for higher scores (on top of the pipeline v2 table):**
+  1. **For a RETURN, compare against the DEPOSIT's own kiosk frames** as well as
+     the listing: same camera, same lighting, same white floor. This is the
+     single biggest expected gain for returns. An admin-approved deposit capture
+     becomes the item's **canonical in-locker reference**.
+  2. **Rotation/scale normalisation:** align the mask's principal axis (PCA) and
+     scale the crop. **Test-time augmentation** (0/90/180/270°, flip) for
+     embeddings, taking the best. Items lie at any angle in the bay.
+  3. **Colour constancy:** white-balance both crops (grey-world, or use the
+     locker's white floor as the reference), because phone photos and the
+     kiosk camera see colour differently.
+  4. **Multi-frame fusion:** the 3 frames per capture (median/best), plus
+     best-of-N over listing photos.
+  5. **Text/brand match:** OCR on the crop (e.g. the "OMEGA HTR-646" label on
+     the rivet tool). Consider EasyOCR/PaddleOCR on CPU if Tesseract is weak.
+  6. **Embedding ensemble:** DINOv2 + CLIP/SigLIP image embeddings, plus the
+     CLIP text check against the title.
+  7. **Per-bay empty references, refreshed** when a bay is known empty (after a
+     retrieval), so lighting drift does not break the difference mask.
+  8. **Calibration per tier (and per bay if needed)** on the labelled pairs.
+- **Every stage must earn its place:** add it, re-run the harness, keep it only
+  if the separation improves and the latency fits.
+
 ### Continuation prompt for the next session — paste after `/clear`
 
 ```
-Read, in this order: CLAUDE.md, memory.md (the 2026-09-24 and 2026-09-25
-entries), docs/PROGRESS.md: the status line, then "PRE-/clear HANDOFF #3" at
-the very end, then the 2026-09-25 entries (E6.R-E6.V, the wrong-deposit test,
-D-105, D-109/D-110, G5).
+Read, in this order: CLAUDE.md; memory.md (the 2026-09-24 and 2026-09-25
+entries); docs/PROGRESS.md: the status line, then "PRE-/clear HANDOFF #3" at
+the very end IN FULL (the dataset table, "Pipeline v2 design", "Rulings
+2026-09-25 ~21:30"); then server/python_server/services/ml/eval/README.md.
 
-This session is ML ITEM VERIFICATION only. The physical test is on hold.
+THIS SESSION IS ML ITEM VERIFICATION ONLY. The physical test is on hold.
 
-GOAL (user ruling, two-sided): correct item: fast >= 75, full 80-95; wrong
-item / empty bay: low (aim <= 40), with a clear gap. Report the separation,
-not the correct scores alone.
+TARGET (user ruling, two-sided; restate it before starting):
+  - correct item:           fast >= 75, full 80-95
+  - wrong item / empty bay: low (aim <= 40), with a clear gap
+  Report the SEPARATION per tier (worst correct vs best wrong/empty), plus
+  per-stage latency on the server's CPU. The server has NO GPU; heavier
+  models are acceptable, but the phone and kiosk then show a live
+  timer/progress driven by real stage progress, and each tier has a time
+  budget that fails into review instead of hanging.
 
-STEPS:
-  1. Copy the real kiosk frames (storage/verifications) and listing photos
-     (storage/items) from desktop-gklhcri into a gitignored eval folder.
-     NEVER storage/users (faces). NEVER commit images (the repo is public).
-  2. Build the labelled manifest from HANDOFF #3's table; open each image to
-     confirm its label.
-  3. Build an offline eval harness over the REAL fast and full pipelines;
-     record the BEFORE numbers in PROGRESS.md.
-  4. G2 section table for the ML phase from HANDOFF #3's "Pipeline v2
-     design" (localise -> crop -> semantic check -> DINOv2 -> LightGlue ->
-     calibrated fusion). Check GPU/CPU budget first. Re-measure after every
-     change; add each stage only if the separation improves.
-  5. Deploy only with a live-flow check; EngiRentMl takes ~6 min to load.
+DATA (already prepared, gitignored, NEVER commit images, the repo is public):
+  server/python_server/services/ml/eval/data/real_2026-09-24/
+  (84 kiosk frames + 14 listing photos + manifest.csv; labels provisional).
+  Originals stay on the server in storage/. NEVER touch storage/users (faces).
 
-Re-derive everything; the stack may be down again (reboots take it down,
-tunnels rotate, the APK bakes the API host).
+STEPS, in order:
+  1. Confirm every manifest label by opening the frames; label the 36
+     admin captures (empty bays are gold: they become the per-bay empty
+     references). Build extra negatives by pairing each capture with every
+     other item's listing photos; keep a HARD set (the rivet tool vs the
+     screwdriver).
+  2. Build the offline eval harness over the REAL fast and full pipelines
+     (app/comparison/hybrid.py). Record the BEFORE numbers in PROGRESS.md.
+  3. G2: a dated, repo-derived section table for the ML phase, from
+     HANDOFF #3 ("Pipeline v2 design" + "Rulings ~21:30"):
+       P  placement: empty-bay difference -> bbox/centroid -> OK /
+          OFF_CENTER / TRUNCATED / EMPTY / MULTIPLE -> a reposition result
+          that re-opens the door and says where to move the item; its own
+          retry cap, NOT counted toward the attempt-2 escalation (closes D-104)
+       0  quality on the item region, per-bay thresholds, never a
+          disguised 0% (D-105)
+       1  localise: kiosk = empty-bay difference; listing = BiRefNet/rembg
+       2  semantic: CLIP/SigLIP crop vs the listing title (+ optional OWLv2)
+       3  DINOv2 crop embeddings (+ CLIP ensemble), TTA rotations, best-of-N
+       4  SuperPoint/ALIKED + LightGlue + RANSAC inliers (the same object,
+          not just the same kind)
+       5  colour (white-balanced, inside the mask) + shape + OCR brand text
+       6  RETURNS also compare against the deposit's own kiosk frames
+       7  calibrated fusion per tier -> 0-100
+  4. Add ONE stage at a time; re-run the harness; keep it only if the
+     separation improves and the latency fits. Log every run in PROGRESS.md.
+  5. Node/phone/kiosk side for P and the timer: reposition result + message,
+     progress/timer events. G1: one unverified change at a time.
+  6. Deploy the ML service only after a live-flow check; EngiRentMl takes
+     ~6 min to load. Any kiosk test that opens a door is G11.
+
+Re-derive everything first; the stack may be down (reboots take all 7
+tasks down, the tunnels rotate, the APK bakes the API host: Prerelease31 =
+daughters-jam-quote-benefits as of 2026-09-25 20:15). Check for a live kiosk
+flow before any API restart.
 ```
