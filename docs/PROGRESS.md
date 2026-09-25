@@ -9371,6 +9371,30 @@ paying back by hand from those notices would have sent ₱90. It would also
 have "refunded" an OWNER_PAYOUT. Now only RENTAL_PAYMENT / SECURITY_DEPOSIT
 (`adminRefundTypes.test.ts`, 4). Node **378/378**. **Deployed 01:15, API PID 27624** (live-flow check clean; hash matched before and after).
 
+### 2026-09-25 20:05 — end of the physical test: the user's PayMongo ruling, the outage, G5
+
+**Ruling (user, 2026-09-25): "Automatic processes on PayMongo will be pushed on
+a later date."** So automatic PayMongo refunds and payouts are **deferred**.
+Today the payments are manual (GCash confirmed by an admin, no PayMongo id), so
+every refund path already falls back to a ledger-only refund (E6.V, the return
+refund) and payouts sit PENDING without a destination. Nothing to change now.
+The PayMongo branches stay in the code, dormant, for that later date.
+
+**Outage:** the server rebooted at 17:53. The whole stack was down until the
+restart at ~20:05 (full entry in `memory.md`). New tunnels, `.env` + admin
+re-pointed, API PID 2940, Prerelease31 building.
+
+**G5 six-symptom check at this boundary:**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent — every state claim re-derived from the DB/log (rentals, ledger, bays, PIDs), including after this session's restart |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | **Once:** an API restart at 00:27:55 landed inside a live return (owned and recorded). Since then, a live-flow check before every restart. The status line was kept every response |
+| 4 drifting to agreement | Absent — held approvals until the photos were checked, asked G11 before the bay-1 drop, recommended rather than just complied |
+| 5 batching | **Present by user override (G1):** E6.R→S→T→U→V were stacked under "build them now". Each was verified on screen where possible, and the open debt is listed in the status line |
+| 6 skipping verification | Absent, with one self-caught near-miss: the first availability fix exposed a second bug (the overdue screwdriver), caught by re-checking the flags after deploy |
+
 
 ## PRE-`/clear` HANDOFF #2 — 2026-09-24 ~22:15. Read this first if you are the next session.
 

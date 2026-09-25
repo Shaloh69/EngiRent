@@ -2467,3 +2467,20 @@ on bay 1 (00:18).
    reconciliation now re-checks every item both ways at startup and hourly.
    On-demand sweep for testing: `POST /admin/retrieval/sweep {rentalId}`.
 
+## 2026-09-25 17:53 — the server rebooted; the whole stack was down until 20:05
+
+Found at 20:05 when the user asked for the test verdict: `LastBootUpTime`
+17:53:47, all 7 `EngiRent*` tasks at `Ready` (the Interactive-logon defect,
+again), nothing on 5000/8001/3001/3000. The API log's last line was 07:27, so
+the API may have died earlier than the reboot too. `engirent-mysql` had come
+back by itself (Docker, `unless-stopped`). Restart per the runbook: Node + ML +
+3 tunnels. **All three tunnels failed the first time** ("context deadline
+exceeded" right after boot; `api.trycloudflare.com` answered 405 = reachable),
+then came up on retry: api `daughters-jam-quote-benefits`, admin
+`break-certain-cooperative-qualify`, web `fruit-templates-very-ping`. The
+server `.env` (`API_PUBLIC_URL`, `CLIENT_WEB/MOBILE/ADMIN_URL`) and the admin
+`.env.local` were re-pointed by string swap (UTF-8, no BOM), the API was
+restarted onto them (PID 2940, public tunnel 200), the admin was rebuilt, and
+**Prerelease31 (1.13.3+31) was built** because Prerelease30 bakes the dead API
+host. Every reboot costs a new APK until the URL stops rotating.
+
