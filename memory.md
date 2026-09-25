@@ -2483,4 +2483,12 @@ server `.env` (`API_PUBLIC_URL`, `CLIENT_WEB/MOBILE/ADMIN_URL`) and the admin
 restarted onto them (PID 2940, public tunnel 200), the admin was rebuilt, and
 **Prerelease31 (1.13.3+31) was built** because Prerelease30 bakes the dead API
 host. Every reboot costs a new APK until the URL stops rotating.
+**Restart result (20:15):** API PID 2940, ML :8001, admin :3001 (bakes the
+new API host, CORS preflight 204), web :3000 (links only Prerelease31, APK
+served 90993439 B, sha256 fa298a7a58a803de). **The kiosk Pi is OFFLINE**:
+Tailscale "last seen 19h ago" (~01:00 on 09-25), not in the server's
+neighbour table. Probably no power. It needs a person at the corridor; it
+cannot be restarted remotely. Lesson: the web and admin builds were started
+together by mistake (admin not yet up); both finished, just slower. Start
+them one at a time as the runbook says.
 
