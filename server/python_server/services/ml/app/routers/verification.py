@@ -15,12 +15,14 @@ import json
 import logging
 import os
 import tempfile
+import time
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import cv2
 import numpy as np
 from PIL import Image as _PILImage
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..comparison.hybrid import HybridVerifier
@@ -53,6 +55,53 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 verifier = HybridVerifier()
+_v2 = None
+
+
+# In-memory progress for running verifies, keyed by the caller's progress_id.
+# Entries expire after 10 minutes; only stage names and fractions are kept.
+_PROGRESS: dict[str, dict] = {}
+_PROGRESS_TTL_S = 600.0
+
+
+def _progress_start(pid: str, mode: str) -> None:
+    now = time.monotonic()
+    for k in [k for k, v in _PROGRESS.items() if now - v["_t0"] > _PROGRESS_TTL_S]:
+        _PROGRESS.pop(k, None)
+    _PROGRESS[pid] = {"_t0": now, "stage": "starting", "fraction": 0.0, "mode": mode, "done": False}
+
+
+def _progress_set(pid: str, stage: str, frac: float) -> None:
+    e = _PROGRESS.get(pid)
+    if e is not None:
+        e.update(stage=stage, fraction=round(float(frac), 3), done=frac >= 1.0)
+
+
+@router.get("/progress/{progress_id}", dependencies=[Depends(require_api_key)])
+async def verify_progress(progress_id: str):
+    e = _PROGRESS.get(progress_id)
+    if e is None:
+        raise HTTPException(status_code=404, detail="unknown progress_id")
+    return {
+        "stage": e["stage"],
+        "fraction": e["fraction"],
+        "mode": e["mode"],
+        "done": e["done"],
+        "elapsed_seconds": round(time.monotonic() - e["_t0"], 1),
+    }
+
+
+def _item_verifier():
+    """v1 or v2, per ML_PIPELINE_VERSION. v2 is imported only when selected, so
+    a service without its extra dependencies keeps running v1."""
+    global _v2
+    if settings.pipeline_version == "v2":
+        if _v2 is None:
+            from ..v2.verifier import V2Verifier
+
+            _v2 = V2Verifier()
+        return _v2
+    return verifier
 
 
 async def _save_uploads(files: list[UploadFile]) -> list[str]:
@@ -155,6 +204,15 @@ async def verify_item(
         default=None,
         description="JSON-encoded pre-extracted features from Item.mlFeatures (skips ResNet50 re-extraction)",
     ),
+    progress_id: str | None = Form(
+        default=None,
+        max_length=64,
+        description=(
+            "Optional caller-chosen id. While this verify runs, GET "
+            "/api/v1/progress/{progress_id} reports the stage it is on (v2 only), "
+            "so the phone and the kiosk can show real progress, not a spinner."
+        ),
+    ),
     mode: str = Form(
         default="fast",
         description=(
@@ -206,12 +264,23 @@ async def verify_item(
 
         parsed_features = json.loads(reference_features) if reference_features else None
 
-        result = verifier.verify(
+        kwargs = {}
+        if progress_id and settings.pipeline_version == "v2":
+            _progress_start(progress_id, mode)
+            kwargs["progress"] = lambda stage, frac: _progress_set(progress_id, stage, frac)
+
+        # Run the pipeline off the event loop. Called inline (as it was), a
+        # verify blocked this whole service for its duration: a 60 s full check
+        # stalled every face verification, and no /progress poll could be
+        # answered while the check it describes was running.
+        result = await run_in_threadpool(
+            _item_verifier().verify,
             original_sources=orig_paths,
             kiosk_sources=kiosk_paths,
             attempt_number=attempt_number,
             reference_features=parsed_features,
             mode=mode,
+            **kwargs,
         )
 
         return VerificationResponse(**result)

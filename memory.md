@@ -2492,3 +2492,27 @@ cannot be restarted remotely. Lesson: the web and admin builds were started
 together by mistake (admin not yet up); both finished, just slower. Start
 them one at a time as the runbook says.
 
+
+## 2026-09-25 (late) — ML item verification v2: measured first, built behind a flag
+
+**The offline harness is the ML safety net now**: `server/python_server/services/ml/eval/`
+(labels tracked, images gitignored). It reproduced the live 44.29 exactly, which is what
+makes its other numbers trustworthy. Run it in `.venv-eval` (the server's pins), never
+the global Python: OpenCV 5 removed `cv2.HOGDescriptor` and v1 cannot run there.
+
+**What moved the needle, and what did not.** Localising the item first (a floor model
+fitted to the frame itself, not a stored empty frame: no lit empty frame exists) and
+comparing DINOv2 embeddings of the CROPS took separation from -48.6 to about +49 held out.
+CLIP "do both crops read as the same kind of thing" added a little. Colour, CLIP image
+cosine, LightGlue inliers and return-vs-deposit frames did not improve the held-out number
+and were not kept. **Leave-one-ITEM-out is the honest metric:** LightGlue looked like +10
+under leave-one-capture-out and was flat under LOIO.
+
+**Three traps hit tonight:** (1) a post-hoc budget check threw away evidence already
+computed and demoted a correct 94 to PENDING; only the end-to-end API smoke run caught
+it, not the unit tests. (2) `/verify` was `async def` calling sync code, so one verify
+froze the whole ML service (face checks too). (3) Brute-force LightGlue (48 matchings per
+verify) burned an hour of CPU: let the cheap stage choose what the expensive one checks.
+
+**Server:** `venv-v2` sits beside the production `venv`, so deploying v2 = copy `app/`,
+point `svc-ml.bat` at `venv-v2`, `set ML_PIPELINE_VERSION=v2`, restart. Rollback = the reverse.

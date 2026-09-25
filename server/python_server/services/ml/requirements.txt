@@ -18,6 +18,15 @@ face_recognition_models
 torch==2.5.1
 torchvision==0.20.1
 
+# Item verification v2 (ML phase, 2026-09-25): DINOv2 + CLIP (transformers),
+# DISK/LightGlue (kornia, off by default), ISNet listing cut-out (rembg/onnxruntime).
+# Used only when ML_PIPELINE_VERSION=v2. These exact pins run against torch 2.5.1
+# in the server's venv-v2 and the eval venv.
+transformers==4.46.3
+kornia==0.8.0
+rembg==2.0.59
+onnxruntime==1.19.2
+
 # OCR (Phase 3)
 pytesseract==0.3.13
 

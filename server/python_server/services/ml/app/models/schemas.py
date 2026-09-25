@@ -50,6 +50,19 @@ class VerificationResponse(BaseModel):
     # background re-run that assists a human reviewer. The same score means
     # different things in each, so the tier travels with the result.
     mode: str = Field(default="fast", description="Which tier produced this verdict: fast or full")
+    # ML phase (2026-09-25), filled by the v2 pipeline only.
+    pipeline: str = Field(default="v1", description="Which verification pipeline produced this verdict")
+    placement: dict | None = Field(
+        default=None,
+        description="Stage P: OK / OFF_CENTER / TRUNCATED / EMPTY / MULTIPLE (+ UNSEEN), the message to show, and per-frame verdicts",
+    )
+    reposition: bool = Field(
+        default=False,
+        description="True when the item must be MOVED, not judged. The decision is RETRY; it must not count toward the review escalation",
+    )
+    quality_blocked: bool = Field(default=False, description="True when every frame was unusable (e.g. the locker light off)")
+    evidence: dict | None = Field(default=None, description="v2 raw per-stage evidence, for the reviewer")
+    stage_seconds: dict | None = Field(default=None, description="v2 wall time per stage")
 
 
 class StorableFeatures(BaseModel):

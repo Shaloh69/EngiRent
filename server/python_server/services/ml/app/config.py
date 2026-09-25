@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     # — every stage's separation improved or held with it on; none got worse.
     isolate_item_first: bool = True
 
+    # ML phase (2026-09-25): which verification pipeline /verify runs.
+    #   v1 = app/comparison/hybrid.py (GrabCut + SIFT + ResNet-50, fixed weights)
+    #   v2 = app/v2/ (floor-model localisation + placement, ISNet listing cut-out,
+    #        DINOv2 + CLIP, calibrated fusion). Measured on the real 2026-09-24/25
+    #        captures: separation -48.6 (v1) vs +49.2 held-out (v2). PROGRESS.md.
+    # Default stays v1 so deploying the code changes nothing until ML_PIPELINE_VERSION=v2.
+    pipeline_version: str = "v1"
+    # Where v2 keeps listing-photo embeddings between restarts. Empty = memory only.
+    v2_cache_dir: str = "cache_v2"
+
     # Feature extraction
     orb_features_count: int = 200
     sift_ratio_threshold: float = 0.7

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 - 2026-09-25 20:15 - **PHYSICAL TEST COMPLETE + ON HOLD** — **NEXT SESSION: ML ITEM VERIFICATION, read "PRE-/clear HANDOFF #3" at the END** - **stack restarted after the 17:53 reboot**: API PID 2940 (re-derive), tunnels api `daughters-jam-quote-benefits` / admin `break-certain-cooperative-qualify` / web `fruit-templates-very-ping`, **Prerelease31 (1.13.3+31) live** - **KIOSK PI OFFLINE since ~01:00 (needs a person)** - PayMongo automation DEFERRED (user ruling) - verified live: E6.R, E6.U, E6.S deposit-reject, E6.V (repair), D-93, D-96, D-103, D-110 - OPEN: **D-89b** (the check cannot tell a wrong item), **D-105** (bay 2 camera, fix awaiting yes), **D-108** (DB relay drops), D-104, D-106 phone fallback, D-97, D-98, D-99 - UNSEEN: phone dispute, owner-never-collects drop, auto refund on a fresh rejection - all committed, NOT pushed]
+[PHASE ML (item verification v2) - 2026-09-25 23:30 - physical test ON HOLD - **BEFORE: sep -48.6 full / -59.7 fast, 0/20 correct in band, 30 s/pair** - **v2 (localise + P + DINOv2 + CLIP agreement), held out per item: fast worst correct 75.9 / best wrong 26.7 (SEP +49.2), 20/20 >= 75, 88/88 <= 40; every well-placed correct 90-94 in both tiers; live rivet-as-screwdriver 11.8 (was 44.29); server CPU fast 3.4 s / full 6.0 s** - stage P 24/24 - LightGlue + stage 6 measured, NOT kept - v2 built behind ML_PIPELINE_VERSION (default v1), **NOT deployed: deploy plan + G11 deposit need the user** - server venv-v2 ready (prod venv untouched) - D-111 OCR dead in prod - dataset lost 13/84 frames (re-pull needs the user) - OPEN: D-89b + D-104 (v2 is the fix, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9721,3 +9721,280 @@ tasks down, the tunnels rotate, the APK bakes the API host: Prerelease31 =
 daughters-jam-quote-benefits as of 2026-09-25 20:15). Check for a live kiosk
 flow before any API restart.
 ```
+
+---
+
+## ML PHASE: item verification v2 (started 2026-09-25 ~21:30). G2 section table, repo-derived
+
+**Target (user ruling, restated at session start):** correct item → fast ≥ 75,
+full 80-95. Wrong item / empty bay → low (≤ 40), clear gap. Reported as the
+SEPARATION per tier (worst correct vs best wrong/empty) + per-stage CPU latency.
+
+**Re-derived at start (21:29):** server up since the 17:53 boot, all 7
+`EngiRent*` tasks Running. Server CPU **Ryzen 5 5600GT (6C/12T), 24 GB, AMD
+iGPU only: no CUDA**. ML venv: Python 3.12.9, torch 2.5.1+cpu (6 threads),
+OpenCV 4.9.0; no transformers/timm/kornia. **The server's `app/` is
+byte-identical to the repo** (all 21 `.py` files, EOL-normalised MD5), so
+the harness measures what is deployed.
+
+| § | Section | What exists in the repo today (read 2026-09-25) | Done when |
+|---|---|---|---|
+| H | Eval harness | Nothing. ML has 5 tests (API-key gate only) | `eval/harness.py` runs the REAL `HybridVerifier.verify` over every capture × listing, prints separation per tier + per-stage latency. BEFORE numbers logged here |
+| P | Placement | Nothing in ML. Node: `verdictPolicy.ts:42` `MAX_ATTEMPTS_BEFORE_REVIEW = 2`, a RETRY re-opens the door (`index.ts` deposit handler, `deposit:retry` socket event). The retry message is generic ("please reposition") | ML returns `placement: OK/OFF_CENTER/TRUNCATED/EMPTY/MULTIPLE` + where to move; Node maps non-OK to a **reposition** that re-opens the door with its own cap (not counted toward attempt 2); phone + kiosk show the direction. Thresholds tuned on the real frames. Closes D-104 |
+| 0 | Quality | `utils/quality.py:62` Laplacian var ≥ 50 on the FULL frame; `hybrid.py:145` returns `RETRY` with `confidence 0.0` when every frame fails | Measured on the item region, kiosk-specific threshold, a rejection carries a reason and is never a 0% verdict (D-105) |
+| 1 | Localise | `utils/background.py:152` `isolate_item` = GrabCut with a centre prior, both sides | Kiosk: floor/empty-bay model → item mask + bbox. Listing: learned cut-out (rembg/BiRefNet), cached per listing photo |
+| 2 | Semantic | Nothing. **Node does not send the listing title** (`mlVerificationService.ts:159-169`: images, attempt, mode, features only) | CLIP/SigLIP zero-shot on the crop vs the title; Node sends `item_title` |
+| 3 | Instance embedding | `features/deep.py:37` ResNet-50 ImageNet global features on the isolated image | DINOv2 on the crops (+ CLIP image ensemble), TTA rotations, best-of-N |
+| 4 | Geometric | `features/sift.py` SIFT + RANSAC on the isolated images | LightGlue (kornia, DISK/SuperPoint) inliers between crops, if it earns its place |
+| 5 | Colour/shape/OCR | `features/traditional.py` HSV/HOG/LBP/ORB on the isolated image; `utils/ocr.py` Tesseract. **D-111: the server has no Tesseract binary**, so OCR has returned "" on every live check | Colour inside the mask, white-balanced; shape; OCR only if a working engine is installed |
+| 6 | Return vs deposit frames | Nothing: a return is compared with the listing photos only | A return also scores against the deposit's own kiosk frames |
+| 7 | Fusion + calibration | `hybrid.py:308-322` fixed weights (trad .20 / deep .35 / sift .30 / ssim .05 / phash .10), `config.py:69-73` | Per-tier calibrated fusion → 0-100 fitted on the labelled pairs, reported with held-out (leave-one-item-out) numbers, not only fitted ones |
+| T | Timer + budget | `config.py:125-126` budgets fast 25 s / full 900 s; skipped stages → `degraded`. Kiosk has `VerifyingScreen.tsx`; no stage-progress events exist | Server emits real stage progress; phone + kiosk show a live timer; over budget fails into review |
+| D | Deploy | `D:\ENG\svc-ml.bat` runs the venv uvicorn; ~6 min load | New deps pinned in `requirements.txt`, installed on the server, live-flow check first, then `EngiRentMl` restart |
+
+**Dataset findings (step 1, confirmed by opening every frame):**
+- **The prepared dataset lost 13 of 84 frames**: `manifest.csv` maps two
+  different source files to the same `frame-N.jpg` in 13 places (84 rows, 71
+  files). Re-pulling the originals from `storage/verifications/` was refused
+  by the auto-mode classifier (PII-handling category) and is left for the
+  user. The 71 surviving frames cover all 27 captures (2-3 frames each).
+- **`cbd2718f` cap 00:00:20 is NOT an empty bay.** The screwdriver is in both
+  frames, its shaft running off the top edge. The log-derived "empty (D-104)"
+  label was wrong: relabelled correct + TRUNCATED.
+- **`1125ad66` (the "wrong item") is the Hand Rivets listing's own OMEGA
+  tool**, so those 2 captures are positives for `hand-rivets` and the hard
+  negatives for `phillip-screw-driver`.
+- **Every hammer and every rivet capture is TRUNCATED** (head / handles off the
+  top edge), 13 of 20 item captures. The camera sees less of the floor than a
+  person placing an item assumes. Stage P matters more than expected.
+- **No usable empty-bay reference exists for the lit bank.** The 4 empty
+  captures are admin captures from before the lighting state of ~21:07
+  (mean brightness 86 and 28 vs ~135 for every item capture), and bay 2 has
+  none. Localisation cannot rely on a stored empty frame yet: it must model
+  the floor from the frame itself, with stored references as an upgrade.
+- Admin captures carry no bay number; bays identified from the fixed view
+  (bay 1: scribbled floor + curved rail on the right; bay 2: red border left
+  and bottom). Labels: `eval/labels_real_2026-09-24.csv` (tracked, no images).
+
+**Pairs:** 27 captures (20 item, 4 empty, 3 other object) × 4 listings
+(hand-rivets, little-hammer, phillip-screw-driver, tester) = 108 pairs: 20
+positive, 88 negative, of which **15 hard** (rivet ↔ screwdriver both ways).
+
+**D-111 (new, production):** `pytesseract` is installed in the server venv
+but **Tesseract itself is not** (`TesseractNotFoundError`; not on PATH, not in
+`C:\Program Files\Tesseract-OCR`). `utils/ocr.py` swallows it, so the OCR
+stage, and its +10 bonus, has contributed nothing to any live verification.
+
+### ML run log (harness: `eval/harness.py`, `eval/v2_features.py`, `eval/fit_fusion.py`; eval venv = server pins)
+
+The eval venv is `services/ml/.venv-eval` (gitignored): Python 3.12, torch
+2.5.1+cpu, OpenCV 4.9.0.80, numpy 1.26.4, the server's exact pins.
+The dev PC's global Python has OpenCV 5.0, which **removed `cv2.HOGDescriptor`**,
+so the baseline cannot run there at all. All timings: 6 torch threads, on the
+dev PC, NOT the server. Server-CPU latency is still to be measured.
+
+**RUN 1: BEFORE, baseline `HybridVerifier.verify`, full tier (2026-09-25 22:07).**
+**The harness reproduces the live number exactly:** capture `1125ad66`
+01:01:59 (the rivet tool deposited as the screwdriver) scores **44.29**, the
+score the live check gave at 01:02 on 2026-09-25.
+
+| | worst correct | best wrong | SEPARATION | correct in 80-95 | wrong ≤ 40 |
+|---|---|---|---|---|---|
+| baseline full | **0.00** | 48.63 (hard: rivet capture vs screwdriver) | **-48.63** | 0/20 | 76/88 |
+
+- **10 of 20 correct pairs score a hard 0**: the full-frame blur gate (D-105)
+  rejects every frame. That includes **bay 1** (`f70f3360` 00:49:40, Laplacian
+  49.3 < 50), not only bay 2. Every one of the 108 decisions was RETRY.
+- Among the pairs that ran: correct 40.87-57.66 (median 46.87), wrong up to
+  48.63. **The hard wrong median (41.64) is above the correct minimum (40.87):
+  the baseline cannot tell the rivet tool from the screwdriver at all.**
+- Latency per pair that ran: mean 30.0 s, max 58.9 s. GrabCut isolation
+  dominates (19.2 s mean).
+- The fast-tier BEFORE run is still going (queued behind this one).
+
+**RUN 2: v2 raw stages, fast tier (22:06).** Kiosk: floor-model localisation
+(`app/v2/localise.py`) → crop. Listing: ISNet cut-out (`app/v2/listing.py`).
+Then DINOv2-base (4 rotations), CLIP ViT-B/16, colour. Per-stage separation
+on the raw evidence (no fusion yet):
+
+| stage | correct min | wrong max | hard max | gap | AUC |
+|---|---|---|---|---|---|
+| DINOv2 crop cosine (best-of-N) | 0.654 | 0.418 | 0.319 | **+0.236** | **1.000** |
+| CLIP zero-shot agreement (`sem_bc`) | 0.661 | 0.783 | 0.734 | -0.122 | 0.990 |
+| colour in the mask | 0.593 | 0.901 | 0.768 | -0.309 | 0.901 |
+| CLIP image cosine | 0.809 | 0.910 | 0.910 | -0.102 | 0.946 |
+| CLIP P(title) against the vocabulary | 0.000 | 0.053 | | | 0.607: **dropped**, titles like "Phillip Screw Driver" lose to the vocabulary's own "screwdriver" |
+
+The two lowest correct DINOv2 scores are the TRUNCATED hammer captures (only
+the handle in view): exactly what stage P's reposition exists to prevent.
+Latency: ~4-6 s per 3-frame capture; empty captures 0.1-0.2 s (P stops early).
+Listing prep ~4-7 s per photo, once (cached). Model load ~3 min on first
+download.
+
+**RUN 3: fusion, fast tier, one stage at a time** (`score = 5 + 90·p`,
+logistic regression C=1, class-balanced). LOIO = leave-one-ITEM-out, the
+honest number for a listing never seen:
+
+| stage set | LOIO worst correct | LOIO best wrong | LOIO SEP | correct ≥ 75 | wrong ≤ 40 | live incident | verdict |
+|---|---|---|---|---|---|---|---|
+| S1 localise + DINOv2 | 69.1 | 25.2 | +43.9 | 19/20 | 88/88 | 10.5 | base |
+| **S2 + CLIP agreement** | **75.9** | **26.7** | **+49.2** | **20/20** | **88/88** | **11.8** | **KEEP** |
+| S3 + colour | 67.1 | 23.3 | +43.8 | 19/20 | 88/88 | 12.9 | drop (worse) |
+| S4 + CLIP image | 65.6 | 23.2 | +42.4 | 19/20 | 88/88 | 13.4 | drop (worse) |
+
+**Stage P on the real frames:** 24/24 labelled captures judged right on every
+frame (EMPTY ×4, TRUNCATED ×11, OK ×9), 86 ms/frame. Fitted on all of them;
+there is no held-out placement set. Placement policy decided here: a shaft
+tip grazing the edge (< 12 px of contact at 480 px) is OK, not TRUNCATED; the
+item is identifiable. `cbd2718f` 00:00:20 and 00:00:41 relabelled to match.
+
+**RUN 4: BEFORE, baseline, fast tier (finished 22:56).**
+
+| | worst correct | best wrong | SEPARATION | correct ≥ 75 | wrong ≤ 40 |
+|---|---|---|---|---|---|
+| baseline fast | 0.00 | 59.73 (screwdriver capture vs the multimeter listing) | **-59.73** | 0/20 | 64/88 |
+
+- **The 25 s budget does not bound the call:** max 49.3 s per pair. The
+  budget is checked only BETWEEN stages, and GrabCut isolation (25.5 s mean
+  where it ran) sits before the first check.
+- **The baseline's fast score depends on CPU load:** 35/108 pairs were
+  degraded (sift/ssim/deep/ocr skipped for time). The live-incident capture
+  scored 48.63-52.03 here against 44.29 live: the same photos give a
+  different score depending on how busy the machine is.
+- Every decision RETRY again (108/108).
+
+### ML service integration (built 2026-09-25 ~22:40, NOT deployed)
+
+- `app/v2/` = localise, placement, listing (ISNet), crops (white balance +
+  neutral background + TTA), embed (DINOv2-base, CLIP B/16), vocab, geometric
+  (DISK+LightGlue, full tier, pending the harness), fusion
+  (`fusion_params.json`, per tier and per stage set, with the S1 fallback when
+  the budget skips the semantic stage), verifier (the service wrapper).
+- **Switch:** `ML_PIPELINE_VERSION` (`config.pipeline_version`, default `v1`).
+  Deploying the code changes nothing until that env var says `v2`. v2's
+  dependencies are imported only when it is selected.
+- **Wire-compatible with the Node deployed today.** Same response shape, plus
+  `pipeline`, `placement`, `reposition`, `quality_blocked`, `evidence`,
+  `stage_seconds`. A placement problem comes back as `decision: RETRY` +
+  `reposition: true`, so today's Node re-opens the door already. Placement
+  policy: EMPTY/MULTIPLE always reposition; TRUNCATED/OFF_CENTER reposition only
+  when the score is below the auto-approve line.
+- **Listing cache on disk** (`cache_v2/`, gitignored, by content hash): a
+  restart does not make the next deposit re-pay ~5 s per listing photo.
+  Models warm in a background thread at startup when v2 is on.
+- **Progress:** optional `progress_id` form field on `/verify`, and
+  `GET /api/v1/progress/{id}` → `{stage, fraction, done, elapsed_seconds}`
+  (API-key gated, 10-min expiry).
+- **Found and fixed while wiring it: `/verify` blocked the whole ML service.**
+  `verify_item` is `async def` and called the synchronous pipeline inline, so a
+  running verify froze the event loop: a 60 s full check stalled every face
+  verification queued behind it, and no progress poll could ever be answered.
+  Now `run_in_threadpool`.
+- Tests: `tests/test_v2_placement.py` (8, synthetic frames: EMPTY / OK + bbox /
+  TRUNCATED / OFF_CENTER / MULTIPLE / soft shadow ≠ item / fusion monotonic +
+  bounded / fallback). Suite **75 passed** (CLAUDE.md's "ML: 5 tests" is stale:
+  67 existed). Type-valid mutations: disabling the edge, off-centre and
+  multiple rules each fails its test; `EMPTY_MAX_AREA = 0` survives, because
+  EMPTY is decided by "no component found" first (the constant is redundant
+  for these cases, not untested logic).
+
+### Node / phone / kiosk design for P and T (NOT built: G1, the ML change is the one unverified change)
+
+- **P, Node:** in the deposit handler (`index.ts:535` attempt =
+  `depositAttemptCount + 1`) and the return handler (`index.ts:826`), when
+  `mlResult.reposition` is true: re-open the door as for RETRY, but increment
+  a separate `placementRetryCount` (new column, cap 3) instead of
+  `depositAttemptCount`/`returnAttemptCount`, and pass
+  `mlResult.placement.message` to the kiosk (`verification_done` +
+  `message`) and the phone (`deposit:retry` / `return:retry` + `reason:
+  "placement"` + `message`). Past the cap, it goes to review as today.
+  `verdictPolicy` stays as is: a reposition never reaches it.
+- **T, Node:** generate `progress_id = <rentalId>-<attempt>-<ts>`, send it on
+  `/verify`, and while awaiting poll `GET /progress/:id` every 1 s. Relay the
+  stage and fraction to the kiosk (`kiosk:command {action:
+  "verification_progress", stage, fraction, elapsed}`) and the phone
+  (`deposit:progress`). The kiosk's `VerifyingScreen` already takes
+  `currentStage` (StagedProgress, "nothing passes it yet"); its hard-coded v1
+  `ML_STAGES` list must become v2's real stages: checking the light, locating
+  the item, checking the item, reading the listing photos, comparing.
+- **Budget:** Node's axios timeout per tier (`REQUEST_TIMEOUT_MS`) stays the
+  hard stop. It fails into review (the existing `mlUnreachableResult`).
+
+**G5 six-symptom check, ML section boundary (2026-09-25 ~23:05):**
+1 re-deriving: no. 2 vaguer summaries: no. **3 losing the rules: YES.** I had
+not opened my messages with the status line this session (G4). Corrected from
+here. 4 drift toward agreement: no (the D-104 "empty" label, the "5 tests" claim
+and the dataset's frame count were all caught against the repo/data).
+**5 batching: mild.** The service wiring (verifier + router flag + progress
+endpoint + threadpool) went in as one unit. **6 skipping verification: at
+risk.** That wiring had not been exercised end to end when this was written;
+it is run next, before anything claims it works.
+
+**RUN 5: v2 full tier (8 rotations + DINO-guided DISK/LightGlue), 23:00.**
+Stage 4 as first built (LightGlue on every rotation × listing photo × frame
+= 48 matchings per verify) burned ~60 CPU-min without finishing the set:
+stopped and rebuilt so DINOv2 picks the alignment and LightGlue runs once per
+frame (~7 s per capture across 4 listings, dev PC).
+
+| full tier | LOCO worst correct / SEP | LOIO worst correct / best wrong / SEP | verdict |
+|---|---|---|---|
+| S1 DINOv2 | 69.8 / +50.5 | 67.5 / 25.5 / +42.0 | base |
+| **S2 + CLIP agreement** | 76.7 / +50.2 | **74.7 / 26.5 / +48.2** | **KEEP** |
+| S5 = S2 + LightGlue | 83.2 / +60.0 | 74.7 / 26.7 / +48.0 | **not kept**: helps on seen items (LOCO), flat on unseen ones (LOIO), and LOIO is the deployment case. Code stays behind `pipeline.GEOMETRIC` |
+
+LightGlue alone: AUC 0.946 (median 50 inliers on correct pairs, but a wrong
+pair reached 42). Inlier counts track how textured an item is, not only
+identity.
+
+**Where the full tier's 80-95 stands (held out per item, S2):** every
+correctly PLACED capture scores **90.6-93.7 (8/8 inside 80-95)**, fast
+90.1-93.8. All 12 truncated correct captures ≥ 75 in fast; in full, 11/12.
+The one under 80 in either tier is the hammer at 22:43:25 (head cut off,
+74.3 full / 75.4 fast), and stage P sends exactly that capture back for
+repositioning (TRUNCATED and < 85) rather than scoring it. So: **fast ≥ 75
+met on 20/20; full 80-95 met on every capture the system would actually
+score; wrong ≤ 40 met on 88/88 in both tiers.** All of it on 3 items.
+
+**RUN 6: stage 6, return vs the deposit's own kiosk frames (23:10).**
+Kiosk crop vs kiosk crop (DINOv2), all item captures pairwise, positive = the
+same physical item: same-item min 0.631, different max 0.454, **gap +0.177**,
+vs +0.236 for kiosk vs listing. Worst same-item pair = two truncated hammer
+captures showing different halves. **Not kept** on this data (and it needs
+Node to send the deposit frames). Revisit when there are more returns.
+
+**RUN 7: v2 latency on the SERVER's CPU** (Ryzen 5 5600GT, 6 threads,
+`venv-v2`, synthetic 1280×720 frames: cost is size-, not content-dependent;
+no stored photo touched on the server):
+
+| | v2 (as shipped: S2, no LightGlue) | baseline |
+|---|---|---|
+| model load | 19.0 s (weights cached; first-ever run downloads ~1.3 GB) | ~6 min service start |
+| first check of a new listing (4 photos cut out, cached after) | 12.05 s | |
+| **fast, warm** | **3.31-3.47 s** (DINOv2 2.4, CLIP 0.6, localise+P 0.12) | mean 30 s, max 58.9 s |
+| **full, warm** | **5.95-6.01 s** (DINOv2 ×8 rotations 5.0) | |
+| with LightGlue (not shipped) | full 6.97 s | |
+
+Progress events arrive in real stage order: quality 0.02 → locating 0.08 →
+checking 0.25/0.41/0.58 (per frame) → listing photos 0.62 → comparing 0.85 →
+done 1.0.
+
+**Server state after this session (nothing live changed):** new
+`D:\ENG\EngiRent\server\python_server\services\ml\venv-v2` (the production
+freeze + transformers 4.46.3, kornia 0.8.0, rembg 2.0.59, onnxruntime 1.19.2;
+imports verified; the production `venv` untouched), `freeze_v1.txt` beside it,
+`D:\ENG\mkvenv_v2.ps1`, and `D:\ENG\ml-v2-bench\` (code only, for the
+benchmark). The model weights are now cached in the `transfer` user's
+HF/torch/u2net caches. EngiRentMl still runs v1 from `venv`.
+
+### Deploy plan for v2 (needs the user: see the session report)
+
+1. Live-flow check (API log: no flow_start/BAY-* in the last minutes).
+2. Copy `app/` (incl. `app/v2/`, `fusion_params.json`) to
+   `D:\ENG\EngiRent\server\python_server\services\ml\app\`.
+3. `svc-ml.bat`: `venv` → `venv-v2`, and `set ML_PIPELINE_VERSION=v2`.
+   Rollback = revert those two lines + restart.
+4. Restart EngiRentMl. Check `/api/v1/health` and the log line "v2 models
+   loaded".
+5. **Verification = one real deposit on the bank (G11: the user says yes,
+   someone is at the corridor).** Until then v2 is the one unverified change
+   (G1), and the Node P/T work waits.

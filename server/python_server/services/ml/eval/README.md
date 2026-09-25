@@ -63,3 +63,30 @@ correct score vs the best wrong/empty score. The target (user ruling,
 (≤ 40), with a clear gap. Also report the placement verdict (centred /
 off-centre / truncated / empty / multiple) and per-stage latency on the server's
 CPU (no GPU).
+
+## Confirmed labels and known dataset defect (2026-09-25)
+
+Labels confirmed by opening every frame are in the tracked
+`eval/labels_real_2026-09-24.csv` (one row per capture: truth item, kind,
+bay, placement). It supersedes `manifest.csv`'s provisional labels, two of
+which were wrong: `cbd2718f` 00:00:20 is **not** empty (the screwdriver is
+there), and the `1125ad66` "wrong item" is the Hand Rivets listing's own tool.
+
+**`manifest.csv` has 84 rows but only 71 files exist:** 13 frames were
+overwritten when two source files mapped to the same `frame-N.jpg`. Every
+capture still has 2-3 frames. Re-pulling the originals needs the user.
+
+## Running it (eval venv = the server's pins)
+
+```
+py -3.12 -m venv .venv-eval   # then the server's requirements + transformers==4.46.3 kornia==0.8.0 rembg==2.0.59 onnxruntime==1.19.2
+.venv-eval/Scripts/python -m eval.harness --pipeline baseline --tier full --threads 6   # v1, the real HybridVerifier
+.venv-eval/Scripts/python -m eval.v2_features --tier fast                              # v2 raw per-stage evidence
+.venv-eval/Scripts/python -m eval.fit_fusion --tier fast [--save]                      # stage-by-stage fusion, fitted / LOCO / LOIO
+.venv-eval/Scripts/python -m eval.return_vs_deposit                                     # stage 6
+.venv-eval/Scripts/python -m eval.bench_latency                                         # per-stage latency, synthetic images
+```
+
+Do not use a Python with OpenCV 5.x: it removed `cv2.HOGDescriptor`, which
+v1 needs. Results go to `eval/runs/` (gitignored); the numbers that matter are
+logged in `docs/PROGRESS.md` ("ML run log").

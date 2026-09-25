@@ -48,6 +48,19 @@ app.add_middleware(
 app.include_router(verification.router, prefix="/api/v1", tags=["verification"])
 
 
+@app.on_event("startup")
+async def _warm_v2():
+    # The v2 models take minutes to load on this CPU; load them in the
+    # background at startup so the first deposit after a restart is not the
+    # one that pays for it.
+    if settings.pipeline_version == "v2":
+        import threading
+
+        from .v2.verifier import warm
+
+        threading.Thread(target=warm, name="v2-warm", daemon=True).start()
+
+
 @app.get("/")
 async def root():
     return {

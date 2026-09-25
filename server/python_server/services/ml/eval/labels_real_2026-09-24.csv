@@ -1,0 +1,28 @@
+capture,truth,kind,bay,placement,claimed_listing,note
+kiosk/phillip-screw-driver__f70f3360/cap_2026-09-25_004841,phillip-screw-driver,item,1,ok,phillip-screw-driver,deposit
+kiosk/phillip-screw-driver__f70f3360/cap_2026-09-25_004940,phillip-screw-driver,item,1,ok,phillip-screw-driver,deposit
+kiosk/phillip-screw-driver__f70f3360/cap_2026-09-25_005359,phillip-screw-driver,item,1,ok,phillip-screw-driver,return
+kiosk/phillip-screw-driver__f70f3360/cap_2026-09-25_005440,phillip-screw-driver,item,1,ok,phillip-screw-driver,return
+kiosk/phillip-screw-driver__cbd2718f/cap_2026-09-25_000020,phillip-screw-driver,item,2,ok,phillip-screw-driver,"logged as EMPTY (D-104) but the screwdriver is in both frames; shaft tip grazes the top edge (placement policy: OK)"
+kiosk/phillip-screw-driver__cbd2718f/cap_2026-09-25_000041,phillip-screw-driver,item,2,ok,phillip-screw-driver,"shaft tip grazes the top edge (placement policy: OK, the item is identifiable)"
+kiosk/phillip-screw-driver__cbd2718f/cap_2026-09-25_003446,phillip-screw-driver,item,2,ok,phillip-screw-driver,"lying horizontal, near the top"
+kiosk/phillip-screw-driver__cbd2718f/cap_2026-09-25_003513,phillip-screw-driver,item,2,ok,phillip-screw-driver,
+kiosk/phillip-screw-driver__1125ad66/cap_2026-09-25_010108,hand-rivets,item,1,truncated,phillip-screw-driver,"WRONG ITEM for its rental: the OMEGA rivet tool (the Hand Rivets listing's own tool) deposited as the screwdriver"
+kiosk/phillip-screw-driver__1125ad66/cap_2026-09-25_010159,hand-rivets,item,1,truncated,phillip-screw-driver,WRONG ITEM for its rental (same as above)
+kiosk/hand-rivets__b7497e8b/cap_2026-09-24_215107,hand-rivets,item,1,truncated,hand-rivets,handles off the top edge
+kiosk/hand-rivets__b7497e8b/cap_2026-09-24_222232,hand-rivets,item,1,truncated,hand-rivets,handles off the top edge
+kiosk/little-hammer__3139d8c5/cap_2026-09-24_223908,little-hammer,item,2,truncated,little-hammer,head cut off at the top edge
+kiosk/little-hammer__3139d8c5/cap_2026-09-24_223934,little-hammer,item,2,truncated,little-hammer,head cut off at the top edge
+kiosk/little-hammer__3139d8c5/cap_2026-09-24_224325,little-hammer,item,2,truncated,little-hammer,"head cut off; bluish white balance"
+kiosk/little-hammer__3139d8c5/cap_2026-09-24_224337,little-hammer,item,2,truncated,little-hammer,head cut off at the top edge
+kiosk/_admin_captures/cap_2026-09-24_215246,hand-rivets,item,1,truncated,,admin capture
+kiosk/_admin_captures/cap_2026-09-24_224109,hand-rivets,item,1,truncated,,admin capture
+kiosk/_admin_captures/cap_2026-09-24_224120,hand-rivets,item,1,truncated,,admin capture
+kiosk/_admin_captures/cap_2026-09-24_224127,little-hammer,item,2,truncated,,"admin capture; bluish white balance"
+kiosk/_admin_captures/cap_2026-09-24_200154,none,empty,1,empty,,"dim (mean ~86), diagonal light beam; before the 21:07 lighting state"
+kiosk/_admin_captures/cap_2026-09-24_202533,none,empty,1,empty,,"dim (mean ~86), diagonal light beam"
+kiosk/_admin_captures/cap_2026-09-24_202558,none,empty,3or4,empty,,near dark (mean ~28)
+kiosk/_admin_captures/cap_2026-09-24_203054,none,empty,3or4,empty,,near dark (mean ~28)
+kiosk/_admin_captures/cap_2026-09-24_200218,none,other,unknown,other,,"a red plastic bag; dark (mean ~29)"
+kiosk/_admin_captures/cap_2026-09-24_202545,none,other,3or4,other,,"a tape roll and a sheet of paper; dark (mean ~44)"
+kiosk/_admin_captures/cap_2026-09-24_203026,none,other,3or4,other,,"tape roll and paper (same scene as 202545)"
