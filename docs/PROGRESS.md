@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE E6 - 2026-09-25 20:15 - **PHYSICAL TEST COMPLETE** (verdict recorded below) - **stack restarted after the 17:53 reboot**: API PID 2940 (re-derive), tunnels api `daughters-jam-quote-benefits` / admin `break-certain-cooperative-qualify` / web `fruit-templates-very-ping`, **Prerelease31 (1.13.3+31) live** - **KIOSK PI OFFLINE since ~01:00 (needs a person)** - PayMongo automation DEFERRED (user ruling) - verified live: E6.R, E6.U, E6.S deposit-reject, E6.V (repair), D-93, D-96, D-103, D-110 - OPEN: **D-89b** (the check cannot tell a wrong item), **D-105** (bay 2 camera, fix awaiting yes), **D-108** (DB relay drops), D-104, D-106 phone fallback, D-97, D-98, D-99 - UNSEEN: phone dispute, owner-never-collects drop, auto refund on a fresh rejection - all committed, NOT pushed]
+[PHASE E6 - 2026-09-25 20:15 - **PHYSICAL TEST COMPLETE + ON HOLD** — **NEXT SESSION: ML ITEM VERIFICATION, read "PRE-/clear HANDOFF #3" at the END** - **stack restarted after the 17:53 reboot**: API PID 2940 (re-derive), tunnels api `daughters-jam-quote-benefits` / admin `break-certain-cooperative-qualify` / web `fruit-templates-very-ping`, **Prerelease31 (1.13.3+31) live** - **KIOSK PI OFFLINE since ~01:00 (needs a person)** - PayMongo automation DEFERRED (user ruling) - verified live: E6.R, E6.U, E6.S deposit-reject, E6.V (repair), D-93, D-96, D-103, D-110 - OPEN: **D-89b** (the check cannot tell a wrong item), **D-105** (bay 2 camera, fix awaiting yes), **D-108** (DB relay drops), D-104, D-106 phone fallback, D-97, D-98, D-99 - UNSEEN: phone dispute, owner-never-collects drop, auto refund on a fresh rejection - all committed, NOT pushed]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9501,4 +9501,101 @@ RULES THAT BIND:
   - When the classifier refuses something, do not look for another route:
     hand the user ONE-LINE PowerShell commands.
   - Record findings in docs/PROGRESS.md as you go.
+```
+
+## PRE-`/clear` HANDOFF #3 — 2026-09-25 ~20:20. Next session: ML ITEM VERIFICATION (user ruling). The physical test is ON HOLD.
+
+**User ruling (2026-09-25):** "put that on hold; next session focus on the ML
+item verification to improve, based on today's findings. Add lots and lots of
+improvements. Use the real images passed through testing on the server PC.
+The fast version should return at least 75 and the full around 80 to 95."
+
+**The target is TWO-SIDED (agreed framing; state it back to the user at the
+start):** for the **correct** item: fast ≥ 75, full 80-95. For a **wrong item
+or an empty bay**: stay low (aim ≤ 40), with a clear gap between the two. On
+2026-09-25 the rivet tool deposited as the screwdriver scored **44.29**, the
+real screwdriver 44.29 / 50.37 / 55.27 on the same bay. Raising the correct
+scores without holding the wrong ones down would just automate D-89b's failure.
+Report accuracy as the **separation** (worst correct vs best wrong, per tier),
+not the correct score alone.
+
+**Real data on the server** (`D:\ENG\EngiRent\server
+ode_server\storage\`):
+`verifications/` holds 84 kiosk frames (3 per capture, 1280×720), `items/` holds 22 listing photos.
+**Never copy `storage/users/` (faces). Keep every image out of git: the repo is
+PUBLIC.** Put them in a gitignored eval folder or the scratchpad.
+
+| Folder (rental) | Frames | Ground truth (from the 2026-09-24/25 logs) |
+|---|---|---|
+| `b7497e8b` Hand Rivets | 6 | the rivet tool, bay 1. **Correct** (a deposit capture; check whether both captures are the item) |
+| `3139d8c5` Little Hammer | 12 | the hammer, **bay 2 (blurry camera, D-105)**. Deposit ×2 + return ×2, all **correct** |
+| `cbd2718f` Phillip Screw Driver | 12 | bay 2. **Deposit capture #1 (00:00:20) = EMPTY bay** (D-104: the door never opened) → **negative**. The rest are the screwdriver → **correct** |
+| `f70f3360` Phillip Screw Driver | 12 | bay 1. Deposit ×2 + return ×2, all **correct** (real scores 50.37 / 55.27) |
+| `1125ad66` Phillip Screw Driver | 6 | bay 1. **WRONG ITEM: the OMEGA rivet tool** deposited as the screwdriver (44.29) → **negative** |
+| `unscoped` | 36 | admin captures of bays 1-4 (some empty, some with items). Label by eye |
+
+Map each frame to its capture by timestamp (the filename prefix is epoch ms),
+and to its rental's listing photo via `Verification.originalImages` (admin
+`/admin/verifications`). **Check every label by opening the image.**
+
+**Known causes to attack (from today, in the code):**
+1. **D-105:** the blur gate (`quality.py:62-64`, Laplacian var ≥ 50 on the full
+   frame) rejects every bay-2 frame (34-44), and `hybrid.py:145` then returns a
+   hard 0 disguised as RETRY. Measure the item region, give kiosk frames their
+   own threshold, and never report a quality rejection as a 0% verdict.
+2. **D-89b:** the white locker floor dominates every whole-image method, so
+   everything scores ~45-55. Isolate the item first: an **empty-bay reference
+   per locker** (the bays' backgrounds are fixed; the unscoped admin captures
+   may already contain empties) → difference/mask → crop to the item → compare
+   crop to listing. `hybrid.py` Step 1b already has a background-cut attempt:
+   read it before adding another.
+3. Compare on what separates the items: colour histogram inside the mask, shape
+   (contour/aspect/Hu moments), a strong embedding on the crop (check what the
+   DL stage uses today and what fits the server's CPU and its ~6-minute model
+   load), best-of-N across listing photos and kiosk frames.
+4. **Calibrate** the raw similarity to 0-100 on the labelled set, so a correct
+   item lands ≥ 75 / 80-95 by construction and a wrong one lands low. Hold part
+   of the set out, or say plainly that it is fitted on everything.
+
+**Build first: an offline eval harness** that runs the real fast and full
+pipelines over the labelled manifest and prints per-sample scores plus the
+separation per tier. Measure **before** changing anything, and after every
+change. The ML service has 5 tests (API-key gate only), so the harness is the
+safety net.
+
+**Constraints that still bind:** do not change the face-verification trust
+architecture. The ML key stays server-side. Deploying the ML service needs a
+restart of `EngiRentMl` (~6 min model load) and a live-flow check first. Any
+bank test is G11. **The kiosk Pi has been OFFLINE since ~01:00 on 2026-09-25**,
+so no new captures until someone powers it, but none are needed to start.
+
+### Continuation prompt for the next session — paste after `/clear`
+
+```
+Read, in this order: CLAUDE.md, memory.md (the 2026-09-24 and 2026-09-25
+entries), docs/PROGRESS.md: the status line, then "PRE-/clear HANDOFF #3" at
+the very end, then the 2026-09-25 entries (E6.R-E6.V, the wrong-deposit test,
+D-105, D-109/D-110, G5).
+
+This session is ML ITEM VERIFICATION only. The physical test is on hold.
+
+GOAL (user ruling, two-sided): correct item: fast >= 75, full 80-95; wrong
+item / empty bay: low (aim <= 40), with a clear gap. Report the separation,
+not the correct scores alone.
+
+STEPS:
+  1. Copy the real kiosk frames (storage/verifications) and listing photos
+     (storage/items) from desktop-gklhcri into a gitignored eval folder.
+     NEVER storage/users (faces). NEVER commit images (the repo is public).
+  2. Build the labelled manifest from HANDOFF #3's table; open each image to
+     confirm its label.
+  3. Build an offline eval harness over the REAL fast and full pipelines;
+     record the BEFORE numbers in PROGRESS.md.
+  4. G2 section table for the ML phase, then improve: item isolation
+     (empty-bay reference per locker), the blur gate (D-105), comparison on
+     the item crop, calibration. Re-measure after every change.
+  5. Deploy only with a live-flow check; EngiRentMl takes ~6 min to load.
+
+Re-derive everything; the stack may be down again (reboots take it down,
+tunnels rotate, the APK bakes the API host).
 ```
