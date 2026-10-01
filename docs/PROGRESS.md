@@ -10012,10 +10012,10 @@ exact steps for the user are in the session report and below.
 
 **v2 deploy by hand** (on the server, EngiRentMl may be running):
 1. Copy the repo's `server/python_server/services/ml/app/` (commit `af5d167`) over
-   `D:\ENG\EngiRent\server\python_server\services\mlpp\` (back up the old
+   `D:\ENG\EngiRent\server\python_server\services\ml\app\` (back up the old
    `app` first; the server's copy was verified identical to `e542e2a`).
-2. In `D:\ENG\svc-ml.bat`, change `.env\Scripts\python.exe -m uvicorn` to
-   `.env-v2\Scripts\python.exe -m uvicorn` and add `set ML_PIPELINE_VERSION=v2`
+2. In `D:\ENG\svc-ml.bat`, change `.\venv\Scripts\python.exe -m uvicorn` to
+   `.\venv-v2\Scripts\python.exe -m uvicorn` and add `set ML_PIPELINE_VERSION=v2`
    on the line above it. (`venv-v2` is already built and verified.)
 3. Kill the :8001 process tree (from its `svc-ml.bat` cmd), `Start-ScheduledTask
    EngiRentMl`. Rollback = restore the two backups and restart.
