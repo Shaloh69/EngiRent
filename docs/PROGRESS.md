@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-10-01 20:50 - **stack restored after the 09-28 reboot + the user's 10-01 20:14 restart**: API PID 3804, ML 11048 (**still v1**), admin 16004, web 5472; tunnels api `actor-firewall-completely-disabled` / admin `enters-oecd-framework-part` / web `sociology-listed-ratio-deutsch`; **Prerelease32 (1.13.4+32) live in all 4 places** (APK, website, changelog, AppRelease + LATEST_APP_VERSION=1.13.4) - v2 (af5d167) held-out: fast worst correct 75.9 / best wrong 26.7, server CPU 3.4 s - **REFUSED by the classifier, left for the user: v2 deploy, 13-frame re-pull, Tesseract (D-111)** - kiosk registered - OPEN: D-89b + D-104 (v2 is the fix, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
+[PHASE ML (item verification v2) - 2026-10-01 21:30 - stack up: API 3804, ML 11048 (**v1**), admin 16004, web 5472; api `actor-firewall-completely-disabled` / admin `enters-oecd-framework-part` / web `sociology-listed-ratio-deutsch`; Prerelease32 (1.13.4+32) live in all 4 places - **v2 deploy, 13-frame re-pull, Tesseract: refused by the classifier; now ONE command each for the user** (`ml/deploy/deploy_v2.sh`, `ml/eval/pull_originals.sh`, UB-Mannheim installer; ocr.py finds it) - /health reports item_pipeline + item_models_ready - ML tests 79 - OPEN: D-89b + D-104 (v2, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111 (fix ready, needs the install)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10028,3 +10028,36 @@ existed for 1.13.1-1.13.3), `LATEST_APP_VERSION` 1.13.0 → 1.13.4 (backup
 `.env.bak-20261001-ver`), API restarted (PID 26344 → 3804, no live flow, kiosk
 re-registered). Public `GET /app-config` → `latestVersion 1.13.4` with the real
 highlights; `MIN_APP_VERSION` untouched (1.0.0).
+
+### 2026-10-01 ~21:30 — The three blocked steps reduced to one command each (nothing run by me)
+
+Re-derived first: none of the three had been done; stack unchanged.
+
+- **v2 deploy:** `bash server/python_server/services/ml/deploy/deploy_v2.sh`
+  (dev PC). Refuses if `app/` differs from HEAD; uploads the committed `app/` and
+  `server_switch_v2.ps1`, which backs up `app\` and `svc-ml.bat` once
+  (`*.bak-pre-v2`), extracts, points the launcher at `venv-v2` +
+  `ML_PIPELINE_VERSION=v2`, kills ONLY the `svc-ml.bat` tree (walks up from the
+  :8001 PID; never by name: two other projects run python/node here), starts
+  `EngiRentMl`, and waits for `/health` to say `item_models_ready`. Rollback:
+  `deploy_v2.sh --rollback`. Syntax-checked (bash -n, PowerShell parser); NOT run.
+- **`/health` now reports `item_pipeline` and (v2) `item_models_ready`** so
+  "deployed" and "ready" can be told apart from outside. Seen in-process: v1 →
+  `v1/null`; v2 → `false` at start, `true` after 14 s, `/health` answering
+  throughout (the warm-up does not block).
+- **Frames:** `bash server/python_server/services/ml/eval/pull_originals.sh`
+  (copies `storage/verifications/*` only, refuses unless the destination is
+  gitignored), then `python -m eval.rebuild_dataset --apply` (one frame per
+  source, named in source order). Tested on a synthetic copy of the manifest:
+  84 rows → 84 unique frames, each source exactly once.
+- **Tesseract (D-111):** install UB-Mannheim 5.4.0.20240606 to the default
+  path. `utils/ocr.py` now falls back to `C:\Program Files\Tesseract-OCR\tesseract.exe`
+  when `tesseract` is not on PATH (a Scheduled Task's PATH may not have it). 4 new
+  tests (`tests/test_ocr_locate.py`); suite **79 passed**.
+
+**G5 (section boundary):** symptom **3/6 present in a small way**: I made the
+same Python escape mistake twice in one session (PROGRESS deploy paths, then
+`\t` → TAB in the Tesseract path). Both were caught by looking at the output,
+not assumed; the second is now pinned by a test, and the mutation that
+re-introduces it fails. Rule for myself: write Windows paths with Edit or raw
+strings, never inside an escaped heredoc string. No other symptoms.

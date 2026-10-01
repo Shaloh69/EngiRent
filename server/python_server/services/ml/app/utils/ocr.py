@@ -16,6 +16,26 @@ from .image import load_image
 logger = logging.getLogger(__name__)
 
 
+# D-111 (2026-09-25): the server had pytesseract but no Tesseract binary, so
+# every OCR call failed and was swallowed. The standard Windows installer puts it
+# here, and a Scheduled Task's PATH may not include that folder, so look there
+# when it is not on PATH.
+_WINDOWS_DEFAULT = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+_located = False
+
+
+def _locate_tesseract(pytesseract) -> None:
+    global _located
+    if _located:
+        return
+    _located = True
+    import os
+    import shutil
+
+    if shutil.which("tesseract") is None and os.path.exists(_WINDOWS_DEFAULT):
+        pytesseract.pytesseract.tesseract_cmd = _WINDOWS_DEFAULT
+
+
 def extract_text(source: str | bytes | np.ndarray) -> str:
     """
     Extract text from an image using Tesseract OCR.
@@ -28,6 +48,7 @@ def extract_text(source: str | bytes | np.ndarray) -> str:
     except ImportError:
         logger.warning("pytesseract not installed, skipping OCR")
         return ""
+    _locate_tesseract(pytesseract)
 
     try:
         img = load_image(source)

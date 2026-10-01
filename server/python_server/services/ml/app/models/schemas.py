@@ -101,3 +101,8 @@ class HealthResponse(BaseModel):
     deep_learning_enabled: bool
     ocr_enabled: bool
     face_recognition_enabled: bool = Field(default=False)
+    # ML phase: which item-verification pipeline /verify runs, and (v2 only)
+    # whether its models have finished loading. "deployed" and "ready" differ
+    # by the warm-up, which runs in a background thread at startup.
+    item_pipeline: str = Field(default="v1")
+    item_models_ready: bool | None = Field(default=None)

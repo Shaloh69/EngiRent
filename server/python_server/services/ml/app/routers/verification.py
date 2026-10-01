@@ -624,4 +624,12 @@ async def health_check():
         deep_learning_enabled=settings.enable_deep_learning,
         ocr_enabled=settings.enable_ocr,
         face_recognition_enabled=_FR_AVAILABLE,
+        item_pipeline=settings.pipeline_version,
+        item_models_ready=_v2_models_ready() if settings.pipeline_version == "v2" else None,
     )
+
+
+def _v2_models_ready() -> bool:
+    from ..v2 import verifier as v2v
+
+    return v2v.MODELS_READY

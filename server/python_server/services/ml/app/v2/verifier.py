@@ -51,6 +51,9 @@ def _floor_brightness(img_bgr: np.ndarray) -> float:
     return float(np.percentile(g, 75))
 
 
+MODELS_READY = False
+
+
 def warm() -> None:
     """Load every v2 model once (called in a thread at service startup)."""
     log = logging.getLogger(__name__)
@@ -65,6 +68,8 @@ def warm() -> None:
             from . import geometric
 
             geometric._models()
+        global MODELS_READY
+        MODELS_READY = True
         log.info("v2 models loaded in %.0fs", time.monotonic() - t)
     except Exception:
         log.exception("v2 model warm-up failed; the first verify will retry the load")
