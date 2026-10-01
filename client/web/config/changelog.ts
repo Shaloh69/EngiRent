@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-01",
+    version: "1.13.4",
+    tag: "infra",
+    title: "The app can reach the server again",
+    bullets: [
+      "The server was down after a restart on 2026-09-28 and came back on 2026-10-01 at a new address, so 1.13.3 could not connect",
+      "This build points at the current address. Nothing else changed: it is the same app as 1.13.3",
+    ],
+  },
+  {
     date: "2026-09-25",
     version: "1.13.3",
     tag: "infra",

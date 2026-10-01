@@ -2516,3 +2516,30 @@ verify) burned an hour of CPU: let the cheap stage choose what the expensive one
 
 **Server:** `venv-v2` sits beside the production `venv`, so deploying v2 = copy `app/`,
 point `svc-ml.bat` at `venv-v2`, `set ML_PIPELINE_VERSION=v2`, restart. Rollback = the reverse.
+
+## 2026-10-01 — Down 2026-09-28 08:35 → 2026-10-01 20:20; restored, Prerelease32 shipped
+
+The server rebooted **2026-09-28 08:35** and EngiRent stayed down ~3.5 days
+(Interactive-logon tasks, again). The user then restarted the server by hand at
+**2026-10-01 20:14**. Restored per the runbook: Node + ML + 3 tunnels (all three
+tunnels came up first try; `api.trycloudflare.com` → 405 = reachable), then the
+`.env` + admin `.env.local` string swap (no BOM), API restart (PID 22920 → **26344**),
+admin (PID 16004, ~4.5 min build; chunks bake the new API host, CORS preflight 204,
+real admin login 200), web (PID 5472). New hosts: api
+`actor-firewall-completely-disabled`, admin `enters-oecd-framework-part`, web
+`sociology-listed-ratio-deutsch`. ML came up in ~2 min this time, not 6.
+**Prerelease32 (1.13.4+32)** built (96 s Gradle), validated (testzip clean, 3 ABIs bake
+the new host, signer 3d113b7d…f1868, versionCode 32, sha256 fc047fb5…), uploaded, website
+rebuilt; public `/download` chunk names only Prerelease32; APK served 90993435 B.
+AppRelease row / LATEST_APP_VERSION skipped (same precedent as 1.13.1: old installs
+cannot reach the API to see the gate).
+
+**The box is shared and the neighbours moved:** EcoCharge now owns 30010-30014 (+13306
+MySQL), UniThrift 31000-31005 (+ its own MySQL and a classifier container). No port
+clashes with EngiRent's 5000/8001/3000/3001/3307. Both still run an identical
+`node dist\index.js`: never kill by name. The restart scripts walk from the port's PID
+up to the owning `svc-*.bat` cmd and `taskkill /T` that tree only.
+
+**Refused by the classifier this session (left for the user, not retried):** the ML v2
+deploy (`[Production Deploy]`), the re-pull of the 13 eval frames (`[PII Data
+Handling]`), and the Tesseract install. ML still runs v1.

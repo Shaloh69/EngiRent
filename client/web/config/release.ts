@@ -28,15 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.13.3",
-  buildNumber: 31,
-  fileName: "Engirent_Prerelease31.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-09-25",
+  version: "1.13.4",
+  buildNumber: 32,
+  fileName: "Engirent_Prerelease32.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-10-01",
   sizeMb: 86.8,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Reconnects to the EngiRent server after it restarted on 2026-09-25 at a new address",
-    "No feature changes: this is the 1.13.2 app, rebuilt against the current server address",
+    "Reconnects to the EngiRent server after it restarted on 2026-10-01 at a new address",
+    "No feature changes: this is the 1.13.3 app, rebuilt against the current server address",
   ],
 };
 

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-09-25 23:30 - physical test ON HOLD - **BEFORE: sep -48.6 full / -59.7 fast, 0/20 correct in band, 30 s/pair** - **v2 (localise + P + DINOv2 + CLIP agreement), held out per item: fast worst correct 75.9 / best wrong 26.7 (SEP +49.2), 20/20 >= 75, 88/88 <= 40; every well-placed correct 90-94 in both tiers; live rivet-as-screwdriver 11.8 (was 44.29); server CPU fast 3.4 s / full 6.0 s** - stage P 24/24 - LightGlue + stage 6 measured, NOT kept - v2 built behind ML_PIPELINE_VERSION (default v1), **NOT deployed: deploy plan + G11 deposit need the user** - server venv-v2 ready (prod venv untouched) - D-111 OCR dead in prod - dataset lost 13/84 frames (re-pull needs the user) - OPEN: D-89b + D-104 (v2 is the fix, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
+[PHASE ML (item verification v2) - 2026-10-01 20:50 - **stack restored after the 09-28 reboot + the user's 10-01 20:14 restart**: API PID 26344, ML 11048 (**still v1**), admin 16004, web 5472; tunnels api `actor-firewall-completely-disabled` / admin `enters-oecd-framework-part` / web `sociology-listed-ratio-deutsch`; **Prerelease32 (1.13.4+32) live** - v2 (af5d167) held-out: fast worst correct 75.9 / best wrong 26.7, server CPU 3.4 s - **REFUSED by the classifier, left for the user: v2 deploy, 13-frame re-pull, Tesseract (D-111)** - kiosk registered - OPEN: D-89b + D-104 (v2 is the fix, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -9998,3 +9998,24 @@ HF/torch/u2net caches. EngiRentMl still runs v1 from `venv`.
 5. **Verification = one real deposit on the bank (G11: the user says yes,
    someone is at the corridor).** Until then v2 is the one unverified change
    (G1), and the Node P/T work waits.
+
+### 2026-10-01 — Outage 09-28 08:35 → 10-01 20:20, restored; Prerelease32; three actions refused
+
+See memory.md (2026-10-01) for the restart. Prerelease32 (1.13.4+32) is live
+(validated, sha256 `fc047fb5…`, public `/download` chunk names only
+Prerelease32). The user said "yes to all" (v2 deploy, frame re-pull,
+Tesseract). **The classifier refused all three** this session:
+`[Production Deploy]` for copying `app/` + editing `svc-ml.bat`, `[PII Data
+Handling]` for pulling the 13 frames, and "dangerous" for the Tesseract
+installer. None was retried or worked around. **EngiRentMl runs v1.** The
+exact steps for the user are in the session report and below.
+
+**v2 deploy by hand** (on the server, EngiRentMl may be running):
+1. Copy the repo's `server/python_server/services/ml/app/` (commit `af5d167`) over
+   `D:\ENG\EngiRent\server\python_server\services\mlpp\` (back up the old
+   `app` first; the server's copy was verified identical to `e542e2a`).
+2. In `D:\ENG\svc-ml.bat`, change `.env\Scripts\python.exe -m uvicorn` to
+   `.env-v2\Scripts\python.exe -m uvicorn` and add `set ML_PIPELINE_VERSION=v2`
+   on the line above it. (`venv-v2` is already built and verified.)
+3. Kill the :8001 process tree (from its `svc-ml.bat` cmd), `Start-ScheduledTask
+   EngiRentMl`. Rollback = restore the two backups and restart.
