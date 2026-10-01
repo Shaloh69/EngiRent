@@ -87,6 +87,20 @@ rests on a clean build as unverified.
 
 ## Deployment
 
+**Standing rules (user, 2026-10-01):**
+- **Always give the live URLs** in every report that touches the stack: the
+  API (`…/api/v1`), admin, website, and the current APK download link.
+  Re-derive them from `D:\ENG\startbat-logs\tunnel-*.log`; never quote them
+  from memory.
+- **Every tunnel rotation or app change is a full release, every time, all of
+  it:** (1) rebuild and validate the APK against the new API URL; (2) publish it
+  to the website (`client/web/config/release.ts`, upload, restart EngiRentWeb);
+  (3) add a dated entry to the website changelog (`changelog.ts`); (4) update
+  the in-app release record, meaning the `AppRelease` row and
+  `LATEST_APP_VERSION` in the server `.env`, then restart the API. None of these
+  is optional; don't skip (4) because old installs can't see it. Procedure and
+  validation: the auto-memory `feedback_apk_naming`.
+
 **Connecting: `ssh transfer@desktop-gklhcri`** (Tailscale MagicDNS; or
 `transfer@100.122.239.125`). Key-based, no password, plain `ssh` — there is no
 `tailscale ssh` step. **The remote shell is PowerShell, not cmd**, so `dir /b`

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-10-01 20:50 - **stack restored after the 09-28 reboot + the user's 10-01 20:14 restart**: API PID 26344, ML 11048 (**still v1**), admin 16004, web 5472; tunnels api `actor-firewall-completely-disabled` / admin `enters-oecd-framework-part` / web `sociology-listed-ratio-deutsch`; **Prerelease32 (1.13.4+32) live** - v2 (af5d167) held-out: fast worst correct 75.9 / best wrong 26.7, server CPU 3.4 s - **REFUSED by the classifier, left for the user: v2 deploy, 13-frame re-pull, Tesseract (D-111)** - kiosk registered - OPEN: D-89b + D-104 (v2 is the fix, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
+[PHASE ML (item verification v2) - 2026-10-01 20:50 - **stack restored after the 09-28 reboot + the user's 10-01 20:14 restart**: API PID 3804, ML 11048 (**still v1**), admin 16004, web 5472; tunnels api `actor-firewall-completely-disabled` / admin `enters-oecd-framework-part` / web `sociology-listed-ratio-deutsch`; **Prerelease32 (1.13.4+32) live in all 4 places** (APK, website, changelog, AppRelease + LATEST_APP_VERSION=1.13.4) - v2 (af5d167) held-out: fast worst correct 75.9 / best wrong 26.7, server CPU 3.4 s - **REFUSED by the classifier, left for the user: v2 deploy, 13-frame re-pull, Tesseract (D-111)** - kiosk registered - OPEN: D-89b + D-104 (v2 is the fix, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10019,3 +10019,12 @@ exact steps for the user are in the session report and below.
    on the line above it. (`venv-v2` is already built and verified.)
 3. Kill the :8001 process tree (from its `svc-ml.bat` cmd), `Start-ScheduledTask
    EngiRentMl`. Rollback = restore the two backups and restart.
+
+**Release completed in all four places (2026-10-01 ~21:10), per the user's new
+standing rule** (CLAUDE.md, Deployment → Standing rules: always give the URLs;
+every tunnel rotation or app change = APK + website + changelog + in-app
+record, every time). The `AppRelease` row for 1.13.4/32 was upserted (none
+existed for 1.13.1-1.13.3), `LATEST_APP_VERSION` 1.13.0 → 1.13.4 (backup
+`.env.bak-20261001-ver`), API restarted (PID 26344 → 3804, no live flow, kiosk
+re-registered). Public `GET /app-config` → `latestVersion 1.13.4` with the real
+highlights; `MIN_APP_VERSION` untouched (1.0.0).
