@@ -10227,3 +10227,20 @@ the old behaviour were updated to assert the new one). `tsc` clean in node_serve
 **G11 — NOT deployed:** the rental `6a7ccbef` is sitting `DISPUTED` with its item in bay 1's
 UPPER compartment, already released. The moment E3 is live, the :15 sweep (or any dispute) would
 move that item with the bay 1 actuator. Needs the user's explicit yes first.
+
+### 2026-10-10 01:57 — E2 + E3 DEPLOYED (user yes for the bay 1 drop); E2 proven live, E3 waits for the 02:15 sweep
+
+Pre-deploy: no live flow, the kiosk's socket established, the five server files identical to
+the committed versions. Copied `retrievalService.ts`, `itemAvailabilityService.ts`,
+`adminController.ts`, `rentalController.ts`, `index.ts`; API restarted (PID 6696 → **23108**,
+kiosk re-registered); `dist/services/retrievalService.js` (built 01:56:58) contains
+`releaseDisputedItem` and the `immediate` rule.
+
+**E2 proven on the live DB:** Hand Rivets `isAvailable=false` (the startup reconcile set it,
+having been re-freed at 01:05); `findOverlappingRentals` for a 2030 booking returns
+`6a7ccbef:DISPUTED`; the non-disputed Little Hammer returns none.
+
+**E3 not yet seen.** The disputed item (rental `6a7ccbef`, bay 1 upper) was released in place at
+01:01:56, so by the new rule it drops at the next `:15` sweep (**02:15**), with no grace and no
+window. Bay 1 actuator, about 22 s (bay 1: 15/15/22/22 in `kiosk_config.json`, untouched). A live
+monitor on the API log is following it. G1: E3 is now the one unverified change.
