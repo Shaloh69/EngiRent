@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-10-10 00:15 - **rehosted after the 10-08 reboot + Docker settings wipe (fixed: stock daemon.json, data disk back on D:, containerd store on)**: API PID 16344, ML 4896 (**v1**), admin 18692, web 8572, MySQL 3307; api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; **Prerelease33 (1.13.5+33) live in all 4 places**; kiosk KIOSK-001 registered 00:06 - still waiting on the user: v2 deploy (`ml/deploy/deploy_v2.sh`), 13-frame re-pull, Tesseract - OPEN: D-89b + D-104 (v2, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
+[PHASE ML (item verification v2) - 2026-10-10 00:40 - **ML v2 DEPLOYED** (PID 9360, venv-v2, /health pipeline=v2 ready; live smoke OK, no-key 401) - **Tesseract 5.4.0 installed, D-111 CLOSED (OCR seen working via deployed code)** - stack: API 16344, admin 18692, web 8572, MySQL 3307; api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 live; kiosk KIOSK-001 online - **G1: v2 unverified until a real deposit (G11)**; Node P/T parked - still open for the user: 13-frame re-pull - OPEN: D-89b + D-104 (v2 deployed, unverified live), D-105, D-108, D-106, D-97, D-98, D-99]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10061,3 +10061,43 @@ same Python escape mistake twice in one session (PROGRESS deploy paths, then
 not assumed; the second is now pinned by a test, and the mutation that
 re-introduces it fails. Rule for myself: write Windows paths with Edit or raw
 strings, never inside an escaped heredoc string. No other symptoms.
+
+### 2026-10-10 ~00:35 — ML v2 DEPLOYED (user instruction); Tesseract installed (D-111 closed)
+
+**v2 live.** `deploy_v2.sh` at `32abb46` (live-flow check first: no flow events):
+backups `app.bak-pre-v2` + `svc-ml.bat.bak-pre-v2`, launcher now `venv-v2` +
+`ML_PIPELINE_VERSION=v2`; only the `svc-ml.bat` tree restarted (old :8001 PID
+4896 → **9360**), listening in 25 s, `/health` → `item_pipeline=v2,
+item_models_ready=true, face_recognition_enabled=true`. Rollback:
+`deploy_v2.sh --rollback`.
+
+**Live smoke against the deployed service** (synthetic images, real API key
+read on the server and never printed, no stored photo, no hardware):
+
+| call | result |
+|---|---|
+| item present, fast (cold: first listing cut-outs) | 200, `pipeline=v2`, APPROVED 94.53, placement OK, 19.24 s |
+| item present, full (warm) | 200, APPROVED 94.5, 4.27 s |
+| empty bay | 200, RETRY + `reposition`, placement EMPTY, 0.11 s |
+| no API key | **401** (the gate holds) |
+| `/progress/{id}` during a verify | live stages: locating → checking → reading the listing photos → done |
+
+Synthetic images prove the path, not accuracy (accuracy: the real-image eval,
+RUN 3/5). **G1: v2 is now the one unverified change** until a real deposit is
+seen on the bank (G11: needs the user and a person at the corridor). The Node P
+and T work stays parked until then. Until Node is updated, a v2 `reposition`
+arrives as a plain RETRY: today's Node re-opens the door, and the retry counts
+toward attempt 2 (by design: wire-compatible).
+
+**Tesseract (D-111): CLOSED, seen working.** The only reachable official build
+is UB-Mannheim 5.4.0.20240606 on GitHub (their own server answers 403). Its
+Authenticode signature fails `NotTimeValid`: signed in 2024 with a certificate
+that expired 2023-10-12 (GEANT Code Signing CA 4 → Universität Mannheim), a
+publisher-side lapse. Not installed on that basis alone: the file's SHA-256
+`c885fff6…60c9` was matched **exactly** against Microsoft's winget-pkgs
+manifest for this release (independent source), re-checked immediately before
+install, then installed silently (exit 0): `tesseract v5.4.0.20240606`, langs
+`eng, osd`. Verified through the DEPLOYED `utils/ocr.py` in `venv-v2`:
+`tesseract` is NOT on PATH, the new fallback picked
+`C:\Program Files\Tesseract-OCR\tesseract.exe`, and OCR read **'OMEGA HTR-646'**
+exactly. (v2 does not use OCR; this matters for v1 and any rollback.)

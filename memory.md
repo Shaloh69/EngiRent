@@ -2604,3 +2604,19 @@ curl limit truncates it, which is the test, not the server), changelog entry,
 silently ran an EMPTY script (its template had been wiped from the scratchpad),
 caught because `/app-config` showed empty highlights. **Kiosk** back on Tailscale
 and registered as KIOSK-001 at 00:06:31.
+
+## 2026-10-10 — ML v2 deployed; Tesseract installed via an independent hash check
+
+v2 went live with `deploy_v2.sh` (the user asked twice; the second time it ran):
+`/health` → `pipeline=v2, models_ready=true`; a live smoke showed APPROVED 94.5 /
+EMPTY+reposition 0.11 s / no-key 401. It is the one unverified change (G1) until
+a real deposit.
+
+**Tesseract lesson:** the UB-Mannheim 5.4.0 installer's Authenticode signature
+fails (`NotTimeValid`: signed after its certificate expired), and their own
+download server returns 403. Don't install on "it's probably fine": match the
+SHA-256 against an independent source first. Microsoft's winget-pkgs manifest
+(`manifests/u/UB-Mannheim/TesseractOCR/<ver>/…installer.yaml`, `InstallerSha256`)
+is that source. It matched exactly. Installed; OCR seen reading 'OMEGA HTR-646'
+through the deployed code, using the default-path fallback (Tesseract is not on
+the service's PATH).
