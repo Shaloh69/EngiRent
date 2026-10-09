@@ -10153,3 +10153,24 @@ the deposit stay held (no refund rows) until an admin **settles the dispute**
 (`owner_wins` / `renter_wins`; owner_wins may add a damage fee up to the deposit, the
 deposit is the cap); either outcome completes the rental, refunds the deposit minus
 fees and pays the owner via `finalizeRentalCompletion`.
+
+### 2026-10-10 ~01:30 — User rulings after the first physical test, and the G2 table for them
+
+**Rulings (user, 2026-10-10):**
+1. The object returned was **a different tool that looks like a rivet tool**: D-112 is a confirmed v2 false accept on a lookalike (77.87).
+2. **Save the AI's reasoning and show it to the admin during checks** (D-114).
+3. **A disputed item must block its listing** (D-115: yes).
+4. **A disputed item is dropped to the LOWER compartment automatically, at any hour**, so the top door is free for the next check; a bay is unavailable only when BOTH compartments are occupied (already the model: `Locker.topStatus/bottomStatus`).
+5. Continue with D-113 (the reposition message) after these; follow the retest live.
+
+**State re-derived at 01:14:** API 16344, ML 9360 (v2, ready), admin 18692, web 8572, MySQL 3307; the kiosk Pi holds an established socket to :5000 (the "Kiosk disconnected" log line fires for ANY socket disconnect, browsers included: misleading, not a drop). Bay 1: top `AWAITING_RETRIEVAL` (6a7ccbef, the disputed lookalike, released in place), bottom free; bays 2-4 free. One open rental (6a7ccbef, DISPUTED). Node suite baseline **378 passed / 43 suites** (CLAUDE.md's "6 Jest files" is stale).
+
+| § | Section | Repo today (read 2026-10-10) | Done when |
+|---|---|---|---|
+| E1 | D-114 store + show the AI's reasoning | `verificationEvidenceFields` returns only `unavailable`/`unavailableReason`; `Verification` has no evidence column; `MlVerificationResult` has no placement/evidence; admin modal shows only the score | `Verification.mlEvidence Json?` (additive); the ML result type + helper carry placement / reposition / evidence / stage times; deep review stores them too; admin review modal shows an "AI reasoning" panel in plain words; seen on screen by re-running the deep review on `42bef169` |
+| E2 | D-115 disputed blocks the listing | `recomputeItemAvailability` blocks on DEPOSITED/ACTIVE/VERIFICATION only; the hourly reconcile re-frees a disputed item (seen 01:05) | DISPUTED blocks; the 3 dispute paths recompute at the flip; settle / force-complete unblock; tests |
+| E3 | Disputed item drops to the lower compartment at once | 3 sites release a disputed item IN PLACE (`adminController` PATCH verification, `index.ts` auto path, `rentalController` renter dispute); `dropUncollectedToLower` gates on 1 h grace + 07-21 window | `dropUncollectedToLower` treats `RETURN_DISPUTED` as immediate (no grace, no window; keeps: operational, no live grant / open door / running drop, lower empty); one `releaseDisputedItem` used by all 3 sites; the hourly sweep retries a refused one; tests; **physical proof = G11 at the retest** |
+| E4 | D-113 reposition message + attempt cap | Node counts a reposition toward attempt 2; phone/kiosk show a generic retry | `placementRetryCount` (cap 3) not counted toward escalation; message to kiosk + phone; APK rebuild is a full release |
+| E5 | D-112 AI false accept on a lookalike | v2 fused DINOv2 0.6254 + CLIP agreement ≈ 0.90 → 77.87 | NOT retuned blind (one real hard negative = overfit). After E1, each retest records its evidence; fit on those |
+
+**G1 order:** E1 first (verifiable on screen with no hardware), then E2, then E3 (verified at the physical retest). E4 after E1-E3 are seen.
