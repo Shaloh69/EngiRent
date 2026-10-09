@@ -23,7 +23,12 @@ import { runCollectionSweep } from "../services/collectionSweepService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 // D-87d: a rejected DEPOSIT must release the owner's item from the bay, the
 // same way index.ts's automatic rejection path does — not just flip a column.
-import { releaseDisputedItem, releaseForOwnerPickup, requestRelease } from "../services/retrievalService";
+import {
+  dropUncollectedToLower,
+  releaseDisputedItem,
+  releaseForOwnerPickup,
+  requestRelease,
+} from "../services/retrievalService";
 // E5.4 — a human-approved long-lead deposit is dropped to storage too.
 import { dropToStorage } from "../services/storageDropService";
 import { isLongLeadPickup } from "../services/pickupLaneService";
@@ -465,6 +470,48 @@ export const releaseRentalForPickup = async (
     res.json({
       success: true,
       message: `Released for owner pickup at locker ${outcome.lockerNumber}`,
+      data: { lockerNumber: outcome.lockerNumber },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /admin/rentals/:id/drop-to-lower — move an item that is waiting up top for
+ * its owner down to the lower compartment NOW, instead of at the next :15 sweep
+ * (2026-10-10; the first disputed item had to wait for the sweep).
+ *
+ * It calls the SAME `dropUncollectedToLower` the sweep calls, so every rule is
+ * unchanged: a disputed item goes at once at any hour, any other item still
+ * waits out its grace and the 07:00-21:00 window, and the bay must be
+ * operational with no open door, no running drop and no live grant, and the
+ * lower compartment empty. DRIVES THE BAY ACTUATOR: tell a person first (G11).
+ */
+export const dropRentalToLower = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const io = req.app.get("io");
+    if (!io) throw new ValidationError("Realtime channel unavailable");
+
+    const outcome = await dropUncollectedToLower(io, id);
+    if (!outcome.released) {
+      throw new ValidationError(`Not dropped: ${outcome.refusal}`);
+    }
+    await recordAudit(req, {
+      action: "rental.drop_to_lower",
+      targetType: "rental",
+      targetId: id,
+      metadata: { lockerNumber: outcome.lockerNumber },
+    });
+    logger.info(`[E6.S] drop to the lower compartment run on demand by ${req.user?.email} for rental ${id}`);
+    res.json({
+      success: true,
+      message: `Dropping to the lower compartment of locker ${outcome.lockerNumber}`,
       data: { lockerNumber: outcome.lockerNumber },
     });
   } catch (error) {

@@ -10,6 +10,7 @@ import {
   listAllRentals,
   forceCompleteRental,
   releaseRentalForPickup,
+  dropRentalToLower,
   refundRenterForRejectedDeposit,
   runCollectionSweepNow,
   settleDispute,
@@ -123,6 +124,14 @@ router.post(
   requireAdmin,
   validate([param("id").isUUID()]),
   releaseRentalForPickup,
+);
+
+// Move an item waiting up top down to the lower compartment now (same guards as the :15 sweep; drives the actuator).
+router.post(
+  "/rentals/:id/drop-to-lower",
+  requireAdmin,
+  validate([param("id").isUUID()]),
+  dropRentalToLower,
 );
 
 // Checklist Stage 5 — "attach the transcript to disputes": the reason this

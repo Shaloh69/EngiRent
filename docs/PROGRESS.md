@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-10-10 00:40 - **ML v2 DEPLOYED** (PID 9360, venv-v2, /health pipeline=v2 ready; live smoke OK, no-key 401) - **Tesseract 5.4.0 installed, D-111 CLOSED (OCR seen working via deployed code)** - stack: API 16344, admin 18692, web 8572, MySQL 3307; api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 live; kiosk KIOSK-001 online - **G1: v2 unverified until a real deposit (G11)**; Node P/T parked - still open for the user: 13-frame re-pull - OPEN: D-89b + D-104 (v2 deployed, unverified live), D-105, D-108, D-106, D-97, D-98, D-99]
+[PHASE ML (item verification v2) - 2026-10-10 02:10 - v2 live (pipeline=v2); **E1 AI reasoning in admin SEEN; E2 disputed blocks the listing SEEN (live DB); E3 disputed drops to the lower compartment SEEN via the Pi ack (02:03:38, 44.3 s) - the user's eye on the lower door pending** - stack: API 20644, ML 9360, admin up, web 8572, MySQL 3307; api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 live; kiosk online - **bay 3 CAMERA FLAPPING (D-116, needs a person)**; bays 1-top, 2, 4 usable - RETEST NEXT (bays 2/4) - OPEN: D-112 (lookalike 77.87; colour veto candidate, needs more captures), D-113 (reposition message + attempt cap), D-116, D-108, D-106, D-97, D-98, D-99]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10244,3 +10244,30 @@ having been re-freed at 01:05); `findOverlappingRentals` for a 2030 booking retu
 01:01:56, so by the new rule it drops at the next `:15` sweep (**02:15**), with no grace and no
 window. Bay 1 actuator, about 22 s (bay 1: 15/15/22/22 in `kiosk_config.json`, untouched). A live
 monitor on the API log is following it. G1: E3 is now the one unverified change.
+
+### 2026-10-10 02:03 — E3 SEEN: the disputed item dropped to the lower compartment (user yes, bay 1)
+
+New endpoint `POST /admin/rentals/:id/drop-to-lower` (calls the SAME guarded `dropUncollectedToLower`;
+refusals are reported, never overridden; audited as `rental.drop_to_lower`; 3 tests, a mutation
+that ignores the refusal fails one). API PID 20644. Called once for `6a7ccbef`.
+
+**Timeline from the API log:** 02:02:53 `drop_item` command, Pi took the bay claim (deadline 64 s) →
+02:03:03 and 02:03:34 the Pi **REFUSED two `capture_image` on bay 1 ("bay busy with drop_item")**:
+the D-96 guard working as designed (something was snapshotting bays during the stroke) →
+**02:03:38 release acknowledged**, claim released after **44.3 s**. **DB:** bay 1 top `AVAILABLE`,
+bottom `AWAITING_RETRIEVAL (6a7ccbef)`, `releasedAt` re-set at the ack; the disputed rental stays
+`DISPUTED`, Hand Rivets `isAvailable=false`. E3 is verified by the Pi's own acknowledgement and the
+compartment state; **the human eye on the lower door is the user's** (asked).
+
+**D-116 — bay 3's camera is flapping (new, hardware).** From 02:04:08 every capture of bay 3 returns
+0 frames ("Camera read failed: …usb-0:2:1.0-video-index0") while bays 2 and 4 capture 3 frames each.
+On the Pi (read-only; ssh with `HostKeyAlias=engirent-kiosk`, `StrictHostKeyChecking=yes`, straight over
+the tailnet worked): all four `Web Camera` devices are enumerated and the by-path exists, but the kernel
+shows `usb 1-2: USB disconnect` twice in the last minutes (device number 3 → 6) and `uvcvideo 1-2:1.1:
+Failed to resubmit video URB (-19)`. `usb 1-2` is the camera on `xhci-hcd.0` port 2 = bay 3's. A camera
+that drops off the bus and re-enumerates: loose cable / power / hub, not software. A deposit into bay 3
+would take 0 photos and score as no evidence. **Needs a person at the corridor to re-seat it.**
+Not changed from here (it is hardware; nothing to command).
+
+**Retest bays:** 2 and 4 capture fine; bay 1's TOP is free again (a deposit there is also a direct test
+of "top door available while the lower holds a disputed item"), bay 3 is out until its camera is fixed.
