@@ -2561,3 +2561,46 @@ classifier** ([Interfere With Workloads]) and not retried. Kiosk Pi: off
 Tailscale for 7 days. **The rehost waits on a working Docker engine**: the API
 cannot start without its database, and starting the tunnels first would rotate
 the URLs onto a broken API.
+
+## 2026-10-09/10 — Rehosted. Docker's real cause: wiped settings, not a dead engine
+
+**Root cause (user's screenshot + logs):** on **2026-10-07 11:47** both
+`C:\Users\transfer\.docker\daemon.json` (124 B) and `windows-daemon.json` (28 B)
+were zeroed (all `\x00`, likely a power cut mid-write), and Docker Desktop's
+settings were reset. Three separate consequences, each found in turn:
+
+1. **`daemon.json` unparseable** → engine never starts. Fixed by writing Docker's
+   stock files: the byte counts match the stock content exactly (123 B + newline;
+   28 B), so they had never been customised. Zeroed copies kept as
+   `*.zeroed-20261007.bak`.
+2. **The custom data-disk location was lost.** The real data (all three projects'
+   containers and DBs) is `D:\DockerDesktopWSL\disk\docker_data.vhdx` (14.5 GB).
+   With reset settings Docker created an EMPTY disk on C: and showed 0 containers.
+   Backed up the real disk first (`D:\DockerDesktopWSL-backup-20261009\`, byte-equal),
+   then set `"CustomWslDistroDir": "D:\DockerDesktopWSL"` in
+   `%APPDATA%\Docker\settings-store.json`.
+3. **The containerd image store was switched off.** On the real disk the classic
+   store held only 433 MB of volumes; the ~14 GB of images/containers live in the
+   containerd store. The user ticked Settings → General → "Use containerd for
+   pulling and storing images" → Apply & restart; all 4 containers reappeared.
+   That restart SIGKILLed them (exit 137) and `unless-stopped` did not bring them
+   back, so they were `docker start`ed (EngiRent's, then the neighbours'). Also
+   set `AutoStart: true` (the reset had turned it off).
+
+**Docker cannot be started from SSH:** `wsl --import-in-place … ext4.vhdx` fails
+with "Access is denied" from a non-interactive logon. Starting Docker Desktop
+must happen on the server's desktop. Real data verified before the API started:
+11 users, 4 items, 6 rentals, latest AppRelease 1.13.4.
+
+**Rehost 2026-10-09 23:4x:** tunnels api `playlist-flux-misc-livestock`, admin
+`fabulous-highlights-idea-ruling`, web `nat-base-vessel-inclusive`; `.env` +
+admin `.env.local` re-pointed; API PID 16344 (after the version restart), admin
+18692 (bakes the new host, CORS 204, real login OK), web 8572, ML 4896 (v1),
+MySQL 3307. **Prerelease33 (1.13.5+33)** validated (testzip clean, 3 ABIs bake the
+new host, signer 3d113b7d…f1868, versionCode 33, sha256 81d86fb8…), uploaded,
+site serves it (full public download 90,993,435 B in ~4 min at ~380 KB/s: a 300 s
+curl limit truncates it, which is the test, not the server), changelog entry,
+`AppRelease` 1.13.5 + `LATEST_APP_VERSION=1.13.5`. A first attempt at the row
+silently ran an EMPTY script (its template had been wiped from the scratchpad),
+caught because `/app-config` showed empty highlights. **Kiosk** back on Tailscale
+and registered as KIOSK-001 at 00:06:31.

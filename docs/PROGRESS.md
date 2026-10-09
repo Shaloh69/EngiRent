@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-10-01 21:30 - stack up: API 3804, ML 11048 (**v1**), admin 16004, web 5472; api `actor-firewall-completely-disabled` / admin `enters-oecd-framework-part` / web `sociology-listed-ratio-deutsch`; Prerelease32 (1.13.4+32) live in all 4 places - **v2 deploy, 13-frame re-pull, Tesseract: refused by the classifier; now ONE command each for the user** (`ml/deploy/deploy_v2.sh`, `ml/eval/pull_originals.sh`, UB-Mannheim installer; ocr.py finds it) - /health reports item_pipeline + item_models_ready - ML tests 79 - OPEN: D-89b + D-104 (v2, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111 (fix ready, needs the install)]
+[PHASE ML (item verification v2) - 2026-10-10 00:15 - **rehosted after the 10-08 reboot + Docker settings wipe (fixed: stock daemon.json, data disk back on D:, containerd store on)**: API PID 16344, ML 4896 (**v1**), admin 18692, web 8572, MySQL 3307; api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; **Prerelease33 (1.13.5+33) live in all 4 places**; kiosk KIOSK-001 registered 00:06 - still waiting on the user: v2 deploy (`ml/deploy/deploy_v2.sh`), 13-frame re-pull, Tesseract - OPEN: D-89b + D-104 (v2, undeployed), D-105, D-108, D-106, D-97, D-98, D-99, D-111]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
