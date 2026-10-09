@@ -2543,3 +2543,21 @@ up to the owning `svc-*.bat` cmd and `taskkill /T` that tree only.
 **Refused by the classifier this session (left for the user, not retried):** the ML v2
 deploy (`[Production Deploy]`), the re-pull of the 13 eval frames (`[PII Data
 Handling]`), and the Tesseract install. ML still runs v1.
+
+## 2026-10-09 — Down since the 10-08 19:10 reboot; Docker Desktop wedged (blocks the rehost)
+
+Found 2026-10-09 21:46 when the user asked to rehost: the server rebooted
+**2026-10-08 19:10:47**, all 7 `EngiRent*` tasks at `Ready`, nothing on
+5000/8001/3000/3001, and, new this time, **the Docker engine never started**:
+the Docker Desktop app is running in the console session (`transfer`, logged
+on 19:11) but the `docker-desktop` WSL distro is `Stopped`, so `docker ps`
+fails on `dockerDesktopLinuxEngine` and `engirent-mysql` (:3307) is down. This
+also takes down EcoCharge's and UniThrift's MySQL containers (13306 / 31005
+not listening), although their tasks show `Running`. `docker desktop start`
+says "already running"; `docker desktop status` cannot get a status;
+`docker desktop restart` fails ("processes still running … context deadline
+exceeded"). Force-stopping the stuck Docker Desktop PIDs was **refused by the
+classifier** ([Interfere With Workloads]) and not retried. Kiosk Pi: off
+Tailscale for 7 days. **The rehost waits on a working Docker engine**: the API
+cannot start without its database, and starting the tunnels first would rotate
+the URLs onto a broken API.
