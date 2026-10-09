@@ -76,23 +76,75 @@ export function longLeadPendingResult(): MlVerificationResult {
 export interface VerificationEvidenceFields {
   unavailable: boolean;
   unavailableReason: string | null;
+  /** D-114 — undefined (column left null) unless a v2 answer carried reasoning. */
+  mlEvidence?: never;
 }
 
 /**
- * The two D-65 columns, derived from whatever the ML layer returned.
+ * D-114. What the AI thought, in a shape the admin console can render.
  *
- * A scored comparison from the ML service carries neither field, so it lands as
- * `false / null` — evidence exists and the score means what it says. Anything
- * the pipeline marked unavailable lands as `true` plus the reason, and must be
- * excluded from any calibration set (E4.5c).
+ * Only a v2 answer carries any (`pipeline: "v2"`); a v1 answer, a synthetic
+ * "ML unreachable" result and a "long-lead pending" result return null, so the
+ * column never holds something that looks like reasoning and is not. Small by
+ * construction: a placement verdict, a dozen numbers and the stage times.
+ */
+export function buildMlEvidence(
+  result: Pick<
+    MlVerificationResult,
+    | "pipeline"
+    | "mode"
+    | "message"
+    | "placement"
+    | "reposition"
+    | "quality_blocked"
+    | "evidence"
+    | "stage_seconds"
+    | "elapsed_seconds"
+    | "confidence"
+    | "decision"
+  >,
+): Record<string, unknown> | null {
+  if (result.pipeline !== "v2") return null;
+  return {
+    pipeline: result.pipeline,
+    mode: result.mode ?? null,
+    decision: result.decision,
+    confidence: result.confidence,
+    message: result.message ?? null,
+    placement: result.placement ?? null,
+    reposition: result.reposition === true,
+    qualityBlocked: result.quality_blocked === true,
+    evidence: result.evidence ?? null,
+    stageSeconds: result.stage_seconds ?? null,
+    elapsedSeconds: result.elapsed_seconds ?? null,
+  };
+}
+
+/**
+ * The D-65 columns plus the D-114 reasoning, derived from whatever the ML layer
+ * returned.
+ *
+ * A scored comparison from the ML service carries neither D-65 field, so it
+ * lands as `false / null` — evidence exists and the score means what it says.
+ * Anything the pipeline marked unavailable lands as `true` plus the reason, and
+ * must be excluded from any calibration set (E4.5c).
  */
 export function verificationEvidenceFields(
-  result: Pick<MlVerificationResult, "unavailable" | "unavailableReason">,
+  result: Pick<MlVerificationResult, "unavailable" | "unavailableReason"> &
+    Partial<Parameters<typeof buildMlEvidence>[0]>,
 ): VerificationEvidenceFields {
+  const evidence = buildMlEvidence({
+    confidence: 0,
+    decision: "",
+    ...result,
+  });
   return {
     unavailable: result.unavailable === true,
     unavailableReason: result.unavailable === true
       ? (result.unavailableReason ?? null)
       : null,
+    // `as never`: Prisma's Json input type rejects a plain Record under strict
+    // typing; the same cast the neighbouring Json writes use.
+    mlEvidence: (evidence ?? undefined) as never,
   };
 }

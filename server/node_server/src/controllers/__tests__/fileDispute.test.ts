@@ -14,16 +14,21 @@ jest.mock("../../config/database", () => ({
   default: mockDeep<PrismaClient>(),
 }));
 jest.mock("../../services/retrievalService", () => ({
-  releaseForOwnerPickup: jest.fn().mockResolvedValue({ released: true, lockerNumber: "2" }),
+  // D-115 / ruling 2026-10-10: a student's dispute goes through releaseDisputedItem (in place, then drop).
+  releaseDisputedItem: jest.fn().mockResolvedValue({ released: true, lockerNumber: "2" }),
+}));
+jest.mock("../../services/itemAvailabilityService", () => ({
+  recomputeItemAvailability: jest.fn().mockResolvedValue(undefined),
 }));
 
 import prisma from "../../config/database";
 import { fileDispute } from "../rentalController";
 import { AuthRequest } from "../../middleware/auth";
-import { releaseForOwnerPickup } from "../../services/retrievalService";
+import { releaseDisputedItem } from "../../services/retrievalService";
+import { recomputeItemAvailability } from "../../services/itemAvailabilityService";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const releaseMock = releaseForOwnerPickup as jest.Mock;
+const releaseMock = releaseDisputedItem as jest.Mock;
 
 function makeRes(): Response {
   const res: Partial<Response> = {};
@@ -79,7 +84,9 @@ describe("POST /rentals/:id/dispute", () => {
           "Quick check said RETRY 0\nDispute filed by the renter: The item was returned in the same condition",
       },
     });
-    expect(releaseMock).toHaveBeenCalledWith(io, "rental-1", "RETURN_DISPUTED");
+    expect(releaseMock).toHaveBeenCalledWith(io, "rental-1");
+    // D-115: the listing stays blocked while the dispute is open.
+    expect(recomputeItemAvailability).toHaveBeenCalled();
     expect(prismaMock.notification.createMany).toHaveBeenCalled();
   });
 

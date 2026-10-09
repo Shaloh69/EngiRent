@@ -11,10 +11,16 @@ import prisma from "../config/database";
 
 // Every status that means "this item is genuinely committed for its dates" —
 // kept as one list so a status added to one check and forgotten in the other
-// can't happen. CANCELLED/COMPLETED/DISPUTED don't block: a disputed rental
-// is already over the original date range by the time it's disputed (that
-// happens at return-verification, after the rental period), and blocking new
-// bookings on a resolved-but-disputed rental would leave the item stuck.
+// can't happen. CANCELLED/COMPLETED don't block.
+//
+// DISPUTED is NOT in this list (it is date-based) but DOES block: see
+// `findOverlappingRentals` and `recomputeItemAvailability`. It used to be
+// ignored here on the reasoning that a disputed rental is already past its dates
+// ("blocking new bookings on a resolved-but-disputed rental would leave the item
+// stuck"). User ruling 2026-10-10 reverses that: on a wrong-item return the REAL
+// tool may still be with the renter, so listing it would let another student rent
+// something nobody has. It is "stuck" only until an admin settles the dispute,
+// which is exactly when it should be.
 export const BLOCKING_RENTAL_STATUSES = [
   "PENDING",
   "AWAITING_DEPOSIT",
@@ -35,10 +41,16 @@ export async function findOverlappingRentals(
   return prisma.rental.findMany({
     where: {
       itemId,
-      status: { in: [...BLOCKING_RENTAL_STATUSES] },
       ...(excludeRentalId ? { id: { not: excludeRentalId } } : {}),
-      startDate: { lt: end },
-      endDate: { gt: start },
+      OR: [
+        {
+          status: { in: [...BLOCKING_RENTAL_STATUSES] },
+          startDate: { lt: end },
+          endDate: { gt: start },
+        },
+        // A disputed rental blocks whatever the dates say (user ruling 2026-10-10).
+        { status: "DISPUTED" },
+      ],
     },
     select: { id: true, startDate: true, endDate: true, status: true },
     orderBy: { startDate: "asc" },
@@ -90,7 +102,8 @@ export async function recomputeItemAvailability(itemId: string): Promise<void> {
         // OVERDUE rental's end date is in the past while the renter still has
         // the item (found 2026-09-25: the screwdriver, 28 min overdue, was
         // offered as available while Ian held it).
-        { status: { in: ["DEPOSITED", "ACTIVE", "VERIFICATION"] } },
+        // DISPUTED: the item is under dispute and may not be back (ruling 2026-10-10).
+        { status: { in: ["DEPOSITED", "ACTIVE", "VERIFICATION", "DISPUTED"] } },
         // A booking not yet handed over only blocks during its own dates.
         {
           status: { in: ["PENDING", "AWAITING_DEPOSIT"] },

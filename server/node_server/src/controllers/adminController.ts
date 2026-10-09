@@ -23,7 +23,7 @@ import { runCollectionSweep } from "../services/collectionSweepService";
 import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 // D-87d: a rejected DEPOSIT must release the owner's item from the bay, the
 // same way index.ts's automatic rejection path does — not just flip a column.
-import { releaseForOwnerPickup, requestRelease } from "../services/retrievalService";
+import { releaseDisputedItem, releaseForOwnerPickup, requestRelease } from "../services/retrievalService";
 // E5.4 — a human-approved long-lead deposit is dropped to storage too.
 import { dropToStorage } from "../services/storageDropService";
 import { isLongLeadPickup } from "../services/pickupLaneService";
@@ -706,7 +706,9 @@ export const reviewVerification = async (
       // in person, at any hour; it drops later only if they never come
       // (dropUncollectedToLower). A policy-gated drop here was refused at night
       // and never retried (D-107's shape).
-      await releaseForOwnerPickup(io, returnRental.id, "RETURN_DISPUTED");
+      await releaseDisputedItem(io, returnRental.id);
+      // D-115: a disputed rental keeps its listing blocked until an admin settles it.
+      await recomputeItemAvailability(returnRental.itemId);
 
       // Neither party was told anything happened before this — no
       // notification, no email. Matching the automatic path's own message.

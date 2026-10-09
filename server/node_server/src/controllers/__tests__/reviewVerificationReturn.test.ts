@@ -22,6 +22,8 @@ jest.mock("../../config/database", () => ({
 jest.mock("../../services/retrievalService", () => ({
   requestRelease: jest.fn().mockResolvedValue({ released: true }),
   releaseForOwnerPickup: jest.fn().mockResolvedValue({ released: true, lockerNumber: "2" }),
+  // Ruling 2026-10-10: a rejected return is released AND dropped to the lower compartment.
+  releaseDisputedItem: jest.fn().mockResolvedValue({ released: true, lockerNumber: "2" }),
 }));
 jest.mock("../../services/rentalSettlementService", () => ({
   finalizeRentalCompletion: jest.fn().mockResolvedValue(undefined),
@@ -45,13 +47,15 @@ jest.mock("../../services/auditLogService", () => ({
 import prisma from "../../config/database";
 import { reviewVerification } from "../adminController";
 import { AuthRequest } from "../../middleware/auth";
-import { releaseForOwnerPickup, requestRelease } from "../../services/retrievalService";
+import { releaseDisputedItem, releaseForOwnerPickup, requestRelease } from "../../services/retrievalService";
+import { recomputeItemAvailability } from "../../services/itemAvailabilityService";
 import { finalizeRentalCompletion, refundRenterInFull } from "../../services/rentalSettlementService";
 import { sendVerificationFailed } from "../../utils/email";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const requestReleaseMock = requestRelease as jest.Mock;
 const releaseForPickupMock = releaseForOwnerPickup as jest.Mock;
+const releaseDisputedMock = releaseDisputedItem as jest.Mock;
 const finalizeMock = finalizeRentalCompletion as jest.Mock;
 const sendVerificationFailedMock = sendVerificationFailed as jest.Mock;
 
@@ -171,6 +175,8 @@ describe("reviewVerification — return, REJECTED (D-95)", () => {
     mockReset(prismaMock);
     requestReleaseMock.mockClear();
     releaseForPickupMock.mockClear();
+    releaseDisputedMock.mockClear();
+    (recomputeItemAvailability as jest.Mock).mockClear();
     sendVerificationFailedMock.mockClear();
     prismaMock.verification.findUnique.mockResolvedValue({
       id: "verification-1",
@@ -187,10 +193,14 @@ describe("reviewVerification — return, REJECTED (D-95)", () => {
     const { io } = makeIo();
     await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
 
-    // E6.S — handed back IN PLACE for the owner, at any hour; never a
-    // policy-gated drop, which was refused at night and never retried.
-    expect(releaseForPickupMock).toHaveBeenCalledWith(io, "rental-1", "RETURN_DISPUTED");
+    // Ruling 2026-10-10 (after E6.S): released AND dropped to the lower compartment at
+    // once, at any hour, through ONE function. Neither the old in-place-only call nor
+    // the policy-gated requestRelease may be used for it.
+    expect(releaseDisputedMock).toHaveBeenCalledWith(io, "rental-1");
+    expect(releaseForPickupMock).not.toHaveBeenCalledWith(io, "rental-1", "RETURN_DISPUTED");
     expect(requestReleaseMock).not.toHaveBeenCalled();
+    // D-115: the listing stays blocked while the dispute is open.
+    expect(recomputeItemAvailability).toHaveBeenCalledWith("item-1");
     expect(prismaMock.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ userId: "owner-1", title: "Return Disputed" }),

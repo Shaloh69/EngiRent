@@ -57,6 +57,7 @@ import {
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
   releaseForOwnerPickup,
+  releaseDisputedItem,
   dropUncollectedToLower,
   confirmRelease,
   rentalForCommand,
@@ -914,7 +915,9 @@ io.on("connection", (socket: Socket) => {
             // in person, at any hour; it drops later only if they never come
             // (dropUncollectedToLower). A policy-gated drop here was refused at night
             // and never retried (D-107's shape).
-            await releaseForOwnerPickup(io, rental_id, "RETURN_DISPUTED");
+            await releaseDisputedItem(io, rental_id);
+            // D-115: a disputed rental keeps its listing blocked until an admin settles it.
+            await recomputeItemAvailability(rental.itemId);
             await prisma.notification.create({
               data: {
                 userId: rental.ownerId,

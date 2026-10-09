@@ -33,6 +33,15 @@ export interface MlVerificationResult {
   elapsed_seconds?: number;
   /** D-87b: which tier answered — "fast" or "full". */
   mode?: string;
+  /** Human-readable verdict from the ML service ("Part of the item is outside the camera's view…"). */
+  message?: string;
+  /** D-114: the v2 pipeline's reasoning. All absent on a v1 answer. */
+  pipeline?: string;
+  placement?: Record<string, unknown> | null;
+  reposition?: boolean;
+  quality_blocked?: boolean;
+  evidence?: Record<string, unknown> | null;
+  stage_seconds?: Record<string, number> | null;
 }
 
 /**

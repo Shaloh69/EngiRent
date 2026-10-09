@@ -10174,3 +10174,56 @@ fees and pays the owner via `finalizeRentalCompletion`.
 | E5 | D-112 AI false accept on a lookalike | v2 fused DINOv2 0.6254 + CLIP agreement ≈ 0.90 → 77.87 | NOT retuned blind (one real hard negative = overfit). After E1, each retest records its evidence; fit on those |
 
 **G1 order:** E1 first (verifiable on screen with no hardware), then E2, then E3 (verified at the physical retest). E4 after E1-E3 are seen.
+
+### 2026-10-10 ~02:00 — E1 DONE and seen on screen; E2 + E3 built and tested, NOT deployed (waiting on the G11 yes)
+
+**E1 (D-114) — DEPLOYED and SEEN on the live admin.** `Verification.mlEvidence Json?`
+added (additive, `db push` on the live DB, nothing destructive); `buildMlEvidence` +
+`verificationEvidenceFields` keep the v2 answer's placement / reposition / evidence /
+stage times (null for a v1, unreachable or long-lead result: nothing that merely
+looks like reasoning); the deep review stores the same under `deepReviewDetails.evidence`;
+the admin review modal has an **AI reasoning** panel above the photos (placement in
+words, identity %, same-kind %, **colour %**, combined score, stage times, and a
+"compare the photographs" hint when kind is high and identity weak). API restarted
+(PID 16344 → 6696, kiosk re-registered); admin rebuilt twice (3 more admin PIDs).
+**On screen** (`design/tools/shot-admin-ai-reasoning.mjs`, logs in with credentials it reads
+itself): the lookalike return `42bef169` shows placement TRUNCATED 3/3 at the top, identity
+**63%**, same-kind **91%**, colour **32%**, score 77.1 RETRY. That row predates D-114, so I
+re-ran the system's own deep review on it (same call the queue makes; it only rewrote that
+row's advisory deep-review columns: 77.08 → 77.08).
+
+**What the real evidence says about D-112 (the lookalike).** The photos show a RED
+scissor-style tool on a blue-tinted floor against a YELLOW-AND-BLACK rivet-tool listing.
+v2 never looks at colour: DINOv2 0.6254 (the lowest of any capture I have, correct min 0.654)
+plus CLIP "same kind" 0.9056 (a different hand tool reads as the same kind) fused to 77.87.
+The colour match was 0.32; every correct capture in the eval scored ≥ 0.59. Stage S3 (colour
+in the fusion) lost on leave-one-item-out earlier, because colour is noisy across white balance
+and a few WRONG items scored 0.90: but that was before there was a real wrong-tool capture.
+NOT retuned blind (E5): one hard negative is not a fit set. The retests will record this
+evidence for each attempt; a one-sided colour VETO (cap the score when colour is far below
+the lowest correct, 0.59) is the conservative candidate and needs a few more captures first.
+
+**E2 (D-115) — built + tested.** `findOverlappingRentals` now also returns any DISPUTED rental
+for the item whatever its dates (the real booking gate; `isAvailable` is only a display flag),
+`recomputeItemAvailability` counts DISPUTED as physically committed, `createRental` says
+"under a dispute and cannot be rented until an admin resolves it", and the three dispute
+sites recompute at the flip. Settling (`COMPLETED`) unblocks it. 5 new tests; both mutations
+(booking gate / flag ignoring DISPUTED) fail them.
+
+**E3 (ruling: disputed drops to the lower compartment at once) — built + tested.**
+`dropUncollectedToLower` treats `releaseReason === "RETURN_DISPUTED"` as immediate (no 1 h
+grace, no 07-21 window) and KEEPS every safety guard: bay operational, auto-release not
+switched off, no open door / running drop / live grant on the bay, lower compartment empty.
+`releaseDisputedItem` (release in place, then drop) replaces the three separate calls (admin
+Reject, the automatic path, a student's own dispute); a refused drop leaves the item
+collectable in place and the hourly sweep retries it. The owner's message says it is
+under dispute. 10 new tests; 3 mutations fail them (rule off, safety bypassed, never drops).
+Deposits already pick a bay by its TOP compartment being free, and a bay is "full" only when
+both are occupied, so nothing else needed to change.
+
+Node suite: **399 tests, all pass** (378 baseline + 21 new; three older tests that encoded
+the old behaviour were updated to assert the new one). `tsc` clean in node_server and admin.
+
+**G11 — NOT deployed:** the rental `6a7ccbef` is sitting `DISPUTED` with its item in bay 1's
+UPPER compartment, already released. The moment E3 is live, the :15 sweep (or any dispute) would
+move that item with the bay 1 actuator. Needs the user's explicit yes first.

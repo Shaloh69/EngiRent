@@ -564,8 +564,17 @@ export async function dropUncollectedToLower(
   const configRow = await prisma.kioskConfig.findUnique({ where: { kioskId: bay.kioskId } });
   const policy = readRetrievalPolicy(configRow?.config);
 
+  // User ruling 2026-10-10: a DISPUTED item goes down to the lower compartment at
+  // once, at any hour, so the top door is free for the next check. The grace
+  // exists to give an owner time to come for a passed return; a disputed item is
+  // not waiting on that, and the window exists to keep an unattended stroke out
+  // of the night, which the ruling waives for this one case. Everything that
+  // keeps a stroke SAFE still applies below: operational bay, auto-release not
+  // switched off, no open door, no running drop, no live grant on the bay, and
+  // an empty lower compartment.
+  const immediate = rental.releaseReason === "RETURN_DISPUTED";
   const waited = hoursSince(rental.releasedAt, now);
-  if (waited < policy.collection_grace_hours) {
+  if (!immediate && waited < policy.collection_grace_hours) {
     return { released: false, refusal: `owner still within the ${policy.collection_grace_hours}h grace` };
   }
   if (!bay.isOperational || bay.status === "OUT_OF_SERVICE") {
@@ -574,7 +583,7 @@ export async function dropUncollectedToLower(
   if (!policy.auto_release_enabled) {
     return { released: false, refusal: "automatic release is switched off for this kiosk" };
   }
-  if (!isWithinReleaseWindow(now, policy)) {
+  if (!immediate && !isWithinReleaseWindow(now, policy)) {
     return {
       released: false,
       refusal: `outside the release window ${policy.release_window_start_hour}:00-${policy.release_window_end_hour}:00`,
@@ -628,9 +637,11 @@ export async function dropUncollectedToLower(
     data: {
       userId: rental.ownerId,
       title: "Item moved to the collection door",
-      message:
-        `${rental.item.title} was not collected, so it has been moved to the lower ` +
-        `collection door of locker ${bay.lockerNumber}. Scan the kiosk QR to open it.`,
+      message: immediate
+        ? `The item returned for ${rental.item.title} is under dispute and has been moved to the ` +
+          `lower collection door of locker ${bay.lockerNumber}. Scan the kiosk QR to open it.`
+        : `${rental.item.title} was not collected, so it has been moved to the lower ` +
+          `collection door of locker ${bay.lockerNumber}. Scan the kiosk QR to open it.`,
       type: "ITEM_READY_FOR_CLAIM",
       relatedEntityId: rentalId,
       relatedEntityType: "rental",
@@ -641,6 +652,34 @@ export async function dropUncollectedToLower(
       `${bay.lockerNumber} after ${waited.toFixed(2)}h (command ${commandId})`,
   );
   return { released: true, reason: rental.releaseReason ?? undefined, lockerNumber: bay.lockerNumber };
+}
+
+/**
+ * User ruling 2026-10-10 — a disputed item is released to its owner AND dropped to
+ * the lower compartment straight away, whatever the hour, so the top door is free
+ * for the next check and a bay is only full when both compartments are occupied.
+ *
+ * One entry point for the three places a return becomes DISPUTED (the admin's
+ * Reject, the automatic rejection, and a student's own dispute), so none of them
+ * can keep the old "leave it up top until the owner comes" behaviour.
+ *
+ * The in-place release comes first and stays valid on its own: if the drop is
+ * refused (someone has a live session on the bay, a door is open, the lower
+ * compartment is occupied, automatic release is off), the item simply remains
+ * collectable where it sits, and the hourly sweep retries the drop.
+ */
+export async function releaseDisputedItem(io: Server, rentalId: string): Promise<ReleaseOutcome> {
+  const placed = await releaseForOwnerPickup(io, rentalId, "RETURN_DISPUTED");
+  if (!placed.released) return placed;
+  const dropped = await dropUncollectedToLower(io, rentalId);
+  if (!dropped.released) {
+    logger.warn(
+      `[E6.S] disputed item of rental ${rentalId} stays in the upper compartment for now: ` +
+        `${dropped.refusal}. It is collectable there and the hourly sweep will retry the drop.`,
+    );
+    return placed;
+  }
+  return dropped;
 }
 
 export async function confirmRelease(rentalId: string): Promise<void> {

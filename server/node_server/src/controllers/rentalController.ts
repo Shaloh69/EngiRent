@@ -7,7 +7,7 @@ import {
   ValidationError,
 } from "../utils/errors";
 import logger from "../utils/logger";
-import { releaseForOwnerPickup } from "../services/retrievalService";
+import { releaseDisputedItem } from "../services/retrievalService";
 import {
   findOverlappingRentals,
   recomputeItemAvailability,
@@ -58,6 +58,11 @@ export const createRental = async (
     // time as long as their date ranges don't overlap; only an actual
     // conflict is refused, not "someone else has ever rented this."
     const overlapping = await findOverlappingRentals(itemId, start, end);
+    if (overlapping.some((r) => r.status === "DISPUTED")) {
+      throw new ValidationError(
+        "This item is under a dispute and cannot be rented until an admin resolves it.",
+      );
+    }
     if (overlapping.length > 0) {
       throw new ValidationError(
         "This item is already booked for part of the dates you selected. Pick a different range.",
@@ -541,7 +546,9 @@ export const fileDispute = async (
     }
 
     const io = req.app.get("io");
-    if (io) await releaseForOwnerPickup(io, id, "RETURN_DISPUTED");
+    if (io) await releaseDisputedItem(io, id);
+    // D-115: a disputed rental keeps its listing blocked until an admin settles it.
+    await recomputeItemAvailability(rental.itemId);
 
     const otherParty = isRenter ? rental.ownerId : rental.renterId;
     const admins = await prisma.user.findMany({

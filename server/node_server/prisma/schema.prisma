@@ -394,6 +394,15 @@ model Verification {
   unavailable       Boolean @default(false)
   unavailableReason String?
 
+  /// D-114 (2026-10-10). The v2 AI's own reasoning for this check, kept so an
+  /// admin can see WHY a score is what it is: the placement verdict, whether it
+  /// asked for a reposition, the per-stage evidence (identity match, same-kind
+  /// agreement) and the time each stage took. Null for v1 rows and for rows the
+  /// pipeline never scored. The first physical test of v2 scored a wrong tool
+  /// 77.87 and the cause had to be back-solved from three stored numbers
+  /// because none of this was kept.
+  mlEvidence Json?
+
   /// D-87b — the assisted second opinion.
   ///
   /// The verdict above is the FAST one: a student was standing at an open

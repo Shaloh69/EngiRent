@@ -36,6 +36,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { roleColor } from "../theme";
 import { StatValue } from "@/components/ui/UnknownValue";
+import { AiReasoning } from "./AiReasoning";
 
 /**
  * A Verification hangs off ONE of two relations, never both:
@@ -432,6 +433,10 @@ export default function VerificationsPage() {
                 action needed here.
               </Alert>
             )}
+
+            {/* D-114: why the AI scored it this way, shown while the admin decides, above the
+                (long) photo columns so it is never below the fold. */}
+            <AiReasoning v={reviewing} />
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
               <Stack gap="xs">

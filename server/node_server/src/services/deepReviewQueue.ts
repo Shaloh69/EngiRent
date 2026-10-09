@@ -6,6 +6,7 @@ import { isLongLeadPickup } from "./pickupLaneService";
 import { dropToStorage } from "./storageDropService";
 import { notifyAdmins } from "./adminRoom";
 import { runMlVerification } from "./mlVerificationService";
+import { buildMlEvidence } from "./verificationEvidence";
 
 /**
  * D-87b — the assisted second opinion, run in the background.
@@ -229,6 +230,8 @@ async function runOne(job: DeepReviewJob): Promise<void> {
         skippedStages: result.skipped_stages ?? [],
         mode: result.mode ?? "full",
         elapsedMs: Date.now() - started,
+        // D-114: the full-tier run's own reasoning, next to the quick check's.
+        evidence: buildMlEvidence(result),
       },
       result.confidence,
       result.decision,
