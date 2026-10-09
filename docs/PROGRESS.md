@@ -10101,3 +10101,55 @@ install, then installed silently (exit 0): `tesseract v5.4.0.20240606`, langs
 `tesseract` is NOT on PATH, the new fallback picked
 `C:\Program Files\Tesseract-OCR\tesseract.exe`, and OCR read **'OMEGA HTR-646'**
 exactly. (v2 does not use OCR; this matters for v1 and any rollback.)
+
+### 2026-10-10 ~01:10 — FIRST PHYSICAL TEST OF v2 (deposit + a wrong-item return): from the logs and DB
+
+Rental `6a7ccbef` (Hand Rivets, bay 1). **Deposit 00:57:51: APPROVED 91.74**
+(attempt 1; deep score 82.58): the correct item scored in the band v2 was built
+for. **Return 01:01:** attempt 1 RETRY (score not stored), attempt 2 `RETRY 77.87`
+→ escalated to review (`MAX_ATTEMPTS_BEFORE_REVIEW = 2`); the full-tier re-run
+agreed (`RETRY 77.08`, 6.2 s, nothing skipped); the admin clicked **Reject** at
+01:01:56 → rental **DISPUTED**, `verificationStatus REJECTED`, bay 1 `main_door`
+**released in place** (`RETURN_DISPUTED`, E6.S) for the owner to collect.
+
+**D-112 — the AI did NOT score the wrong-item return low (target ≤ 40): 77.87.**
+Proof it is v2: v1 can never answer RETRY at a score ≥ 60 (60-84 is PENDING), and
+the stored method scores are v2's shape (SIFT/hash/traditional 0, deep = DINOv2×100).
+RETRY at 77.87 means v2's placement judged TRUNCATED or OFF_CENTER on most frames
+(soft reposition, score < 85). Back-solving the fusion from the stored numbers
+(DINOv2 0.6254): the CLIP agreement must have been ≈ 0.90, so CLIP read the placed
+object as the same KIND as the Hand Rivets listing. A screwdriver or hammer
+scores ~0.3-0.6 there. **Not yet known which object was placed** (the three photos
+are in the admin Verifications page; I did not pull them: the classifier refused
+copying `storage/verifications` earlier). Either it was a rivet-tool lookalike
+(a gap v2's 3-item eval could not show: its hardest negative was the same tools'
+owner's other tool), or it was the same tool badly placed. DINOv2 0.625 is below
+every correct capture in the eval (min 0.654) and far above every wrong one (max 0.418).
+
+**D-113 — the user was never told what to fix.** Both attempts were soft
+repositions, but Node is the unchanged v1-era handler: it re-opens the door with the
+generic retry and counts it toward attempt 2, so the 2-attempt cap was spent on
+repositioning and the return went to the admin. This is the parked Node P work,
+now with real evidence behind it.
+
+**D-114 — Node stores no v2 evidence.** The Verification row keeps only the score and
+three method scores; the placement verdict, `reposition`, CLIP agreement and the
+per-stage times the ML service returns are discarded, so the cause of a score cannot
+be read back from the database (this entry needed back-solving). `ml3.log` records
+call lines only, not scores.
+
+**D-115 (ruling needed) — a DISPUTED rental frees the listing.**
+`itemAvailabilityService.ts` deliberately does not block on DISPUTED ("a disputed
+rental is already over the original date range"), so Hand Rivets shows
+`isAvailable: true` while, on a wrong-item return, the REAL tool may be with the
+renter. Another student could request it. Documented intent, so not changed; whether
+it holds for a wrong-item dispute is the user's call.
+
+**What a disputed item is (code-derived):** the item left in the locker is handed
+back IN PLACE to the owner (door unlocked, no actuator stroke, any hour); if they
+never collect, it drops to the lower compartment at the next :15 inside 07:00-21:00
+(1 h grace) and the admin is escalated after 72 h. Money: the rental payment and
+the deposit stay held (no refund rows) until an admin **settles the dispute**
+(`owner_wins` / `renter_wins`; owner_wins may add a damage fee up to the deposit, the
+deposit is the cap); either outcome completes the rental, refunds the deposit minus
+fees and pays the owner via `finalizeRentalCompletion`.
