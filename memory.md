@@ -2620,3 +2620,15 @@ SHA-256 against an independent source first. Microsoft's winget-pkgs manifest
 is that source. It matched exactly. Installed; OCR seen reading 'OMEGA HTR-646'
 through the deployed code, using the default-path fallback (Tesseract is not on
 the service's PATH).
+
+## 2026-10-11 — Dispute System v2 specified (handoff #4); not built yet
+
+The user specified a full dispute redesign plus a list of process improvements, to be built in a separate session.
+Everything is in `docs/PROGRESS.md` "PRE-/clear HANDOFF #4": only an admin's Reject starts penalties; the renter's
+app is restricted with a full consequence prompt; the renter pays AT THE KIOSK before the door unlocks (PayMongo
+primary, manual confirmation the fallback, which supersedes the 2026-09-06 manual-only ruling); escalating fees
+capped at a new replacement value; the renter (not the owner) collects their wrong item; a second wrong item is much
+worse; personnel escalate to the guardian and to UCLM SAO, the Engineering Faculty and the Guidance Office; the system
+generates letters for the admin to submit; the AI's reason is shown in plain words to the admin, renter and owner.
+Lesson behind it: the AI ignores colour, so a red lookalike scored 77.87 against a yellow-and-black listing. Never
+let the AI alone trigger a penalty.

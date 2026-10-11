@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML (item verification v2) - 2026-10-10 02:10 - v2 live (pipeline=v2); **E1 AI reasoning in admin SEEN; E2 disputed blocks the listing SEEN (live DB); E3 disputed drops to the lower compartment SEEN via the Pi ack (02:03:38, 44.3 s) - the user's eye on the lower door pending** - stack: API 20644, ML 9360, admin up, web 8572, MySQL 3307; api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 live; kiosk online - **bay 3 CAMERA FLAPPING (D-116, needs a person)**; bays 1-top, 2, 4 usable - RETEST NEXT (bays 2/4) - OPEN: D-112 (lookalike 77.87; colour veto candidate, needs more captures), D-113 (reposition message + attempt cap), D-116, D-108, D-106, D-97, D-98, D-99]
+[PHASE ML -> NEXT: DISPUTE SYSTEM v2 - 2026-10-11 - **NEXT SESSION: read "PRE-/clear HANDOFF #4" at the END (dispute redesign + improvements, all rulings confirmed)** - ML v2 live; E1/E2/E3 deployed + seen (E3 "owner collects" is REPLACED by the new rules: the renter collects) - **kiosk OFFLINE**; bay 3 camera unproven (D-116) - live test dispute `6a7ccbef` (lookalike in bay 1 lower) - last URLs api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 (probably fixed by v2)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10271,3 +10271,120 @@ Not changed from here (it is hardware; nothing to command).
 
 **Retest bays:** 2 and 4 capture fine; bay 1's TOP is free again (a deposit there is also a direct test
 of "top door available while the lower holds a disputed item"), bay 3 is out until its camera is fixed.
+
+---
+
+## PRE-`/clear` HANDOFF #4 — 2026-10-11. Next session: DISPUTE SYSTEM v2 + the process improvements (user rulings, all confirmed)
+
+**State at handoff (re-derive everything, these go stale):** ML v2 LIVE on the server (ML PID 9360,
+`venv-v2`, `/health` → `item_pipeline=v2`). E1 (AI reasoning stored + shown in the admin's Condition
+Checks modal), E2 (DISPUTED blocks the listing and the booking gate) and E3 (a disputed item drops to
+the lower compartment at once; `POST /admin/rentals/:id/drop-to-lower`) are DEPLOYED (API PID 20644 on
+2026-10-10) and seen. Last URLs: api `playlist-flux-misc-livestock`, admin
+`fabulous-highlights-idea-ruling`, web `nat-base-vessel-inclusive` (`.trycloudflare.com`); Prerelease33
+(1.13.5+33). **The kiosk is OFFLINE (user, 2026-10-11).** Bay 3's camera was re-seated by the user and is
+NOT yet proven stable (D-116). Live test case: rental `6a7ccbef` (Hand Rivets) is DISPUTED, the lookalike
+red tool sits in **bay 1's LOWER compartment**; under the new rules the RENTER collects it (decide with the
+user how to migrate this one case before touching it).
+
+### User rulings 2026-10-11 (all confirmed in conversation)
+
+1. **UCLM partnership.** EngiRent is partnered with the University of Cebu Lapu-Lapu and Mandaue (UCLM).
+   A student who is **not verified cannot list or borrow**. The server already has `requireVerified` on
+   create-item and create-rental: re-check EVERY path (pay, kiosk deposit/return, extend, etc.) and make the
+   app explain it with the UCLM partnership.
+2. **Trigger.** A renter returns a WRONG item at the kiosk, the AI flags it, and **an ADMIN clicks Reject**.
+   Only an admin's Reject starts penalties; the AI alone never does. Today an AI REJECTED on a return
+   auto-disputes in `index.ts`: change it to "send to admin review".
+3. **The renter's app is RESTRICTED at once** (not fully locked: the return needs the app's QR + face).
+   A full-screen prompt; the renter can only see the dispute, collect their own wrong item, pay, return the
+   correct item, and request a review / contact support.
+4. **Deadline:** default **3 days (72 h)**; the admin can set **1, 2 or 3 days** per case.
+5. **Fees** (replace the flat late fee for disputes): base = the item's `pricePerDay`, counted from the rental's
+   due date: **days 1-3 at 1x per day, days 4-7 at 1.5x, day 8+ at 2x**, capped at a new
+   **`Item.replacementValue`** (owners fill it when listing; prompt owners of existing items). Fees MAY exceed
+   the security deposit (supersedes the old "deposit is the full liability cap" rule, for disputes).
+6. **Pay AT THE KIOSK, before the door unlocks.** Return flow: the renter scans the kiosk QR (+ face on the
+   phone), the kiosk shows the amount owed, the renter pays then and there, and only after payment is confirmed
+   does the top door unlock; the item is placed, the AI checks it, an admin reviews it.
+   **Payment method: PayMongo (GCash) is PRIMARY; manual admin confirmation is the FALLBACK when PayMongo is
+   unavailable** (user: "Remember the manual confirmation is a fallback if paymongo becomes unavailable").
+   This SUPERSEDES the 2026-09-06 PAYMENTS RULING ("manual for the time being") and the "PayMongo automation
+   DEFERRED" note. Confirm with the user whether it applies to all payments or only dispute fees.
+   Known blockers: PayMongo is on TEST keys, its webhook points at a dead host, Disbursements is not enabled,
+   and quick tunnels rotate (a webhook cannot rely on them): poll the payment/checkout status server-side while
+   the renter waits instead of depending on a webhook. Manual fallback: the admin console gets a loud "kiosk
+   payment waiting" alert; the kiosk waits up to about 10 minutes, then ends the session safely with nothing
+   charged twice.
+7. **Fees freeze** when payment is submitted; they resume if it is rejected or the return does not happen.
+8. **The renter's own wrong item** drops to the LOWER compartment (top stays free) and **the RENTER, not the
+   owner, collects it** (QR + face), any time, without paying first (it is their property). This REPLACES E3's
+   "owner collects it" (deployed 2026-10-10): change `releaseDisputedItem` and the retrieve branch so the grant
+   goes to the renter for a renter-caused dispute.
+9. **The owner is removed from the dispute:** no collection prompt; a notice "the return is under dispute; we
+   will tell you when your item is back"; payout held. The owner is prompted to reclaim ONLY after the correct
+   item is verified and approved (existing owner-pickup flow).
+10. **A second wrong item is MUCH WORSE than the first** (as proposed): paid fees are kept (no refund); fees
+    restart at **2x immediately** and escalate faster than the first offence; deadline **24 h**; escalation goes
+    straight to **guardian contact and the UCLM report**; the account is **suspended until an admin reviews it**;
+    the second wrong item also drops to the lower compartment for the renter to collect.
+11. **Escalation:** automatic reminders by email + in-app at day 0, day 1, day 2 and the deadline. Calls,
+    guardian contact and the school report are done by PERSONNEL and LOGGED in the admin (the system cannot
+    phone anyone). Offices: **UCLM SAO (Student Affairs Office), UCLM Engineering Faculty, UCLM Guidance
+    Office.**
+12. **Guardian contact required at registration** (`parentName`, `parentContact` exist, optional today): make
+    them required for new accounts, prompt existing users, and add a **Terms clause** that the guardian and the
+    school may be contacted in a dispute (RA 10173, Data Privacy Act). The prompt may only promise what really
+    happens.
+13. **Letters.** When a dispute escalates (or on demand), the system **generates a formal letter for the ADMIN to
+    submit** to each office (SAO / Engineering Faculty / Guidance): reference number, date, the student (name,
+    student ID, contacts, guardian), rental and item (owner, dates, amounts), the incident timeline (return time,
+    locker, the AI's plain-language reason, the admin's decision), every notification and contact attempt with
+    its outcome, amounts outstanding, requested action, a signatory block, and the list of attachments (listing
+    and locker photos). Printable / PDF from the admin; every generation and submission is logged.
+14. **Everything visible to everyone it concerns:** the admin sees ALL case data and the EXACT messages the renter
+    and owner were shown; the renter's app shows the case (countdown, fees, steps, consequences, history); the
+    owner's app shows the status; the kiosk shows the dispute state when the renter scans.
+15. **The AI's verdict in plain words** (what it saw and why that score), in the admin Condition Checks modal and
+    the item view, AND to the renter and the owner. Example: "Not a match: the item is red, the listing is yellow
+    and black, and its shape only loosely matches the Hand Rivets." Source: `Verification.mlEvidence` and
+    `deepReviewDetails.evidence` (placement, identity, same-kind, colour).
+
+**Renter prompt (agreed draft; reorder for paying at the kiosk):** title "Return disputed: action required within 3
+days"; what happened (item, time, locker; an admin reviewed the locker photos; the UCLM partnership); "your account
+is restricted"; steps: (1) go to the kiosk, scan the QR and pay the amount owed (it freezes when you pay), (2) place
+the correct item when the door opens, (3) collect the item you left from locker N, lower door, at any time; the fee
+schedule and the current total. **If you do not comply:** our personnel contact you by email and phone; if you
+cannot be reached, your parent or guardian on record; the case is reported to UCLM SAO, the Engineering Faculty and
+the Guidance Office for disciplinary action under the Student Code of Conduct and may be referred to the proper
+authorities; permanent ban, and the owner may claim the item's full value. "Think this is a mistake? Request a
+review or contact support." A separate, harsher text for a second offence.
+
+### Improvements in the same session (user: "do everything")
+
+| # | Item | Notes |
+|---|---|---|
+| 1 | Every reboot breaks everything (3 app releases in 2 weeks only for new URLs) | A stable address (a named Cloudflare tunnel needs a domain) or an API URL the app fetches at runtime; services that start at boot (the tasks are Interactive-logon). **Needs a user decision / a domain: ask first.** |
+| 2 | D-113: a "move the item" retry counts toward the 2-attempt cap and its message is not shown | Phone + kiosk show the AI's message; a reposition gets its own cap and never counts toward `MAX_ATTEMPTS_BEFORE_REVIEW` |
+| 3 | D-112: the AI ignores colour (lookalike scored 77.87) | A one-sided colour veto once a few more real captures exist; never retune on one example |
+| 4 | Camera health is not monitored (D-116) | The kiosk reports per-bay camera status; a bay with a dead camera is blocked for new deposits and flagged in the admin |
+| 5 | D-108: DB connections drop about hourly through Docker's port relay | |
+| 6 | D-97: "item ready to collect" reaches nobody | |
+| 7 | D-98: the kiosk says "online" while disconnected; the API logs "Kiosk disconnected" for ANY socket | |
+| 8 | D-99: `face_failed` raises NameError on the Pi | A Pi change: G11 for any restart |
+| 9 | Live progress timer (T) on the phone + kiosk | The ML already reports stages (`/api/v1/progress/{id}`) |
+| 10 | Power cuts corrupted Docker's settings | Recommend a UPS (hardware, not code) |
+| 11 | D-105: bay 2 blur gate | Probably fixed by v2 (no blur gate); confirm with one bay-2 deposit |
+
+### Rules for the next session (from the docs; not optional)
+
+CLAUDE.md read order. **G2:** a dated, repo-derived section table BEFORE any edit. **G1:** one built-but-unseen
+change at a time (seen on screen or on hardware, not "tests green"). **G3:** re-derive, never assert from memory.
+**G4:** the status line first in every reply. **G5:** the six-symptom check at section boundaries. **G6:** a secret
+sweep before the first commit. **G11:** tell the user what moves, which bay and for how long, and wait for an explicit
+yes before ANY door, actuator, kiosk command or flow that opens a door. Standing user rules: **always give the live
+URLs**; **any app change is a full release** (validated APK + website + dated changelog + `AppRelease` +
+`LATEST_APP_VERSION`). Deploys are file copies to the diverged server checkout (compare the server copy with the
+committed version first); a live-flow check before any API restart; never kill node/python by name (two other
+projects share the server). Docker: the auto-memory `reference_server_docker`. Never commit images, faces or keys
+(the repo is public).
