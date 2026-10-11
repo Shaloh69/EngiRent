@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-11",
+    version: "1.14.0",
+    tag: "release",
+    title: "Disputes, guardians, and no more broken installs after a server restart",
+    bullets: [
+      "The app now looks up the server's current address every time it starts, so a server restart no longer needs a new download",
+      "If a returned item is not the one you rented, an admin (never the AI alone) opens a dispute: the app shows the case, the deadline, the amount owed and how it grows, and what the AI saw, in plain words",
+      "During a dispute your account is limited to the case: you pay at the kiosk before the locker opens, return the correct item, collect your own item any time, or ask for a review",
+      "Every student now needs a parent or guardian on record, and agrees they and UCLM may be contacted if a dispute is not resolved",
+      "Owners now enter an item's replacement value when listing; it caps what a dispute can ever charge",
+      "Online payment through PayMongo is ready on the server; until it is switched on, payments are still confirmed by staff as before",
+    ],
+  },
+  {
     date: "2026-10-09",
     version: "1.13.5",
     tag: "infra",

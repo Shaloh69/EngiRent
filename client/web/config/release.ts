@@ -28,11 +28,11 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.13.5",
-  buildNumber: 33,
-  fileName: "Engirent_Prerelease33.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-10-09",
-  sizeMb: 86.8,
+  version: "1.14.0",
+  buildNumber: 34,
+  fileName: "Engirent_Prerelease34.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-10-11",
+  sizeMb: 87.4,
   minAndroid: "8.0 (Oreo)",
   highlights: [
     "Reconnects to the EngiRent server after it restarted on 2026-10-09 at a new address",

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE DISPUTE v2 (in progress, G2 table at the END) - 2026-10-11 - rulings: PayMongo-first for ALL payments, runtime API URL, 6a7ccbef migrates to v2 - ML v2 live; E1/E2/E3 deployed + seen (E3 "owner collects" is REPLACED by the new rules: the renter collects) - **kiosk OFFLINE**; bay 3 camera unproven (D-116) - live test dispute `6a7ccbef` (lookalike in bay 1 lower) - last URLs api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 (probably fixed by v2)]
+[PHASE DISPUTE v2 (in progress, G2 table + entries at the END) - 2026-10-11 23:15 - D1-D3 server, D6 admin, D7 phone SEEN (except the kiosk pay/collect modes, guardian banner, My Listings prompt, owner case view); RELEASED 1.14.0+34 (Prerelease34, runtime API URL via gist Shaloh69/c9c8b972...); payments MANUAL (kill switch) until a LIVE PayMongo key; D8 kiosk NOT started (G1: D7 kiosk modes unseen, kiosk OFFLINE) - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little - cases ER-DSP-2026-0001 (Hand Rivets, OPEN, first reminder 2026-10-12 ~12:45) and -0002 (TEST fixture, overturned) - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10552,3 +10552,59 @@ Identity tile no longer claims a pending student "can rent while you wait" (fals
 `[ApiEndpoint] API is now https://playlist-flux-misc-livestock…/api/v1`: the gist lookup works. Everything else is
 unseen: at ~15:10 `desktop-gklhcri` went off Tailscale (API tunnel 530, SSH timeout) before the login completed.
 G1: the kiosk UI (D8) is NOT started while D7 is unseen. A background wait polls SSH every 30 s.
+
+
+### 2026-10-11 16:06-23:15 — server rebooted and recovered; D7 seen on the emulator; RELEASED 1.14.0+34
+
+**Outage + recovery** (full detail in memory.md 2026-10-11): reboot 15:14:37; Docker Desktop failed
+(`MountDisk/HCS/E_ACCESSDENIED`), fixed by `wsl --shutdown` + relaunching Docker Desktop into the console session
+through a one-off Interactive scheduled task; data intact (14 users / 5 items / 10 rentals / 1 dispute / 2 letters);
+all services restarted, tunnels rotated, `.env`s re-pointed by `scripts/ops/server-repoint-tunnels.sh`, gist updated.
+
+**Runtime API URL, proven across a REAL rotation:** a debug build with a dead baked URL launched after the reboot and
+logged `[ApiEndpoint] API is now https://vcr-pamela-examines-baths…/api/v1`. When the emulator's DNS was broken it
+fell back to the last good URL, as designed.
+
+**Seen on the emulator (probe account):** guardian screen + Terms clause, Save disabled until complete, saved toast,
+Profile tile; profile setup's required guardian fields (new test owner account); listing form "Replacement value";
+the full renter case screen; restricted mode switching ON by itself when an admin's Reject opened a case and OFF by
+itself after the admin's Overturn (socket `dispute:update`); review request (toast, history, admin sees the exact
+text on the case page). **Not seen:** the kiosk pay/collect modes (kiosk offline, G11), the guardian banner and the
+My Listings prompt (no account in that state), the owner's case view.
+
+**Test fixture (user-approved):** new test account `e2e-dispute-owner@students.uclm.edu.ph` ("[TEST] Dispute Owner",
+registered through the API), unlisted item "[TEST] Dispute v2 fixture calculator", rental f6dcf1d3 by the probe,
+rejected through `PATCH /admin/verifications/:id` → ER-DSP-2026-0002 (ruling 2 path end to end), then Overturned from
+the admin console → CANCELLED/OVERTURNED, rental VERIFICATION/APPROVED. The probe's password was restored to the
+e2e suites' value (`e2e-coverage-sweep.mjs`); `e0test.renter` no longer exists on the live DB.
+
+**Defects found on screen and fixed the same hour:** guardian dialog swallowed by the first-run tour (now a banner);
+the renter's history listed the prompt twice (undelivered emails now hidden); Overturn left a case with no recorded
+bay DISPUTED forever (now always an approved return). **Process find:** `.playwright-mcp/` (screenshots showing a
+face) was NOT git-ignored; it was never committed; now ignored.
+
+**Correction to something already done (surfaced to the user):** switching to PayMongo-first on a TEST key meant a
+real booking could be "paid" with a PayMongo test card and confirmed by the poller. No transaction existed since the
+switch. User ruling: **PAYMENT_MODE=MANUAL (kill switch) until a LIVE key is installed**; the PayMongo-first code stays
+deployed.
+
+**Release 1.14.0+34 (Prerelease34), all four parts:** APK validated (testzip clean; api + gist URL baked in all 3
+ABIs; signer CN=EngiRent 3d113b7d…f1868; versionCode 34; 91,665,471 B; sha256 2d5b0e96…, identical on the server);
+website `release.ts` + dated `changelog.ts` entry (server copies were identical to HEAD first), download page shows
+1.14.0, APK serves 200 at full length; `AppRelease` 1.14.0 (5 highlights) + `LATEST_APP_VERSION=1.14.0`, API
+restarted (PID 17856), `/app-config` → 1.14.0. Prerelease33 (old baked host) is superseded.
+
+**G5 six-symptom check at the D7 boundary — ONE SYMPTOM:**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent: boot time, Docker cause, data counts, tunnel hosts, clock all re-derived |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | Absent this stretch: status line on each reply; G11 not triggered (no hardware); outage written to memory.md |
+| 4 drifting to agreement | Absent: raised the TEST-key payment hole as a correction instead of letting the user's earlier "PayMongo primary" stand |
+| 5 batching | Absent: each screen checked as reached; the fixes were deployed and re-seen before the release |
+| 6 skipping verification | **PRESENT, partly**: the PayMongo/TEST-key consequence should have been caught BEFORE flipping PAYMENT_MODE at 12:35, not hours later; the unseen D7 parts are listed above, not assumed |
+
+**Next (G1 binds):** D8 (kiosk UI) is not started while D7's kiosk modes are unseen and the kiosk is offline. Options
+for the user: bring the kiosk online for a G11-approved walk-through of pay/collect, or approve building D8 in Vite
+dev mode first. D9 improvements after that.
