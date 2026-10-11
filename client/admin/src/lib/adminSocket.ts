@@ -49,6 +49,12 @@ export const ADMIN_EVENTS = [
   "admin:verification_submitted",
   "admin:feedback_new",
   "admin:dispute_opened",
+  // Dispute System v2 (2026-10-11).
+  "admin:kiosk_payment_waiting",
+  "admin:dispute_escalated",
+  "admin:dispute_review_requested",
+  "admin:return_flagged",
+  "admin:dispute_drop_unconfirmed",
 ] as const;
 
 let socket: Socket | null = null;

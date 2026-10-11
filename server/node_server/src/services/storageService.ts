@@ -210,6 +210,28 @@ export function verifyMediaToken(token: string): string | null {
   return Buffer.from(pathPart, "base64url").toString("utf8");
 }
 
+/**
+ * If `value` is a `/media/secure/<token>` URL that THIS server signed, return
+ * the path inside it, even when the token has EXPIRED; otherwise null.
+ *
+ * For healing stored links only (mediaUrlRewriter, on the server-written media
+ * columns): the kiosk upload hands back signed URLs that get stored verbatim,
+ * so they expire in the database. The signature must verify, so a forged or
+ * edited token never yields a path, and the result is re-signed with a fresh
+ * expiry by the caller. Never use this to SERVE a file: that is
+ * verifyMediaToken's job, and it enforces expiry.
+ */
+export function pathFromOwnMediaToken(value: string): string | null {
+  if (typeof value !== "string") return null;
+  const m = value.match(/\/media\/secure\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/);
+  if (!m) return null;
+  const [pathPart, expPart, sig] = m[1].split(".");
+  const expected = Buffer.from(sign(`${pathPart}.${expPart}`), "utf8");
+  const given = Buffer.from(sig, "utf8");
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  return Buffer.from(pathPart, "base64url").toString("utf8");
+}
+
 /** Signed, short-lived URL for a private file (ID photo, verification image).
  * Returns null if `relativePath` is null/undefined, for convenient chaining
  * against optional DB fields. */

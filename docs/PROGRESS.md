@@ -10506,3 +10506,31 @@ collection (need the kiosk: OFFLINE; G11 before any door); the reminder/escalati
 | 4 drifting to agreement | Absent: stopped at the classifier refusal and asked; asked before messaging real students; the ₱20 cap was raised as a ruling, not patched silently |
 | 5 batching | **PRESENT**: D1-D5's server code (and D6's server half) was built and deployed as ONE unseen change, against G1. Mitigation: from D6 on, one screen/flow at a time, each seen before the next |
 | 6 skipping verification | Partly: D1-D3 seen live on the API; D4/D5 are listed above as unverified rather than assumed |
+
+### 2026-10-11 ~13:10 — D6 admin console DEPLOYED and SEEN on screen; two security/defect fixes on the way
+
+**Seen (Playwright, live admin `fabulous-highlights-idea-ruling`, minted admin token):** Disputes list (1 open case,
+countdown, owed, wrong-item state); the case page ER-DSP-2026-0001 (deadline + 1/2/3-day setter, fees with the ₱900
+fallback cap and the schedule, wrong item "Locker 1, lower door", the plain AI verdict, listing vs locker photos — the
+red lookalike against the yellow-and-black listing —, guardian "not on record" in red, the full timeline with each
+message's exact text and the email NOT SENT badges, contact log, letters, note, money); the printable letter
+ER-LTR-2026-0001; Condition checks rows with the plain verdict; the item view with each rental's AI checks in plain
+words and the case link. Admin PID 21572 (rebuilt), API PID 20952.
+**Not yet seen:** the shell's "kiosk payment waiting" alert and the case page's payment banner (need a live kiosk
+visit); Overturn / Unrecovered / Lift (not exercised on the live case: they would close it).
+
+**SECURITY FIX (reported): the media rewriter signed attacker-chosen text.** `mediaUrlRewriter` rewrote ANY string in
+ANY response that exactly matched a private path, so a chat message (or description, review, name) reading
+`users/<victim id>/id.jpg` came back as a working signed link to that student's ID photo. Now only the server-written
+media columns (`profileImage, idImageUrl, images, originalImages, kioskImages, videoUrl`) are rewritten, by key.
+Unit-tested (`mediaUrlRewriter.test.ts`), deployed (API 22512).
+**Defect fixed with it:** stored locker photos were signed URLs that EXPIRE in the database (the kiosk upload returns
+signed URLs and they are stored verbatim), so every locker photo older than the TTL was a 403 in Condition checks and
+the case page. Our own expired links are now re-signed after their signature verifies (`pathFromOwnMediaToken`);
+forged ones are left alone. Seen: all four photos load on the case page.
+
+**Letter honesty fix:** ER-LTR-2026-0001 said the student was told "in the app and by email"; no email was sent. The
+generator now names only channels that worked and leaves undelivered emails out of the timeline. A case NOTE says
+0001 must not be submitted; ER-LTR-2026-0002 (SAO) is the corrected draft (read back: "told immediately in the
+EngiRent app"). Neither is submitted.
+**Wording fix pending deploy:** rows an admin approved read "Confirmed match." (even at 0.0); now "Approved by an admin".

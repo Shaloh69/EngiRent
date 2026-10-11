@@ -118,8 +118,14 @@ export async function buildLetterContent(disputeId: string, office: Office, sign
     ["Deadline given", formatWhen(d.deadlineAt)],
   ];
 
+  // Only what really reached someone: an email the server could not send is
+  // left out, and the cover paragraph names only the channels that worked.
+  const delivered = (e: { outcome: string | null }) => !(e.outcome ?? "").startsWith("NOT_SENT");
+  const emailedRenter = d.events.some(
+    (e) => e.audience === "RENTER" && e.channel === "EMAIL" && (e.outcome ?? "") === "SENT",
+  );
   const timeline = d.events
-    .filter((e) => TIMELINE_TYPES.has(e.type))
+    .filter((e) => (TIMELINE_TYPES.has(e.type) || (e.type === "MESSAGE" && e.audience === "RENTER")) && delivered(e))
     .map((e) => ({
       at: formatWhen(e.createdAt),
       what:
@@ -152,7 +158,7 @@ export async function buildLetterContent(disputeId: string, office: Office, sign
     salutation: `Dear ${o.addressee.replace(/^The /, "")}:`,
     paragraphs: [
       `EngiRent Hub is a peer-to-peer equipment rental service for engineering students, operated in partnership with the University of Cebu Lapu-Lapu and Mandaue (UCLM). Items change hands through an unattended locker kiosk, and every return is checked against the owner's listing.`,
-      `We write to report that ${s.firstName} ${s.lastName} (student ID ${s.studentId}) returned an item that is not the one they rented. Our system flagged the return and an administrator confirmed it after reviewing the locker photos. The student was told immediately, in the app and by email, what happened, what they owe, and how to resolve it, and was given until ${formatWhen(d.deadlineAt)}. As of this letter, the correct item has not been returned.`,
+      `We write to report that ${s.firstName} ${s.lastName} (student ID ${s.studentId}) returned an item that is not the one they rented. Our system flagged the return and an administrator confirmed it after reviewing the locker photos. The student was told immediately${emailedRenter ? ", in the EngiRent app and by email," : " in the EngiRent app"} what happened, what they owe, and how to resolve it, and was given until ${formatWhen(d.deadlineAt)}. As of this letter, the correct item has not been returned.`,
       `The facts of the case, the record of every notification sent and every contact attempt made, and the amount outstanding are set out below.`,
     ],
     facts,

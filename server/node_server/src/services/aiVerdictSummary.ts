@@ -149,7 +149,9 @@ export function plainVerdict(input: VerdictInput): PlainVerdict {
 
   let verdictWord: string;
   if (input.adminDecision === "REJECTED") verdictWord = "Not a match";
-  else if (input.adminDecision === "APPROVED") verdictWord = "Confirmed match";
+  // An admin's approval is the admin's judgement, not the AI's: say so, or a
+  // 0.0 score row reads "Confirmed match" as if the AI had agreed.
+  else if (input.adminDecision === "APPROVED") verdictWord = "Approved by an admin";
   else if (score === null) verdictWord = "Needs a person to check";
   else if (score >= 85) verdictWord = "Likely a match";
   else if (score >= 60) verdictWord = "Uncertain";

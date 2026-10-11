@@ -11,6 +11,7 @@ import {
   Card,
   Group,
   Modal,
+  SegmentedControl,
   Progress,
   SimpleGrid,
   Stack,
@@ -106,6 +107,8 @@ export default function VerificationsPage() {
   // when they clicked, even if the list refreshes underneath them.
   const [reviewing, setReviewing] = useState<any | null>(null);
   const [deciding, setDeciding] = useState(false);
+  // Ruling 4 (Dispute v2): the admin sets the deadline when rejecting a return.
+  const [deadlineHours, setDeadlineHours] = useState("72");
 
   useEffect(() => {
     void fetchVerifications();
@@ -143,7 +146,10 @@ export default function VerificationsPage() {
   const decide = async (id: string, status: string) => {
     setDeciding(true);
     try {
-      await api.patch(`/admin/verifications/${id}`, { status });
+      await api.patch(`/admin/verifications/${id}`, {
+        status,
+        ...(status === "REJECTED" && { deadlineHours: Number(deadlineHours) }),
+      });
       setReviewing(null);
       await fetchVerifications();
     } catch (apiError: any) {
@@ -337,6 +343,12 @@ export default function VerificationsPage() {
                         {v.unavailableReason}
                       </Text>
                     )}
+                    {/* Ruling 15: the verdict in plain words, in the row itself. */}
+                    {v.plainVerdict?.headline && (
+                      <Text size="xs" mt={4} lineClamp={2} title={v.plainVerdict.headline}>
+                        {v.plainVerdict.headline}
+                      </Text>
+                    )}
                     {/* The full model's second opinion — every stage, no time
                         pressure. This is the number a human should weigh. */}
                     {v.deepReviewStatus && (
@@ -436,6 +448,20 @@ export default function VerificationsPage() {
 
             {/* D-114: why the AI scored it this way, shown while the admin decides, above the
                 (long) photo columns so it is never below the fold. */}
+            {/* Ruling 15 (Dispute v2): the same plain-language verdict the
+                renter and the owner are shown, so all three read one account. */}
+            {reviewing.plainVerdict && (
+              <Alert color={roleColor.review} variant="light" title="In plain words">
+                <Text size="sm" fw={600}>
+                  {reviewing.plainVerdict.headline}
+                </Text>
+                {reviewing.plainVerdict.points.map((p: string) => (
+                  <Text key={p} size="sm">
+                    • {p}
+                  </Text>
+                ))}
+              </Alert>
+            )}
             <AiReasoning v={reviewing} />
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -453,11 +479,42 @@ export default function VerificationsPage() {
               </Stack>
             </SimpleGrid>
 
-            {!isDecided(reviewing) && (
+            {!isDecided(reviewing) && stageOf(reviewing) !== "Return" && (
               <Alert color={roleColor.warning} variant="light" icon={<AlertCircle size={16} />}>
                 Approving releases the owner&apos;s item to the renter. Rejecting
                 cancels the rental and returns the item to its owner. Both are
                 hard to undo — look at the photographs first.
+              </Alert>
+            )}
+            {!isDecided(reviewing) && stageOf(reviewing) === "Return" && (
+              <Alert color={roleColor.critical} variant="light" icon={<AlertCircle size={16} />} title="Rejecting a return opens a dispute">
+                <Stack gap="xs">
+                  <Text size="sm">
+                    This is the only thing that starts penalties. The renter&apos;s account is restricted, the
+                    escalating fees start, the item in the locker goes back to the RENTER (it drops to the lower
+                    door), the owner is told the return is under dispute and their payout is held, and the renter
+                    is shown the full consequences. Approving settles the rental and the owner collects their item.
+                    Look at the photographs first.
+                  </Text>
+                  <Group gap="xs">
+                    <Text size="sm" fw={600}>
+                      Deadline if rejected:
+                    </Text>
+                    <SegmentedControl
+                      size="xs"
+                      value={deadlineHours}
+                      onChange={setDeadlineHours}
+                      data={[
+                        { value: "24", label: "1 day" },
+                        { value: "48", label: "2 days" },
+                        { value: "72", label: "3 days" },
+                      ]}
+                    />
+                    <Text size="xs" c="dimmed">
+                      (a repeat offence is always 1 day)
+                    </Text>
+                  </Group>
+                </Stack>
               </Alert>
             )}
 

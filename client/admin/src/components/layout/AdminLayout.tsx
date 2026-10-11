@@ -39,6 +39,7 @@ import Link from "next/link";
 import { ColorSchemeToggle } from "@/components/ui/ColorSchemeToggle";
 import { ConnectionIndicator } from "@/components/ui/ConnectionIndicator";
 import { useAdminSocket } from "@/lib/useAdminSocket";
+import { KioskPaymentAlert } from "@/components/ui/KioskPaymentAlert";
 
 const menuItems = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
@@ -207,6 +208,9 @@ export default function AdminLayout({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
+            {/* Ruling 6: a student waiting at the kiosk for a manual payment
+                confirmation must be seen from every page, not only Disputes. */}
+            <KioskPaymentAlert />
             {children}
           </motion.div>
         </AppShell.Main>

@@ -342,6 +342,15 @@ export const adminListDisputes = async (req: AuthRequest, res: Response, next: N
     const disputes = [];
     for (const d of rows) {
       const m = await disputeMoney(d);
+      const visit = liveVisitForDispute(d.id);
+      const pendingTx =
+        m.pending > 0
+          ? await prisma.transaction.findFirst({
+              where: { disputeId: d.id, type: "DISPUTE_FEE", status: { in: ["PENDING", "PROCESSING"] } },
+              orderBy: { createdAt: "desc" },
+              select: { id: true, amount: true, paymentMethod: true, createdAt: true },
+            })
+          : null;
       disputes.push({
         id: d.id,
         referenceNo: d.referenceNo,
@@ -361,6 +370,9 @@ export const adminListDisputes = async (req: AuthRequest, res: Response, next: N
         pending: m.pending,
         wrongItemWaiting: Boolean(d.wrongItemPlacedAt && !d.wrongItemCollectedAt),
         wrongItemMoving: Boolean(d.wrongItemDropAt && !d.wrongItemPlacedAt),
+        // The shell's loud "kiosk payment waiting" alert (ruling 6's manual fallback).
+        pendingTransaction: pendingTx,
+        visitExpiresAt: visit?.expiresAt ?? null,
       });
     }
     const legacy = await prisma.rental.findMany({

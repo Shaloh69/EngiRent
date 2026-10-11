@@ -101,6 +101,18 @@ interface RentalRow {
   actualReturnDate: string | null;
   totalPrice: number;
   renter: { id: string; firstName: string; lastName: string };
+  // Ruling 15 (Dispute v2): every AI check on this item, in plain words.
+  depositCheck?: AiCheck | null;
+  returnCheck?: AiCheck | null;
+  disputes?: Array<{ id: string; referenceNo: string; status: string }>;
+}
+
+interface AiCheck {
+  id: string;
+  status: string;
+  score: number;
+  at: string;
+  plainVerdict: { headline: string; points: string[] } | null;
 }
 
 interface ReviewRow {
@@ -433,7 +445,7 @@ export default function ItemDetailPage() {
 
               <Tabs.Panel value="rentals" pt="md">
                 <DataTableCard
-                  columns={["Renter", "Period", "Status", "Total"]}
+                  columns={["Renter", "Period", "Status", "Total", "What the AI saw"]}
                   isEmpty={rentals.length === 0}
                   emptyState={
                     <EmptyState icon={Receipt} title="No rentals yet" description="This item hasn't been rented." />
@@ -459,6 +471,28 @@ export default function ItemDetailPage() {
                         <Text size="sm" fw={600}>
                           {peso.format(Number(r.totalPrice || 0))}
                         </Text>
+                      </Table.Td>
+                      <Table.Td maw={420}>
+                        {[
+                          { label: "Deposit", c: r.depositCheck },
+                          { label: "Return", c: r.returnCheck },
+                        ]
+                          .filter((x) => x.c?.plainVerdict)
+                          .map((x) => (
+                            <Text key={x.label} size="xs" mb={4} title={x.c!.plainVerdict!.points.join("\n")}>
+                              <b>{x.label}:</b> {x.c!.plainVerdict!.headline}
+                            </Text>
+                          ))}
+                        {(r.disputes ?? []).map((d) => (
+                          <Anchor key={d.id} component={Link} href={`/disputes/${d.id}`} size="xs" fw={600}>
+                            Dispute {d.referenceNo} ({d.status.toLowerCase()})
+                          </Anchor>
+                        ))}
+                        {!r.depositCheck?.plainVerdict && !r.returnCheck?.plainVerdict && (
+                          <Text size="xs" c="dimmed">
+                            no AI check on record
+                          </Text>
+                        )}
                       </Table.Td>
                     </Table.Tr>
                   ))}
