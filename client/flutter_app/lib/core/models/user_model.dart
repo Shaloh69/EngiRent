@@ -19,6 +19,18 @@ class UserModel {
   final String role;
   final bool payoutConfigured;
 
+  /// Dispute v2, ruling 12 (2026-10-11): a parent or guardian on record, and
+  /// when the student accepted that they and UCLM may be contacted in a dispute.
+  final String? parentName;
+  final String? parentContact;
+  final String? guardianConsentAt;
+
+  /// Set after a second wrong item: suspended until an admin reviews it.
+  final String? restrictedUntilReviewAt;
+
+  bool get needsGuardian =>
+      (parentName ?? '').trim().isEmpty || (parentContact ?? '').trim().isEmpty || guardianConsentAt == null;
+
   UserModel({
     required this.id,
     required this.email,
@@ -35,6 +47,10 @@ class UserModel {
     this.verificationNote,
     this.role = 'STUDENT',
     this.payoutConfigured = false,
+    this.parentName,
+    this.parentContact,
+    this.guardianConsentAt,
+    this.restrictedUntilReviewAt,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -61,6 +77,10 @@ class UserModel {
       verificationNote: json['verificationNote'] as String?,
       role: (json['role'] as String?) ?? 'STUDENT',
       payoutConfigured: (json['payoutConfigured'] as bool?) ?? false,
+      parentName: json['parentName'] as String?,
+      parentContact: json['parentContact'] as String?,
+      guardianConsentAt: json['guardianConsentAt'] as String?,
+      restrictedUntilReviewAt: json['restrictedUntilReviewAt'] as String?,
     );
   }
 
@@ -82,6 +102,10 @@ class UserModel {
         'verificationNote': verificationNote,
         'role': role,
         'payoutConfigured': payoutConfigured,
+        'parentName': parentName,
+        'parentContact': parentContact,
+        'guardianConsentAt': guardianConsentAt,
+        'restrictedUntilReviewAt': restrictedUntilReviewAt,
       };
 
   String get fullName => '$firstName $lastName';

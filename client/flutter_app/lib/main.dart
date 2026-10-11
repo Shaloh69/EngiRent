@@ -7,6 +7,7 @@ import 'core/theme/design_reference_screen.dart';
 import 'core/localization/locale_controller.dart';
 import 'core/observability/crash_reporting.dart';
 import 'core/services/api_service.dart';
+import 'core/services/api_endpoint.dart';
 import 'core/services/connectivity_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
@@ -49,6 +50,8 @@ void main() async {
   // screen before any of our own error handling exists.
   await CrashReporting.run(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    // Improvement #1 (2026-10-11): find the API before the first request.
+    await ApiEndpoint.init();
     // Mandate §2.3 — resolve the first-run flag before the first frame, so a
     // fresh install opens straight onto onboarding rather than flashing the
     // login screen and then replacing it.

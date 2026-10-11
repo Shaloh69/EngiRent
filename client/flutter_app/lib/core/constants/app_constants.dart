@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../services/api_endpoint.dart';
 
 class AppConstants {
   // API Configuration — build-configurable via --dart-define, e.g.:
@@ -16,10 +17,13 @@ class AppConstants {
   // the tunnel restarts. That is the accepted tradeoff of the free tunnel
   // (see memory.md); the fix, if it ever becomes worth it, is a stable
   // hostname rather than a smarter default here.
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://mpg-clothing-maui-chicago.trycloudflare.com/api/v1',
-  );
+  //
+  // 2026-10-11 (improvement #1, user ruling): no longer a constant. The app
+  // reads the current URL at launch from a stable registry (a public gist) and
+  // falls back to the last good URL, then to the one baked into the build. See
+  // core/services/api_endpoint.dart. A tunnel rotation is now an edit to that
+  // gist, not a new APK.
+  static String get baseUrl => ApiEndpoint.current;
   // Note: the ML service is no longer called directly by this app — face
   // registration goes through POST /auth/register-face (a Node proxy) so the
   // ML service's server-to-server API key never has to live in this app's

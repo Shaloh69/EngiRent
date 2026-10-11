@@ -8,6 +8,9 @@ class ItemModel {
   final double? pricePerWeek;
   final double? pricePerMonth;
   final double securityDeposit;
+  /// Dispute v2, ruling 5: what a new one costs; caps the dispute fees. Null on
+  /// listings made before the rule (their owners are asked to add it).
+  final double? replacementValue;
   final List<String> images;
   // Checklist Stage 7 — one optional clip. Null (not empty-string) means "no
   // video", which is also what a listing created before this stage returns.
@@ -34,6 +37,7 @@ class ItemModel {
     this.pricePerWeek,
     this.pricePerMonth,
     required this.securityDeposit,
+    this.replacementValue,
     required this.images,
     this.videoUrl,
     required this.isAvailable,
@@ -56,6 +60,7 @@ class ItemModel {
       pricePerWeek: json['pricePerWeek'] != null ? (json['pricePerWeek'] as num).toDouble() : null,
       pricePerMonth: json['pricePerMonth'] != null ? (json['pricePerMonth'] as num).toDouble() : null,
       securityDeposit: (json['securityDeposit'] as num).toDouble(),
+      replacementValue: (json['replacementValue'] as num?)?.toDouble(),
       images: List<String>.from(json['images']),
       videoUrl: json['videoUrl'] as String?,
       isAvailable: json['isAvailable'] ?? true,

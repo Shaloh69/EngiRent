@@ -8,8 +8,9 @@ import '../../../core/services/api_service.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/theme/tokens.dart';
 import 'face_verify_screen.dart';
+import '../../payments/screens/payment_webview_screen.dart';
 
-enum _Phase { scanning, waiting, bay, checking, success, failed }
+enum _Phase { scanning, waiting, pay, bay, checking, success, failed }
 
 /// Kiosk hand-off — mandate §2.2.
 ///
@@ -28,12 +29,20 @@ class KioskScanScreen extends StatefulWidget {
   /// 'place'    — owner deposits item at kiosk  (AWAITING_DEPOSIT)
   /// 'retrieve' — renter picks up item           (DEPOSITED)
   /// 'return'   — renter returns item            (ACTIVE)
+  /// 'dispute'  — Dispute v2: the renter pays at the kiosk, THEN the upper
+  ///              door opens for the correct item (ruling 6)   (DISPUTED)
+  /// 'collect'  — Dispute v2: the renter takes back their OWN wrong item
+  ///              (ruling 8); [rentalId] is then the `wi:<disputeId>` target
   final String mode;
+
+  /// The case, for 'dispute' (the payment is made against it).
+  final String? disputeId;
 
   const KioskScanScreen({
     super.key,
     required this.rentalId,
     required this.mode,
+    this.disputeId,
   });
 
   @override
@@ -109,6 +118,9 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     _subs.add(sock.onReturnApproved.listen(_onRentalCompleted));
     _subs.add(sock.onKioskScanError.listen(_onScanError));
     _subs.add(sock.onKioskFaceRequired.listen(_onFaceRequired));
+    // Dispute v2 — the visit ended (10 minutes) or a payment failed.
+    _subs.add(sock.onDisputeVisitEnded.listen(_onVisitEnded));
+    _subs.add(sock.onPaymentRejected.listen(_onDisputePaymentRejected));
 
     _sweep = AnimationController(
       vsync: this,
@@ -177,7 +189,7 @@ class _KioskScanScreenState extends State<KioskScanScreen>
 
   // ── The bay step ─────────────────────────────────────────────────────────
 
-  bool get _needsPhoto => widget.mode == 'place' || widget.mode == 'return';
+  bool get _needsPhoto => widget.mode == 'place' || widget.mode == 'return' || widget.mode == 'dispute';
 
   Widget _buildBay() {
     final bay = _bayNumber == null ? 'Your locker' : 'Locker ${_bayNumber!.padLeft(2, '0')}';
@@ -411,6 +423,26 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     if (result == 'rescan') {
       _retry();
     }
+    // Dispute v2: the face verified, and the server answered with what the
+    // renter owes before any door opens (ruling 6), or with why nothing can
+    // happen right now. Neither comes as a socket event.
+    if (result is Map) {
+      final action = result['action'];
+      if (action == 'dispute_pay') {
+        final d = (result['dispute'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+        setState(() {
+          _owed = (d['amount'] as num?)?.toDouble();
+          _visitExpiresAt = d['expiresAt'] is int ? DateTime.fromMillisecondsSinceEpoch(d['expiresAt'] as int) : null;
+          _payMode = d['pendingTransactionId'] != null ? 'SUBMITTED' : null;
+          _phase = _Phase.pay;
+        });
+      } else if (action == 'none' && _phase != _Phase.bay) {
+        setState(() {
+          _phase = _Phase.failed;
+          _errorMessage = (result['message'] as String?) ?? 'Nothing can be done at the kiosk for this right now.';
+        });
+      }
+    }
     // On a real success, `_onFaceVerified` already fired the socket event
     // while FaceVerifyScreen was on top (this screen's State stayed alive
     // underneath), so `_phase` is already "success" by the time we get here
@@ -625,6 +657,164 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     }
   }
 
+  // ── Dispute v2: pay at the kiosk before the door unlocks (ruling 6) ─────────
+
+  double? _owed;
+  DateTime? _visitExpiresAt;
+  /// null = not started; 'PAYMONGO' = checkout open; 'MANUAL' = staff confirm;
+  /// 'SUBMITTED' = a payment is already waiting for confirmation.
+  String? _payMode;
+  Map<String, dynamic>? _manual;
+  bool _paying = false;
+  String? _payError;
+
+  Future<void> _startPayment() async {
+    if (_paying || widget.disputeId == null) return;
+    setState(() {
+      _paying = true;
+      _payError = null;
+    });
+    try {
+      final r = await _api.post('/disputes/${widget.disputeId}/pay', const {});
+      final body = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode != 201 && r.statusCode != 200) {
+        setState(() => _payError = (body['error'] ?? body['message'] ?? 'Could not start the payment') as String);
+        return;
+      }
+      final data = body['data'] as Map<String, dynamic>;
+      final mode = data['paymentMode'] as String?;
+      final url = data['paymentUrl'] as String?;
+      setState(() {
+        _payMode = mode;
+        _manual = (data['instructions'] as Map?)?.cast<String, dynamic>();
+      });
+      if (mode == 'PAYMONGO' && url != null && mounted) {
+        // The server confirms the payment by asking PayMongo itself; when it
+        // does, the door is granted and `face:verified` moves this screen on.
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PaymentWebViewScreen(
+              checkoutUrl: url,
+              checkoutSessionId: data['transactionId'] as String,
+              rentalId: widget.rentalId,
+            ),
+          ),
+        );
+        if (mounted && _phase == _Phase.pay) setState(() => _payMode = 'SUBMITTED');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _payError = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  void _onVisitEnded(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId || !mounted) return;
+    if (_phase == _Phase.pay || _phase == _Phase.waiting) {
+      setState(() {
+        _phase = _Phase.failed;
+        _errorMessage = 'The kiosk session ended. Nothing was charged twice. Scan the QR code again when you are ready.';
+      });
+    }
+  }
+
+  void _onDisputePaymentRejected(Map<String, dynamic> data) {
+    if (data['rentalId'] != widget.rentalId || !mounted || _phase != _Phase.pay) return;
+    setState(() {
+      _payMode = null;
+      _payError = 'The payment did not go through${data['reason'] != null ? ' (${data['reason']})' : ''}. You can try again.';
+    });
+  }
+
+  Widget _buildPay() {
+    final left = _visitExpiresAt?.difference(DateTime.now());
+    final waiting = _payMode == 'SUBMITTED' || _payMode == 'MANUAL' || _payMode == 'PAYMONGO';
+    final manualText = _manual == null
+        ? ''
+        : '${_manual!['channel'] ?? 'GCash'}: ${_manual!['accountName'] ?? ''} ${_manual!['accountNumber'] ?? ''}\n'
+            'Amount: ₱${(_manual!['amount'] as num?)?.toStringAsFixed(2) ?? ''}\n'
+            'Reference: ${_manual!['reference'] ?? ''}';
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.payments_rounded, size: 56, color: Colors.white),
+            const SizedBox(height: 14),
+            const Text('Pay before the locker opens',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 8),
+            Text(
+              _owed == null ? '' : 'Amount owed: ₱${_owed!.toStringAsFixed(2)}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.warning),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'The amount stops growing once you pay. When the payment is confirmed the upper door unlocks for the '
+              'correct item.${left != null && !left.isNegative ? ' This kiosk session ends in ${left.inMinutes} min.' : ''}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13.5, height: 1.45, color: Colors.white70),
+            ),
+            const SizedBox(height: 22),
+            if (!waiting)
+              FilledButton.icon(
+                onPressed: _paying ? null : _startPayment,
+                icon: _paying
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.lock_open_rounded),
+                label: const Text('Pay now'),
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54), backgroundColor: AppColors.primary),
+              ),
+            if (waiting) ...[
+              const Center(child: CircularProgressIndicator(color: AppColors.info)),
+              const SizedBox(height: 12),
+              Text(
+                _payMode == 'MANUAL'
+                    ? 'Online payment is unavailable right now, so staff will confirm it. Send the amount as shown below; '
+                        'staff have been alerted and the door unlocks as soon as they confirm.'
+                    : 'Waiting for the payment to be confirmed. Stay here; the door unlocks by itself.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, height: 1.45),
+              ),
+              if (_payMode == 'MANUAL' && _manual != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(manualText, style: const TextStyle(color: Colors.white, height: 1.5)),
+                ),
+              ],
+            ],
+            if (_payError != null) ...[
+              const SizedBox(height: 12),
+              Text(_payError!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
+            ],
+            const SizedBox(height: 18),
+            TextButton(
+              onPressed: () async {
+                if (widget.disputeId != null) {
+                  try {
+                    await _api.post('/disputes/${widget.disputeId}/cancel-visit', const {});
+                  } catch (_) {}
+                }
+                if (mounted) Navigator.pop(context, false);
+              },
+              child: const Text('Cancel and leave the kiosk', style: TextStyle(color: Colors.white70)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   void _retry() {
@@ -638,12 +828,15 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   String get _modeLabel => switch (widget.mode) {
         'place' => 'Drop off at kiosk',
         'retrieve' => 'Collect your item',
+        'collect' => 'Collect your own item',
+        'dispute' => 'Pay and return',
         _ => 'Return to kiosk',
       };
 
   String get _waitingLabel => switch (widget.mode) {
         'place' => 'Opening a locker…',
-        'retrieve' => 'Unlocking your locker…',
+        'retrieve' || 'collect' => 'Unlocking your locker…',
+        'dispute' => 'Checking your case…',
         _ => 'Confirming your return…',
       };
 
@@ -654,9 +847,12 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         'place' =>
           "We're checking with the kiosk. A verification page will open on "
               'your phone next — once confirmed, a locker door opens.',
-        'retrieve' =>
+        'retrieve' || 'collect' =>
           "We're checking with the kiosk. A verification page will open on "
               'your phone next — once confirmed, your locker opens.',
+        'dispute' =>
+          "We're checking with the kiosk. A verification page will open on "
+              'your phone next, then you pay the amount owed and the locker opens.',
         _ =>
           "We're checking with the kiosk. A verification page will open on "
               'your phone next — once confirmed, open the locker and place '
@@ -665,7 +861,7 @@ class _KioskScanScreenState extends State<KioskScanScreen>
 
   String get _successLabel => switch (widget.mode) {
         'place' => 'Locker open — place your item inside',
-        'retrieve' => 'Locker open — take your item',
+        'retrieve' || 'collect' => 'Locker open — take your item',
         _ => 'Locker open — put the item back',
       };
 
@@ -675,10 +871,16 @@ class _KioskScanScreenState extends State<KioskScanScreen>
             'Verify your identity on this phone',
             'Place the item in the open locker',
           ],
-        'retrieve' => const [
+        'retrieve' || 'collect' => const [
             'Scan the QR code on the kiosk screen',
             'Verify your identity on this phone',
             'Take your item from the open locker',
+          ],
+        'dispute' => const [
+            'Scan the QR code on the kiosk screen',
+            'Verify your identity on this phone',
+            'Pay the amount owed',
+            'Put the correct item in the open locker',
           ],
         _ => const [
             'Scan the QR code on the kiosk screen',
@@ -724,6 +926,7 @@ class _KioskScanScreenState extends State<KioskScanScreen>
       body: switch (_phase) {
         _Phase.scanning => _buildScanning(),
         _Phase.waiting => _buildWaiting(),
+        _Phase.pay => _buildPay(),
         _Phase.bay => _buildBay(),
         _Phase.checking => _buildChecking(),
         _Phase.success => _buildResult(

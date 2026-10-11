@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:http/http.dart' as http;
+import 'api_endpoint.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
 import '../constants/app_constants.dart';
@@ -63,6 +64,9 @@ class ApiService {
       throw const ApiUnreachableException('The request took too long to respond.');
     } on SocketException {
       ConnectivityController.instance.reportRequestOutcome(reachedServer: false);
+      // The tunnel may have rotated: look the API up again (throttled), so
+      // the next attempt goes to the new host without reinstalling.
+      unawaited(ApiEndpoint.refresh());
       throw const ApiUnreachableException('Could not reach the server.');
     } on http.ClientException catch (e) {
       ConnectivityController.instance.reportRequestOutcome(reachedServer: false);

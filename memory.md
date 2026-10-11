@@ -2632,3 +2632,12 @@ worse; personnel escalate to the guardian and to UCLM SAO, the Engineering Facul
 generates letters for the admin to submit; the AI's reason is shown in plain words to the admin, renter and owner.
 Lesson behind it: the AI ignores colour, so a red lookalike scored 77.87 against a yellow-and-black listing. Never
 let the AI alone trigger a penalty.
+
+## 2026-10-11 ~15:10 PHT — Server off Tailscale mid-session (cause unknown yet)
+
+During the D7 emulator check `desktop-gklhcri` went offline ("last seen 4m ago" at ~15:14), the API tunnel
+answered 530 and SSH timed out on both the MagicDNS name and 100.122.239.125. Everything deployed before it was
+live and seen: API PID 20952 (Dispute v2 server + media rewriter fix), admin 21572, `.env` PAYMENT_MODE=PAYMONGO.
+If it rebooted, the Interactive-logon tasks, Docker/MySQL and the tunnels all need the usual restart (see the
+2026-10-09 entries), the tunnel URLs WILL rotate, and the runtime-URL gist (Shaloh69/c9c8b972…, read by the
+new app at launch) must be updated with `gh gist edit` as part of the rehost.

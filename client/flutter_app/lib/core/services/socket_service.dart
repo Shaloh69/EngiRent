@@ -70,6 +70,10 @@ class SocketService {
   // told "Under review" and offered the submit button they had already used.
   final _verificationApproved = StreamController<Map<String, dynamic>>.broadcast();
   final _verificationRejected = StreamController<Map<String, dynamic>>.broadcast();
+  // Dispute System v2 (2026-10-11).
+  final _disputeUpdate = StreamController<Map<String, dynamic>>.broadcast();
+  final _disputePaymentRequired = StreamController<Map<String, dynamic>>.broadcast();
+  final _disputeVisitEnded = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onRentalCompleted => _rentalCompleted.stream;
   Stream<Map<String, dynamic>> get onDepositApproved => _depositApproved.stream;
@@ -91,6 +95,9 @@ class SocketService {
   Stream<Map<String, dynamic>> get onPaymentRejected => _paymentRejected.stream;
   Stream<Map<String, dynamic>> get onVerificationApproved => _verificationApproved.stream;
   Stream<Map<String, dynamic>> get onVerificationRejected => _verificationRejected.stream;
+  Stream<Map<String, dynamic>> get onDisputeUpdate => _disputeUpdate.stream;
+  Stream<Map<String, dynamic>> get onDisputePaymentRequired => _disputePaymentRequired.stream;
+  Stream<Map<String, dynamic>> get onDisputeVisitEnded => _disputeVisitEnded.stream;
 
   String? get currentUserId => _userId;
 
@@ -171,6 +178,10 @@ class SocketService {
       ..on('return:retry', _handle(_returnRetry))
       ..on('kiosk:scan_error', _handle(_kioskScanError))
       ..on('kiosk:face_required', _handle(_kioskFaceRequired))
+      // Dispute v2: a case changed (opened, message, payment, item collected).
+      ..on('dispute:update', _handle(_disputeUpdate))
+      ..on('dispute:payment_required', _handle(_disputePaymentRequired))
+      ..on('dispute:visit_ended', _handle(_disputeVisitEnded))
       // Routed through _handle() deliberately: an approved payment advances
       // the rental (PENDING -> AWAITING_DEPOSIT once both sides are paid), so
       // every rentals list showing a status is now stale.

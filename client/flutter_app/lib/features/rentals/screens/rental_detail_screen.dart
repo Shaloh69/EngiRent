@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../../disputes/dispute_api.dart';
+import '../../disputes/screens/dispute_case_screen.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -566,19 +568,39 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     }
   }
 
+  /// Dispute v2: open this rental's case (the latest one).
+  Future<void> _openDispute() async {
+    try {
+      final cases = await DisputeApi.mine();
+      final mine = cases.where((d) => d['rentalId'] == _rental!.id).toList();
+      if (!mounted) return;
+      if (mine.isEmpty) {
+        AppToast.info(context, 'No case yet', 'An admin is still reviewing this return.');
+        return;
+      }
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => DisputeCaseScreen(disputeId: mine.first['id'] as String)),
+      );
+      _load();
+    } catch (e) {
+      if (mounted) AppToast.error(context, 'Could not open the case', friendlyErrorMessage(e));
+    }
+  }
+
   Future<void> _initiateDispute() async {
     final reasonCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('File a Dispute', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: const Text('Raise a concern', style: TextStyle(fontWeight: FontWeight.w800)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Describe the issue with the return verification.',
+              'Tell the admin checking this return what you think they should know. They decide after looking at the locker photos.',
               style: TextStyle(color: AppPalette.of(context).muted, fontSize: 13),
             ),
             const SizedBox(height: 12),
@@ -600,7 +622,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Submit Dispute'),
+            child: const Text('Send to the admin'),
           ),
         ],
       ),
@@ -615,7 +637,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       });
       if (!mounted) return;
       if (resp.statusCode == 200) {
-        AppToast.success(context, 'Dispute Filed', 'Our team will review your case.');
+        AppToast.success(context, 'Sent', 'The admin checking this return will see it.');
         _load();
       } else {
         final data = jsonDecode(resp.body);
@@ -932,7 +954,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                         if (_rental!.status == 'VERIFICATION' && !_rental!.returnApproved)
                           _ActionButton(
                             icon: Icons.gavel_rounded,
-                            label: 'Dispute this Return',
+                            label: 'Raise a concern about this return',
                             gradient: const LinearGradient(
                               colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
                             ),
@@ -1001,6 +1023,14 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                         // disputed rental is exactly the moment a student
                         // wants to reach an actual admin, not just read
                         // "under review" and wait.
+                        // Dispute v2: the case itself (renter: everything; owner: status).
+                        if (_rental!.status == 'DISPUTED')
+                          _ActionButton(
+                            icon: Icons.gavel_rounded,
+                            label: 'Open the dispute',
+                            gradient: const LinearGradient(colors: [Color(0xFFEF4444), Color(0xFFDC2626)]),
+                            onTap: _openDispute,
+                          ),
                         if (_rental!.status == 'DISPUTED')
                           Center(
                             child: TextButton.icon(

@@ -186,7 +186,17 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen>
         // The kiosk-scan screen underneath already has success/failure UI
         // wired to the same server-side outcome via the `face:verified`
         // socket event — this page's job ends here.
-        if (mounted) Navigator.of(context).pop(true);
+        // Dispute v2: hand the server's answer back (what is owed before a
+        // door opens, or why nothing can happen now); everything else
+        // continues through the `face:verified` socket event as before.
+        final action = data?['action'];
+        if (mounted) {
+          Navigator.of(context).pop(
+            action == 'dispute_pay' || action == 'none'
+                ? <String, dynamic>{...?data, 'message': body['message']}
+                : true,
+          );
+        }
         return;
       }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../disputes/screens/guardian_screen.dart';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +29,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   List<CameraDescription> _cameras = [];
   bool _camReady = false;
   bool _consentChecked = false;
+  // Ruling 12 (Dispute v2): the guardian is required, with the Terms clause.
+  bool _guardianConsent = false;
+
+  bool get _guardianValid =>
+      _parentNameCtrl.text.trim().length >= 2 &&
+      _parentContactCtrl.text.replaceAll(RegExp(r'\D'), '').length >= 7 &&
+      _guardianConsent;
 
   File? _faceFile;
   File? _idFile;
@@ -167,8 +175,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         // began; this flag is not a formality, it's what the backend uses as
         // its record that explicit consent was given.
         'biometricConsent': _consentChecked,
-        if (_parentNameCtrl.text.isNotEmpty) 'parentName': _parentNameCtrl.text.trim(),
-        if (_parentContactCtrl.text.isNotEmpty) 'parentContact': _parentContactCtrl.text.trim(),
+        'parentName': _parentNameCtrl.text.trim(),
+        'parentContact': _parentContactCtrl.text.trim(),
+        'guardianConsent': _guardianConsent,
       });
 
       if (completeResp.statusCode == 200) {
@@ -310,19 +319,29 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             title: 'Guardian contact',
             icon: Icons.family_restroom_rounded,
             caption:
-                'Optional, and only used if a dispute needs escalating for a minor.',
+                'Required. EngiRent runs in partnership with UCLM; your parent or guardian is '
+                'contacted only if a rental dispute is not resolved by its deadline.',
             children: [
               AppField(
-                label: 'Guardian name',
+                label: 'Parent or guardian full name',
                 controller: _parentNameCtrl,
-                hint: 'Optional',
+                hint: 'Required',
                 textCapitalization: TextCapitalization.words,
+                onChanged: (_) => setState(() {}),
               ),
               AppField(
-                label: 'Guardian contact number',
+                label: 'Their contact number',
                 controller: _parentContactCtrl,
-                hint: 'Optional',
+                hint: 'Required',
                 keyboardType: TextInputType.phone,
+                onChanged: (_) => setState(() {}),
+              ),
+              CheckboxListTile(
+                value: _guardianConsent,
+                onChanged: (v) => setState(() => _guardianConsent = v ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: Text(GuardianScreen.termsClause, style: TextStyle(fontSize: 12.5, height: 1.4, color: p.ink)),
               ),
             ],
           ),
@@ -361,7 +380,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       bottomNavigationBar: StickyActionBar(
         label: 'Agree and continue',
         icon: Icons.arrow_forward_rounded,
-        onPressed: _consentChecked ? _acceptConsent : null,
+        onPressed: _consentChecked && _guardianValid ? _acceptConsent : null,
       ),
     );
   }

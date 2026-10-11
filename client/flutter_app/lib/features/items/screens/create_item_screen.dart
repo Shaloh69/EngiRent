@@ -62,6 +62,8 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   final _descCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _depositCtrl = TextEditingController();
+  // Dispute v2, ruling 5: required; caps the fees if a renter returns the wrong item.
+  final _replacementCtrl = TextEditingController();
   final _serialCtrl = TextEditingController();
   final _service = ItemService();
   final _api = ApiService();
@@ -111,6 +113,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
       _descCtrl.text = item.description;
       _priceCtrl.text = _trimZeros(item.pricePerDay);
       _depositCtrl.text = _trimZeros(item.securityDeposit);
+      if (item.replacementValue != null) _replacementCtrl.text = _trimZeros(item.replacementValue!);
       _selectedCategory = item.category;
       _selectedCondition = item.condition;
       _serialCtrl.text = item.serialNumber ?? '';
@@ -144,6 +147,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     _descCtrl.dispose();
     _priceCtrl.dispose();
     _depositCtrl.dispose();
+    _replacementCtrl.dispose();
     _serialCtrl.dispose();
     _videoController?.dispose();
     super.dispose();
@@ -481,6 +485,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
             condition: _selectedCondition,
             pricePerDay: _priceCtrl.text.trim(),
             securityDeposit: _depositCtrl.text.trim(),
+            replacementValue: _replacementCtrl.text.trim(),
             images: images,
             // '' clears the field server-side (the controller only skips a
             // key when it's `undefined` in the JSON body, and an empty
@@ -496,6 +501,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
             condition: _selectedCondition,
             pricePerDay: _priceCtrl.text.trim(),
             securityDeposit: _depositCtrl.text.trim(),
+            replacementValue: _replacementCtrl.text.trim(),
             images: images,
             video: (videoWasPicked && video == null) ? null : video,
             serialNumber: serial,
@@ -674,6 +680,24 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                AppField(
+                  label: 'Replacement value (a new one costs)',
+                  controller: _replacementCtrl,
+                  prefix: '₱ ',
+                  hint: 'e.g. 1500',
+                  helper: 'If a renter returns the wrong item, the fees can never go above this.',
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                  ],
+                  onChanged: (_) => setState(() {}),
+                  validator: (v) {
+                    final n = double.tryParse(v?.trim() ?? '');
+                    if (n == null || n <= 0) return 'Enter what a new one would cost';
+                    return null;
+                  },
                 ),
                 if (_price > 0) _EarningsPreview(pricePerDay: _price),
               ],

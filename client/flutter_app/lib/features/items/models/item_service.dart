@@ -113,12 +113,14 @@ class ItemService {
     required String condition,
     required String pricePerDay,
     required String securityDeposit,
+    required String replacementValue,
     required List<String> images,
     String? video,
     String? serialNumber,
   }) async {
     try {
       final response = await _api.post('/items', {
+        'replacementValue': replacementValue,
         'title': title,
         'description': description,
         'category': category,
@@ -199,6 +201,7 @@ class ItemService {
     String? condition,
     String? pricePerDay,
     String? securityDeposit,
+    String? replacementValue,
     List<String>? images,
     String? video,
     String? serialNumber,
@@ -213,6 +216,7 @@ class ItemService {
         if (condition != null) 'condition': condition,
         if (pricePerDay != null) 'pricePerDay': pricePerDay,
         if (securityDeposit != null) 'securityDeposit': securityDeposit,
+        if (replacementValue != null) 'replacementValue': replacementValue,
         if (images != null) 'images': images,
         // '' clears the clip server-side, same convention as serialNumber
         // below — the controller only skips the key when it's absent.

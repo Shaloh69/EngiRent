@@ -230,11 +230,41 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, i) => Stagger(
         index: i,
-        child: _ListingCard(
-          listing: _listings[i],
-          onEdit: () => _edit(_listings[i]),
-          onToggleListed: () => _toggleListed(_listings[i]),
-          onDelete: () => _delete(_listings[i]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Dispute v2, ruling 5: listings made before the rule have no
+            // replacement value; the owner is asked to add one.
+            if (_listings[i].item.replacementValue == null)
+              Material(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => _edit(_listings[i]),
+                  child: const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Row(children: [
+                      Icon(Icons.info_outline_rounded, size: 18, color: AppColors.warning),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Add a replacement value (what a new one costs). Tap to edit.',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            if (_listings[i].item.replacementValue == null) const SizedBox(height: 6),
+            _ListingCard(
+              listing: _listings[i],
+              onEdit: () => _edit(_listings[i]),
+              onToggleListed: () => _toggleListed(_listings[i]),
+              onDelete: () => _delete(_listings[i]),
+            ),
+          ],
         ),
       ),
     );

@@ -1,4 +1,7 @@
 import 'dart:async';
+import '../../disputes/dispute_api.dart';
+import '../../disputes/screens/dispute_case_screen.dart';
+import '../../disputes/screens/guardian_screen.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -47,8 +50,80 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goToRentals() => setState(() => _currentIndex = 1);
 
+  // ── Dispute v2, ruling 3: restricted mode ──────────────────────────────
+  // While a case is open the app IS the case: the renter can only see it,
+  // collect their own item, pay, return the correct item, and ask for a
+  // review or support. The SERVER enforces this (blockIfRestricted); this
+  // gate only makes it impossible to miss.
+  Map<String, dynamic>? _restriction;
+  final List<StreamSubscription> _restrictionSubs = [];
+  bool _guardianAsked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRestriction();
+    final sock = SocketService.instance;
+    _restrictionSubs.add(sock.onDisputeUpdate.listen((_) => _checkRestriction()));
+    _restrictionSubs.add(sock.onReturnDisputed.listen((_) => _checkRestriction()));
+    _restrictionSubs.add(sock.onReconnected.listen((_) => _checkRestriction()));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskGuardian());
+  }
+
+  @override
+  void dispose() {
+    for (final s in _restrictionSubs) {
+      s.cancel();
+    }
+    super.dispose();
+  }
+
+  Future<void> _checkRestriction() async {
+    try {
+      final r = await DisputeApi.restriction();
+      if (!mounted || r == null) return;
+      setState(() => _restriction = r);
+    } catch (_) {
+      // Offline: keep whatever was known. The server still refuses anything
+      // a restricted account may not do.
+    }
+  }
+
+  /// Ruling 12: existing users are asked once per launch to add a guardian.
+  Future<void> _maybeAskGuardian() async {
+    if (_guardianAsked || !mounted) return;
+    final user = context.read<AuthProvider>().user;
+    if (user == null || user.role != 'STUDENT' || !user.needsGuardian) return;
+    _guardianAsked = true;
+    final add = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Add a parent or guardian'),
+        content: const Text(
+          'EngiRent is run in partnership with UCLM. Every student now needs a parent or guardian on record, '
+          'and to accept that they and UCLM may be contacted if a rental dispute is not resolved.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Later')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add now')),
+        ],
+      ),
+    );
+    if (add == true && mounted) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const GuardianScreen()));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final r = _restriction;
+    if (r != null && r['restricted'] == true) {
+      final disputeId = r['disputeId'] as String?;
+      if (disputeId != null) {
+        return DisputeCaseScreen(key: ValueKey(disputeId), disputeId: disputeId, restricted: true);
+      }
+      return _SuspendedScreen(reason: r['reason'] as String?);
+    }
     final p = AppPalette.of(context);
     final l10n = AppLocalizations.of(context)!;
     final pages = [
@@ -85,6 +160,60 @@ class _HomeScreenState extends State<HomeScreen> {
             BottomNavigationBarItem(icon: const Icon(Icons.receipt_long), label: l10n.navRentals),
             BottomNavigationBarItem(icon: const Icon(Icons.notifications), label: l10n.navAlerts),
             BottomNavigationBarItem(icon: const Icon(Icons.person), label: l10n.navProfile),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Ruling 10: after a second wrong item the account stays suspended until an
+/// admin reviews it, even once the case itself is closed.
+class _SuspendedScreen extends StatelessWidget {
+  final String? reason;
+  const _SuspendedScreen({this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Account suspended'),
+          actions: [
+            IconButton(
+              tooltip: 'Log out',
+              icon: const Icon(Icons.logout_rounded),
+              onPressed: () => context.read<AuthProvider>().logout(),
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const Icon(Icons.lock_rounded, size: 56, color: AppColors.error),
+            const SizedBox(height: 16),
+            Text(
+              reason ?? 'Your account is suspended until an admin reviews it.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'You can still contact support. An admin will review your account and tell you the outcome.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/feedback/new', arguments: {
+                'category': 'OTHER',
+                'body': 'About my suspended account: ',
+                'screen': 'SuspendedScreen',
+              }),
+              icon: const Icon(Icons.support_agent_rounded),
+              label: const Text('Contact support'),
+            ),
           ],
         ),
       ),
@@ -1254,6 +1383,20 @@ class _ProfileTab extends StatelessWidget {
                   },
                 ),
                 const Divider(height: 1, indent: 56),
+                // Ruling 12 (Dispute v2): the parent or guardian on record.
+                _ProfileTile(
+                  icon: Icons.family_restroom_rounded,
+                  iconColor: (user?.needsGuardian ?? false) ? AppColors.warning : AppColors.success,
+                  title: 'Parent or guardian',
+                  subtitle: (user?.needsGuardian ?? false)
+                      ? 'Required: add who we may contact if a rental dispute is not resolved.'
+                      : '${user?.parentName ?? ''} · ${user?.parentContact ?? ''}',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const GuardianScreen()),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
                 _ProfileTile(
                   icon: Icons.phone_rounded,
                   iconColor: AppColors.primary,
@@ -1814,9 +1957,14 @@ String _verifySubtitle(
           ' Tap to submit a new photo.',
     // Checklist Stage 8 — an ETA, not just "you're waiting". No real SLA is
     // tracked yet, so this is a plain estimate ("typically"), not a promise.
+    // Ruling 1 (Dispute v2): EngiRent is partnered with UCLM, so only a
+    // verified UCLM student can list or borrow. The old line here ("you can
+    // browse and rent while you wait") was untrue: the server has refused an
+    // unverified rental since 2026-08-10.
     'PENDING' =>
       'Your student ID is with an administrator — reviews are typically completed '
-          'within 24 hours. You can browse and rent while you wait.',
-    _ => 'Submit your student ID to unlock renting and listing.',
+          'within 24 hours. You can browse now; renting and listing open once you are verified, '
+          'because EngiRent is run in partnership with UCLM for verified UCLM students only.',
+    _ => 'EngiRent is run in partnership with UCLM: submit your student ID to rent and list.',
   };
 }

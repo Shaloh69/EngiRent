@@ -10534,3 +10534,21 @@ generator now names only channels that worked and leaves undelivered emails out 
 0001 must not be submitted; ER-LTR-2026-0002 (SAO) is the corrected draft (read back: "told immediately in the
 EngiRent app"). Neither is submitted.
 **Wording fix pending deploy:** rows an admin approved read "Confirmed match." (even at 0.0); now "Approved by an admin".
+
+### 2026-10-11 ~15:15 — D7 phone app BUILT (analyze clean, 54 tests) — NOT SEEN: the server went offline mid-check
+
+**Built:** runtime API URL (`core/services/api_endpoint.dart`: gist → last good → baked; re-looked-up on a
+connection failure) with the user-chosen public gist `Shaloh69/c9c8b972eb40e09fb42e726668404045`
+(`engirent-endpoint.json`, raw URL without a commit id, GitHub caches ≤5 min); restricted mode (HomeScreen renders
+the case screen while a case is open, a suspended screen after a second offence); `DisputeCaseScreen` (renter:
+countdown, owed, fee schedule, steps in kiosk order, AI verdict, full notice, history, review request, support;
+owner: status, AI verdict, the messages they were sent); kiosk scan modes `dispute` (face → pay → door) and
+`collect` (the renter's own item via `wi:<disputeId>`); guardian required at profile setup with the Terms clause,
+`GuardianScreen` + launch prompt + Profile tile for existing users; `replacementValue` in the listing form and a
+prompt on listings without one; "Raise a concern" replaces "Dispute this Return" (it never penalises now); the
+Identity tile no longer claims a pending student "can rent while you wait" (false since 2026-08-10).
+
+**Seen so far:** ONE thing: a debug build with a deliberately DEAD baked URL launched and logged
+`[ApiEndpoint] API is now https://playlist-flux-misc-livestock…/api/v1`: the gist lookup works. Everything else is
+unseen: at ~15:10 `desktop-gklhcri` went off Tailscale (API tunnel 530, SSH timeout) before the login completed.
+G1: the kiosk UI (D8) is NOT started while D7 is unseen. A background wait polls SSH every 30 s.
