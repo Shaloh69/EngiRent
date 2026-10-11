@@ -68,9 +68,14 @@ export const errorHandler = (
 
   // Application errors
   if (err instanceof AppError) {
+    // Dispute v2: a restricted account's refusal carries a machine-readable
+    // code so the app can open the case instead of showing a bare error.
+    const extra = err as AppError & { code?: string; disputeId?: string | null };
     res.status(err.statusCode).json({
       success: false,
       error: err.message,
+      ...(extra.code && { code: extra.code }),
+      ...(extra.disputeId !== undefined && { disputeId: extra.disputeId }),
       ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
     });
     return;

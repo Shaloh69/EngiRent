@@ -94,6 +94,8 @@ describe("adminDecidePayment — the decision must reach the phone", () => {
     );
     prismaMock.notification.create.mockResolvedValue({} as never);
     prismaMock.rental.update.mockResolvedValue({} as never);
+    // 2026-10-11: the shared confirmation path advances only a PENDING rental.
+    prismaMock.rental.updateMany.mockResolvedValue({ count: 1 } as never);
   });
 
   it("emits payment:approved to the renter when a payment is approved", async () => {

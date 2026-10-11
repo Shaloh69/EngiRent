@@ -42,6 +42,20 @@ import {
 } from "../controllers/adminController";
 import { getConversationForAdmin } from "../controllers/messageController";
 import {
+  adminAddNote,
+  adminCloseDispute,
+  adminDropWrongItem,
+  adminGenerateLetter,
+  adminGetDispute,
+  adminLiftRestriction,
+  adminListDisputes,
+  adminLogContact,
+  adminMarkLetterSubmitted,
+  adminMigrateLegacy,
+  adminResendPrompt,
+  adminSetDeadline,
+} from "../controllers/disputeController";
+import {
   listAllLockers,
   setLockerService,
   releaseLocker,
@@ -152,6 +166,78 @@ router.post(
     body("outcome").isIn(["owner_wins", "renter_wins"]),
   ]),
   settleDispute,
+);
+
+// ── Dispute System v2 (user rulings 2026-10-11) ─────────────────────────────
+// ADMIN only: every one of these moves money, a person's standing, or (the
+// drop) an actuator. Literal paths before ":id" for the usual reason.
+router.get("/disputes", requireAdmin, adminListDisputes);
+router.post(
+  "/disputes/migrate/:rentalId",
+  requireAdmin,
+  validate([param("rentalId").isUUID()]),
+  adminMigrateLegacy,
+);
+router.post(
+  "/disputes/letters/:letterId/submitted",
+  requireAdmin,
+  validate([param("letterId").isUUID(), body("note").optional().isString().isLength({ max: 1000 })]),
+  adminMarkLetterSubmitted,
+);
+router.get("/disputes/:id", requireAdmin, validate([param("id").isUUID()]), adminGetDispute);
+router.post(
+  "/disputes/:id/deadline",
+  requireAdmin,
+  validate([param("id").isUUID(), body("hours").isIn([24, 48, 72])]),
+  adminSetDeadline,
+);
+router.post(
+  "/disputes/:id/contact",
+  requireAdmin,
+  validate([
+    param("id").isUUID(),
+    body("audience").isIn(["RENTER", "GUARDIAN", "OWNER", "SAO", "ENGINEERING", "GUIDANCE"]),
+    body("channel").isIn(["PHONE", "SMS", "EMAIL", "IN_PERSON", "LETTER"]),
+    body("outcome").isIn(["REACHED", "NO_ANSWER", "LEFT_MESSAGE", "WRONG_NUMBER", "SUBMITTED", "OTHER"]),
+    body("note").optional().isString().isLength({ max: 2000 }),
+  ]),
+  adminLogContact,
+);
+router.post(
+  "/disputes/:id/note",
+  requireAdmin,
+  validate([param("id").isUUID(), body("note").isString().isLength({ min: 1, max: 4000 })]),
+  adminAddNote,
+);
+router.post(
+  "/disputes/:id/letters",
+  requireAdmin,
+  validate([param("id").isUUID(), body("office").isIn(["SAO", "ENGINEERING", "GUIDANCE"])]),
+  adminGenerateLetter,
+);
+router.post(
+  "/disputes/:id/close",
+  requireAdmin,
+  validate([
+    param("id").isUUID(),
+    body("resolution").isIn(["OVERTURNED", "UNRECOVERED"]),
+    body("note").isString().isLength({ min: 5, max: 2000 }),
+  ]),
+  adminCloseDispute,
+);
+router.post(
+  "/disputes/:id/resend-prompt",
+  requireAdmin,
+  validate([param("id").isUUID(), body("preface").optional().isString().isLength({ max: 1000 })]),
+  adminResendPrompt,
+);
+// DRIVES THE ACTUATOR (G11 applies to anyone pressing it): same guards as the sweep.
+router.post("/disputes/:id/drop-wrong-item", requireAdmin, validate([param("id").isUUID()]), adminDropWrongItem);
+router.post(
+  "/users/:userId/lift-restriction",
+  requireAdmin,
+  validate([param("userId").isUUID(), body("note").isString().isLength({ min: 5, max: 1000 })]),
+  adminLiftRestriction,
 );
 
 // ── Transactions ──────────────────────────────────────────────────────────

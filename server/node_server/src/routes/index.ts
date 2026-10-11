@@ -11,6 +11,7 @@ import uploadRoutes from "./uploadRoutes";
 import adminRoutes from "./adminRoutes";
 import reviewRoutes from "./reviewRoutes";
 import feedbackRoutes from "./feedbackRoutes";
+import disputeRoutes from "./disputeRoutes";
 
 const router = Router();
 
@@ -90,5 +91,6 @@ router.use("/upload", uploadRoutes);
 router.use("/admin", adminRoutes);
 router.use("/reviews", reviewRoutes);
 router.use("/feedback", feedbackRoutes);
+router.use("/disputes", disputeRoutes);
 
 export default router;

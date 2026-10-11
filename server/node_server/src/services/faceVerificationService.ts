@@ -71,6 +71,11 @@ export function isKioskActionable(rental: {
   retrievedAt?: Date | null;
 }): boolean {
   if (KIOSK_ACTIONABLE_STATUSES.includes(rental.status as never)) return true;
+  // Dispute v2 (ruling 6): the renter of a DISPUTED rental comes to the kiosk
+  // to pay and return the correct item. Whether their case actually has
+  // something to do is checked where the visit starts (startDisputeVisit) and,
+  // for a straight answer at the kiosk, in kiosk:flow_start.
+  if (rental.status === "DISPUTED") return true;
   return rental.releaseRequestedAt != null && rental.retrievedAt == null;
 }
 
@@ -196,11 +201,18 @@ export async function compareFaceWithMl(
  * picked "any AVAILABLE locker" with no kiosk filter — harmless with the
  * single deployed kiosk, but wrong in general).
  */
-async function assignLocker(
+export async function assignLocker(
   io: SocketIOServer,
   kioskId: string,
   rentalId: string,
   longLead = false,
+  /**
+   * Dispute v2 — bays holding this rental's uncollected WRONG item. Excluded
+   * before anything else, including the resume rule below: a wrong item not
+   * yet dropped sits in an upper compartment that records this rental's id,
+   * and "resume in the same bay" would put the correct item on top of it.
+   */
+  excludeLockerIds: string[] = [],
 ): Promise<{ lockerId: string; lockerNumber: string } | null> {
   // E5.5. This used to ask for `status: "AVAILABLE"` on the whole bay, which
   // was correct while a bay was one space. Now a bay can have a free upper
@@ -216,10 +228,12 @@ async function assignLocker(
   //
   // Candidates are filtered in code rather than SQL so `canAcceptDeposit` stays
   // the single definition of "usable" — see pickupLaneService.
-  const candidates = await prisma.locker.findMany({
-    where: { kioskId, isOperational: true },
-    orderBy: { lockerNumber: "asc" },
-  });
+  const candidates = (
+    await prisma.locker.findMany({
+      where: { kioskId, isOperational: true },
+      orderBy: { lockerNumber: "asc" },
+    })
+  ).filter((l) => !excludeLockerIds.includes(l.id));
 
   // D-89 — RESUME IN THE SAME BAY. A deposit can be interrupted and re-entered
   // (the bay-access grant expires, the person re-scans the QR after a retry,
@@ -301,8 +315,9 @@ export async function applyFaceVerificationOutcome(params: {
   kioskId: string;
   confidence: number;
 }): Promise<{
-  action: "claim" | "return" | "deposit" | "retrieve" | "none";
+  action: "claim" | "return" | "deposit" | "retrieve" | "dispute_pay" | "none";
   error?: string;
+  dispute?: { disputeId: string; amount: number; expiresAt: number; pendingTransactionId: string | null };
 }> {
   const { io, rentalId, kioskId, confidence } = params;
 
@@ -398,6 +413,28 @@ export async function applyFaceVerificationOutcome(params: {
         `${retrievalDoor}; awaiting the owner's open-bay tap`,
     );
     return { action: "retrieve" };
+  }
+
+  // Ruling 1 (Dispute v2): only a verified UCLM student lists or borrows, so a
+  // deposit (the owner starts a hand-off) and a claim (the renter takes
+  // possession) need a verified account, and a claim also needs the renter
+  // not to be restricted by an open dispute (ruling 3). Returns and every
+  // collection of a person's own item are never blocked: getting property
+  // back must not depend on account standing.
+  if (rental.status === "AWAITING_DEPOSIT" || rental.status === "DEPOSITED") {
+    const actorId = rental.status === "AWAITING_DEPOSIT" ? rental.ownerId : rental.renterId;
+    const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { isVerified: true } });
+    if (!actor?.isVerified) {
+      const { NOT_VERIFIED_MESSAGE } = await import("../middleware/auth");
+      return { action: "none", error: NOT_VERIFIED_MESSAGE };
+    }
+    if (rental.status === "DEPOSITED") {
+      const { getRestriction } = await import("./disputeService");
+      const r = await getRestriction(rental.renterId);
+      if (r.restricted) {
+        return { action: "none", error: `${r.reason} You can't collect a new item until it is resolved.` };
+      }
+    }
   }
 
   // ── Deposit: owner is dropping the item off. Assign a locker now — none
@@ -558,6 +595,28 @@ export async function applyFaceVerificationOutcome(params: {
       grantExpiresAt: claimGrant.expiresAt,
     });
     return { action: "claim" };
+  }
+
+  // ── Dispute v2 (ruling 6): the renter pays AT THE KIOSK before the door
+  // unlocks. A visit opens here, only because a face just verified; the door
+  // is granted by disputeKioskService once the payment is confirmed (at once
+  // if nothing is owed).
+  if (rental.status === "DISPUTED") {
+    const { startDisputeVisit } = await import("./disputeKioskService");
+    const visit = await startDisputeVisit(io, { rentalId, userId: rental.renterId, kioskId });
+    if (visit.action === "dispute_pay") {
+      return {
+        action: "dispute_pay",
+        dispute: {
+          disputeId: visit.disputeId,
+          amount: visit.amount,
+          expiresAt: visit.expiresAt,
+          pendingTransactionId: visit.pendingTransactionId,
+        },
+      };
+    }
+    if (visit.action === "return") return { action: "return" };
+    return { action: "none", error: visit.error };
   }
 
   // ── Return: renter is bringing the item back. Assign a (possibly

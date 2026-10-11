@@ -80,14 +80,19 @@ export const requireVerified = (
   }
   if (!req.user.isVerified) {
     next(
-      new ForbiddenError(
-        "Your student ID must be verified before you can do this. Submit it from Profile → Identity.",
-      ),
+      new ForbiddenError(NOT_VERIFIED_MESSAGE),
     );
     return;
   }
   next();
 };
+
+/**
+ * Dispute v2, ruling 1 — EngiRent is partnered with UCLM, so only a verified
+ * UCLM student can list or borrow. Shared by every path that checks it.
+ */
+export const NOT_VERIFIED_MESSAGE =
+  "EngiRent is run in partnership with the University of Cebu Lapu-Lapu and Mandaue (UCLM), so only verified UCLM students can list or borrow. Submit your student ID from Profile → Identity; you can do this as soon as it is approved.";
 
 export const requireAdmin = (
   req: AuthRequest,

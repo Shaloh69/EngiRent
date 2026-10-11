@@ -165,6 +165,17 @@ export async function finalizeRentalCompletion(rentalId: string): Promise<void> 
   }
 
   // ── 2. Owner's rental-payment payout ──────────────────────────────────────
+  // Dispute v2: wrong-item fees the renter paid at the kiosk compensate the
+  // owner for the time without their item, so they are paid out with the
+  // rental. Never drawn from the deposit (they were paid in cash), so they are
+  // not in `deductions` above. A refunded (overturned) fee is not COMPLETED.
+  const disputeFees = rental.transactions
+    .filter((t) => t.type === "DISPUTE_FEE")
+    .reduce((sum, t) => sum + t.amount, 0);
+  if (rentalPaymentTxn && disputeFees > 0) {
+    rentalPaymentTxn.amount = Math.round((rentalPaymentTxn.amount + disputeFees) * 100) / 100;
+    logger.info(`[SETTLEMENT] Rental ${rentalId}: owner payout includes ₱${disputeFees} in dispute fees`);
+  }
   if (rentalPaymentTxn) {
     const owner = rental.owner;
     const accountNumber = await decryptAccountNumber(owner.payoutAccountNumber);

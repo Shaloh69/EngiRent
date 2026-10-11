@@ -38,7 +38,13 @@ const envSchema = z.object({
   // The default matters: TEST PayMongo keys are installed on the deployment,
   // so a mode that defaulted to PAYMONGO would silently keep sending renters
   // to a card form for money that moves by hand.
-  PAYMENT_MODE: z.enum(["MANUAL", "PAYMONGO"]).default("MANUAL"),
+  //
+  // SUPERSEDED 2026-10-11 (user ruling, Dispute v2): PayMongo is now PRIMARY
+  // for every payment and manual confirmation is the FALLBACK, used
+  // automatically whenever a checkout cannot be created. MANUAL is kept as a
+  // kill switch that forces the fallback; PAYMONGO (the default) means
+  // "PayMongo first". On TEST keys the PayMongo payments are simulated.
+  PAYMENT_MODE: z.enum(["MANUAL", "PAYMONGO"]).default("PAYMONGO"),
 
   // Where the renter actually sends the money under PAYMENT_MODE=MANUAL, and
   // how long they should expect to wait for a human to confirm it. Shown

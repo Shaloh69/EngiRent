@@ -57,7 +57,6 @@ import {
 import { depositVerdict, returnVerdict } from "./services/verdictPolicy";
 import {
   releaseForOwnerPickup,
-  releaseDisputedItem,
   dropUncollectedToLower,
   confirmRelease,
   rentalForCommand,
@@ -72,10 +71,18 @@ import { recordTimingReport } from "./services/kioskTimingStore";
 import { recordAdminSnapshot } from "./services/kioskSnapshotStore";
 import { approveReturn, completeAfterOwnerPickup } from "./services/returnApprovalService";
 import { refundRenterInFull } from "./services/rentalSettlementService";
+// Dispute System v2 (user rulings 2026-10-11).
+import { onDisputeReturnPlaced, runDisputeSweep, RENTER_ACTION_STATUSES } from "./services/disputeService";
+import { endVisit, finishVisit } from "./services/disputeKioskService";
+import {
+  confirmWrongItemDrop,
+  disputeIdFromTarget,
+  wrongItemDropForCommand,
+} from "./services/disputeWrongItemService";
+import { startPaymentPoller } from "./services/paymentPoller";
 import {
   sendItemReadyForClaim,
   sendReturnOverdue,
-  sendVerificationFailed,
 } from "./utils/email";
 
 const app: Application = express();
@@ -390,6 +397,9 @@ io.on("connection", (socket: Socket) => {
         // command id so the two can never be confused.
         if (storageDropForCommand(command_id)) {
           void confirmStorageDrop(io, command_id);
+        } else if (wrongItemDropForCommand(command_id)) {
+          // Dispute v2: the renter's own wrong item reached the lower door.
+          void confirmWrongItemDrop(io, command_id);
         } else {
           const rentalId = rentalForCommand(command_id);
           if (rentalId) void confirmRelease(rentalId);
@@ -441,6 +451,8 @@ io.on("connection", (socket: Socket) => {
     const rentalId = data?.rental_id;
     if (!rentalId) return;
     consumeKioskSession(rentalId);
+    // Dispute v2: a cancelled payment visit ends safely (nothing charged twice).
+    void endVisit(io, rentalId, "cancelled");
     logger.info(`[PI-FLOW]  Cancelled at the kiosk — session closed for rental ${rentalId}`);
     void prisma.rental
       .findUnique({ where: { id: rentalId }, select: { ownerId: true, renterId: true } })
@@ -818,7 +830,15 @@ io.on("connection", (socket: Socket) => {
         }
 
         // ── RETURN flow ──────────────────────────────────────────────────
-        else if (rental.status === "ACTIVE") {
+        // Dispute v2 (ruling 6): a DISPUTED rental whose case is PAID is the
+        // renter returning the correct item after paying at the kiosk. Same
+        // flow, but whatever the AI says an admin reviews it.
+        else if (
+          rental.status === "ACTIVE" ||
+          (rental.status === "DISPUTED" &&
+            (await prisma.dispute.count({ where: { rentalId: rental_id, status: "PAID" } })) > 0)
+        ) {
+          const disputedReturn = rental.status === "DISPUTED";
           const lockerId = String(locker_id);
           const locker = await prisma.locker.findFirst({
             where: { lockerNumber: lockerId },
@@ -842,10 +862,13 @@ io.on("connection", (socket: Socket) => {
             mlResult = mlUnreachableResult();
           }
 
-          // D-89 — same retry cap on a return; REJECTED already goes to a
-          // person here (DISPUTED), so it is left as it was.
+          // D-89 — same retry cap on a return. Dispute v2, ruling 2: a REJECTED
+          // no longer opens a dispute by itself (the AI ignores colour and
+          // once scored a lookalike 77.87, D-112); it goes to an admin, and
+          // only the admin's Reject starts penalties.
           const verdict = returnVerdict(mlResult.decision, attemptNumber);
           const decision = verdict.decision;
+          const needsReview = decision !== "APPROVED" || disputedReturn;
           const { confidence, method_scores } = mlResult;
           if (verdict.escalated) {
             logger.info(
@@ -878,95 +901,22 @@ io.on("connection", (socket: Socket) => {
           }
 
           if (decision === "REJECTED") {
+            // Ruling 2 (2026-10-11): to an admin, never straight to a dispute.
+            // Counted like any other attempt; the row below records the AI's
+            // REJECTED with status MANUAL_REVIEW, and the admin is alerted.
             await prisma.rental.update({
               where: { id: rental_id },
               data: { returnAttemptCount: { increment: 1 } },
             });
-            const verification = await prisma.verification.create({
-              data: {
-                originalImages: rental.item.images as never,
-                kioskImages: image_urls as never,
-                decision: "REJECTED",
-                confidenceScore: confidence,
-                attemptNumber,
-                traditionalScore: method_scores?.traditional_best,
-                siftScore: method_scores?.sift_combined,
-                deepLearningScore: method_scores?.deep_learning_aggregated,
-                status: "REJECTED",
-                ...verificationEvidenceFields(mlResult), // D-65
-              },
-            });
-            await prisma.rental.update({
-              where: { id: rental_id },
-              data: {
-                status: "DISPUTED",
-                verificationId: verification.id,
-                verificationScore: confidence,
-                verificationStatus: "REJECTED",
-                returnedAt: new Date(),
-                actualReturnDate: new Date(),
-              },
-            });
-            // E4.6 / R5 (was D-67b). Same defect as R4 and worse: the
-            // disputed item — the object the dispute is about — was sealed in
-            // a bay marked AVAILABLE. Release it to the owner pending
-            // settlement.
-            // E6.S (user ruling 2026-09-24) - handed back IN PLACE for the owner to collect
-            // in person, at any hour; it drops later only if they never come
-            // (dropUncollectedToLower). A policy-gated drop here was refused at night
-            // and never retried (D-107's shape).
-            await releaseDisputedItem(io, rental_id);
-            // D-115: a disputed rental keeps its listing blocked until an admin settles it.
-            await recomputeItemAvailability(rental.itemId);
-            await prisma.notification.create({
-              data: {
-                userId: rental.ownerId,
-                title: "Return Disputed",
-                message: `Returned item for ${rental.item.title} did not match verification. Admin will review.`,
-                type: "VERIFICATION_FAILED",
-                relatedEntityId: rental_id,
-                relatedEntityType: "rental",
-              },
-            });
-
-            // Email renter about failed verification
-            const renterDisp = await prisma.user.findUnique({
-              where: { id: rental.renterId },
-              select: { email: true, firstName: true },
-            });
-            if (renterDisp) {
-              await sendVerificationFailed(renterDisp.email, {
-                firstName: renterDisp.firstName,
-                itemTitle: rental.item.title,
-                rentalId: rental_id,
-                reason: "return",
-              });
-            }
-
-            socket.emit("kiosk:command", {
-              action: "verification_done",
-              result: "rejected",
-              locker_id,
-            });
-            io.to(`user:${rental.renterId}`).emit("return:disputed", {
-              rentalId: rental_id,
-            });
-            io.to(`user:${rental.ownerId}`).emit("return:disputed", {
-              rentalId: rental_id,
-            });
-            // E2.2 — the disputes queue is the one an admin is expected to
-            // work promptly (a student's deposit is held until it settles),
-            // and it was the queue with no live signal at all.
-            notifyAdmins(io, "admin:dispute_opened", {
+            notifyAdmins(io, "admin:return_flagged", {
               rentalId: rental_id,
               itemTitle: rental.item.title,
               confidence,
-              openedAt: new Date().toISOString(),
+              flaggedAt: new Date().toISOString(),
             });
-            return;
           }
 
-          // APPROVED or PENDING
+          // APPROVED, PENDING or (ruling 2) REJECTED-for-review
           const verification = await prisma.verification.create({
             data: {
               originalImages: rental.item.images as never,
@@ -977,23 +927,26 @@ io.on("connection", (socket: Socket) => {
               traditionalScore: method_scores?.traditional_best,
               siftScore: method_scores?.sift_combined,
               deepLearningScore: method_scores?.deep_learning_aggregated,
-              status: decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW",
+              status: needsReview ? "MANUAL_REVIEW" : "APPROVED",
               ...verificationEvidenceFields(mlResult), // D-65
-              ...((mlError || verdict.note) && {
-                reviewNotes: [mlError && `ML error: ${mlError}`, verdict.note]
+              ...((mlError || verdict.note || disputedReturn) && {
+                reviewNotes: [
+                  mlError && `ML error: ${mlError}`,
+                  verdict.note,
+                  disputedReturn && "Return after a dispute: an admin reviews it whatever the AI says (ruling 6).",
+                ]
                   .filter(Boolean)
                   .join(" "),
               }),
             },
           });
 
-          const verificationStatus =
-            decision === "APPROVED" ? "APPROVED" : "MANUAL_REVIEW";
+          const verificationStatus = needsReview ? "MANUAL_REVIEW" : "APPROVED";
 
           // D-87b — same as the deposit branch: a returning item judged on the
           // fast tier goes to a human with the full run's second opinion
           // following behind it.
-          if (decision !== "APPROVED") {
+          if (needsReview) {
             void queueDeepReview({
               verificationId: verification.id,
               rentalId: rental_id,
@@ -1031,11 +984,20 @@ io.on("connection", (socket: Socket) => {
 
           socket.emit("kiosk:command", {
             action: "verification_done",
-            result: decision === "APPROVED" ? "approved" : "pending",
+            result: needsReview ? "pending" : "approved",
             locker_id,
           });
 
-          if (decision === "APPROVED") {
+          if (disputedReturn) {
+            // The owner is out of the dispute (ruling 9): told only once an
+            // admin approves. The visit has done its job.
+            await onDisputeReturnPlaced(rental_id, verification.id);
+            finishVisit(rental_id);
+            io.to(`user:${rental.renterId}`).emit("return:under_review", {
+              rentalId: rental_id,
+              confidence,
+            });
+          } else if (!needsReview) {
             await completeRental(rental_id);
           } else {
             // PENDING — notify admin for manual review
@@ -1294,6 +1256,43 @@ io.on("connection", (socket: Socket) => {
       const { rental_id } = data;
       logger.info(`[PI-FLOW]  flow_start for rental ${rental_id}`);
 
+      // Dispute v2, ruling 8 — `wi:<disputeId>` is the renter collecting their
+      // OWN wrong item. Who must verify comes from the Dispute row (the
+      // renter), never from the scan; the session is opened exactly as for a
+      // rental, because this event is the kiosk's own QR validation.
+      const wrongItemDisputeId = disputeIdFromTarget(String(rental_id ?? ""));
+      if (wrongItemDisputeId) {
+        try {
+          const d = await prisma.dispute.findUnique({ where: { id: wrongItemDisputeId } });
+          if (!d || !d.wrongItemPlacedAt || d.wrongItemCollectedAt) {
+            socket.emit("kiosk:command", {
+              action: "flow_error",
+              message: d?.wrongItemDropAt
+                ? "Your item is being moved to the lower door. Please try again in a minute."
+                : "There is no item of yours waiting here.",
+            });
+            return;
+          }
+          const session = openKioskSession(rental_id, data.kiosk_id, d.renterId);
+          io.to(`user:${d.renterId}`).emit("kiosk:face_required", {
+            rentalId: rental_id,
+            kioskId: data.kiosk_id,
+            expiresAt: session.expiresAt,
+            action: "collect_wrong",
+          });
+          socket.emit("kiosk:command", {
+            action: "await_phone_verification",
+            rental_id,
+            message: "Check your phone — we're verifying it's you",
+          });
+          logger.info(`[PI-FLOW]  ${rental_id}: renter collecting their own item; face handed to phone`);
+        } catch (err) {
+          logger.error(`kiosk:flow_start error for ${rental_id}:`, err);
+          socket.emit("kiosk:command", { action: "flow_error", message: "Server error – please try again" });
+        }
+        return;
+      }
+
       try {
         const rental = await prisma.rental.findUnique({
           where: { id: rental_id },
@@ -1331,6 +1330,23 @@ io.on("connection", (socket: Socket) => {
           socket.emit("kiosk:command", {
             action: "flow_error",
             message: `Rental status "${rental.status}" is not actionable at kiosk`,
+          });
+          return;
+        }
+
+        // Dispute v2: a disputed rental is only actionable while the renter has
+        // something to do (pay / return). Under admin review it is not, and
+        // the kiosk says so plainly instead of sending them through a face check.
+        if (
+          rental.status === "DISPUTED" &&
+          !(rental.releaseRequestedAt && !rental.retrievedAt) &&
+          (await prisma.dispute.count({
+            where: { rentalId: rental_id, status: { in: [...RENTER_ACTION_STATUSES] } },
+          })) === 0
+        ) {
+          socket.emit("kiosk:command", {
+            action: "flow_error",
+            message: "This return is with an admin for review. You'll be told when there is something to do.",
           });
           return;
         }
@@ -1407,7 +1423,9 @@ io.on("connection", (socket: Socket) => {
                 ? "deposit"
                 : rental.status === "DEPOSITED"
                   ? "claim"
-                  : "return",
+                  : rental.status === "DISPUTED"
+                    ? "dispute"
+                    : "return",
         });
 
         socket.emit("kiosk:command", {
@@ -1697,6 +1715,20 @@ cron.schedule("15 * * * *", async () => {
   }
 });
 
+// Dispute v2 (ruling 11): reminders at day 0/1/2/deadline, escalation at the
+// deadline, and retrying a wrong-item drop the bay refused. Its own slots,
+// clear of the :05/:10/:15 sweeps so no two jobs stroke in the same tick.
+cron.schedule("2,32 * * * *", async () => {
+  try {
+    const r = await runDisputeSweep(io);
+    if (r.reminded + r.escalated + r.dropped > 0) {
+      logger.info(`[CRON] dispute sweep — ${r.reminded} reminded, ${r.escalated} escalated, ${r.dropped} wrong item(s) dropped`);
+    }
+  } catch (err) {
+    logger.error(`[CRON] dispute sweep failed: ${(err as Error).message}`);
+  }
+});
+
 // D-91 — the sibling gap: rentals that never even reached a deposit, past
 // their own end date. Nothing physical to move here (no locker, no
 // actuator), so unlike the sweep above this is pure database bookkeeping.
@@ -1814,6 +1846,10 @@ const startServer = async (): Promise<void> => {
     // kioskEventLog.ts). Must run before any kiosk socket connects, so it's
     // installed at startup rather than lazily on first use.
     installKioskEventLog();
+
+    // Ruling 6: PayMongo payments are confirmed by asking PayMongo, not by a
+    // webhook the rotating tunnel cannot receive.
+    startPaymentPoller(io);
 
     httpServer.listen(PORT, "0.0.0.0", () => {
       logger.info(`

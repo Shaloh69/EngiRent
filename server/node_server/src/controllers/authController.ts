@@ -46,6 +46,8 @@ const PROFILE_SELECT = {
   profileComplete: true,
   parentName: true,
   parentContact: true,
+  guardianConsentAt: true,
+  restrictedUntilReviewAt: true,
   isVerified: true,
   verificationStatus: true,
   verificationReason: true,
@@ -71,6 +73,17 @@ function toPublicUser<T extends { payoutAccountNumber?: unknown }>(
 ): Omit<T, "payoutAccountNumber"> & { payoutConfigured: boolean } {
   const { payoutAccountNumber, ...rest } = user;
   return { ...rest, payoutConfigured: payoutAccountNumber != null };
+}
+
+/** Ruling 12: a guardian is a real name and a reachable number, or nothing. */
+function validateGuardian(parentName: unknown, parentContact: unknown): { parentName: string; parentContact: string } {
+  const name = typeof parentName === "string" ? parentName.trim() : "";
+  const contact = typeof parentContact === "string" ? parentContact.trim() : "";
+  if (name.length < 2) throw new ValidationError("Your parent or guardian's full name is required");
+  if (contact.replace(/\D/g, "").length < 7) {
+    throw new ValidationError("A reachable contact number for your parent or guardian is required");
+  }
+  return { parentName: name.slice(0, 120), parentContact: contact.slice(0, 40) };
 }
 
 export const register = async (
@@ -211,6 +224,11 @@ export const login = async (
           verificationNote: user.verificationNote,
           role: user.role,
           payoutConfigured: user.payoutAccountNumber != null,
+          // Dispute v2, ruling 12: the app prompts for a guardian when missing.
+          parentName: user.parentName,
+          parentContact: user.parentContact,
+          guardianConsentAt: user.guardianConsentAt,
+          restrictedUntilReviewAt: user.restrictedUntilReviewAt,
         },
         tokens: { accessToken, refreshToken },
       },
@@ -307,8 +325,14 @@ export const updateProfile = async (
   try {
     if (!req.user) throw new UnauthorizedError("Not authenticated");
 
-    const { firstName, lastName, phoneNumber, parentName, parentContact } =
+    const { firstName, lastName, phoneNumber, parentName, parentContact, guardianConsent } =
       req.body;
+
+    // Ruling 12: existing users are prompted to add a guardian. When they do,
+    // the pair must be complete and valid, and the consent is recorded.
+    if (parentName !== undefined || parentContact !== undefined) {
+      validateGuardian(parentName, parentContact);
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: req.user.userId },
@@ -316,8 +340,9 @@ export const updateProfile = async (
         ...(firstName && { firstName }),
         ...(lastName && { lastName }),
         ...(phoneNumber && { phoneNumber }),
-        ...(parentName !== undefined && { parentName }),
-        ...(parentContact !== undefined && { parentContact }),
+        ...(parentName !== undefined && { parentName: String(parentName).trim() }),
+        ...(parentContact !== undefined && { parentContact: String(parentContact).trim() }),
+        ...(guardianConsent === true && { guardianConsentAt: new Date() }),
       },
       select: PROFILE_SELECT,
     });
@@ -489,7 +514,18 @@ export const completeProfile = async (
   try {
     if (!req.user) throw new UnauthorizedError("Not authenticated");
 
-    const { faceEncoding, biometricConsent } = req.body;
+    const { faceEncoding, biometricConsent, parentName, parentContact, guardianConsent } = req.body;
+
+    // Dispute v2, ruling 12 (2026-10-11): a parent or guardian on record is
+    // REQUIRED for new accounts, together with acceptance of the Terms clause
+    // that the guardian and UCLM may be contacted in a dispute (RA 10173).
+    // These fields were sent by the app before and silently dropped here.
+    const guardian = validateGuardian(parentName, parentContact);
+    if (guardianConsent !== true) {
+      throw new ValidationError(
+        "Please accept that your parent or guardian and UCLM may be contacted if a rental is disputed (guardianConsent: true). Update the app if you don't see this option.",
+      );
+    }
 
     // A separate, explicit affirmative consent is required before any
     // biometric data (face photo, ID photo, face encoding) is stored —
@@ -561,6 +597,9 @@ export const completeProfile = async (
           : {}),
         profileComplete: true,
         biometricConsentAt: new Date(),
+        parentName: guardian.parentName,
+        parentContact: guardian.parentContact,
+        guardianConsentAt: new Date(),
         // Enters the admin review queue. Previously nothing set this, so a
         // completed profile sat in no state at all and no admin surface could
         // find it (mandate 2.11).

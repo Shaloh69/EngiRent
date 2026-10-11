@@ -11,6 +11,7 @@ import {
 } from "../controllers/rentalController";
 import { getConversation, sendMessage } from "../controllers/messageController";
 import { authenticate, requireVerified } from "../middleware/auth";
+import { blockIfRestricted } from "../middleware/restriction";
 import { validate } from "../middleware/validation";
 
 const router = Router();
@@ -20,6 +21,7 @@ router.post(
   "/",
   authenticate,
   requireVerified,
+  blockIfRestricted,
   validate([
     body("itemId").isUUID().withMessage("Valid item ID is required"),
     body("startDate").isISO8601().withMessage("Valid start date is required"),
@@ -84,6 +86,8 @@ router.post(
 router.patch(
   "/:id/dates",
   authenticate,
+  requireVerified,
+  blockIfRestricted,
   validate([
     param("id").isUUID().withMessage("Valid rental ID is required"),
     body("endDate").isISO8601().withMessage("Valid end date is required"),

@@ -103,8 +103,11 @@ describe("D-65 — every verification write site carries the evidence fields", (
 
   const payloads = createPayloads(src);
 
-  it("finds every write site (4 as of 2026-09-11 — deposit and return, ×2 each)", () => {
-    expect(payloads.length).toBe(4);
+  // 3 since 2026-10-11 (Dispute v2, ruling 2): the return's separate
+  // auto-dispute write was removed; an AI REJECTED is now written by the same
+  // review-path create as PENDING. Deposit still has two.
+  it("finds every write site (3 as of 2026-10-11 — deposit ×2, return ×1)", () => {
+    expect(payloads.length).toBe(3);
   });
 
   it.each(payloads.map((p, n) => [n + 1, p]))(

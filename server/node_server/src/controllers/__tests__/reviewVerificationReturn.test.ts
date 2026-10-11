@@ -43,14 +43,19 @@ jest.mock("../../services/storageDropService", () => ({
 jest.mock("../../services/auditLogService", () => ({
   recordAudit: jest.fn().mockResolvedValue(undefined),
 }));
+// Dispute v2: an admin's Reject opens a case (the case logic has its own tests).
+jest.mock("../../services/disputeService", () => ({
+  openDispute: jest.fn().mockResolvedValue({ id: "dispute-1", referenceNo: "ER-DSP-2026-0001", offense: 1 }),
+  onDisputeReturnApproved: jest.fn().mockResolvedValue(undefined),
+}));
 
 import prisma from "../../config/database";
 import { reviewVerification } from "../adminController";
 import { AuthRequest } from "../../middleware/auth";
 import { releaseDisputedItem, releaseForOwnerPickup, requestRelease } from "../../services/retrievalService";
-import { recomputeItemAvailability } from "../../services/itemAvailabilityService";
 import { finalizeRentalCompletion, refundRenterInFull } from "../../services/rentalSettlementService";
 import { sendVerificationFailed } from "../../utils/email";
+import { openDispute } from "../../services/disputeService";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const requestReleaseMock = requestRelease as jest.Mock;
@@ -170,58 +175,44 @@ describe("reviewVerification — return, APPROVED (D-95 + E6.R)", () => {
   });
 });
 
-describe("reviewVerification — return, REJECTED (D-95)", () => {
+describe("reviewVerification — return, REJECTED (Dispute v2, ruling 2)", () => {
   beforeEach(() => {
     mockReset(prismaMock);
     requestReleaseMock.mockClear();
     releaseForPickupMock.mockClear();
     releaseDisputedMock.mockClear();
-    (recomputeItemAvailability as jest.Mock).mockClear();
+    (openDispute as jest.Mock).mockClear();
     sendVerificationFailedMock.mockClear();
     prismaMock.verification.findUnique.mockResolvedValue({
       id: "verification-1",
       rental: RETURN_RENTAL,
       depositRental: null,
     } as never);
-    prismaMock.user.findUnique.mockResolvedValue({
-      email: "renter@students.uclm.edu.ph",
-      firstName: "Renter",
-    } as never);
   });
 
-  it("releases the disputed item back to the owner, and tells both parties", async () => {
+  it("opens a Dispute v2 case: the ONLY trigger for penalties is this admin click", async () => {
     const { io } = makeIo();
     await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
+    expect(openDispute).toHaveBeenCalledWith(
+      io,
+      expect.objectContaining({ rentalId: "rental-1", verificationId: "verification-1", adminId: "admin-1" }),
+    );
+  });
 
-    // Ruling 2026-10-10 (after E6.S): released AND dropped to the lower compartment at
-    // once, at any hour, through ONE function. Neither the old in-place-only call nor
-    // the policy-gated requestRelease may be used for it.
-    expect(releaseDisputedMock).toHaveBeenCalledWith(io, "rental-1");
-    expect(releaseForPickupMock).not.toHaveBeenCalledWith(io, "rental-1", "RETURN_DISPUTED");
+  it("no longer hands the wrong item to the OWNER (ruling 8: the renter collects it)", async () => {
+    const { io } = makeIo();
+    await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
+    expect(releaseDisputedMock).not.toHaveBeenCalled();
+    expect(releaseForPickupMock).not.toHaveBeenCalled();
     expect(requestReleaseMock).not.toHaveBeenCalled();
-    // D-115: the listing stays blocked while the dispute is open.
-    expect(recomputeItemAvailability).toHaveBeenCalledWith("item-1");
-    expect(prismaMock.notification.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ userId: "owner-1", title: "Return Disputed" }),
-      }),
-    );
-    expect(sendVerificationFailedMock).toHaveBeenCalledWith(
-      "renter@students.uclm.edu.ph",
-      expect.objectContaining({ rentalId: "rental-1", reason: "return" }),
-    );
   });
 
-  it("still marks the rental DISPUTED even if requestRelease refuses (bay busy, etc.)", async () => {
-    requestReleaseMock.mockResolvedValueOnce({ released: false, refusal: "bay_busy" });
+  it("passes the admin's deadline choice through (ruling 4)", async () => {
     const { io } = makeIo();
-    await reviewVerification(makeReq("REJECTED", io), makeRes(), jest.fn());
-    expect(prismaMock.rental.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "rental-1" },
-        data: { status: "DISPUTED", verificationStatus: "REJECTED" },
-      }),
-    );
+    const req = makeReq("REJECTED", io);
+    (req.body as Record<string, unknown>).deadlineHours = 48;
+    await reviewVerification(req, makeRes(), jest.fn());
+    expect(openDispute).toHaveBeenCalledWith(io, expect.objectContaining({ deadlineHours: 48 }));
   });
 });
 

@@ -25,7 +25,9 @@
  * a previous process believed.
  */
 
-export type BayAction = "deposit" | "claim" | "return" | "retrieve";
+/** `collect_wrong` — Dispute v2: the renter takes back their own wrong item.
+ *  Keyed by the `wi:<disputeId>` target, not the rental id. */
+export type BayAction = "deposit" | "claim" | "return" | "retrieve" | "collect_wrong";
 
 export interface BayAccess {
   rentalId: string;

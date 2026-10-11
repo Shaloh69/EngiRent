@@ -19,9 +19,15 @@ import { recordAudit } from "../services/auditLogService";
 import { emitLockerOccupancy } from "../services/lockerOccupancyService";
 import {
   getBayAccess,
+  grantBayAccess,
   noteOpen,
   noteCapture,
 } from "../services/kioskBayAccessStore";
+import {
+  completeWrongItemCollection,
+  disputeIdFromTarget,
+} from "../services/disputeWrongItemService";
+import { decryptFaceEncoding } from "../utils/crypto";
 import { doorOpenSeconds } from "../services/kioskTimingStore";
 // D-96 — the server's own view of what each bay is doing right now.
 import { bayBusyWith, noteDoorOpen } from "../services/retrievalService";
@@ -640,6 +646,77 @@ export const verifyFaceFromApp = async (
       );
     }
 
+    // Dispute v2, ruling 8 — the renter collecting their OWN wrong item. Same
+    // shape as every other step: the session came from the kiosk's own QR
+    // check, the person is derived from the Dispute row (never the request),
+    // the face is compared server-side, and only a pass creates a grant.
+    const wrongItemDisputeId = disputeIdFromTarget(rentalId);
+    if (wrongItemDisputeId) {
+      const d = await prisma.dispute.findUnique({
+        where: { id: wrongItemDisputeId },
+        include: {
+          renter: { select: { id: true, profileImage: true, faceEncoding: true } },
+        },
+      });
+      if (!d || !d.wrongItemLockerId || !d.wrongItemPlacedAt || d.wrongItemCollectedAt || !d.wrongItemDoor) {
+        throw new ValidationError("There is no item of yours waiting to be collected");
+      }
+      if (d.renterId !== req.user.userId) {
+        throw new ForbiddenError("You are not the person this step requires verification from");
+      }
+      const subject = {
+        userId: d.renterId,
+        storedEncoding: decryptFaceEncoding(d.renter.faceEncoding ?? null),
+        referenceFaceUrl: signedMediaUrl(d.renter.profileImage) ?? "",
+      };
+      let wiResult;
+      try {
+        wiResult = await compareFaceWithMl(req.file.buffer, req.file.mimetype, subject);
+      } catch (err) {
+        logger.error(`Face verification unavailable for ${rentalId}:`, err);
+        throw new ValidationError("Verification service is unavailable right now — please try again in a moment");
+      }
+      if (!wiResult.verified) {
+        const { exhausted, attemptsRemaining } = recordFailedFaceAttempt(rentalId);
+        res.json({
+          success: true,
+          data: { verified: false, detected: wiResult.detected, confidence: wiResult.confidence, action: "none", mustRescan: exhausted, attemptsRemaining },
+          message: exhausted
+            ? "We couldn't match your face after several tries — please scan the kiosk QR code again"
+            : "We couldn't match your face — please try again",
+        });
+        return;
+      }
+      consumeKioskSession(rentalId);
+      const bay = await prisma.locker.findUnique({ where: { id: d.wrongItemLockerId } });
+      if (!bay) throw new ValidationError("We can't find the locker holding your item. Please contact staff.");
+      const door = d.wrongItemDoor as "main_door" | "bottom_door";
+      const wiGrant = grantBayAccess({
+        rentalId,
+        userId: d.renterId,
+        kioskId: session.kioskId,
+        action: "collect_wrong",
+        lockerNumber: bay.lockerNumber,
+        door,
+      });
+      const wiIo = req.app.get("io");
+      wiIo?.to(`user:${d.renterId}`).emit("face:verified", {
+        rentalId,
+        action: "collect_wrong",
+        kioskId: session.kioskId,
+        lockerNumber: bay.lockerNumber,
+        door,
+        grantExpiresAt: wiGrant.expiresAt,
+      });
+      logger.info(`[APP-FACE] ${rentalId}: renter verified to collect their own item, bay ${bay.lockerNumber} ${door}`);
+      res.json({
+        success: true,
+        data: { verified: true, detected: wiResult.detected, confidence: wiResult.confidence, action: "collect_wrong", lockerNumber: bay.lockerNumber, door },
+        message: "Identity confirmed",
+      });
+      return;
+    }
+
     const rental = await prisma.rental.findUnique({
       where: { id: rentalId },
       include: {
@@ -738,7 +815,7 @@ export const verifyFaceFromApp = async (
     const io = req.app.get("io");
     if (!io) throw new ValidationError("Realtime channel unavailable");
 
-    const { action, error: outcomeError } = await applyFaceVerificationOutcome({
+    const { action, error: outcomeError, dispute } = await applyFaceVerificationOutcome({
       io,
       rentalId,
       kioskId: session.kioskId,
@@ -764,6 +841,8 @@ export const verifyFaceFromApp = async (
         detected: result.detected,
         confidence: result.confidence,
         action,
+        // Dispute v2: what the renter owes before the door opens.
+        ...(dispute && { dispute }),
       },
       message: outcomeError ?? "Identity confirmed",
     });
@@ -894,6 +973,11 @@ export const openBay = async (
     // E6.U — the owner's pickup commits here too, on the real door open.
     if (grant.action === "retrieve") {
       await completeRetrieval(io, grant.rentalId, grant.door);
+    }
+    // Dispute v2 — the renter's own wrong item, committed on the real open.
+    if (grant.action === "collect_wrong") {
+      const disputeId = disputeIdFromTarget(grant.rentalId);
+      if (disputeId) await completeWrongItemCollection(io, disputeId, grant.door);
     }
 
     res.json({

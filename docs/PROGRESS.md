@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE ML -> NEXT: DISPUTE SYSTEM v2 - 2026-10-11 - **NEXT SESSION: read "PRE-/clear HANDOFF #4" at the END (dispute redesign + improvements, all rulings confirmed)** - ML v2 live; E1/E2/E3 deployed + seen (E3 "owner collects" is REPLACED by the new rules: the renter collects) - **kiosk OFFLINE**; bay 3 camera unproven (D-116) - live test dispute `6a7ccbef` (lookalike in bay 1 lower) - last URLs api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 (probably fixed by v2)]
+[PHASE DISPUTE v2 (in progress, G2 table at the END) - 2026-10-11 - rulings: PayMongo-first for ALL payments, runtime API URL, 6a7ccbef migrates to v2 - ML v2 live; E1/E2/E3 deployed + seen (E3 "owner collects" is REPLACED by the new rules: the renter collects) - **kiosk OFFLINE**; bay 3 camera unproven (D-116) - live test dispute `6a7ccbef` (lookalike in bay 1 lower) - last URLs api `playlist-flux-misc-livestock` / admin `fabulous-highlights-idea-ruling` / web `nat-base-vessel-inclusive`; Prerelease33 - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 (probably fixed by v2)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10388,3 +10388,121 @@ URLs**; **any app change is a full release** (validated APK + website + dated ch
 committed version first); a live-flow check before any API restart; never kill node/python by name (two other
 projects share the server). Docker: the auto-memory `reference_server_docker`. Never commit images, faces or keys
 (the repo is public).
+
+---
+
+## PHASE DISPUTE v2: G2 section table (2026-10-11, repo-derived, written before any edit)
+
+**Re-derived at session start (2026-10-11 11:32):** server `DESKTOP-GKLHCRI` up since 2026-10-09 22:44;
+listening 5000 (API PID 20644), 8001 (ML 9360), 3000 (web 8572), 3001 (admin 24556), 3307 (MySQL).
+Tunnels unchanged: api `playlist-flux-misc-livestock`, admin `fabulous-highlights-idea-ruling`, web
+`nat-base-vessel-inclusive` (all three return 200). Kiosk: offline per the user (to re-check before any kiosk step).
+
+**The three open questions, answered by the user (2026-10-11):**
+- **PayMongo primary applies to ALL payments** (booking payments too), with manual admin confirmation as the
+  fallback when PayMongo is unavailable. Supersedes the 2026-09-06 PAYMENTS RULING.
+- **Improvement #1: runtime URL lookup.** The app fetches its API URL at startup from a fixed location, so a
+  tunnel rotation no longer needs a new APK. The stable host goes to the user before anything is set up.
+- **6a7ccbef: migrate to v2.** It becomes a v2 dispute case: the renter gets the collection grant for bay 1
+  lower and the owner's collect prompt goes away. The 72 h deadline and fees start AT the migration, not
+  retroactively. Nothing physical moves.
+
+**What the repo says today (the starting point, read 2026-10-11):**
+- `index.ts:880-967`: an AI REJECTED on a return sets `DISPUTED` at once, calls `releaseDisputedItem`, and
+  notifies the owner. Ruling 2 changes this to admin review.
+- `adminController.reviewVerification:736-784`: an admin's Reject → `DISPUTED` + `releaseDisputedItem`. This
+  becomes the ONLY trigger (ruling 2).
+- `retrievalService.releaseDisputedItem:671` → `releaseForOwnerPickup` (writes the rental's single set of
+  retrieval columns, grants the OWNER) → `dropUncollectedToLower`. `faceVerificationService.resolveFaceSubject:110`
+  sends any `releaseRequestedAt && !retrievedAt` rental to the OWNER. The wrong item and the later correct
+  item cannot share those single retrieval columns, so v2 models the wrong item on its own record.
+- `settleDispute:1285` caps a damage fee at the deposit (ruling 5 lifts the cap for disputes) and has no fees,
+  deadline, events or letters. `fileDispute` (rentalController:498) lets a student mark DISPUTED.
+- `paymentController.createPayment`: `PAYMENT_MODE=MANUAL` is the live configuration; PayMongo is a dormant
+  branch that falls back to a MOCK url on failure. There is no server-side polling of checkout status.
+- `requireVerified` only guards item create and rental create (`itemRoutes`, `rentalRoutes`).
+- `User.parentName/parentContact` are optional; `Item` has no `replacementValue`.
+- Late fees: `index.ts:1718` daily cron, a flat per-category rate, deducted from the deposit.
+
+| § | Section | What it covers (files) | Verified by (G1) | State |
+|---|---|---|---|---|
+| D1 | Data model | `Dispute`, `DisputeEvent`, `DisputeLetter`, `Item.replacementValue`, `TransactionType.DISPUTE_FEE`, `NotificationType.DISPUTE_UPDATE`, `User.suspendedUntilReview`; migration (schema.prisma) | `prisma migrate` on the server DB + the rows read back | not started |
+| D2 | Server rules: trigger, fees, deadline, restriction | AI REJECTED → admin review (index.ts); admin Reject opens the case (adminController); fee schedule as a pure, tested module; deadline 1/2/3 d; second offence; restricted-mode middleware (server-side, every renter path); `requireVerified` on every list/borrow path; owner removed from the dispute + payout held | a live case opened by an admin Reject on the server, read back through the API | not started |
+| D3 | Wrong item → renter | the wrong item gets its own record + collection grant for the RENTER; the owner's collect prompt removed; the next return never reuses the bay holding the wrong item (faceVerificationService, retrievalService) | 6a7ccbef migrated and read back; the hardware half waits for the kiosk (G11) | not started |
+| D4 | Payments: PayMongo primary, manual fallback | `createPayment` for every type; server-side polling of checkout status (no webhook dependence); manual fallback + loud admin "kiosk payment waiting"; fees freeze on submission and resume on rejection | a test-key checkout created on the server and polled to its real status | not started |
+| D5 | Escalation, reminders, letters | reminders day 0/1/2/deadline (email + in-app); personnel contact log; letters to SAO / Engineering Faculty / Guidance with a reference number, printable/PDF, every generation and submission logged | an admin case page showing the timeline and a generated letter | not started |
+| D6 | Admin console | dispute case page; deadline setter; exact messages shown to the renter/owner; contact log; letters; Condition Checks + item view with plain-language AI verdicts; "kiosk payment waiting" alert | seen on screen (Playwright) against the live API | not started |
+| D7 | Phone app | restricted full-screen prompt; dispute case screen (countdown, fees, steps, consequences, history); payment at the kiosk; AI reason; owner status notice; guardian fields required + Terms clause (RA 10173); `replacementValue` on listing; UCLM explanation for unverified students; **runtime API URL** | seen on screen, then a full release (APK + website + changelog + AppRelease + LATEST_APP_VERSION) | not started |
+| D8 | Kiosk | dispute state on scan; amount owed / waiting for payment; door only after payment; renter collects the wrong item | the React UI in Vite dev mode now; the Pi itself when it is back online (G11 for every door) | not started |
+| D9 | Improvements #2-#11 | D-113 reposition cap, D-112 colour (record-only until more captures), camera health D-116, D-108, D-97, D-98, D-99 (Pi, G11), progress timer, UPS note, D-105 | per item | not started |
+
+Order: D1 → D2 → D3 → D4 → D5 → D6 → D7 → D8 → D9. G1: one built-but-unseen change at a time. Server
+sections are verified on the live server (deploy = file copy after comparing the server copy).
+
+### 2026-10-11 ~12:40 — D1-D4 server code BUILT (not seen); deploy blocked at the schema push
+
+**Built locally, `tsc` clean, 50 suites / 431 tests green (necessary, not sufficient):** D1 schema (`Dispute`,
+`DisputeEvent`, `DisputeLetter`, `Item.replacementValue`, `User.guardianConsentAt/restrictedUntilReviewAt`,
+`Transaction.disputeId`, `DISPUTE_FEE`, `DISPUTE_UPDATE`); D2 rules (AI REJECTED → admin review in `index.ts`; the
+admin's Reject → `openDispute`; fee schedule `disputeFees.ts`; restriction middleware on book/extend/list/pay;
+`requireVerified` + UCLM message on pay/extend/item update and the kiosk deposit/claim; guardian required at
+`completeProfile` (it was silently DROPPING the guardian fields the app already sent); `replacementValue` required
+when listing); D3 wrong item on the Dispute row, renter collects via the `wi:<disputeId>` kiosk target, bays holding a
+wrong item excluded from the return's locker assignment (the "resume" rule would otherwise have put the correct item
+ON TOP of an undropped wrong item); D4 PayMongo primary for ALL payments with server-side polling of the checkout
+(`paymentPoller.ts`, no webhook dependence) and the manual fallback, one shared confirmation path
+(`paymentConfirmationService.ts`) for webhook / poll / admin; the kiosk visit (`disputeKioskService.ts`, 10 min,
+nothing charged twice, fees freeze/resume per ruling 7); D5 server half (reminders + escalation sweep at :02/:32,
+letters `disputeLetterService.ts`, contact log); `aiVerdictSummary.ts` (ruling 15) in the admin verification list and
+item view.
+
+**SECURITY FIX (reported): `POST /payments/:transactionId/refund` had no role or ownership check** — any logged-in
+student could refund any completed transaction (their own rental payment after collecting the item, or someone
+else's). No client calls it; now `requireAdmin`. Ships with this deploy.
+
+**Server state RIGHT NOW (G3: re-derive before trusting):** the 36 changed/new source files were COPIED into
+`D:\ENG\EngiRent\server\node_server` (every server copy was first proven identical to HEAD, line-ending-insensitive).
+NOT built, NOT pushed, NOT restarted: the running API (PID 20644) is still the old `dist`. **Do not `npm run build` on
+the server before `prisma db push`**: the new code reads tables that do not exist yet. The schema push was refused by
+the auto-mode classifier ([Production Deploy]); waiting on the user. Kiosk: off Tailscale (last seen 1 d ago), no
+live flow.
+
+### 2026-10-11 ~13:00 — D1-D3 server DEPLOYED and SEEN on the live API; 6a7ccbef migrated (ER-DSP-2026-0001)
+
+**Deploy (user allowed the [Production Deploy] step):** `prisma db push` on `engirent`@3307 (additive: 3 tables, 6
+columns, 2 enum values); API restarted by PID 20644 → 29348 → (`.env` `PAYMENT_MODE=MANUAL` → `PAYMONGO`, backup
+`.env.bak-20261011-paymentmode`) 34576 → (fee-cap fix) **27392**. Poller log: `[PAYMONGO-POLL] started (PayMongo
+configured)`; the installed key is a **TEST** key (`sk_test_`), so PayMongo payments are SIMULATED, no real money.
+SMTP is NOT configured on the server: no dispute email goes out, and the case log records `NOT_SENT` honestly.
+
+**Admin access:** the user chose a minted token: a normal access token for `admin@engirent.edu.ph`, signed on the
+server by the API's own `generateAccessToken`, kept only in the session scratchpad.
+
+**Seen live (through the API, not yet on a screen):** `GET /admin/disputes` listed 6a7ccbef as the one pre-v2 case.
+`POST /admin/disputes/migrate/6a7ccbef…` (user: "go ahead, they know") → **ER-DSP-2026-0001**, the renter and owner
+are real students who know about the test (user), OPEN, offence 1, deadline 72 h (2026-10-14 12:43 PHT), fees from the migration, wrong item recorded
+in **bay 1 LOWER, collectable by the RENTER** (`wi:cf82d900-…`), nothing physical moved. Read back: owed ₱30 (day 1),
+events OPENED / PROMPT(in-app + email NOT_SENT) / owner MESSAGE(in-app + email NOT_SENT).
+
+**A defect the live case exposed, fixed the same hour (user ruling):** items listed before v2 have no replacement
+value; my fallback (cap = deposit) made the Hand Rivets cap ₱20, below one day's ₱30. **Ruling: until the owner
+states a replacement value the cap is max(deposit, 30 × daily price) (₱900 here), and open cases follow the owner's
+value once entered** (`feeCapFor`, read live). The renter's first prompt had wrongly said "replacement value of ₱20.00": a
+logged correction went out (`POST /admin/disputes/:id/resend-prompt`, preface + the full corrected prompt).
+Old installs read `Notification.type` as a plain string, so `DISPUTE_UPDATE` cannot break them.
+
+**Still unverified (G1 debt, listed so nothing is assumed):** the admin console UI for all of it (D6, next); a PayMongo
+checkout created and polled to its real status (D4); the kiosk visit/pay/door path and the renter's wrong-item
+collection (need the kiosk: OFFLINE; G11 before any door); the reminder/escalation sweep (fires at day 1 = 2026-10-12
+~12:45 PHT); letters (D5 UI).
+
+**G5 six-symptom check at the D1-D4 server boundary — TWO SYMPTOMS:**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent: stack, URLs, server copies vs HEAD, SMTP and payment mode all re-derived live |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | **PRESENT**: the G4 status line opened the first reply only; the progress notes after it did not carry it. Corrected from here on |
+| 4 drifting to agreement | Absent: stopped at the classifier refusal and asked; asked before messaging real students; the ₱20 cap was raised as a ruling, not patched silently |
+| 5 batching | **PRESENT**: D1-D5's server code (and D6's server half) was built and deployed as ONE unseen change, against G1. Mitigation: from D6 on, one screen/flow at a time, each seen before the next |
+| 6 skipping verification | Partly: D1-D3 seen live on the API; D4/D5 are listed above as unverified rather than assumed |

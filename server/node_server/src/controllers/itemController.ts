@@ -87,11 +87,22 @@ export const createItem = async (
       pricePerWeek,
       pricePerMonth,
       securityDeposit,
+      replacementValue,
       images: rawImages,
       video: rawVideo,
       serialNumber,
       campusLocation,
     } = req.body;
+
+    // Dispute v2, ruling 5: what it would cost to replace the item new. It caps
+    // the fees a renter can be charged if they return the wrong item, so it is
+    // asked of every owner when they list.
+    const replacement = parseFloat(replacementValue);
+    if (!(replacement > 0)) {
+      throw new ValidationError(
+        "Enter the item's replacement value (what a new one would cost). It caps the fees if a renter returns the wrong item. Update the app if you don't see this field.",
+      );
+    }
 
     const images = normaliseItemMedia(rawImages);
     const video = normaliseItemMedia(rawVideo);
@@ -107,6 +118,7 @@ export const createItem = async (
         pricePerWeek: pricePerWeek ? parseFloat(pricePerWeek) : null,
         pricePerMonth: pricePerMonth ? parseFloat(pricePerMonth) : null,
         securityDeposit: parseFloat(securityDeposit),
+        replacementValue: replacement,
         images,
         videoUrl: video || null,
         serialNumber,
@@ -309,6 +321,7 @@ export const updateItem = async (
       pricePerWeek,
       pricePerMonth,
       securityDeposit,
+      replacementValue,
       images,
       video,
       serialNumber,
@@ -316,6 +329,10 @@ export const updateItem = async (
       isAvailable,
       isListed,
     } = req.body;
+
+    if (replacementValue !== undefined && !(parseFloat(replacementValue) > 0)) {
+      throw new ValidationError("The replacement value must be a positive amount");
+    }
 
     // D-89: photos may not be edited DOWN below the minimum. Only checked when
     // `images` is actually in the request — an update that leaves the photos
@@ -379,6 +396,7 @@ export const updateItem = async (
         ...(securityDeposit && {
           securityDeposit: parseFloat(securityDeposit),
         }),
+        ...(replacementValue !== undefined && { replacementValue: parseFloat(replacementValue) }),
         ...(images && { images: normaliseItemMedia(images) }),
         ...(imagesChanged && { mlFeatures: Prisma.JsonNull }),
         ...(video !== undefined && {

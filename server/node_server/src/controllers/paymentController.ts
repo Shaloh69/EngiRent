@@ -12,6 +12,12 @@ import env from "../config/env";
 import crypto from "crypto";
 import axios from "axios";
 import { listReceivingInstitutions } from "../services/payoutService";
+import {
+  createCheckoutSession,
+  paymongoConfigured,
+  paymongoIsTestMode,
+} from "../services/paymongoService";
+import { markTransactionPaid } from "../services/paymentConfirmationService";
 
 // ---------------------------------------------------------------------------
 // PayMongo helpers
@@ -22,57 +28,6 @@ const PAYMONGO_BASE = "https://api.paymongo.com/v1";
 function paymongoAuth(): string {
   const key = env.PAYMONGO_SECRET_KEY ?? "";
   return `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
-}
-
-async function createCheckoutSession(params: {
-  amount: number; // in PHP (will be converted to centavos)
-  description: string;
-  rentalId: string;
-  transactionId: string;
-  successUrl: string;
-  cancelUrl: string;
-}): Promise<{ checkoutUrl: string; checkoutId: string }> {
-  const { data } = await axios.post(
-    `${PAYMONGO_BASE}/checkout_sessions`,
-    {
-      data: {
-        attributes: {
-          billing: { name: "EngiRent Hub Student" },
-          send_email_receipt: false,
-          show_description: true,
-          show_line_items: true,
-          line_items: [
-            {
-              currency: "PHP",
-              amount: Math.round(params.amount * 100), // centavos
-              description: params.description,
-              name: "EngiRent Rental",
-              quantity: 1,
-            },
-          ],
-          payment_method_types: ["gcash", "paymaya", "card", "brankas_bdo"],
-          description: params.description,
-          success_url: params.successUrl,
-          cancel_url: params.cancelUrl,
-          metadata: {
-            rental_id: params.rentalId,
-            transaction_id: params.transactionId,
-          },
-        },
-      },
-    },
-    {
-      headers: {
-        Authorization: paymongoAuth(),
-        "Content-Type": "application/json",
-      },
-    },
-  );
-
-  return {
-    checkoutUrl: data.data.attributes.checkout_url as string,
-    checkoutId: data.data.id as string,
-  };
 }
 
 export async function createRefund(params: {
@@ -248,9 +203,15 @@ export const createPayment = async (
       );
     }
 
-    const manualMode = env.PAYMENT_MODE === "MANUAL";
+    // Ruling 6 (2026-10-11), extended by the user to ALL payments: PayMongo is
+    // PRIMARY; manual admin confirmation is the FALLBACK, used whenever a
+    // checkout cannot be created (no key, PAYMENT_MODE=MANUAL kill switch, or
+    // PayMongo failing). The old mock-URL fallback is gone: it sent a renter to
+    // a page that could never take their money.
+    const existingCheckoutUrl =
+      (existing?.paymentDetails as { checkoutUrl?: string } | null)?.checkoutUrl ?? null;
 
-    const transaction =
+    let transaction =
       existing ??
       (await prisma.transaction.create({
         data: {
@@ -262,87 +223,85 @@ export const createPayment = async (
           // Naming the real rail matters in the ledger: an admin reconciling
           // a GCash inbox against a row labelled "PayMongo" has to know to
           // disbelieve the label.
-          paymentMethod: manualMode ? "Manual" : "PayMongo",
+          paymentMethod: paymongoConfigured() ? "PayMongo" : "Manual",
         },
       }));
 
-    // ── Manual mode (the live configuration) ──────────────────────────────
-    // No checkout session, no redirect, no WebView. The renter is told what
-    // to send and where; an admin confirms receipt through
-    // POST /admin/transactions/:transactionId/decide-payment.
-    if (manualMode) {
-      logger.info(
-        `Payment awaiting manual confirmation: ${transaction.id} for rental ${rentalId}`,
-      );
+    let checkoutUrl: string | null = existingCheckoutUrl;
+    if (!checkoutUrl && !transaction.paymongoCheckoutId && paymongoConfigured()) {
+      try {
+        const result = await createCheckoutSession({
+          amount: parsedAmount,
+          name: "EngiRent Rental",
+          description: `${type === "RENTAL_PAYMENT" ? "Rental" : "Security Deposit"} for ${rental.item.title}`,
+          successUrl: `${env.CLIENT_WEB_URL}/payments/success?tid=${transaction.id}`,
+          cancelUrl: `${env.CLIENT_WEB_URL}/payments/cancel?tid=${transaction.id}`,
+          metadata: { rental_id: rentalId, transaction_id: transaction.id },
+        });
+        checkoutUrl = result.checkoutUrl;
+        transaction = await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: {
+            paymongoCheckoutId: result.checkoutId,
+            paymentMethod: "PayMongo",
+            paymentDetails: { checkoutUrl: result.checkoutUrl } as never,
+          },
+        });
+      } catch (pmErr) {
+        logger.error("PayMongo checkout session failed; using the manual fallback:", pmErr);
+      }
+    }
 
+    // ── PayMongo (primary) ────────────────────────────────────────────────
+    if (checkoutUrl) {
+      logger.info(`Payment initiated via PayMongo: ${transaction.id} for rental ${rentalId}`);
       res.status(201).json({
         success: true,
-        message: "Payment recorded — awaiting confirmation",
+        message: "Payment initiated",
         data: {
           transaction,
-          // Explicitly null rather than absent. The phone distinguishes
-          // "no checkout, by design" from "the field is missing because
-          // something went wrong", and D-23 was exactly the second reading.
-          paymentUrl: null,
-          paymentMode: "MANUAL",
-          status: "AWAITING_CONFIRMATION",
-          instructions: {
-            amount: parsedAmount,
-            currency: "PHP",
-            type,
-            itemTitle: rental.item.title,
-            channel: env.PAYMENT_MANUAL_CHANNEL,
-            accountName: env.PAYMENT_MANUAL_ACCOUNT_NAME ?? null,
-            accountNumber: env.PAYMENT_MANUAL_ACCOUNT_NUMBER ?? null,
-            confirmWindow: env.PAYMENT_MANUAL_CONFIRM_WINDOW,
-            reference: transaction.id,
-          },
+          paymentUrl: checkoutUrl,
+          paymentMode: "PAYMONGO",
+          status: "AWAITING_CHECKOUT",
+          // On TEST keys PayMongo simulates the payment: no real money moves.
+          testMode: paymongoIsTestMode(),
         },
       });
       return;
     }
 
-    // ── PayMongo mode (dormant — kept working, not deleted) ───────────────
-    const successUrl = `${env.CLIENT_WEB_URL}/payments/success?tid=${transaction.id}`;
-    const cancelUrl = `${env.CLIENT_WEB_URL}/payments/cancel?tid=${transaction.id}`;
-
-    // Use real PayMongo when key is configured, otherwise return a mock URL
-    let checkoutUrl = `${env.CLIENT_WEB_URL}/payments/mock?tid=${transaction.id}`;
-    let checkoutId: string | null = null;
-
-    if (env.PAYMONGO_SECRET_KEY) {
-      try {
-        const result = await createCheckoutSession({
-          amount: parsedAmount,
-          description: `${type === "RENTAL_PAYMENT" ? "Rental" : "Security Deposit"} for ${rental.item.title}`,
-          rentalId,
-          transactionId: transaction.id,
-          successUrl,
-          cancelUrl,
-        });
-        checkoutUrl = result.checkoutUrl;
-        checkoutId = result.checkoutId;
-
-        await prisma.transaction.update({
-          where: { id: transaction.id },
-          data: { paymongoCheckoutId: checkoutId },
-        });
-      } catch (pmErr) {
-        logger.error("PayMongo checkout session failed:", pmErr);
-        // Fall through to mock URL — do not block the user
-      }
+    // ── Manual (fallback) ─────────────────────────────────────────────────
+    // No checkout. The renter is told what to send and where; an admin
+    // confirms receipt through POST /admin/transactions/:id/decide-payment.
+    if (transaction.paymentMethod === "PayMongo") {
+      // PayMongo was tried for this row and is unavailable: relabel it.
+      transaction = await prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { paymentMethod: "Manual" },
+      });
     }
-
-    logger.info(`Payment initiated: ${transaction.id} for rental ${rentalId}`);
-
+    logger.info(`Payment awaiting manual confirmation: ${transaction.id} for rental ${rentalId}`);
     res.status(201).json({
       success: true,
-      message: "Payment initiated",
+      message: "Payment recorded — awaiting confirmation",
       data: {
         transaction,
-        paymentUrl: checkoutUrl,
-        paymentMode: "PAYMONGO",
-        status: "AWAITING_CHECKOUT",
+        // Explicitly null rather than absent: "no checkout, by design" must
+        // not read as "the field is missing because something went wrong" (D-23).
+        paymentUrl: null,
+        paymentMode: "MANUAL",
+        status: "AWAITING_CONFIRMATION",
+        instructions: {
+          amount: parsedAmount,
+          currency: "PHP",
+          type,
+          itemTitle: rental.item.title,
+          channel: env.PAYMENT_MANUAL_CHANNEL,
+          accountName: env.PAYMENT_MANUAL_ACCOUNT_NAME ?? null,
+          accountNumber: env.PAYMENT_MANUAL_ACCOUNT_NUMBER ?? null,
+          confirmWindow: env.PAYMENT_MANUAL_CONFIRM_WINDOW,
+          reference: transaction.id,
+        },
       },
     });
   } catch (error) {
@@ -452,105 +411,22 @@ export const confirmPayment = async (
       return;
     }
 
-    // Idempotency: webhook may fire multiple times — safe to ack without re-processing
-    if (
-      transaction.status === "COMPLETED" ||
-      transaction.status === "REFUNDED"
-    ) {
-      res.json({ success: true, message: "Already confirmed" });
-      return;
-    }
-
-    // Idempotency: mark PROCESSING first to prevent concurrent webhook duplicates
-    const claimed = await prisma.transaction.updateMany({
-      where: { id: transactionId, status: "PENDING" },
-      data: { status: "PROCESSING" },
+    // One confirmation path for the webhook, the poller and the admin
+    // (paymentConfirmationService). Idempotent: PayMongo may fire twice.
+    const outcome = await markTransactionPaid(req.app?.get("io"), transactionId, {
+      via: isRealWebhook ? "PAYMONGO_WEBHOOK" : "DEV",
+      paymentId,
+      referenceNo,
     });
-    if (claimed.count === 0) {
-      // Another request already processing — return 200 so PayMongo doesn't retry
-      res.json({ success: true, message: "Already processing" });
-      return;
-    }
-
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: transactionId },
-      data: {
-        status: "COMPLETED",
-        ...(referenceNo && { paymentReferenceNo: referenceNo }),
-        ...(paymentId && { paymongoPaymentId: paymentId }),
-        paidAt: new Date(),
-      },
-    });
-
-    if (
-      transaction.type === "RENTAL_PAYMENT" ||
-      transaction.type === "SECURITY_DEPOSIT"
-    ) {
-      // Both RENTAL_PAYMENT and SECURITY_DEPOSIT must be COMPLETED before the
-      // rental advances — previously either one alone triggered
-      // AWAITING_DEPOSIT, so a renter could pay just the (refundable)
-      // deposit, skip the actual rental fee entirely, and still have the
-      // owner told to hand over the item at the kiosk.
-      const otherType =
-        transaction.type === "RENTAL_PAYMENT"
-          ? "SECURITY_DEPOSIT"
-          : "RENTAL_PAYMENT";
-      const otherCompleted = await prisma.transaction.findFirst({
-        where: {
-          rentalId: transaction.rentalId,
-          type: otherType,
-          status: "COMPLETED",
-        },
-      });
-
-      if (otherCompleted) {
-        await prisma.rental.update({
-          where: { id: transaction.rentalId },
-          data: { status: "AWAITING_DEPOSIT" },
-        });
-
-        await prisma.notification.create({
-          data: {
-            userId: transaction.rental.ownerId,
-            title: "Payment Received",
-            message: `Payment received for ${transaction.rental.item.title}. Please deposit the item at the kiosk.`,
-            type: "PAYMENT_RECEIVED",
-            relatedEntityId: transaction.rentalId,
-            relatedEntityType: "rental",
-          },
-        });
-
-        // Email renter
-        if (transaction.rental.renter?.email) {
-          const { sendPaymentReceived: sendPR } = await import("../utils/email");
-          await sendPR(transaction.rental.renter.email, {
-            firstName: transaction.rental.renter.firstName,
-            amount: transaction.amount,
-            itemTitle: transaction.rental.item.title,
-            rentalId: transaction.rentalId,
-          });
-        }
-      } else {
-        // Only one of the two required payments is in — let the renter know
-        // this one succeeded, but don't move the rental forward yet.
-        await prisma.notification.create({
-          data: {
-            userId: transaction.userId,
-            title: "Payment Received — One More Step",
-            message: `Your ${transaction.type === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} for ${transaction.rental.item.title} was received. Complete the ${otherType === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} to proceed.`,
-            type: "PAYMENT_RECEIVED",
-            relatedEntityId: transaction.rentalId,
-            relatedEntityType: "rental",
-          },
-        });
-      }
-    }
-
-    logger.info(`Payment confirmed: ${transactionId}`);
     res.json({
       success: true,
-      message: "Payment confirmed successfully",
-      data: { transaction: updatedTransaction },
+      message:
+        outcome.status === "confirmed"
+          ? "Payment confirmed successfully"
+          : outcome.status === "already"
+            ? "Already confirmed"
+            : "Already processing",
+      data: { transaction: outcome.transaction },
     });
   } catch (error) {
     next(error);

@@ -85,6 +85,11 @@ export async function approveReturn(io: Server | undefined, rentalId: string): P
     logger.warn(`[E6.R] rental ${rentalId} already has settlement rows — not settling again`);
   }
 
+  // Dispute v2: the correct item came back after a case; close it and tell
+  // the owner their item is back (ruling 9: only now is the owner prompted).
+  const { onDisputeReturnApproved } = await import("./disputeService");
+  await onDisputeReturnApproved(io, rentalId);
+
   io?.to(`user:${rental.renterId}`).emit("return:approved", { rentalId });
   logger.info(`[E6.R] return APPROVED for rental ${rentalId}: settled, awaiting owner pickup`);
 }

@@ -7,7 +7,7 @@ import {
   ValidationError,
 } from "../utils/errors";
 import logger from "../utils/logger";
-import { releaseDisputedItem } from "../services/retrievalService";
+import { notifyAdmins } from "../services/adminRoom";
 import {
   findOverlappingRentals,
   recomputeItemAvailability,
@@ -517,17 +517,14 @@ export const fileDispute = async (
     const isOwner = rental.ownerId === req.user.userId;
     if (!isRenter && !isOwner) throw new ForbiddenError("Access denied");
 
-    // Conditional on the state it was checked in, so a dispute and an admin's
-    // approval racing each other cannot both win.
-    const updated = await prisma.rental.updateMany({
-      where: { id, status: "VERIFICATION", verificationStatus: { not: "APPROVED" } },
-      data: { status: "DISPUTED" },
-    });
-    if (updated.count === 0) {
-      throw new ValidationError(
-        "Only a return that is still being checked can be disputed",
-      );
+    // Dispute v2, ruling 2 (2026-10-11): only an ADMIN's Reject opens a case
+    // and starts penalties. A student's "Dispute this Return" therefore no
+    // longer flips the rental to DISPUTED or moves the item: it puts their
+    // concern in front of the admin who decides, on the same review row.
+    if (rental.status !== "VERIFICATION" || rental.verificationStatus === "APPROVED") {
+      throw new ValidationError("Only a return that is still being checked can be disputed");
     }
+    await prisma.rental.update({ where: { id }, data: { verificationStatus: "MANUAL_REVIEW" } });
 
     const who = isRenter ? "renter" : "owner";
     if (rental.verificationId) {
@@ -538,7 +535,8 @@ export const fileDispute = async (
       await prisma.verification.update({
         where: { id: rental.verificationId },
         data: {
-          reviewNotes: [v?.reviewNotes, `Dispute filed by the ${who}: ${reason.slice(0, 1000)}`]
+          status: "MANUAL_REVIEW",
+          reviewNotes: [v?.reviewNotes, `Concern raised by the ${who}: ${reason.slice(0, 1000)}`]
             .filter(Boolean)
             .join("\n"),
         },
@@ -546,39 +544,31 @@ export const fileDispute = async (
     }
 
     const io = req.app.get("io");
-    if (io) await releaseDisputedItem(io, id);
-    // D-115: a disputed rental keeps its listing blocked until an admin settles it.
-    await recomputeItemAvailability(rental.itemId);
-
-    const otherParty = isRenter ? rental.ownerId : rental.renterId;
-    const admins = await prisma.user.findMany({
-      where: { role: "ADMIN" },
-      select: { id: true },
-    });
+    const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
     await prisma.notification.createMany({
-      data: [
-        {
-          userId: otherParty,
-          title: "Return disputed",
-          message: `The ${who} disputed the return of ${rental.item.title}. An admin will review it.`,
-          type: "VERIFICATION_FAILED" as const,
-          relatedEntityId: id,
-          relatedEntityType: "rental",
-        },
-        ...admins.map((a) => ({
-          userId: a.id,
-          title: "New dispute to settle",
-          message: `The ${who} disputed the return of ${rental.item.title}: ${reason.slice(0, 200)}`,
-          type: "SYSTEM_ANNOUNCEMENT" as const,
-          relatedEntityId: id,
-          relatedEntityType: "rental",
-        })),
-      ],
+      data: admins.map((a) => ({
+        userId: a.id,
+        title: "Return concern to review",
+        message: `The ${who} raised a concern about the return of ${rental.item.title}: ${reason.slice(0, 200)}`,
+        type: "SYSTEM_ANNOUNCEMENT" as const,
+        relatedEntityId: id,
+        relatedEntityType: "rental",
+      })),
     });
-    io?.to(`user:${otherParty}`).emit("return:disputed", { rentalId: id });
+    if (io) {
+      notifyAdmins(io, "admin:return_flagged", {
+        rentalId: id,
+        itemTitle: rental.item.title,
+        by: who,
+        flaggedAt: new Date().toISOString(),
+      });
+    }
 
-    logger.info(`[E6.S] rental ${id} DISPUTED by the ${who} (${req.user.userId})`);
-    res.json({ success: true, message: "Dispute filed — an admin will review it" });
+    logger.info(`[DISPUTE v2] rental ${id}: concern raised by the ${who} (${req.user.userId}); sent to admin review`);
+    res.json({
+      success: true,
+      message: "Thanks: your concern was added to the review. An admin will check the locker photos and decide.",
+    });
   } catch (error) {
     next(error);
   }

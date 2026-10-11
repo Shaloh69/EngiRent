@@ -3,32 +3,27 @@ import { PrismaClient } from "@prisma/client";
 import { Response } from "express";
 
 /**
- * E6.S (user ruling 2026-09-24: "wire Dispute this Return"). The phone has
- * always posted to POST /rentals/:id/dispute and the route did not exist, so
- * every dispute failed. Runs the REAL handler; Prisma and the executor are
- * mocked.
+ * POST /rentals/:id/dispute — the phone's "Dispute this Return".
+ *
+ * Dispute v2, ruling 2 (2026-10-11): only an ADMIN's Reject opens a case and
+ * starts penalties. A student raising a concern no longer flips the rental to
+ * DISPUTED or moves the item (E6.S's behaviour, superseded): it puts the
+ * concern in front of the admin who decides, on the same review row. Runs the
+ * REAL handler; Prisma is mocked.
  */
 
 jest.mock("../../config/database", () => ({
   __esModule: true,
   default: mockDeep<PrismaClient>(),
 }));
-jest.mock("../../services/retrievalService", () => ({
-  // D-115 / ruling 2026-10-10: a student's dispute goes through releaseDisputedItem (in place, then drop).
-  releaseDisputedItem: jest.fn().mockResolvedValue({ released: true, lockerNumber: "2" }),
-}));
-jest.mock("../../services/itemAvailabilityService", () => ({
-  recomputeItemAvailability: jest.fn().mockResolvedValue(undefined),
-}));
+jest.mock("../../services/adminRoom", () => ({ notifyAdmins: jest.fn() }));
 
 import prisma from "../../config/database";
 import { fileDispute } from "../rentalController";
 import { AuthRequest } from "../../middleware/auth";
-import { releaseDisputedItem } from "../../services/retrievalService";
-import { recomputeItemAvailability } from "../../services/itemAvailabilityService";
+import { notifyAdmins } from "../../services/adminRoom";
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
-const releaseMock = releaseDisputedItem as jest.Mock;
 
 function makeRes(): Response {
   const res: Partial<Response> = {};
@@ -46,70 +41,74 @@ function makeReq(userId: string, reason = "The item was returned in the same con
   } as unknown as AuthRequest;
 }
 
-function makeIo() {
-  const emit = jest.fn();
-  return { to: jest.fn().mockReturnValue({ emit }) };
-}
+const io = { to: jest.fn().mockReturnValue({ emit: jest.fn() }) };
 
-describe("POST /rentals/:id/dispute", () => {
+describe("POST /rentals/:id/dispute (Dispute v2: a concern for the admin, never a penalty)", () => {
   beforeEach(() => {
     mockReset(prismaMock);
-    releaseMock.mockClear();
+    (notifyAdmins as jest.Mock).mockClear();
     prismaMock.rental.findUnique.mockResolvedValue({
       id: "rental-1",
+      status: "VERIFICATION",
+      verificationStatus: "MANUAL_REVIEW",
       renterId: "renter-1",
       ownerId: "owner-1",
       verificationId: "verification-1",
       item: { title: "Little Hammer" },
     } as never);
-    prismaMock.rental.updateMany.mockResolvedValue({ count: 1 } as never);
     prismaMock.verification.findUnique.mockResolvedValue({ reviewNotes: "Quick check said RETRY 0" } as never);
     prismaMock.user.findMany.mockResolvedValue([{ id: "admin-1" }] as never);
   });
 
-  it("disputes a return still under review: DISPUTED, reason kept, item handed back to the owner", async () => {
-    const io = makeIo();
+  it("keeps the return in review, records the concern, alerts the admins, and does NOT dispute", async () => {
     const next = jest.fn();
     await fileDispute(makeReq("renter-1", undefined, io), makeRes(), next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(prismaMock.rental.updateMany).toHaveBeenCalledWith({
-      where: { id: "rental-1", status: "VERIFICATION", verificationStatus: { not: "APPROVED" } },
-      data: { status: "DISPUTED" },
+    expect(prismaMock.rental.update).toHaveBeenCalledWith({
+      where: { id: "rental-1" },
+      data: { verificationStatus: "MANUAL_REVIEW" },
     });
+    expect(JSON.stringify(prismaMock.rental.update.mock.calls)).not.toMatch(/DISPUTED/);
     expect(prismaMock.verification.update).toHaveBeenCalledWith({
       where: { id: "verification-1" },
       data: {
+        status: "MANUAL_REVIEW",
         reviewNotes:
-          "Quick check said RETRY 0\nDispute filed by the renter: The item was returned in the same condition",
+          "Quick check said RETRY 0\nConcern raised by the renter: The item was returned in the same condition",
       },
     });
-    expect(releaseMock).toHaveBeenCalledWith(io, "rental-1");
-    // D-115: the listing stays blocked while the dispute is open.
-    expect(recomputeItemAvailability).toHaveBeenCalled();
+    expect(notifyAdmins).toHaveBeenCalledWith(io, "admin:return_flagged", expect.objectContaining({ rentalId: "rental-1" }));
     expect(prismaMock.notification.createMany).toHaveBeenCalled();
   });
 
   it("refuses once the return is approved (its money has already moved)", async () => {
-    prismaMock.rental.updateMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: "rental-1",
+      status: "VERIFICATION",
+      verificationStatus: "APPROVED",
+      renterId: "renter-1",
+      ownerId: "owner-1",
+      item: { title: "Little Hammer" },
+    } as never);
     const next = jest.fn();
-    await fileDispute(makeReq("renter-1", undefined, makeIo()), makeRes(), next);
+    await fileDispute(makeReq("renter-1", undefined, io), makeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(next.mock.calls[0][0].message).toMatch(/still being checked/i);
-    expect(releaseMock).not.toHaveBeenCalled();
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
   });
 
   it("refuses anyone who is not the renter or the owner", async () => {
     const next = jest.fn();
-    await fileDispute(makeReq("stranger-1", undefined, makeIo()), makeRes(), next);
+    await fileDispute(makeReq("stranger-1", undefined, io), makeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
-    expect(prismaMock.rental.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
   });
 
   it("requires a reason", async () => {
     const next = jest.fn();
-    await fileDispute(makeReq("owner-1", "  ", makeIo()), makeRes(), next);
+    await fileDispute(makeReq("owner-1", "  ", io), makeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
-    expect(prismaMock.rental.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.rental.update).not.toHaveBeenCalled();
   });
 });

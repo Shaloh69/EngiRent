@@ -14,6 +14,7 @@ import {
 } from "../controllers/kioskController";
 import { authenticate } from "../middleware/auth";
 import { requireKioskSecret } from "../middleware/kioskAuth";
+import { isKioskTarget } from "../middleware/restriction";
 import { validate } from "../middleware/validation";
 import { uploadMultiple, uploadSingle } from "../middleware/upload";
 
@@ -38,10 +39,12 @@ router.post(
 // Neither takes a kiosk, a bay or a door from the request: those come from the
 // server-side grant made by the verification itself (kioskBayAccessStore.ts),
 // which is the same trust shape as the QR session it follows.
+// Dispute v2: `rentalId` may also be `wi:<disputeId>` (the renter collecting
+// their own wrong item); the grant store is keyed by the same string.
 router.post(
   "/open-bay",
   authenticate,
-  validate([body("rentalId").isUUID().withMessage("Valid rental ID is required")]),
+  validate([body("rentalId").custom(isKioskTarget).withMessage("Valid rental ID is required")]),
   openBay,
 );
 
@@ -119,7 +122,7 @@ router.post(
   authenticate,
   uploadSingle,
   validate([
-    body("rentalId").isUUID().withMessage("Valid rental ID is required"),
+    body("rentalId").custom(isKioskTarget).withMessage("Valid rental ID is required"),
   ]),
   verifyFaceFromApp,
 );

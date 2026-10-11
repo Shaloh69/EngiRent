@@ -8,7 +8,8 @@ import {
   refundPayment,
   getReceivingInstitutions,
 } from "../controllers/paymentController";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requireAdmin, requireVerified } from "../middleware/auth";
+import { blockIfRestricted } from "../middleware/restriction";
 import { validate } from "../middleware/validation";
 
 const router = Router();
@@ -16,9 +17,13 @@ const router = Router();
 // Create payment (protected). Note: the amount is derived server-side from
 // the rental record (see paymentController.createPayment) — there is
 // deliberately no client-supplied "amount" field here to validate.
+// Ruling 1 + 3 (Dispute v2): verified UCLM students only, and not while
+// restricted (a dispute fee is paid at the kiosk, never here).
 router.post(
   "/",
   authenticate,
+  requireVerified,
+  blockIfRestricted,
   validate([
     body("rentalId").isUUID().withMessage("Valid rental ID is required"),
     body("type")
@@ -49,10 +54,18 @@ router.get("/status/:transactionId", authenticate, getPaymentStatus);
 // — used to populate the payout-destination picker in PUT /auth/payout-destination
 router.get("/receiving-institutions", authenticate, getReceivingInstitutions);
 
-// Refund payment (protected)
+// Refund payment — ADMIN ONLY.
+//
+// SECURITY FIX 2026-10-11: this was `authenticate` alone, and refundPayment
+// checks neither ownership nor role, so ANY logged-in student could refund ANY
+// completed transaction: their own rental payment after collecting the item,
+// or someone else's. With PayMongo now primary that is real money. No client
+// calls this route (the admin console uses /admin/transactions/:id/refund), so
+// closing it to admins breaks nothing.
 router.post(
   "/:transactionId/refund",
   authenticate,
+  requireAdmin,
   validate([
     param("transactionId")
       .isUUID()

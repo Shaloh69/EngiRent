@@ -25,16 +25,18 @@ import { recomputeItemAvailability } from "../services/itemAvailabilityService";
 // same way index.ts's automatic rejection path does — not just flip a column.
 import {
   dropUncollectedToLower,
-  releaseDisputedItem,
   releaseForOwnerPickup,
   requestRelease,
 } from "../services/retrievalService";
 // E5.4 — a human-approved long-lead deposit is dropped to storage too.
 import { dropToStorage } from "../services/storageDropService";
 import { isLongLeadPickup } from "../services/pickupLaneService";
-import { sendItemReadyForClaim, sendVerificationFailed } from "../utils/email";
+import { sendItemReadyForClaim } from "../utils/email";
 import { FEEDBACK_CATEGORIES } from "./feedbackController";
 import { recordAudit } from "../services/auditLogService";
+import { openDispute } from "../services/disputeService";
+import { plainVerdict } from "../services/aiVerdictSummary";
+import { markTransactionFailed, markTransactionPaid } from "../services/paymentConfirmationService";
 import { sendCsv } from "../utils/csv";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
@@ -534,6 +536,13 @@ export const forceCompleteRental = async (
     });
     if (!rental) throw new NotFoundError("Rental not found");
 
+    if (
+      await prisma.dispute.findFirst({
+        where: { rentalId: id, status: { in: ["OPEN", "PAYMENT_PENDING", "PAID", "RETURN_REVIEW"] } },
+      })
+    ) {
+      throw new ValidationError("This rental has an open Dispute v2 case: close it from the case page first");
+    }
     if (!["VERIFICATION", "DISPUTED"].includes(rental.status)) {
       throw new ValidationError(
         "Rental can only be force-completed from VERIFICATION or DISPUTED status",
@@ -660,10 +669,27 @@ export const listVerifications = async (
       prisma.verification.count({ where }),
     ]);
 
+    // Ruling 15 (2026-10-11): the AI's verdict in plain words, next to the
+    // numbers. Built server-side so the admin, the renter and the owner read
+    // the same sentences.
+    const withVerdicts = verifications.map((v) => ({
+      ...v,
+      plainVerdict: plainVerdict({
+        itemTitle: v.rental?.item.title ?? v.depositRental?.item.title ?? "listed item",
+        score: v.confidenceScore,
+        mlEvidence: v.mlEvidence as never,
+        deepReviewDetails: v.deepReviewDetails as never,
+        deepReviewScore: v.deepReviewScore,
+        unavailable: v.unavailable,
+        unavailableReason: v.unavailableReason,
+        adminDecision: v.status === "APPROVED" || v.status === "REJECTED" ? v.status : null,
+      }),
+    }));
+
     res.json({
       success: true,
       data: {
-        verifications,
+        verifications: withVerdicts,
         pagination: {
           total,
           page: parseInt(page as string),
@@ -732,55 +758,27 @@ export const reviewVerification = async (
       await approveReturn(req.app.get("io"), returnRental.id);
     }
 
-    // Manual rejection on return → open dispute
+    // Manual rejection on return → a Dispute v2 case. Ruling 2 (2026-10-11):
+    // this admin click is the ONLY thing that starts penalties. openDispute
+    // restricts the renter, hands the wrong item to the RENTER (and drops it
+    // to the lower compartment), takes the owner out of the case, starts the
+    // fees and the deadline, and tells everyone in words logged on the case.
     if (returnRental && status === "REJECTED" && returnStillUnderReview) {
-      await prisma.rental.update({
-        where: { id: returnRental.id },
-        data: { status: "DISPUTED", verificationStatus: "REJECTED" },
+      const deadlineHours = Number((req.body as { deadlineHours?: number }).deadlineHours) || undefined;
+      const dispute = await openDispute(req.app.get("io"), {
+        rentalId: returnRental.id,
+        verificationId: id,
+        adminId: req.user?.userId ?? null,
+        deadlineHours,
+        note: reviewNotes ? `Admin note: ${reviewNotes}` : undefined,
       });
-
-      // D-95a, the rejection half. Same gap, mirrored: index.ts's automatic
-      // REJECTED path (E4.6 / R5) releases the disputed item back to the
-      // owner right after flipping status to DISPUTED — "the disputed item
-      // was sealed in a bay marked AVAILABLE" was D-67b. This manual path
-      // duplicated the status flip but not the release, so a manually
-      // rejected return has been sealing the item in the bay the same way.
-      // Called AFTER the status update, matching the automatic path exactly:
-      // reasonForStatus("DISPUTED") is what the policy actually keys the
-      // gate on, not the override below (which only picks what gets stored).
-      const io = req.app.get("io");
-      // E6.S (user ruling 2026-09-24) - handed back IN PLACE for the owner to collect
-      // in person, at any hour; it drops later only if they never come
-      // (dropUncollectedToLower). A policy-gated drop here was refused at night
-      // and never retried (D-107's shape).
-      await releaseDisputedItem(io, returnRental.id);
-      // D-115: a disputed rental keeps its listing blocked until an admin settles it.
-      await recomputeItemAvailability(returnRental.itemId);
-
-      // Neither party was told anything happened before this — no
-      // notification, no email. Matching the automatic path's own message.
-      await prisma.notification.create({
-        data: {
-          userId: returnRental.ownerId,
-          title: "Return Disputed",
-          message: `Returned item for ${returnRental.item.title} did not match verification. Admin will review.`,
-          type: "VERIFICATION_FAILED",
-          relatedEntityId: returnRental.id,
-          relatedEntityType: "rental",
-        },
+      await recordAudit(req, {
+        action: "dispute.open",
+        targetType: "rental",
+        targetId: returnRental.id,
+        reason: reviewNotes,
+        metadata: { disputeId: dispute.id, referenceNo: dispute.referenceNo, offense: dispute.offense },
       });
-      const renterForDispute = await prisma.user.findUnique({
-        where: { id: returnRental.renterId },
-        select: { email: true, firstName: true },
-      });
-      if (renterForDispute) {
-        await sendVerificationFailed(renterForDispute.email, {
-          firstName: renterForDispute.firstName,
-          itemTitle: returnRental.item.title,
-          rentalId: returnRental.id,
-          reason: "return",
-        });
-      }
     }
 
     // ── D-87d: DEPOSIT verifications. ────────────────────────────────────
@@ -1123,159 +1121,53 @@ export const adminDecidePayment = async (
     const transactionId = req.params.transactionId as string;
     const approve = req.body?.decision !== "REJECT"; // default: approve
 
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: transactionId },
-      include: {
-        rental: {
-          include: {
-            item: true,
-            renter: { select: { email: true, firstName: true } },
-          },
-        },
-      },
-    });
+    // 2026-10-11: under PayMongo-first this is the MANUAL FALLBACK (ruling 6),
+    // and it goes through the same confirmation code as the webhook and the
+    // poller, so the three routes can never disagree about what a payment does.
+    const io = req.app.get("io");
+    const transaction = await prisma.transaction.findUnique({ where: { id: transactionId } });
     if (!transaction) throw new NotFoundError("Transaction not found");
 
-    if (transaction.status === "COMPLETED" || transaction.status === "REFUNDED") {
-      res.json({ success: true, message: "Already confirmed", data: { transaction } });
-      return;
-    }
-
-    // Socket.io lives on the express app (see index.ts). Every emit below is
-    // optional-chained: a missing socket server must degrade to "the phone
-    // finds out on next refresh", never to a failed payment decision.
-    const io = req.app.get("io");
-
     if (!approve) {
-      const failedTransaction = await prisma.transaction.update({
-        where: { id: transactionId },
-        data: { status: "FAILED" },
+      const failed = await markTransactionFailed(io, transactionId, {
+        via: "ADMIN_MANUAL",
+        reason: "rejected by an admin",
+        actorId: req.user.userId,
       });
-      io?.to(`user:${transaction.userId}`).emit("payment:rejected", {
-        transactionId,
-        rentalId: transaction.rentalId,
-        type: transaction.type,
-        amount: transaction.amount,
-        status: "FAILED",
-        itemTitle: transaction.rental.item.title,
+      await recordAudit(req, {
+        action: "payment.reject",
+        targetType: "transaction",
+        targetId: transactionId,
+        metadata: { type: transaction.type, amount: transaction.amount, changed: failed },
       });
-      logger.info(
-        `Payment marked FAILED (admin bypass, testing): ${transactionId} by ${req.user.email}`,
-      );
       res.json({
         success: true,
-        message: "Payment marked as failed",
-        data: { transaction: failedTransaction },
+        message: failed ? "Payment marked as failed" : "Payment was not pending",
+        data: { transaction: await prisma.transaction.findUnique({ where: { id: transactionId } }) },
       });
       return;
     }
 
-    const claimed = await prisma.transaction.updateMany({
-      where: { id: transactionId, status: "PENDING" },
-      data: { status: "PROCESSING" },
+    const outcome = await markTransactionPaid(io, transactionId, {
+      via: "ADMIN_MANUAL",
+      actorId: req.user.userId,
     });
-    if (claimed.count === 0) {
-      res.json({ success: true, message: "Already processing" });
-      return;
-    }
-
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: transactionId },
-      data: { status: "COMPLETED", paidAt: new Date() },
+    await recordAudit(req, {
+      action: "payment.confirm",
+      targetType: "transaction",
+      targetId: transactionId,
+      metadata: { type: transaction.type, amount: transaction.amount, outcome: outcome.status },
     });
-
-    // Captured for the socket payload below. `null` means "not applicable to
-    // this transaction type" — a LATE_FEE has no sibling payment to be waiting
-    // on, and reporting it as `fullyPaid: false` would be a different lie.
-    let fullyPaid: boolean | null = null;
-    let remainingType: string | null = null;
-    let rentalStatus: string | null = null;
-
-    if (
-      transaction.type === "RENTAL_PAYMENT" ||
-      transaction.type === "SECURITY_DEPOSIT"
-    ) {
-      const otherType =
-        transaction.type === "RENTAL_PAYMENT"
-          ? "SECURITY_DEPOSIT"
-          : "RENTAL_PAYMENT";
-      const otherCompleted = await prisma.transaction.findFirst({
-        where: {
-          rentalId: transaction.rentalId,
-          type: otherType,
-          status: "COMPLETED",
-        },
-      });
-
-      fullyPaid = Boolean(otherCompleted);
-      remainingType = otherCompleted ? null : otherType;
-
-      if (otherCompleted) {
-        rentalStatus = "AWAITING_DEPOSIT";
-        await prisma.rental.update({
-          where: { id: transaction.rentalId },
-          data: { status: "AWAITING_DEPOSIT" },
-        });
-        await prisma.notification.create({
-          data: {
-            userId: transaction.rental.ownerId,
-            title: "Payment Received",
-            message: `Payment received for ${transaction.rental.item.title}. Please deposit the item at the kiosk.`,
-            type: "PAYMENT_RECEIVED",
-            relatedEntityId: transaction.rentalId,
-            relatedEntityType: "rental",
-          },
-        });
-      } else {
-        await prisma.notification.create({
-          data: {
-            userId: transaction.userId,
-            title: "Payment Received — One More Step",
-            message: `Your ${transaction.type === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} for ${transaction.rental.item.title} was received. Complete the ${otherType === "RENTAL_PAYMENT" ? "rental payment" : "security deposit"} to proceed.`,
-            type: "PAYMENT_RECEIVED",
-            relatedEntityId: transaction.rentalId,
-            relatedEntityType: "rental",
-          },
-        });
-      }
-    }
-
-    // PAYMENTS RULING item 3. Under manual payments this admin click IS the
-    // payment confirmation — there is no webhook and no checkout redirect to
-    // tell the renter anything, so without this emit the only signal that
-    // their money arrived is a Notification row they have to go looking for.
-    const decisionPayload = {
-      transactionId,
-      rentalId: transaction.rentalId,
-      type: transaction.type,
-      amount: transaction.amount,
-      status: "COMPLETED",
-      itemTitle: transaction.rental.item.title,
-      fullyPaid,
-      remainingType,
-      rentalStatus,
-    };
-    io?.to(`user:${transaction.userId}`).emit(
-      "payment:approved",
-      decisionPayload,
-    );
-    // The owner is only told once the rental is fully paid, because that is
-    // when it becomes their turn to act (deposit the item at the kiosk). A
-    // half-paid rental is not yet the owner's business.
-    if (fullyPaid) {
-      io?.to(`user:${transaction.rental.ownerId}`).emit(
-        "payment:approved",
-        decisionPayload,
-      );
-    }
-
-    logger.info(
-      `Payment confirmed (admin bypass, testing): ${transactionId} by ${req.user.email}`,
-    );
+    logger.info(`Payment confirmed manually: ${transactionId} by ${req.user.email} (${outcome.status})`);
     res.json({
       success: true,
-      message: "Payment confirmed successfully",
-      data: { transaction: updatedTransaction },
+      message:
+        outcome.status === "confirmed"
+          ? "Payment confirmed successfully"
+          : outcome.status === "already"
+            ? "Already confirmed"
+            : "Already processing",
+      data: { transaction: outcome.transaction ?? transaction },
     });
   } catch (error) {
     next(error);
@@ -1307,6 +1199,11 @@ export const settleDispute = async (
     if (!rental) throw new NotFoundError("Rental not found");
     if (rental.status !== "DISPUTED")
       throw new ValidationError("Rental is not in DISPUTED status");
+    // Dispute v2: a case opened under the 2026-10-11 rules is closed from its
+    // case page (correct item returned, overturned, or unrecovered), never here.
+    if (await prisma.dispute.findFirst({ where: { rentalId: id } })) {
+      throw new ValidationError("This rental has a Dispute v2 case: close it from the case page");
+    }
 
     // Checklist Stage 8 — "the deposit is the cover, capped at X" has to be
     // a real, enforced rule for that to be an honest thing to tell a
@@ -2480,12 +2377,38 @@ export const getItemDetail = async (
             renter: {
               select: { id: true, firstName: true, lastName: true },
             },
+            // Ruling 15: every AI check on this item, in plain words.
+            depositVerification: true,
+            verification: true,
+            disputes: { select: { id: true, referenceNo: true, status: true } },
           },
         },
       },
     });
 
     if (!item) throw new NotFoundError("Item not found");
+
+    const verdictOf = (v: {
+      confidenceScore: number;
+      mlEvidence: unknown;
+      deepReviewDetails: unknown;
+      deepReviewScore: number | null;
+      unavailable: boolean;
+      unavailableReason: string | null;
+      status: string;
+    } | null) =>
+      v
+        ? plainVerdict({
+            itemTitle: item.title,
+            score: v.confidenceScore,
+            mlEvidence: v.mlEvidence as never,
+            deepReviewDetails: v.deepReviewDetails as never,
+            deepReviewScore: v.deepReviewScore,
+            unavailable: v.unavailable,
+            unavailableReason: v.unavailableReason,
+            adminDecision: v.status === "APPROVED" || v.status === "REJECTED" ? v.status : null,
+          })
+        : null;
 
     // Star distribution — the same shape the phone app's _RatingSummary
     // renders (average + tappable per-star bars), so both surfaces read the
@@ -2515,7 +2438,15 @@ export const getItemDetail = async (
       success: true,
       data: {
         item: itemFields,
-        rentals,
+        rentals: rentals.map(({ depositVerification, verification, ...r }) => ({
+          ...r,
+          depositCheck: depositVerification
+            ? { id: depositVerification.id, status: depositVerification.status, score: depositVerification.confidenceScore, at: depositVerification.createdAt, plainVerdict: verdictOf(depositVerification) }
+            : null,
+          returnCheck: verification
+            ? { id: verification.id, status: verification.status, score: verification.confidenceScore, at: verification.createdAt, plainVerdict: verdictOf(verification) }
+            : null,
+        })),
         ratings: {
           average: item.averageRating,
           count: reviewCount,

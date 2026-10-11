@@ -38,8 +38,15 @@ function makeReq(body: Record<string, unknown>): AuthRequest {
 }
 
 describe("createPayment — server-side amount derivation (Phase 0 / C3)", () => {
+  const realMode = (env as any).PAYMENT_MODE;
   beforeEach(() => {
     mockReset(prismaMock);
+    // Deterministic: these pin the AMOUNT, not the rail, so they run on the
+    // manual fallback whatever key the local .env holds.
+    (env as any).PAYMENT_MODE = "MANUAL";
+  });
+  afterEach(() => {
+    (env as any).PAYMENT_MODE = realMode;
   });
 
   it("ignores a client-supplied amount and charges the rental's real totalPrice", async () => {
@@ -345,7 +352,7 @@ describe("confirmPayment — both RENTAL_PAYMENT and SECURITY_DEPOSIT required (
       id: "txn-deposit",
       status: "COMPLETED",
     } as never);
-    prismaMock.rental.update.mockResolvedValue({} as never);
+    prismaMock.rental.updateMany.mockResolvedValue({ count: 1 } as never);
 
     const req = manualConfirmReq("txn-rental");
     const res = makeRes();
@@ -354,9 +361,12 @@ describe("confirmPayment — both RENTAL_PAYMENT and SECURITY_DEPOSIT required (
     await confirmPayment(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(prismaMock.rental.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: "AWAITING_DEPOSIT" } }),
-    );
+    // 2026-10-11 (shared confirmation path): only a rental still PENDING
+    // advances, so a late confirmation can never pull a rental back.
+    expect(prismaMock.rental.updateMany).toHaveBeenCalledWith({
+      where: { id: "rental-1", status: "PENDING" },
+      data: { status: "AWAITING_DEPOSIT" },
+    });
   });
 });
 
@@ -371,7 +381,11 @@ describe("confirmPayment — both RENTAL_PAYMENT and SECURITY_DEPOSIT required (
 // real checkout.paymongo.com URL and the renter is sent to a card form for
 // money that is supposed to move by hand.
 // ---------------------------------------------------------------------------
-describe("createPayment — manual payment mode (PAYMENTS RULING)", () => {
+// SUPERSEDED 2026-10-11 (Dispute v2, ruling 6, extended by the user to all
+// payments): PayMongo is now PRIMARY and manual is the FALLBACK. MANUAL stays as
+// a kill switch, and these tests now pin that kill switch: with it set, no
+// checkout is created even though a key is installed.
+describe("createPayment — PAYMENT_MODE=MANUAL kill switch (the manual fallback)", () => {
   const realMode = (env as any).PAYMENT_MODE;
   const realKey = env.PAYMONGO_SECRET_KEY;
 
@@ -580,5 +594,59 @@ describe("createPayment — PAYMONGO mode still builds a checkout (dormant, not 
     expect(axios.post).toHaveBeenCalled();
     const payload = (res.json as jest.Mock).mock.calls[0][0];
     expect(payload.data.paymentUrl).toBe("https://checkout.paymongo.com/cs_1");
+  });
+});
+
+describe("createPayment — PayMongo primary (ruling 6, 2026-10-11)", () => {
+  const realMode = (env as any).PAYMENT_MODE;
+  const realKey = env.PAYMONGO_SECRET_KEY;
+  beforeEach(() => {
+    mockReset(prismaMock);
+    (axios.post as jest.Mock).mockReset();
+    (env as any).PAYMONGO_SECRET_KEY = "sk_test_pretend";
+    (env as any).PAYMENT_MODE = "PAYMONGO";
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: "rental-1",
+      renterId: "renter-1",
+      totalPrice: 5000,
+      securityDeposit: 500,
+      item: { title: "Laptop" },
+    } as never);
+    prismaMock.transaction.findFirst.mockResolvedValue(null as never);
+    prismaMock.transaction.create.mockImplementation(
+      ({ data }: any) => Promise.resolve({ id: "txn-1", ...data }) as never,
+    );
+    prismaMock.transaction.update.mockImplementation(
+      ({ data }: any) => Promise.resolve({ id: "txn-1", rentalId: "rental-1", ...data }) as never,
+    );
+  });
+  afterEach(() => {
+    (env as any).PAYMENT_MODE = realMode;
+    (env as any).PAYMONGO_SECRET_KEY = realKey;
+  });
+
+  it("returns a PayMongo checkout URL when PayMongo answers", async () => {
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: { data: { id: "cs_1", attributes: { checkout_url: "https://checkout.paymongo.com/cs_1" } } },
+    });
+    const res = makeRes();
+    await createPayment(makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }), res, jest.fn());
+    const payload = (res.json as jest.Mock).mock.calls[0][0];
+    expect(payload.data.paymentMode).toBe("PAYMONGO");
+    expect(payload.data.paymentUrl).toBe("https://checkout.paymongo.com/cs_1");
+    expect(payload.data.testMode).toBe(true);
+  });
+
+  it("falls back to MANUAL (never a mock URL) when PayMongo is unavailable", async () => {
+    (axios.post as jest.Mock).mockRejectedValue(new Error("PayMongo down"));
+    const res = makeRes();
+    await createPayment(makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }), res, jest.fn());
+    const payload = (res.json as jest.Mock).mock.calls[0][0];
+    expect(payload.data.paymentMode).toBe("MANUAL");
+    expect(payload.data.paymentUrl).toBeNull();
+    expect(payload.data.instructions.amount).toBe(5000);
+    expect(prismaMock.transaction.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { paymentMethod: "Manual" } }),
+    );
   });
 });

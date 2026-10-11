@@ -37,9 +37,21 @@ model User {
   // submission regardless.
   biometricConsentAt DateTime?
 
-  // Parent/Guardian information
-  parentName    String?
-  parentContact String?
+  // Parent/Guardian information. Required for NEW accounts since Dispute v2
+  // (ruling 12, 2026-10-11) and prompted for existing ones; kept nullable so
+  // accounts made before the rule still load. `guardianConsentAt` is when the
+  // student accepted the Terms clause that their guardian and UCLM may be
+  // contacted in a dispute (RA 10173).
+  parentName        String?
+  parentContact     String?
+  guardianConsentAt DateTime?
+
+  // Dispute v2 (ruling 10). Set on a SECOND wrong item: the account stays
+  // restricted until an admin reviews it, even after the case itself closes.
+  // Not `isActive = false`, which would also block the login the renter needs
+  // to return the item (the return needs the app's QR + face).
+  restrictedUntilReviewAt DateTime?
+  restrictionNote         String?   @db.Text
 
   // Payout destination — where this user's rental earnings and security-
   // deposit refunds go via PayMongo's Disbursements (Transfers V2) API.
@@ -102,6 +114,7 @@ model User {
   reviewsReceived Review[]       @relation("ReviewRecipient")
   feedback        Feedback[]
   messagesSent    Message[]
+  disputesAsRenter Dispute[]     @relation("DisputeRenter")
 
   @@index([email])
   @@index([studentId])
@@ -124,6 +137,11 @@ model Item {
   pricePerWeek    Float?
   pricePerMonth   Float?
   securityDeposit Float
+  /// Dispute v2 (ruling 5): what it would cost to replace the item new. Caps
+  /// the dispute fees. Owners fill it when listing; null on items listed
+  /// before the rule (their owners are prompted), in which case the fees are
+  /// capped at the security deposit instead.
+  replacementValue Float?
 
   // Images (JSON array of URLs)
   images Json // ["url1", "url2", "url3"]
@@ -273,6 +291,7 @@ model Rental {
   returnLocker        Locker?       @relation("ReturnLocker", fields: [returnLockerId], references: [id])
   retrievalLocker     Locker?       @relation("RetrievalLocker", fields: [retrievalLockerId], references: [id])
   conversation        Conversation?
+  disputes            Dispute[]
 
   @@index([itemId])
   @@index([renterId])
@@ -347,6 +366,10 @@ model Transaction {
   paymentMethod  String @default("PayMongo")
   paymentDetails Json? // Additional payment info
 
+  /// Dispute v2 — the case a DISPUTE_FEE payment settles. No FK, same reason
+  /// as the other audit-style ids: the ledger row must outlive anything else.
+  disputeId String?
+
   // Timestamps
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -359,7 +382,162 @@ model Transaction {
   @@index([rentalId])
   @@index([userId])
   @@index([paymentReferenceNo])
+  @@index([disputeId])
   @@map("transactions")
+}
+
+/// Dispute System v2 (user rulings 2026-10-11, PROGRESS.md "PRE-/clear HANDOFF #4").
+///
+/// One row per wrong-item case. A case exists only because an ADMIN clicked
+/// Reject on a return (ruling 2): the AI alone never opens one, because the AI
+/// ignores colour and scored a red lookalike 77.87 against a yellow-and-black
+/// listing (D-112).
+///
+/// The wrong item is modelled HERE and not on the rental's retrieval columns.
+/// Those columns describe ONE physical object leaving a bay, and a dispute has
+/// two: the renter's own wrong item (collected by the RENTER, ruling 8) and the
+/// correct item that still has to come back (collected later by the OWNER).
+/// Sharing one set of columns would make the second release refuse as
+/// "already released", or hand one person's object to the other.
+model Dispute {
+  id          String @id @default(uuid())
+  /// Human reference used on every letter and message, e.g. ER-DSP-2026-0001.
+  referenceNo String @unique
+  rentalId    String
+  renterId    String
+  ownerId     String
+
+  /// 1 for a first wrong item; 2 or more for a repeat (ruling 10).
+  offense Int           @default(1)
+  status  DisputeStatus @default(OPEN)
+
+  openedById String? // the admin whose Reject opened it; no FK (audit)
+  openedAt   DateTime @default(now())
+
+  /// Ruling 4: 24, 48 or 72 hours (default 72; a repeat offence is 24).
+  deadlineHours Int
+  deadlineAt    DateTime
+
+  /// Ruling 5: fees are counted from here (the rental's due date, or the open
+  /// time for a repeat offence or a migrated case), on `feeBase` per day, and
+  /// capped at `feeCap`. Snapshots, so a later price edit cannot change a case.
+  feeStartAt DateTime
+  feeBase    Float
+  feeCap     Float
+  /// Ruling 7: fees freeze while a payment is submitted and resume if it is
+  /// rejected or the return does not happen. `frozenSeconds` is the total time
+  /// already spent frozen; `feesFrozenAt` is set while frozen right now.
+  feesFrozenAt  DateTime?
+  frozenSeconds Int       @default(0)
+
+  /// The renter's own wrong item (ruling 8). Where it is, and when it left.
+  wrongItemLockerId     String?
+  wrongItemDoor         String? // "main_door" | "bottom_door"
+  wrongItemDropAt       DateTime? // drop command sent; cleared door until the Pi acks
+  wrongItemPlacedAt     DateTime? // collectable where wrongItemDoor says
+  wrongItemCollectedAt  DateTime?
+
+  /// The plain-language AI verdict shown to the admin, renter and owner (ruling 15).
+  aiSummary String? @db.Text
+
+  /// Reminder ladder (ruling 11): -1 none yet, 0 day 0, 1 day 1, 2 day 2, 3 deadline.
+  reminderStage Int       @default(-1)
+  escalatedAt   DateTime?
+  /// The renter asked for a review ("think this is a mistake?").
+  reviewRequestedAt DateTime?
+
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolution     String? // CORRECT_ITEM_RETURNED | OVERTURNED | UNRECOVERED
+  resolutionNote String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rental  Rental          @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  renter  User            @relation("DisputeRenter", fields: [renterId], references: [id])
+  events  DisputeEvent[]
+  letters DisputeLetter[]
+
+  @@index([rentalId])
+  @@index([renterId])
+  @@index([status])
+  @@map("disputes")
+}
+
+/// Everything that happened in a case, in order, INCLUDING the exact text each
+/// person was shown (ruling 14: the admin sees the messages the renter and owner
+/// saw, word for word). Personnel calls, guardian contact and school reports are
+/// logged here too (ruling 11): the system cannot phone anyone, so a person does
+/// it and records the outcome.
+model DisputeEvent {
+  id        String @id @default(uuid())
+  disputeId String
+
+  /// OPENED, MESSAGE, REMINDER, CONTACT, PAYMENT_SUBMITTED, PAYMENT_CONFIRMED,
+  /// PAYMENT_REJECTED, FEES_FROZEN, FEES_RESUMED, WRONG_ITEM_PLACED,
+  /// WRONG_ITEM_COLLECTED, CORRECT_ITEM_PLACED, DEADLINE_CHANGED, ESCALATED,
+  /// LETTER_GENERATED, LETTER_SUBMITTED, REVIEW_REQUESTED, RESOLVED, NOTE.
+  type String
+
+  actorId   String? // no FK (audit)
+  actorRole String // SYSTEM | ADMIN | RENTER | OWNER | KIOSK
+
+  /// Who this was for / who was contacted: RENTER, OWNER, ADMIN, GUARDIAN,
+  /// SAO, ENGINEERING, GUIDANCE.
+  audience String?
+  /// IN_APP, EMAIL, PHONE, SMS, IN_PERSON, LETTER, KIOSK.
+  channel  String?
+  title    String?
+  message  String? @db.Text
+  /// For a contact attempt: REACHED, NO_ANSWER, LEFT_MESSAGE, WRONG_NUMBER, ...
+  outcome  String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId, createdAt])
+  @@map("dispute_events")
+}
+
+/// Ruling 13: a formal letter the ADMIN submits to a UCLM office. The content is
+/// snapshotted at generation, so what was submitted can always be shown exactly.
+model DisputeLetter {
+  id          String @id @default(uuid())
+  disputeId   String
+  /// SAO | ENGINEERING | GUIDANCE
+  office      String
+  referenceNo String @unique
+
+  content Json // { subject, salutation, paragraphs[], facts{}, attachments[], signatory{} }
+
+  generatedById String?
+  generatedAt   DateTime  @default(now())
+  submittedAt   DateTime?
+  submittedById String?
+  submissionNote String?  @db.Text
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+  @@map("dispute_letters")
+}
+
+enum DisputeStatus {
+  /// Fees accruing; waiting for the renter to pay at the kiosk.
+  OPEN
+  /// A payment has been submitted and is waiting for PayMongo or an admin;
+  /// fees are frozen.
+  PAYMENT_PENDING
+  /// Paid; the correct item still has to be placed (fees stay frozen while
+  /// the kiosk visit is live, and resume if it ends without a return).
+  PAID
+  /// The correct item is in a locker and waiting for an admin's check.
+  RETURN_REVIEW
+  RESOLVED
+  CANCELLED
 }
 
 // Verification model - AI verification logs
@@ -771,6 +949,10 @@ enum TransactionType {
   // renter's original charge into the platform's own PayMongo wallet, not
   // money reaching the owner. See rentalSettlementService.ts.
   OWNER_PAYOUT
+  // Dispute v2 (ruling 5/6) — the escalating wrong-item fee the renter pays AT
+  // THE KIOSK before the door unlocks. Paid in cash (PayMongo or the manual
+  // fallback), never drawn from the deposit, so settlement does not deduct it.
+  DISPUTE_FEE
 }
 
 enum TransactionStatus {
@@ -854,6 +1036,8 @@ enum NotificationType {
   // outcome of is still a one-way write as far as the reporting student
   // knows, notification or not.
   FEEDBACK_UPDATE
+  // Dispute v2 — every case message to the renter or the owner.
+  DISPUTE_UPDATE
 }
 
 enum ReviewType {

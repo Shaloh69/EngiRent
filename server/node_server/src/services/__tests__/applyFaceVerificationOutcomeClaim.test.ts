@@ -30,6 +30,48 @@ describe("applyFaceVerificationOutcome — claim branch grants, does not commit"
   beforeEach(() => {
     mockReset(prismaMock);
     _clearAllBayAccess();
+    // Dispute v2 (ruling 1 + 3): a claim needs a verified, unrestricted renter.
+    prismaMock.user.findUnique.mockResolvedValue({ isVerified: true, restrictedUntilReviewAt: null } as never);
+    prismaMock.dispute.findFirst.mockResolvedValue(null);
+  });
+
+  it("refuses a claim by an unverified renter (ruling 1: UCLM-verified students only)", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ isVerified: false, restrictedUntilReviewAt: null } as never);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "DEPOSITED",
+      verificationStatus: "APPROVED",
+      renterId: "renter-1",
+      ownerId: "owner-1",
+      item: { title: "Glue Gun" },
+      depositLocker: { id: "locker-1", lockerNumber: "1" },
+      retrievalLocker: null,
+      releaseRequestedAt: null,
+      retrievedAt: null,
+    } as never);
+    const result = await applyFaceVerificationOutcome({ io: fakeIo(), rentalId: RENTAL_ID, kioskId: "KIOSK-001", confidence: 50 });
+    expect(result.action).toBe("none");
+    expect(result.error).toMatch(/University of Cebu Lapu-Lapu and Mandaue/);
+    expect(getBayAccess(RENTAL_ID)).toBeUndefined();
+  });
+
+  it("refuses a claim while the renter has an open dispute (ruling 3)", async () => {
+    prismaMock.dispute.findFirst.mockResolvedValue({ id: "d-1", referenceNo: "ER-DSP-2026-0001" } as never);
+    prismaMock.rental.findUnique.mockResolvedValue({
+      id: RENTAL_ID,
+      status: "DEPOSITED",
+      verificationStatus: "APPROVED",
+      renterId: "renter-1",
+      ownerId: "owner-1",
+      item: { title: "Glue Gun" },
+      depositLocker: { id: "locker-1", lockerNumber: "1" },
+      retrievalLocker: null,
+      releaseRequestedAt: null,
+      retrievedAt: null,
+    } as never);
+    const result = await applyFaceVerificationOutcome({ io: fakeIo(), rentalId: RENTAL_ID, kioskId: "KIOSK-001", confidence: 50 });
+    expect(result.action).toBe("none");
+    expect(result.error).toMatch(/ER-DSP-2026-0001/);
   });
 
   it("grants bottom_door access without touching rental status or the compartment", async () => {

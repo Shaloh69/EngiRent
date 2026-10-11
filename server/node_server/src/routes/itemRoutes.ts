@@ -10,6 +10,7 @@ import {
   getBookedDates,
 } from "../controllers/itemController";
 import { authenticate, optionalAuth, requireVerified } from "../middleware/auth";
+import { blockIfRestricted } from "../middleware/restriction";
 import { validate } from "../middleware/validation";
 import { MIN_ITEM_PHOTOS } from "../utils/itemPhotoRules";
 
@@ -20,6 +21,7 @@ router.post(
   "/",
   authenticate,
   requireVerified,
+  blockIfRestricted,
   validate([
     body("title").notEmpty().withMessage("Title is required"),
     body("description").notEmpty().withMessage("Description is required"),
@@ -85,6 +87,8 @@ router.get(
 router.put(
   "/:id",
   authenticate,
+  requireVerified,
+  blockIfRestricted,
   validate([param("id").isUUID().withMessage("Valid item ID is required")]),
   updateItem,
 );

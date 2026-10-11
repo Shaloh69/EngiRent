@@ -25,15 +25,19 @@ export async function sendEmail(opts: {
   subject: string;
   html: string;
   text?: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const t = getTransporter();
-  if (!t) return; // email disabled — fail silently
+  if (!t) return false; // email disabled — fail silently
 
+  // Returns whether it really went: a dispute case logs every message, and
+  // "email sent" must never be recorded for one that was not (ruling 14).
   try {
     await t.sendMail({ from: FROM, ...opts });
     logger.info(`Email sent to ${opts.to}: "${opts.subject}"`);
+    return true;
   } catch (err) {
     logger.warn(`Email send failed to ${opts.to}: ${(err as Error).message}`);
+    return false;
   }
 }
 
