@@ -145,3 +145,6 @@ server/python_server/services/ml/eval/data/
 server/python_server/services/ml/eval/runs/
 server/python_server/services/ml/.venv-eval/
 server/python_server/services/ml/cache_v2/
+
+# Playwright / emulator screenshots: may show faces, ID photos and student data (the repo is public).
+.playwright-mcp/

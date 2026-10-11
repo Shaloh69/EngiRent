@@ -57,7 +57,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // gate only makes it impossible to miss.
   Map<String, dynamic>? _restriction;
   final List<StreamSubscription> _restrictionSubs = [];
-  bool _guardianAsked = false;
 
   @override
   void initState() {
@@ -67,7 +66,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _restrictionSubs.add(sock.onDisputeUpdate.listen((_) => _checkRestriction()));
     _restrictionSubs.add(sock.onReturnDisputed.listen((_) => _checkRestriction()));
     _restrictionSubs.add(sock.onReconnected.listen((_) => _checkRestriction()));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAskGuardian());
   }
 
   @override
@@ -86,31 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // Offline: keep whatever was known. The server still refuses anything
       // a restricted account may not do.
-    }
-  }
-
-  /// Ruling 12: existing users are asked once per launch to add a guardian.
-  Future<void> _maybeAskGuardian() async {
-    if (_guardianAsked || !mounted) return;
-    final user = context.read<AuthProvider>().user;
-    if (user == null || user.role != 'STUDENT' || !user.needsGuardian) return;
-    _guardianAsked = true;
-    final add = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add a parent or guardian'),
-        content: const Text(
-          'EngiRent is run in partnership with UCLM. Every student now needs a parent or guardian on record, '
-          'and to accept that they and UCLM may be contacted if a rental dispute is not resolved.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Later')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add now')),
-        ],
-      ),
-    );
-    if (add == true && mounted) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => const GuardianScreen()));
     }
   }
 
@@ -133,8 +106,40 @@ class _HomeScreenState extends State<HomeScreen> {
       const _ProfileTab(),
     ];
 
+    // Ruling 12: existing users are asked to add a guardian. A banner, not a
+    // dialog: a dialog fought the first-run tour for every tap (seen on the
+    // emulator 2026-10-11) and was gone before anyone could read it.
+    final needsGuardian = context.watch<AuthProvider>().user?.needsGuardian ?? false;
     return Scaffold(
-      body: pages[_currentIndex],
+      body: Column(
+        children: [
+          if (needsGuardian)
+            Material(
+              color: AppColors.warning.withValues(alpha: 0.16),
+              child: SafeArea(
+                bottom: false,
+                child: InkWell(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GuardianScreen())),
+                  child: const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 10, 12, 10),
+                    child: Row(children: [
+                      Icon(Icons.family_restroom_rounded, color: AppColors.warning),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Add a parent or guardian: required by EngiRent\'s UCLM partnership. Tap to add.',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          Expanded(child: pages[_currentIndex]),
+        ],
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: p.surface,

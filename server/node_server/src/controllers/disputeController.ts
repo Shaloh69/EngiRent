@@ -244,6 +244,10 @@ export const getDispute = async (req: AuthRequest, res: Response, next: NextFunc
           : null,
         history: c.events
           .filter((e) => RENTER_VISIBLE_EVENTS.has(e.type) && (e.audience == null || e.audience === "RENTER"))
+          // Only what reached them: an email the server could not send is not
+          // a message the renter received (seen on the emulator 2026-10-11 as
+          // the prompt listed twice).
+          .filter((e) => !(e.outcome ?? "").startsWith("NOT_SENT"))
           .map((e) => ({ at: e.createdAt, type: e.type, channel: e.channel, title: e.title, message: e.message })),
       },
     });

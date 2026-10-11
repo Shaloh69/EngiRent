@@ -509,15 +509,22 @@ export async function closeDispute(
     // The object in the locker IS the owner's item: it was never the renter's
     // to collect. Take it off the renter and put the rental back where an
     // approved return sits, so the owner collects it the normal way.
+    // The return was correct after all, so it ends as an approved return
+    // whether or not a locker still records the item (seen 2026-10-11: a case
+    // with no recorded bay stayed DISPUTED for ever).
     if (d.wrongItemLockerId && !d.wrongItemCollectedAt) {
       await prisma.dispute.update({ where: { id: disputeId }, data: { wrongItemCollectedAt: now } });
-      await prisma.rental.update({
-        where: { id: d.rentalId },
-        data: { status: "VERIFICATION", verificationStatus: "MANUAL_REVIEW", returnLockerId: d.wrongItemLockerId },
-      });
-      const { approveReturn } = await import("./returnApprovalService");
-      await approveReturn(io, d.rentalId);
     }
+    await prisma.rental.update({
+      where: { id: d.rentalId },
+      data: {
+        status: "VERIFICATION",
+        verificationStatus: "MANUAL_REVIEW",
+        ...(d.wrongItemLockerId && !d.wrongItemCollectedAt ? { returnLockerId: d.wrongItemLockerId } : {}),
+      },
+    });
+    const { approveReturn } = await import("./returnApprovalService");
+    await approveReturn(io, d.rentalId);
     await recordEvent(disputeId, { type: "RESOLVED", actorRole: "ADMIN", actorId: p.adminId, message: `Overturned: ${p.note}` });
     await tellParty(io, d, "RENTER", "Dispute cancelled", overturnedRenterText(d.referenceNo, d.rental.item.title), { email: true });
   } else {
