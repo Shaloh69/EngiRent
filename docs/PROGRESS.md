@@ -10744,3 +10744,53 @@ pickup (by design, E6.R). Real emails went out for the first time: "Dispute clos
 notification + email. **Seen:** log and DB read-back; NOT yet seen on the admin page after the fix (the admin's own Approve
 button path is the part the code change affects, never exercised again). The ₱90 owner payout stays PENDING until staff
 pay it out (manual mode). Root cause underneath remains D-108 (MySQL relay drops through Docker Desktop).
+
+## BAY SELECTION (user request 2026-10-12 ~21:10): use every free compartment before saying "no locker". G2 section table, repo-derived, RULED 2026-10-12 ~21:25, BUILT LOCALLY (NOT deployed)
+
+Derived from `faceVerificationService.assignLocker`, `pickupLaneService.canAcceptDeposit`, `disputeWrongItemService.baysHoldingWrongItems`,
+`storageDropService.dropToStorage`, `retrievalService`, `deepReviewQueue`. Facts: every NEW hand-off (deposit, return) is assigned to the
+UPPER compartment (main door); the lower compartment is reached only by an actuator drop, and collected through the lower door
+(`doorHoldingRental` already picks the right door for claim/owner pickup). The locker camera sees the upper floor only. A long-lead
+deposit currently requires the lower compartment free too (`canAcceptDeposit(…, longLead)`), and `dropToStorage` is attempted ONCE,
+right after the full check, never retried. Found 2026-10-12 20:29: during a dispute the return skipped bay 1 although its upper door was free,
+because `baysHoldingWrongItems` excludes the whole bay while the wrong item is uncollected, whichever compartment it is in.
+
+| # | Section | Where | Done when |
+|---|---------|-------|-----------|
+| B1 | Dispute rule: exclude a bay only when its UPPER compartment still records this rental (the wrong item is on top); an item already below no longer blocks the top | `disputeWrongItemService.baysHoldingWrongItems` (+ test for exactly the 2026-10-12 case, incl. a migrated case with no drop time) | test: wrong item in lower → bay 1 assignable; wrong item on top → bay 1 excluded |
+| B2 | Long-lead deposit falls back: first choice a bay with BOTH compartments free (it can drop); if none, a bay with only the upper free (item waits on top); "No available locker" only when no bay has a free upper compartment | `faceVerificationService.assignLocker` / `pickupLaneService.canAcceptDeposit` (+ ranking helper) | tests: prefers both-free, falls back to top-only, refuses only when no upper is free |
+| B3 | Retry the storage drop for a long-lead item left on top (lower now free, inside the allowed hours, no live session) | `collectionSweepService`/`deepReviewQueue` (reuse `dropToStorage`'s own preconditions) | G11: drives the actuator; tested with mocks first, hardware only with a yes |
+| B4 | Normal returns, owner pickup, renter claim, dispute return/collect: audit each path for the same assumptions (no change expected beyond B1-B3) | read-only audit, results logged | each path listed with "unchanged" or the change |
+
+Open question: using the LOWER compartment for a NEW placement (top occupied, bottom free) is NOT in this plan: the camera sees only the
+upper floor, so an item put below could not be AI-checked, and nothing pushes it back up. Needs the user's ruling.
+
+
+### 2026-10-12 21:45 — bay selection: rulings, what was built, B4 audit (NOT deployed, NOT seen)
+
+**User rulings (replace the "open question" above):** (1) only drop an item whose AI check has already passed; also drop
+when the renter takes too long to collect. (2) An item over an hour uncollected drops so the top door is free, **regardless
+of the pick-up date** (previously nothing happened until the END of that day). Putting a NEW item straight into the lower
+compartment stays out (the camera sees only the upper floor). Interpretation to confirm: the drop is the renter-preserving
+storage drop, NOT R1 (R1 still cancels a late renter's rental and returns the item to the owner, on its own clock).
+
+**Built (local, committed with this entry):** B1 `baysHoldingWrongItems` excludes a bay only when its UPPER compartment still
+records the rental. B2 `pickBayForDeposit` (long-lead: both-free bay first, else upper-only bay and wait on top, else "no
+locker"), used by `assignLocker`. B3 `decideStorageDrop` (pure, in `retrievalPolicy.ts`) + `runStorageDropSweep` + cron `:25`
+in `index.ts`: needs APPROVED, item on top, lower empty, bay idle, inside 07-21, auto-release on; leaves anything R1 owns to R1.
+`dropToStorage`'s "lower occupied" log is now a warning ("deferred, waits on top"). New `bayCompartmentUse.test.ts` (16) incl.
+the 2026-10-12 case; `reviewVerificationReturn.test.ts` updated for the approval fix (settled → nothing; approved but never
+settled → finishes; a late REJECT still refused). **tsc clean; full suite 463/463.**
+
+**B4 audit (read-only, each path):** same-day deposit and ordinary return: top only, unchanged (a busy lower no longer matters
+and never did). Owner pickup, renter claim: `doorHoldingRental` picks the door of whichever compartment holds the item,
+unchanged. Dispute return: B1. Dispute "collect my item": uses the bay the wrong item is in and its lower door, unchanged.
+Admin drop-wrong-item and the E6.S owner-uncollected sweep (`:15`): unchanged. **Behaviour change to know:** a dated rental
+(any future day, or today) is no longer left on top until its day ends; it drops after one hour and stays the renter's.
+
+**Docs updated:** `docs/redesign/SPEC-PICKUP-DATE-AND-BAY-REUSE.md` (stale "NOT IMPLEMENTED" banner replaced; section 8 added),
+`docs/redesign/LIFECYCLE-PROCESS-MAP.md` (storage-drop row), this entry, `memory.md`, and the test-case document
+(`EngiRent-Hub-Test-Cases-Revised`). **Deploy: needs the user's yes (API restart, new cron, actuator strokes are G11).
+G1: nothing here has been seen on the kiosk; the first real drop must be watched.**
+Test-case document re-revised for these rules: 158 → **162** cases (integration 22 → 26: deposit with a full lower compartment,
+checked item uncollected an hour, unchecked item never moved, late renter, return during a case uses a free upper door).

@@ -1,8 +1,9 @@
 # SPEC — Pick-up date, verification lanes, and bay reuse
 
-> **Status: SPECIFIED, NOT IMPLEMENTED.** Written 2026-09-18 from the user's
-> ruling, during the first physical test run. No code in this repo implements
-> any of it yet. Nothing here has been built, deployed or verified.
+> **Status: IMPLEMENTED (E5, 2026-09-18 onward) and AMENDED 2026-10-12 — read
+> section 8 first; it overrides section 5 items 5 and 6 and the "stays up top"
+> wording below.** Originally written 2026-09-18 from the user's ruling, during the
+> first physical test run, as a specification only.
 >
 > **Written for:** whoever implements this next — most likely a later session
 > reloading from `docs/PROGRESS.md`. It assumes the reader knows the D-87b
@@ -158,3 +159,35 @@ will move and waiting for an explicit yes.
   invariant in §2 says no; the physical compartment may or may not agree, and
   that is a question for the person standing in front of it.
 - Anything about pricing or fees for longer storage.
+
+## 8. AMENDMENT 2026-10-12 — user rulings on bay use and the one-hour drop
+
+These replace the corresponding earlier rules. Code: `pickupLaneService.pickBayForDeposit`,
+`retrievalPolicy.decideStorageDrop`, `collectionSweepService.runStorageDropSweep` (cron `:25`),
+`disputeWrongItemService.baysHoldingWrongItems`. Tests: `bayCompartmentUse.test.ts`.
+
+1. **Use every free compartment before saying "no locker".** A new deposit or return always goes
+   into the UPPER compartment (it is the only one the locker camera sees, so it is the only one the
+   AI can check). A long-lead deposit prefers a bay whose lower compartment is free as well (it can
+   be dropped once checked). If no bay has both, it takes a bay with only the upper free and
+   **waits on top**. "No available locker" appears only when no operational bay has a free upper
+   compartment. (Replaces section 5 item 6, which refused a long-lead deposit outright.)
+2. **Only a CHECKED item is ever moved.** A drop to the lower compartment needs
+   `verificationStatus = APPROVED`. A pending, rejected or retrying deposit is never dropped.
+3. **Two triggers for the drop, nothing else:** (a) a checked long-lead deposit that waited on top
+   because the lower compartment was full, as soon as the lower frees; (b) **any checked item the
+   renter has not collected within one hour of the deposit, whatever the pick-up date**, so the top
+   door becomes free. (Replaces the E5 rule that nothing happened until the END of the pick-up day.)
+   Both stay inside the 07:00-21:00 window, need an idle bay, an empty lower compartment and
+   auto-release switched on.
+4. **The drop keeps the renter's rental.** It is not R1. R1 (the renter never collects: the rental
+   is cancelled and the item goes back to the owner) is unchanged: its clock starts when the
+   pick-up day is over, or at the deposit for a rental with no pick-up date, and runs one grace
+   hour. The drop leaves any item R1 already owns to R1. So a rental dated for a later day, or
+   for today, is dropped after one hour and cancelled only once its day is over.
+5. **During a dispute,** a return skips a bay only if its UPPER compartment still holds the renter's
+   wrong item. A wrong item already in the lower compartment no longer blocks the upper door
+   (found live 2026-10-12: bay 1 was skipped with its upper door free).
+6. **Not decided / not built:** putting a NEW item straight into a free lower compartment (upper
+   occupied). The camera cannot see the lower compartment, so such an item could not be checked.
+

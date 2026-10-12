@@ -150,7 +150,8 @@ describe("reviewVerification — return, APPROVED (D-95 + E6.R)", () => {
     expect(emit).not.toHaveBeenCalledWith("rental:completed", expect.anything());
   });
 
-  it("never settles twice: a second approval of an already-approved return does nothing", async () => {
+  it("never settles twice: a second approval of an already-approved AND settled return does nothing", async () => {
+    prismaMock.transaction.count.mockResolvedValue(2 as never); // refund + payout rows exist
     prismaMock.verification.findUnique.mockResolvedValue({
       id: "verification-1",
       rental: { ...RETURN_RENTAL, verificationStatus: "APPROVED" },
@@ -162,7 +163,20 @@ describe("reviewVerification — return, APPROVED (D-95 + E6.R)", () => {
     expect(releaseForPickupMock).not.toHaveBeenCalled();
   });
 
-  it("a late REJECTED cannot dispute a return whose money has already moved", async () => {
+  it("approved but NEVER settled (the 2026-10-12 database drop): a repeat approval finishes the job", async () => {
+    prismaMock.transaction.count.mockResolvedValue(0 as never); // the settlement never ran
+    prismaMock.verification.findUnique.mockResolvedValue({
+      id: "verification-1",
+      rental: { ...RETURN_RENTAL, verificationStatus: "APPROVED" },
+      depositRental: null,
+    } as never);
+    const { io } = makeIo();
+    await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
+    expect(finalizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a late REJECTED cannot dispute a return that was approved, settled or not", async () => {
+    prismaMock.transaction.count.mockResolvedValue(0 as never);
     prismaMock.verification.findUnique.mockResolvedValue({
       id: "verification-1",
       rental: { ...RETURN_RENTAL, verificationStatus: "APPROVED" },

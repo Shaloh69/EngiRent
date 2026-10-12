@@ -14,6 +14,8 @@
  * proving it with a student's property inside the machine. The executor that
  * actually sends the command is deliberately dumb.
  */
+import { isLongLeadPickup } from "./pickupLaneService";
+
 
 /** Mirrors the Prisma enum without importing the client into a pure module. */
 export type ReleaseReason =
@@ -268,6 +270,81 @@ export function decideRelease(
   }
 
   return { release: true, reason };
+}
+
+/**
+ * Storage drop (user ruling 2026-10-12): an item that has PASSED its check but
+ * is still sitting in the UPPER compartment is moved to the lower one so the
+ * top door is free for the next hand-off. It stays the RENTER's item: this is
+ * not R1 (which cancels the rental and gives the item back to its owner).
+ *
+ * Two triggers, and nothing else may move an item:
+ *   - LONG_LEAD_APPROVED : a future-dated deposit whose full check has passed.
+ *     The one-shot drop after the check (`deepReviewQueue`) does this when the
+ *     lower compartment is free; this repeats it for the bay that was full then.
+ *   - UNCOLLECTED_OVER_GRACE : the renter has not collected within the grace
+ *     hour. REGARDLESS of the pick-up date (it used to wait for the end of that
+ *     day, which kept the top door blocked for days).
+ *
+ * Never an item nobody has checked: `verificationStatus` must be APPROVED. And
+ * never one R1 already owns: once the R1 clock has run out (`collectionClockStart`
+ * plus the grace) the hourly sweep cancels and returns it, so this leaves it be.
+ */
+export type StorageDropReason = "LONG_LEAD_APPROVED" | "UNCOLLECTED_OVER_GRACE";
+
+export interface StorageDropCandidate {
+  status: string;
+  verificationStatus: string;
+  releaseRequestedAt: Date | null;
+  depositedAt: Date | null;
+  pickupDate: Date | null;
+  /** The bay's UPPER compartment records this rental. */
+  onTop: boolean;
+  /** The bay's LOWER compartment is empty (AVAILABLE and no rental id). */
+  lowerFree: boolean;
+  isOperational: boolean;
+  hasLiveKioskSession: boolean;
+  hasOpenDoor: boolean;
+}
+
+export type StorageDropDecision =
+  | { drop: true; reason: StorageDropReason }
+  | { drop: false; because: string; code: string };
+
+export function decideStorageDrop(
+  c: StorageDropCandidate,
+  now: Date,
+  policy: RetrievalPolicy,
+): StorageDropDecision {
+  const no = (code: string, because: string): StorageDropDecision => ({ drop: false, because, code });
+  if (c.status !== "DEPOSITED") return no("status", `status ${c.status} is not DEPOSITED`);
+  if (c.verificationStatus !== "APPROVED") {
+    return no("not_checked", "the item has not passed its check: nothing is moved before that");
+  }
+  if (c.releaseRequestedAt !== null) return no("already_requested", "a release is already under way");
+  if (!c.onTop) return no("not_on_top", "the item is not in the upper compartment");
+  if (!c.lowerFree) return no("lower_compartment_full", "the lower compartment is occupied");
+  if (!c.isOperational) return no("bay_not_operational", "the bay is not operational");
+  if (c.hasLiveKioskSession || c.hasOpenDoor) return no("bay_busy", "a session or an open door is on the bay");
+  if (!policy.auto_release_enabled) return no("auto_release_disabled", "automatic release is switched off");
+  if (!isWithinReleaseWindow(now, policy)) {
+    return no(
+      "outside_release_window",
+      `outside the release window ${policy.release_window_start_hour}:00-${policy.release_window_end_hour}:00`,
+    );
+  }
+  if (c.depositedAt === null) return no("no_deposit_timestamp", "no deposit time recorded");
+
+  // R1 owns anything whose own clock has run out.
+  const r1Clock = collectionClockStart(c.depositedAt, c.pickupDate);
+  if (hoursSince(r1Clock, now) >= policy.collection_grace_hours) {
+    return no("left_to_r1", "the late-collection sweep handles this one");
+  }
+  if (isLongLeadPickup(c.pickupDate, now)) return { drop: true, reason: "LONG_LEAD_APPROVED" };
+  if (hoursSince(c.depositedAt, now) >= policy.collection_grace_hours) {
+    return { drop: true, reason: "UNCOLLECTED_OVER_GRACE" };
+  }
+  return no("grace_not_elapsed", `${hoursSince(c.depositedAt, now).toFixed(2)}h since the deposit`);
 }
 
 /**

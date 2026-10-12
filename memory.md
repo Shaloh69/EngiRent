@@ -2673,3 +2673,19 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
   whose reply must not differ between known and unknown accounts.
 - Fixture `e2e-dispute-owner@students.uclm.edu.ph` password changed by the test (value in the private auto-memory only).
 - Classifier refused the first deploy ([Production Deploy]); the user said yes and the retry went through.
+
+## 2026-10-12 ~21:45 PHT — Bay selection rules changed (user rulings); approval bug; locker 3 camera
+
+- **User rulings:** use every free compartment before "no locker"; only an AI-checked item is ever dropped; an item uncollected
+  for an hour drops so the top door is free, **whatever the pick-up date** (was: not until the end of that day). A new item is
+  never put straight into the lower compartment (the camera sees only the upper floor). Written into
+  `docs/redesign/SPEC-PICKUP-DATE-AND-BAY-REUSE.md` section 8 and the lifecycle map. Code: `pickBayForDeposit`,
+  `decideStorageDrop`, `runStorageDropSweep` (cron `:25`), `baysHoldingWrongItems`. Built and tested, NOT deployed.
+- **Found live:** during the dispute return the system skipped bay 1 although its upper door was free (the wrong item was
+  below; the exclusion covered the whole bay). Fixed by B1.
+- **Found live, fixed and deployed:** approving a return returned "Internal server error" when MySQL dropped for a moment
+  between "mark approved" and "settle the money"; the guard then refused every retry. A repeat Approve now finishes an
+  unsettled return (commit a0dea32); case ER-DSP-2026-0001 finished and closed 20:55.
+- **Open:** locker 3 camera "not initialised" since the cable was moved; needs the cable reseated and a kiosk service restart
+  (G11 yes). The Pi's SSH login hangs from this PC and from the server; USB tree not yet read.
+

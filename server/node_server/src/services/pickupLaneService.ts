@@ -105,6 +105,28 @@ export function canAcceptDeposit(
   return true;
 }
 
+/**
+ * Which bay takes a NEW deposit or return (user ruling 2026-10-12: use every
+ * free compartment before saying "no locker").
+ *
+ * A new hand-off always goes into the UPPER compartment. For a long-lead
+ * deposit the best bay is one whose lower compartment is free too, so the item
+ * can be dropped once its check passes. When no bay has both free, a long-lead
+ * deposit takes a bay with only the upper free and waits on top (the storage
+ * sweep drops it when the lower compartment frees, or after the grace hour);
+ * it is refused only when no bay has a free upper compartment at all.
+ */
+export function pickBayForDeposit<T extends CompartmentState>(
+  bays: T[],
+  longLead: boolean,
+): { bay: T; waitsOnTop: boolean } | null {
+  const best = bays.find((b) => canAcceptDeposit(b, longLead));
+  if (best) return { bay: best, waitsOnTop: false };
+  if (!longLead) return null;
+  const upperOnly = bays.find((b) => canAcceptDeposit(b, false));
+  return upperOnly ? { bay: upperOnly, waitsOnTop: true } : null;
+}
+
 /** A bay with both compartments in use can take nothing more. */
 export function isFullyOccupied(bay: CompartmentState): boolean {
   return !isFree(bay.topStatus) && !isFree(bay.bottomStatus);

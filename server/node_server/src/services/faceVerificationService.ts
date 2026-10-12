@@ -36,7 +36,7 @@ import { decryptFaceEncoding } from "../utils/crypto";
 import { grantBayAccess } from "./kioskBayAccessStore";
 // E5 — one definition of "long lead", "usable bay" and "which door holds it".
 import {
-  canAcceptDeposit,
+  pickBayForDeposit,
   doorHoldingRental,
   isLongLeadPickup,
 } from "./pickupLaneService";
@@ -257,16 +257,18 @@ export async function assignLocker(
     return { lockerId: resumed.id, lockerNumber: resumed.lockerNumber };
   }
 
-  const locker = candidates.find((l) =>
-    canAcceptDeposit(
-      {
-        topStatus: l.topStatus,
-        bottomStatus: l.bottomStatus,
-        isOperational: l.isOperational,
-      },
-      longLead,
-    ),
-  );
+  // User ruling 2026-10-12: use every free compartment before saying "no
+  // locker". A long-lead deposit prefers a bay whose lower compartment is free
+  // too (it can drop once checked); failing that it takes a bay with only the
+  // upper free and waits on top. See pickBayForDeposit.
+  const picked = pickBayForDeposit(candidates, longLead);
+  const locker = picked?.bay;
+  if (picked?.waitsOnTop) {
+    logger.info(
+      `Long-lead deposit for rental ${rentalId} takes bay ${picked.bay.lockerNumber} with only its ` +
+        `upper compartment free: it waits on top until the lower frees or the grace hour passes`,
+    );
+  }
 
   if (!locker) {
     logger.warn(

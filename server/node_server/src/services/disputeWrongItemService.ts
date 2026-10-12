@@ -198,13 +198,29 @@ export async function completeWrongItemCollection(
   logger.info(`[DISPUTE] case ${d.referenceNo}: renter collected their wrong item`);
 }
 
-/** The bays holding an uncollected wrong item of this rental, so a return is never assigned onto one. */
+/**
+ * The bays whose UPPER compartment still holds an uncollected wrong item of this
+ * rental, so a return is never assigned on top of one.
+ *
+ * Only the upper compartment counts (user ruling 2026-10-12). A wrong item that
+ * is already in the lower compartment leaves the upper door free, and a correct
+ * item on top of one below is the normal two-compartment case. This used to
+ * exclude the whole bay: on 2026-10-12 the return skipped bay 1 although its
+ * upper door was free, because the wrong item had been dropped below before
+ * Dispute v2 (that migrated case carries no drop time to tell us so).
+ */
 export async function baysHoldingWrongItems(rentalId: string): Promise<string[]> {
   const rows = await prisma.dispute.findMany({
     where: { rentalId, wrongItemLockerId: { not: null }, wrongItemCollectedAt: null },
     select: { wrongItemLockerId: true },
   });
-  return rows.map((r) => r.wrongItemLockerId as string);
+  const ids = rows.map((r) => r.wrongItemLockerId as string);
+  if (ids.length === 0) return [];
+  const bays = await prisma.locker.findMany({
+    where: { id: { in: ids }, topRentalId: rentalId },
+    select: { id: true },
+  });
+  return bays.map((b) => b.id);
 }
 
 /** F3 for wrong items: drops sent and never acknowledged. Surfaced, never auto-retried. */

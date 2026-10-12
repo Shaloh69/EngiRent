@@ -48,7 +48,7 @@ import {
   storageDropForCommand,
 } from "./services/storageDropService";
 import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
-import { runCollectionSweep } from "./services/collectionSweepService";
+import { runCollectionSweep, runStorageDropSweep } from "./services/collectionSweepService";
 import { cancelOverdueUndepositedRentals } from "./services/overdueRentalCleanup";
 import {
   reconcileItemAvailability,
@@ -1712,6 +1712,21 @@ cron.schedule("15 * * * *", async () => {
     );
   } catch (err) {
     logger.error(`[CRON] E6.S uncollected-by-owner sweep failed: ${(err as Error).message}`);
+  }
+});
+
+// Storage drop (user ruling 2026-10-12): a CHECKED item still on top of its bay is
+// moved down so the top door is free, whatever its pick-up date, once it has
+// waited the grace hour (or at once for a checked long-lead deposit whose bay was
+// full when it was assigned). Judgement: decideStorageDrop (retrievalPolicy.ts).
+// Its own slot, clear of :05 / :15 / :02 / :32, so no two jobs stroke together.
+cron.schedule("25 * * * *", async () => {
+  try {
+    const { considered, dropped } = await runStorageDropSweep(io);
+    if (considered === 0) return;
+    logger.info(`[CRON] storage drop sweep: ${considered} checked item(s) on top, ${dropped} dropped`);
+  } catch (err) {
+    logger.error(`[CRON] storage drop sweep failed: ${(err as Error).message}`);
   }
 });
 

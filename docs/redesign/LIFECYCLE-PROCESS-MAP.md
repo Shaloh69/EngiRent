@@ -293,6 +293,7 @@ a successful return until D-95 (2026-09-22).
 | | Trigger | Called from |
 |---|---|---|
 | **R1** `LATE_COLLECTION` | Renter never collected a deposit | hourly cron (`5 * * * *`) |
+| **S** storage drop (not a release) | A CHECKED item still on top: uncollected an hour after the deposit **whatever the pick-up date** (user ruling 2026-10-12), or a checked long-lead item that waited on top. Moves it to the lower compartment; the rental stays the renter's | `:25` cron, `decideStorageDrop` |
 | **R2** `OWNER_RETURN_PICKUP` | **A return passed** | the four completion paths (D-95) |
 | **R3** `CANCELLED_WITH_ITEM` | Cancelled with the item inside | cancel paths |
 | **R4** `DEPOSIT_REJECTED` | A deposit was rejected | `index.ts`, `adminController.ts` |

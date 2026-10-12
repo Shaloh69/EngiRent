@@ -106,11 +106,12 @@ export async function dropToStorage(
     return false;
   }
   if (bay.bottomStatus !== "AVAILABLE" || bay.bottomRentalId) {
-    logger.error(
-      `Storage drop REFUSED for rental ${rentalId}: bay ${bay.lockerNumber} lower ` +
-        `compartment is occupied by ${bay.bottomRentalId ?? "an unknown item"}. ` +
-        `Never drop onto an un-retrieved item. Assignment should have prevented ` +
-        `this — see canAcceptDeposit.`,
+    // Expected since 2026-10-12: a long-lead deposit may be assigned a bay whose
+    // lower compartment is busy (it waits on top). Never drop onto an
+    // un-retrieved item; runStorageDropSweep tries again when the lower frees.
+    logger.warn(
+      `Storage drop deferred for rental ${rentalId}: bay ${bay.lockerNumber} lower ` +
+        `compartment is occupied by ${bay.bottomRentalId ?? "an unknown item"}; the item waits on top.`,
     );
     return false;
   }
