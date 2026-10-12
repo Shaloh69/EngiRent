@@ -28,16 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.14.1",
-  buildNumber: 35,
-  fileName: "Engirent_Prerelease35.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.14.2",
+  buildNumber: 36,
+  fileName: "Engirent_Prerelease36.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-12",
   sizeMb: 87.4,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Forgot your password? Tap \"Forgot password?\" on the sign-in screen and we email you a 6-digit code to set a new one",
-    "EngiRent now sends email: reset codes, and dispute case updates and reminders",
-    "Includes everything in 1.14.0: disputes, guardians, and finding the server after it restarts",
+    "Fixes the app asking the server for your profile over and over after the connection dropped, which could lock everyone on the same network out for a while",
+    "Includes everything in 1.14.1: Forgot password by email code, disputes, guardians, and finding the server after it restarts",
   ],
 };
 

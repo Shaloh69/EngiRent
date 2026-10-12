@@ -10864,3 +10864,19 @@ Kiosk process started 22:00:45, the uploader file was written 21:59:58, so the r
 hcd.1 usb-0:2). KIOSK-001 reconnected 22:01:44; occupancy 1 RESERVED (the Long Sleeve deposit waiting to be re-confirmed), 2 AVAILABLE (Hand Rivets collected), 3 and 4
 AVAILABLE. **`eth0` carrier = 0: no Ethernet link, the Pi is still on `GFiber_2.4_Coverage_e3280` (signal 75).** A 5-ping test to the server now: 0% loss, 44-57 ms
 (earlier 66% loss): the Wi-Fi is intermittent, not fixed. NOT yet seen: a deposit upload (re-deposit of the Long Sleeve) and the retry actually firing.
+
+### 2026-10-12 22:55 — BUG (user): admin "Too many requests"; cause was the PHONE APP's profile loop. FIXED and RELEASED 1.14.2+36
+
+**Evidence:** limiter is 1000 requests / 15 min per real IP (server `.env`); in 14:15-14:32 UTC there were 2,513 requests from one client, **2,287 of them `GET /auth/profile`**
+(`Dart/3.13`, ~2 per second), so the admin console (same IP) got 429 on everything. **Cause (code):** `AuthProvider._listenForVerificationDecisions()` assigned
+`_reconnectSub` without cancelling the previous subscription (since 2026-09-07, a12e729), and `loadUser()` → `_connectSocket()` → that method, so every profile load added another
+"socket reconnected" listener; after each reconnect N listeners fired N profile loads and added N more: the calls doubled per dropped connection (the Wi-Fi flaps and tonight's
+six API restarts fed it). **Fix:** cancel the old subscription first, plus one in-flight `loadUser()` shared by concurrent callers. **Seen on the emulator** (fixed debug build, real API,
+airplane-mode drops): 3 drops → 2 profile calls, then 4 more drops → 3 calls, one per drop, no growth. The flood stopped when the user closed the app; the window cleared at ~14:42 UTC.
+Not demonstrated: the old build looping on the emulator (it would have hammered the live server again).
+**Release 1.14.2+36 (all four, N re-derived from the server: 35 was last):** APK validated (testzip clean, live API in all 3 ABIs, `CN=EngiRent` SHA-256 `3d113b7d…f1868`, versionCode 36,
+sha256 `69be00a5…a457` equal local/server); website `release.ts` + dated `changelog.ts` (server copies were identical to HEAD first), EngiRentWeb PID 30092 → 31128, `/`, `/download`,
+`/changelog` show 1.14.2, APK served; `AppRelease` 1.14.2 upserted, `LATEST_APP_VERSION=1.14.2` (`.env` backed up), API PID 24064 → **17256** (no kiosk flow in the log first),
+`/app-config` latestVersion 1.14.2. Admin console 200, API health 200, kiosk reconnected 22:54:14.
+**Still open (not done):** no server-side defence if another client loops (the limiter is per IP, so one bad client blocks everyone behind the same IP; a per-user ceiling or a
+separate admin allowance would stop that). Not seen: the Long Sleeve re-deposit; the first real storage drop; the bay-3 capture through the server; the touchscreen.

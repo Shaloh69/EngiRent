@@ -78,7 +78,14 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> loadUser() async {
+  Future<void>? _loadingUser;
+
+  /// One profile fetch at a time: events that arrive while one is already in
+  /// flight (several socket events at once, a reconnect plus a screen) share
+  /// its result instead of each sending their own request.
+  Future<void> loadUser() => _loadingUser ??= _fetchUser().whenComplete(() => _loadingUser = null);
+
+  Future<void> _fetchUser() async {
     final result = await _authService.getProfile();
 
     if (result['success']) {
@@ -140,6 +147,15 @@ class AuthProvider with ChangeNotifier {
     // Without this, the most likely real sequence — a student closes the app,
     // an admin approves them, the student reopens it — leaves the Identity
     // tile reading "Under review" until something else happens to refetch.
+    //
+    // The previous subscription MUST be cancelled first (found live 2026-10-12:
+    // it was not, since 2026-09-07). loadUser() calls _connectSocket(), which
+    // calls this, so every profile load added another reconnect listener while
+    // the old one kept running. After each socket reconnect N listeners fired N
+    // profile loads, each adding one more listener: the calls doubled with every
+    // dropped connection and reached ~2 per second, which exhausted the server's
+    // per-IP rate limit and locked the admin console out too.
+    _reconnectSub?.cancel();
     _reconnectSub =
         SocketService.instance.onReconnected.listen((_) => loadUser());
   }

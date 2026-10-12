@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-12",
+    version: "1.14.2",
+    tag: "fix",
+    title: "No more request floods after a dropped connection",
+    bullets: [
+      "Each time the connection dropped and came back, the app sent more and more profile requests to the server, up to about two per second, until the server briefly refused everyone on the same network, admins included",
+      "The app now asks once, however many times the connection flickers",
+      "Also: the kiosk now retries sending the locker photos if the first try fails, so a weak Wi-Fi moment no longer leaves an item without an AI check",
+    ],
+  },
+  {
+    date: "2026-10-12",
     version: "1.14.1",
     tag: "feature",
     title: "Forgot password, and EngiRent can email you now",
