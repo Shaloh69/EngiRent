@@ -115,6 +115,7 @@ model User {
   feedback        Feedback[]
   messagesSent    Message[]
   disputesAsRenter Dispute[]     @relation("DisputeRenter")
+  passwordResetCodes PasswordResetCode[]
 
   @@index([email])
   @@index([studentId])
@@ -820,6 +821,25 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// Forgot password (2026-10-12). One row per emailed 6-digit code. Only an
+// HMAC of the code is stored (keyed by JWT_SECRET), never the code itself; a
+// code dies after 15 minutes, 5 wrong tries, a newer request, or one use.
+model PasswordResetCode {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("password_reset_codes")
 }
 
 // Real, versioned "what's new" content — a single source of truth read by

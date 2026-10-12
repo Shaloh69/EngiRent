@@ -13,6 +13,8 @@ import {
   registerFace,
   uploadIdPhoto,
   updatePayoutDestination,
+  forgotPassword,
+  resetPassword,
 } from "../controllers/authController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validation";
@@ -52,6 +54,36 @@ router.post(
     body("password").notEmpty().withMessage("Password is required"),
   ]),
   login,
+);
+
+// Forgot password: email a 6-digit code (same reply whether or not the
+// account exists), then set a new password with it. Public.
+router.post(
+  "/forgot-password",
+  validate([
+    body("email")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Valid email is required"),
+  ]),
+  forgotPassword,
+);
+
+router.post(
+  "/reset-password",
+  validate([
+    body("email")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Valid email is required"),
+    body("code")
+      .matches(/^\s*\d{6}\s*$/)
+      .withMessage("Enter the 6-digit code from the email"),
+    body("newPassword")
+      .isLength({ min: 8 })
+      .withMessage("New password must be at least 8 characters"),
+  ]),
+  resetPassword,
 );
 
 // Refresh token

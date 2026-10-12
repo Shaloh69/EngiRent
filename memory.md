@@ -2641,3 +2641,35 @@ live and seen: API PID 20952 (Dispute v2 server + media rewriter fix), admin 215
 If it rebooted, the Interactive-logon tasks, Docker/MySQL and the tunnels all need the usual restart (see the
 2026-10-09 entries), the tunnel URLs WILL rotate, and the runtime-URL gist (Shaloh69/c9c8b972…, read by the
 new app at launch) must be updated with `gh gist edit` as part of the rehost.
+**Update 15:16:** it was a REBOOT (`LastBootUpTime` 2026-10-11 15:14:37; user `transfer` logged on at the console
+15:15). All 7 tasks `Ready`, nothing listening (not even MySQL 3307). Docker Desktop auto-started 15:15:11 and
+failed: `starting WSL engine … Wsl/Service/CreateInstance/MountDisk/HCS/E_ACCESSDENIED` (wsl -d docker-desktop).
+Checked read-only and fine this time: `daemon.json` 124 B / `windows-daemon.json` 28 B parse (no zeros),
+`settings-store.json` still has `CustomWslDistroDir: D:\DockerDesktopWSL` + `AutoStart: true`, the D: data disk
+(14.51 GB) was written at 15:15:17. Docker also downloaded an update (4.85.0 → build 241994) in the same minute.
+Needs a restart of Docker Desktop FROM THE SERVER'S SCREEN (not SSH). Do NOT reset to factory defaults.
+**Recovered 16:06-16:17.** Docker Desktop restarts did NOT clear the E_ACCESSDENIED until: `wsl --shutdown` (over
+SSH, exit 0) → its 14 wedged processes stopped by PID (`docker desktop restart` fails with "processes still
+running", as on 10-09) → Docker Desktop relaunched INTO the console session through a one-off Interactive
+scheduled task (`EngiRentDockerStartOnce`, `-LogonType Interactive -RunLevel Highest`, deleted after). That works
+where starting it from SSH does not. Engine up on `overlayfs` (containerd store, correct); all 4 containers Up;
+real data read back: 14 users, 5 items, 10 rentals, 1 dispute, 2 letters. Tasks started; new tunnels: api
+`vcr-pamela-examines-baths`, admin `aid-astronomy-valuable-towers`, web `approved-combination-undefined-little`;
+`scripts/ops/server-repoint-tunnels.sh` re-pointed `.env`/`.env.local` (IN_FLIGHT 0); runtime-URL gist updated.
+All three tunnels 200; API ACAO = the new admin origin. **Published Prerelease33 still bakes the OLD API host**:
+it is broken until the next release (the D7 release, which carries the runtime URL lookup).
+
+## 2026-10-12 ~19:15-19:55 PHT — Email live; forgot password shipped (1.14.1+35); 5 planned API restarts
+
+No outage. **Planned** API restarts, each after checking the log for a live kiosk flow (none): 17856 → 26340 → 26532
+(SMTP), → 2852 (forgot password + Prisma regenerate), → 7052 (security fix), → 8924 (LATEST_APP_VERSION). Website
+7644 → 30092. Tunnels did NOT rotate. KIOSK-001 is back on Tailscale (reconnected 18:53, again after each restart).
+- **Email:** Gmail SMTP as `engirenthub.support@gmail.com`, app password typed by the user over SSH (never in this
+  session or the repo). Lesson: an `@` inside a value crossing bash → ssh → PowerShell got eaten and my echo still
+  looked right; **write `.env` values with a scp'd `.ps1` using single-quoted literals, then read the FILE back.**
+- **Forgot password** (`services/passwordResetService.ts`, `forgot_password_screen.dart`): 6-digit code by email,
+  HMAC-only storage, 15 min, 5 tries, single use, no account enumeration. Lesson: `utils/email.ts` logs every
+  subject line, so **never put a secret in an email subject**; and don't await the mailer on a public endpoint
+  whose reply must not differ between known and unknown accounts.
+- Fixture `e2e-dispute-owner@students.uclm.edu.ph` password changed by the test (value in the private auto-memory only).
+- Classifier refused the first deploy ([Production Deploy]); the user said yes and the retry went through.

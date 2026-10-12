@@ -28,15 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.14.0",
-  buildNumber: 34,
-  fileName: "Engirent_Prerelease34.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-10-11",
+  version: "1.14.1",
+  buildNumber: 35,
+  fileName: "Engirent_Prerelease35.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-10-12",
   sizeMb: 87.4,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Reconnects to the EngiRent server after it restarted on 2026-10-09 at a new address",
-    "No feature changes: this is the 1.13.4 app, rebuilt against the current server address",
+    "Forgot your password? Tap \"Forgot password?\" on the sign-in screen and we email you a 6-digit code to set a new one",
+    "EngiRent now sends email: reset codes, and dispute case updates and reminders",
+    "Includes everything in 1.14.0: disputes, guardians, and finding the server after it restarts",
   ],
 };
 

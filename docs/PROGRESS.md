@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE DISPUTE v2 (in progress, G2 table + entries at the END) - 2026-10-11 23:15 - D1-D3 server, D6 admin, D7 phone SEEN (except the kiosk pay/collect modes, guardian banner, My Listings prompt, owner case view); RELEASED 1.14.0+34 (Prerelease34, runtime API URL via gist Shaloh69/c9c8b972...); payments MANUAL (kill switch) until a LIVE PayMongo key; D8 kiosk NOT started (G1: D7 kiosk modes unseen, kiosk OFFLINE) - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little - cases ER-DSP-2026-0001 (Hand Rivets, OPEN, first reminder 2026-10-12 ~12:45) and -0002 (TEST fixture, overturned) - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
+[PHASE DISPUTE v2 (in progress, G2 table + entries at the END) + FORGOT PASSWORD (G2 table at the END) - 2026-10-12 19:55 - EMAIL LIVE (Gmail SMTP engirenthub.support, test sent 19:17); KIOSK-001 ONLINE again; D1-D3 server, D6 admin, D7 phone SEEN (except the kiosk pay/collect modes, guardian banner, My Listings prompt, owner case view); payments MANUAL until a LIVE PayMongo key; RELEASED 1.14.1+35 (forgot password, seen); NEXT: D7 kiosk-mode walk-through (G11) then D8 kiosk - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little - cases ER-DSP-2026-0001 (OPEN) and -0002 (TEST, overturned) - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -10617,3 +10617,85 @@ No reboot since 2026-10-11 15:14:37. All 7 tasks Running; API PID 17856, admin 1
 serves full length; gist points at the live API; CORS allows the admin origin. **D5 reminder seen live:**
 ER-DSP-2026-0001 got its day-1 reminder at 2026-10-12 13:02 PHT (the :02 sweep after 12:43), in-app; email NOT_SENT
 (no SMTP) recorded honestly; reminderStage 1; owed ₱60 (day 2).
+
+### 2026-10-12 19:20 — email (Gmail SMTP) LIVE; kiosk back online
+
+User asked to set up email. Brevo was considered and dropped (user: Gmail only). Sender `engirenthub.support@gmail.com`
+with a Google app password the user typed themselves over SSH into the server `.env` (hidden prompt; the secret never
+entered this session or the repo). `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587` (STARTTLS), `SMTP_USER`, `SMTP_FROM`,
+`SMTP_PASSWORD`. **Correction to what I told the user earlier:** my first write of `SMTP_USER`/`SMTP_FROM` lost the
+address (the `@` mangled crossing bash → ssh → PowerShell) while the echo I showed looked right; found by the first test
+(`user set false`), fixed with a scp'd `.ps1` (backup `.env.bak-smtpfix-*`). **Seen:** test mail via the server's own
+`dist/utils/email.js` `sendEmail` → `Email sent to engirenthub.support@gmail.com` 19:17:59, `sent true`. API restarted
+twice for it (no kiosk flow in the log either time): PID 17856 → 26340 → **26532**, health 200, tunnels unchanged.
+KIOSK-001 is **online again** (Tailscale direct; reconnected 18:53 and 19:18:33; occupancy 1 AWAITING_RETRIEVAL,
+2 AVAILABLE, 3 OUT_OF_SERVICE, 4 AVAILABLE). From now on dispute case events can record email as SENT.
+
+## FORGOT PASSWORD (user request 2026-10-12 19:20, "now that we have emails"). G2 section table, repo-derived
+
+Derived 2026-10-12 from the repo: no forgot/reset route, controller, model or screen exists anywhere (grep of server,
+app, schema). Existing pieces reused: `utils/bcrypt.ts` hashPassword (same as register/changePassword), `utils/email.ts`
+`sendEmail` (returns boolean), `User.refreshToken` (single stored refresh token, cleared on logout/delete), global
+per-IP `rateLimiter`, app `ApiService.post(..., authenticated: false)`, login screen `features/auth/screens/login_screen.dart`.
+
+| # | Section | Where | Done when |
+|---|---------|-------|-----------|
+| F1 | `PasswordResetCode` table (userId, codeHash, expiresAt, attempts, usedAt) | `prisma/schema.prisma`, additive `db push` | table exists on the server DB |
+| F2 | Request + reset service: 6-digit code (crypto.randomInt), HMAC-SHA256 hash keyed by JWT_SECRET (code never stored or logged), 15 min TTL, 5 tries per code, new request voids older codes, 60 s resend gap, 5 codes/hour/account; same reply whether or not the email exists (no account enumeration); 503 for everyone when SMTP is not configured; success clears `refreshToken` (signs other devices out at their next refresh) and emails a "password changed" notice | `services/passwordResetService.ts`, `controllers/authController.ts`, `routes/authRoutes.ts` | unit tests for code/hash/limits; live: wrong code counts down, right code changes the password, old password refused |
+| F3 | App: "Forgot password?" on login → email step → code + new password step, resend with countdown, back to login with the email filled | `features/auth/screens/forgot_password_screen.dart`, `login_screen.dart` | seen on the emulator end to end |
+| F4 | Full release (APK 35 validated, website, changelog, AppRelease, LATEST_APP_VERSION) | client/web config, server | all four reached |
+
+Verification plan (G1, nothing else unseen is added): the real email path is proven (19:17 test); for the screen walk
+I request a code for the e2e fixture `e2e-dispute-owner@…` (not a real inbox), which proves the request path and the
+log line, then plant a known code hash for that fixture directly in the DB to walk F3 on the emulator. Never for a real
+student account.
+
+### 2026-10-12 19:40 — forgot password F1-F3 BUILT, NOT deployed, NOT seen
+
+- F1 `PasswordResetCode` in `schema.prisma` (validate + generate clean). F2 `services/passwordResetService.ts`,
+  `forgotPassword`/`resetPassword` in `authController.ts`, `POST /auth/forgot-password` + `/auth/reset-password` in
+  `authRoutes.ts`; tries are counted atomically before the comparison and the code is consumed before the password
+  changes (no race past 5 tries, no double use). `passwordReset.test.ts` 10/10; tsc clean. Full suite 443/446: the 3
+  failures are `lockerCompartmentsRetry` + `appConfigResilience`, which pass 8/8 alone (timing flake under load, not
+  this change). F3 `forgot_password_screen.dart` + "Forgot password?" on `login_screen.dart`; `flutter analyze` clean.
+- **Deploy REFUSED by the auto-mode classifier ([Production Deploy])**: the copy of 4 files + additive `prisma db push`
+  (new table only). Verified nothing reached the server (service file absent, schema has no PasswordResetCode). The
+  three server files I would overwrite are byte-identical to HEAD (compared 19:35), so the copy is safe once allowed.
+  Waiting on the user. G1: F3 cannot be seen until F2 is live; nothing else is being built meanwhile.
+
+### 2026-10-12 19:55 — forgot password DEPLOYED, SEEN, RELEASED 1.14.1+35 (F1-F4 done)
+
+- **Deploy** (user: "Yes, deploy it" after the classifier refusal): 4 files copied, `db push` created
+  `password_reset_codes` (additive), Prisma regenerated with the API stopped, API PID 26532 → 2852.
+- **Seen live, API:** unknown email → the same generic 200 as a real one; bad email → 400; reset with no code → "expired
+  or already used". **Seen on the emulator** (debug build, fixture `e2e-dispute-owner@…`): "Forgot password?" on sign-in
+  → email step → code step with the 60 s resend countdown → wrong code: toast "That code is not right. 4 tries left." →
+  right code → back on sign-in with the email filled. Then: old password 401, new password 200, reusing the code
+  refused. The fixture's password changed (new value in the private auto-memory, not here: the repo is public).
+- **SECURITY finding, fixed and deployed the same hour:** the code went out in the email SUBJECT, and `utils/email.ts`
+  logs every subject, so the code was written to the server log (one code, for the test fixture only, since used and
+  dead). Also, a known account answered ~4 s slower than an unknown one (the reply waited on Gmail), which revealed who
+  is registered. Fix: subject without the code; both emails sent without awaiting. A test pins "the code is not in
+  the subject". Re-seen live: both replies ~0.5 s (0.45 / 0.51), and the log line reads "Your EngiRent Hub password
+  reset code". API PID 2852 → 7052.
+- **Release 1.14.1+35** (N re-derived from the server's downloads: 34 was last). Validated: testzip clean; the live API
+  `/api/v1` is baked into all 3 ABIs; `CN=EngiRent` signer, SHA-256 `3d113b7d…f1868` (same key); versionCode 35 /
+  1.14.1; sha256 `e6a816d3…95a2` matches local and server; serves 91,682,087 bytes. Website `release.ts` + dated
+  `changelog.ts` entry, EngiRentWeb restarted (PID 7644 → 30092), site shows 1.14.1. **Also fixed:** `release.ts` had
+  shipped 1.14.0 with the 1.13.5 highlights ("No feature changes…"), so the download page described the wrong build;
+  this release replaces them. `AppRelease` 1.14.1 upserted, `LATEST_APP_VERSION=1.14.1` (MIN untouched), API restarted
+  (PID 8924); `/app-config` latestVersion 1.14.1 with the new highlights. Gist still points at the live API.
+- Tests: `passwordReset.test.ts` 10/10. Full suite earlier 443/446 (3 timing flakes that pass alone).
+
+**G5 six-symptom check at the forgot-password boundary — ONE SYMPTOM:**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent: N, tunnel hosts, PIDs, server file parity all re-derived |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | Absent: G2 table before the first edit; kiosk log checked before each of 5 API restarts; the classifier refusal surfaced, not worked around |
+| 4 drifting to agreement | Absent |
+| 5 batching | Absent: F2 seen live before F3, F3 seen before the release |
+| 6 skipping verification | **PRESENT, partly**: I reported the SMTP sender as written from an echo that was not the file (the `@` was lost); caught by the first real test, corrected to the user. And the code-in-subject leak was found only on the live log, after deploy: the "code is never logged" claim in my own comment was not tested until then |
+
+**Next:** D8 (kiosk UI). KIOSK-001 is ONLINE now, so the D7 kiosk pay/collect walk-through can happen with a G11 yes.

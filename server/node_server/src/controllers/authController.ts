@@ -15,6 +15,11 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import logger from "../utils/logger";
+import {
+  GENERIC_REQUEST_REPLY,
+  requestPasswordReset,
+  resetPasswordWithCode,
+} from "../services/passwordResetService";
 import { notifyAdmins } from "../services/adminRoom";
 import { encryptJson } from "../utils/crypto";
 import axios from "axios";
@@ -748,6 +753,35 @@ export const changePassword = async (
 
     logger.info(`Password changed: ${req.user.email}`);
     res.json({ success: true, message: "Password changed successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Forgot password (2026-10-12). Both public; the rules live in
+// services/passwordResetService.ts.
+export const forgotPassword = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    await requestPasswordReset(req.body.email);
+    res.json({ success: true, message: GENERIC_REQUEST_REPLY });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetPassword = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { email, code, newPassword } = req.body;
+    await resetPasswordWithCode(email, code, newPassword);
+    res.json({ success: true, message: "Password changed. Sign in with your new password." });
   } catch (error) {
     next(error);
   }

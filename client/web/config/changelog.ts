@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-12",
+    version: "1.14.1",
+    tag: "feature",
+    title: "Forgot password, and EngiRent can email you now",
+    bullets: [
+      "\"Forgot password?\" on the sign-in screen emails a 6-digit code to your account's address; it works once, for 15 minutes, and allows 5 tries",
+      "Changing your password this way signs your other devices out and sends you an email saying it happened",
+      "Dispute case updates and reminders now arrive by email as well as in the app",
+    ],
+  },
+  {
     date: "2026-10-11",
     version: "1.14.0",
     tag: "release",
