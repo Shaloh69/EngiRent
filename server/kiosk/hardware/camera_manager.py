@@ -77,8 +77,12 @@ _BY_PATH = "/dev/v4l/by-path/{}-video-index0"
 USB_DEVICE_MAP: dict[int, str] = {
     0: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.2:1.0"),  # Locker 1
     1: _BY_PATH.format("platform-xhci-hcd.0-usb-0:1.3:1.0"),  # Locker 2
-    2: _BY_PATH.format("platform-xhci-hcd.0-usb-0:2:1.0"),    # Locker 3
-    # Moved 2026-09-24: the touchscreen now occupies hcd.1 port 2. This camera
+    # Moved 2026-10-12 (found live: "Locker camera locker=3 not initialised"): the
+    # cable was moved to hcd.1 port 2 (the touchscreen's HID now shows on hcd.0
+    # port 2). Confirmed by `lsusb -t`, `ls /dev/v4l/by-path` and 3 test frames
+    # from this path. Two cameras per controller, as the next entry requires.
+    2: _BY_PATH.format("platform-xhci-hcd.1-usb-0:2:1.0"),    # Locker 3
+    # Moved 2026-09-24: the touchscreen occupied hcd.1 port 2 then. This camera
     # MUST stay on the second controller (hcd.1) — with all four on hcd.0 the
     # bus runs out of bandwidth and STREAMON fails with ENOSPC (D-101).
     3: _BY_PATH.format("platform-xhci-hcd.1-usb-0:1:1.0"),    # Locker 4

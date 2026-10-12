@@ -10811,3 +10811,16 @@ Pre-checks: no kiosk activity, 21:20 is outside the 07-21 window, **0 rentals el
 upper-only bay have not happened yet; both need to be watched (G11 applies to the drop). **Warning found at restart:** the kiosk
 reports bay 3 `AVAILABLE` although its camera is "not initialised" since the cable was moved: a deposit could be assigned to
 bay 3 and then fail its check. It needs the camera fixed, or bay 3 put out of service (an admin kiosk command: the user's call).
+
+### 2026-10-12 21:30 — locker 3 camera: cause found, fix copied to the Pi, RESTART needs the user (sudo password)
+
+**Cause (read-only on the Pi, SSH works from here now):** `lsusb -t` shows all 4 cameras present (2 per controller). The kiosk maps
+locker 3 to `xhci-hcd.0-usb-0:2` (`hardware/camera_manager.py` `USB_DEVICE_MAP[2]`), but the cable now sits on
+`xhci-hcd.1-usb-0:2`; the touchscreen's HID now enumerates on hcd.0 port 2. The kiosk process (started 20:21) logged
+`Camera …hcd.0-usb-0:2… could not be opened` at 20:23:05 and `Locker camera locker=3 not initialised` ever since; lockers 1, 2, 4 fine.
+**Verified:** 3 test frames (39 KB) captured and discarded from `…hcd.1-usb-0:2:1.0-video-index0` with `v4l2-ctl`, so the camera on the new port
+works. **Fix (user approved "copy the file and restart the kiosk service"):** line `2:` of `USB_DEVICE_MAP` now points at
+`platform-xhci-hcd.1-usb-0:2:1.0`; the Pi's file was identical to HEAD first, backed up as `camera_manager.py.bak-20261012-cam3`, replaced,
+syntax checked on the Pi. **The running kiosk process still has the old mapping:** `systemctl restart engirent-kiosk` as `engirent` is refused
+("Interactive authentication required", no passwordless sudo), so the restart is the user's one command. NOT seen: bay 3 capturing.
+If the cable is moved again the mapping breaks the same way (the paths are physical ports).
