@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-13",
+    version: "1.14.5",
+    tag: "feature",
+    title: "Report problems the locker camera cannot see",
+    bullets: [
+      "Renters can report an item that was broken or incomplete at pickup, within 24 hours; reported within 3 hours, the whole rent can come back",
+      "Owners can report damage found after a return, within 24 hours of collecting it; the renter's deposit is held until then",
+      "Each report needs a written statement, photos and, for damage, a short video recorded in the app; the other student can answer within 24 hours",
+      "An admin compares both sides with the locker photos and decides how responsible each student is; both see the decision and the amounts in plain words",
+      "Tapping a notification now opens its rental, and return dates and \"due\" labels now match your calendar",
+    ],
+  },
+  {
     date: "2026-10-12",
     version: "1.14.4",
     tag: "feature",

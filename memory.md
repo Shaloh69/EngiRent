@@ -2705,3 +2705,7 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
   which contradicts thesis case SW-07 "Stay logged in". Raised with the user.
 - Thesis test cases: 184 (SW 51, AD 35, IT 31, AC 17, DS 18 now include concerns); IT "Owner collects" corrected
   (the deposit is no longer refunded at collection).
+- **2026-10-13 02:30 DEPLOYED + RELEASED 1.14.5+39.** API restart was HELD for a live kiosk return (bay 4, 02:03) and a bay-3
+  door cycle (02:11), restarted 02:15 after 3 quiet minutes. Lesson: "Kiosk disconnected" log lines are phone sockets, not the
+  kiosk; the real signals are `PI-LOG` bay claims and `/api/v1/kiosk/*` calls (an `open-bay` line is logged when its door cycle
+  ENDS). Live test used only test accounts: ER-CON-2026-0001 [TEST] on test rental f05cd079, decided 0%.

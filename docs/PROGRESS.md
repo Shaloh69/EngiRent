@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE CONCERNS v2 (G2 table + entries at the END) - 2026-10-13 01:45 - C0-C6 DONE: built, SEEN against a PRIVATE local API, thesis cases (184) + spec updated; NOT DEPLOYED; NEXT: user's go to deploy (server db push + files, admin, full release 1.14.5+39) - live stack unchanged: API 1.14.4 per-user limit, APK 1.14.4+38 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
+[PHASE CONCERNS v2 (entries at the END) - 2026-10-13 02:30 - DEPLOYED + RELEASED 1.14.5+39 (Prerelease39), tested live on test accounts (ER-CON-2026-0001 [TEST], decided 0%); API PID 24516, admin 29340, web 29756 - OPEN: D-117 (damage-window wording for rentals without a hold), SW-07 session restore (user to decide), D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11063,3 +11063,25 @@ absent (public repo: thesis documents stay untracked; nothing deployed without t
 
 **Next (needs the user):** deploy. Server: `prisma db push` (additive: 3 tables, 1 column, 2 enum values), copy the changed server files, restart the API only when the kiosk is idle.
 Admin: copy files, restart EngiRentAdmin. App: full release 1.14.5+39 (APK validated against the live API, website release + changelog, AppRelease + LATEST_APP_VERSION).
+
+### 2026-10-13 02:30 — Concerns v2 DEPLOYED + RELEASED 1.14.5+39 (user: "deploy and test"); tested live on test accounts
+
+**Server:** the 12 modified server/admin files were byte-identical (CR-stripped sha256) to `ad2aa98` on the server first; the 6 new ones absent. Uploaded 15 server + 4 test files
+(`middleware/__tests__` does not exist in the server checkout; skipped), hashes re-checked on the server. `prisma migrate diff` first: purely additive (1 nullable column, 2 enum values
+appended, 3 tables, FKs). `prisma db push --skip-generate` while the old API ran. **API restart held** for a live kiosk flow (a real return at bay 4, 02:03-02:04, approved by the deep
+review under the OLD code; then a bay-3 door cycle 02:11:30-02:11:49), restarted at 02:15 after 3 quiet minutes: PID 24872 → **24516**, `dist/services/concernService.js` built 02:15:19,
+`/concerns/*` and `/admin/concerns` answer 401 (a made-up route 404), startup clean, KIOSK-001 re-registered 02:15:30. **Admin** PID 11908 → **29340** (next build ~6 min).
+**Release 1.14.5+39** (Prerelease39): APK testzip clean, live API URL in all 3 ABIs, no private-test address, `CN=EngiRent` `3d113b7d…f1868`, versionCode 39, 92,370,791 bytes, sha256
+`04803990…bd46` equal local/server; website: server `release.ts`/`changelog.ts` were HEAD first, EngiRentWeb PID 29656 → 29756, `/download` + `/changelog` show 1.14.5, the APK URL serves
+206; `AppRelease` 1.14.5 (3 highlights) + `LATEST_APP_VERSION=1.14.5` (app-config `latestVersion` 1.14.5). The split-ABI test APKs pinned to the private API were deleted before the build.
+**Tested live (test accounts only, no real student touched):** a labelled test rental `f05cd079` was created between `e2e-dispute-owner` and `e2e-sweep-probe` on the existing
+`[TEST]` item (return approved, deposit held 24 h; no money rows). As the owner over HTTP: options show the damage window open until the hold ends; a report without a video is refused
+with the reason; a full report (statement, stand-in photo, stand-in video) → **ER-CON-2026-0001 [TEST]**, video served `206` through the tunnel. In the LIVE admin console (headless
+browser): Concerns list shows it (waiting for an answer, 1 photo 1 video); the case page plays the video (readyState 4, 6 s); decided **0%** → NOT_UPHELD, nothing charged, hold released,
+owner notified ("Report sent", "Your case has been decided", both linked to the rental). The test renter is not restricted (nothing owed).
+**Not testable live with these accounts:** the app screens as a student. `e2e-dispute-owner` never finished profile setup (the app opens on "Verify your identity") and the probe's
+password is only in the e2e suites' environment; the 1.14.5 release is installed on the emulator and starts. The app screens were seen end to end on the private copy (C5).
+**New, open (D-117):** `reportWindows` says "the time to report damage has passed and the deposit has been refunded" for any rental without a hold, including returns approved before
+this deploy whose deposit is not refunded, and decided cases (where "already reported; see the case" is right). Not shown in the app (closed windows are hidden), visible in
+`/concerns/options`. Fix with the next server change; not committed undeployed.
+**Still open from before:** SW-07 "Stay logged in" vs no session restore (user to decide).
