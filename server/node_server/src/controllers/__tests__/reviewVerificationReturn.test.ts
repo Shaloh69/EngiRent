@@ -124,10 +124,10 @@ describe("reviewVerification — return, APPROVED (D-95 + E6.R)", () => {
     expect(requestReleaseMock).not.toHaveBeenCalled();
   });
 
-  it("refunds the deposit and pays the owner out at approval (D-95)", async () => {
+  it("settles at approval (D-95): the owner is paid, the deposit is HELD for the owner's damage check (Concerns v2)", async () => {
     const { io } = makeIo();
     await reviewVerification(makeReq("APPROVED", io), makeRes(), jest.fn());
-    expect(finalizeMock).toHaveBeenCalledWith("rental-1");
+    expect(finalizeMock).toHaveBeenCalledWith("rental-1", { holdDeposit: true });
   });
 
   it("does NOT complete the rental — it stays in VERIFICATION until the owner collects", async () => {

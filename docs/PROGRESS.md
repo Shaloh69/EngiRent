@@ -10946,3 +10946,44 @@ Spec: `docs/redesign/SPEC-CONCERNS-V2.md` (re-derived from the code; 7 decisions
 events), so an open screen keeps a stale button; `return:approved` is sent to the renter only, never the owner; the concern toast reads `message` but the server sends `error`.
 Facts that shape the design: the deposit is refunded at return APPROVAL (before the owner collects), and the live upload limit is 10 MB per file (`video/mp4` already allowed).
 Waiting on the user's rulings; G2 table to be written from the spec once ruled.
+
+## PHASE CONCERNS v2 — user rulings 2026-10-13 ~01:00. G2 section table, repo-derived (spec: `docs/redesign/SPEC-CONCERNS-V2.md`)
+
+**Rulings:** (1) windows: mine to decide → renter DEFECT_ON_RECEIPT until **24 h after pickup** (`claimedAt`); owner DAMAGE_ON_RETURN from return approval until **24 h after collecting**
+(`retrievedAt`), or **72 h after approval** if never collected (so a deposit is never held more than 3 days). (2) hold the deposit until the owner's window closes: yes. (3) upheld defect:
+full rent back if reported within 3 h of pickup, otherwise the unused days, deposit back in full: yes. (4) the admin sets the outcome **as a percentage of responsibility, based on
+both sides' evidence** (applies to both kinds: the refund for a defect, the charge for damage), damage capped at the replacement value, from the deposit first, the rest owed. (5) video
+required (≤30 s) for the two damage kinds: yes. (6) the other party may reply within 24 h before the admin decides: yes. (7) 2 upheld cases in 90 days → review flag: yes.
+**Plus:** "both the admin and the app must show proper images, messages, prompts of what is happening and explanations."
+
+Re-derived facts the sections rest on: deposit refund + owner payout both run in `rentalSettlementService.finalizeRentalCompletion` (callers: `returnApprovalService.approveReturn`,
+`adminController` force-complete ~615 and dispute settle ~1298); settlement already deducts `DAMAGE_FEE`/`LATE_FEE`/`EXTENSION_FEE` from the deposit but pays the owner none of it;
+`Rental` has `claimedAt` (pickup), `releasedAt`/`retrievedAt` (owner collection), `completedAt`; `TransactionType` has `DAMAGE_FEE`; `/media/secure/:token` sends whole files (no HTTP
+Range, so video seeking fails); live upload limit 10 MB, `video/mp4` allowed; app has `camera`, `image_picker`, `video_player`. The rental detail screen does not reload on return events,
+`return:approved` goes to the renter only, and the concern toast reads the wrong field.
+
+| # | Section | Where | Done when (seen, not just tested) |
+|---|---------|-------|-----------|
+| C0 | Button fixes: screen reloads on any event for its rental; `return:approved` also to the owner; toast reads `error`; a sent concern shows as a status line | app `rental_detail_screen.dart`, server `returnApprovalService.ts` | emulator: screen updates without leaving it |
+| C1 | Data, additive: `Concern` (kind, reporter/respondent, status, response deadline, decision %, amounts, owed/paid), `ConcernEvidence` (statement/photo/video, private path), `ConcernEvent` (timeline), `Rental.depositHoldUntil` | `schema.prisma`, `db push` | tables exist on the server |
+| C2 | Deposit hold: approval pays the owner but holds the deposit; owner collection shortens the hold to +24 h; a sweep releases expired holds with no open damage case; a damage decision deducts first | `rentalSettlementService.ts`, `returnApprovalService.ts`, cron | unit tests + one fixture rental on the live DB |
+| C3 | Concern API: report (multipart, text ≥50, photos 1-5, video ≤40 MB for damage kinds, window + role checks), reply, read (signed evidence links), admin list/read/decide with a pure money calculator, owed payment (manual reference + admin confirm), restriction while owed, repeat flag, in-app + email messages that explain each step; media Range support | new `concern*` service/controller/routes, `mediaRoutes.ts`, `restriction.ts` | unit tests; live API exercised with fixtures |
+| C4 | Admin console: Concerns list + case page (timeline, statements, photo gallery, video player, locker photos on file, decision form with a live money preview and the explanation sent to both students), nav badge | `client/admin` | seen in a browser with a fixture case |
+| C5 | App: role/window-aware "Report a problem" on the rental; report screen (what happens next, statement, photos, 30 s in-app video at medium resolution, upload progress); case screen (timeline, both sides' evidence, decision explained, pay what is owed); reply screen; replaces today's button | `client/flutter_app` | seen on the emulator end to end with a fixture case |
+| C6 | Thesis test cases + spec marked built + full release (APK, website, changelog, AppRelease/LATEST) | docs, release | all four places |
+
+G1: one section at a time, each seen before the next starts. G11: nothing here drives a door; an early return uses the normal kiosk return flow.
+
+### 2026-10-13 02:30 — Concerns v2: C0-C3 BUILT and unit-tested (NOT deployed, NOT seen)
+
+C0 (app reload on any rental event, owner gets `return:approved`, toast reads `error`) — to be SEEN during C5's emulator walk (needs live events). C1 schema (Concern, ConcernEvidence,
+ConcernEvent, `Rental.depositHoldUntil`, `RENTAL_REFUND`, `DAMAGE_PAYMENT`). C2 `rentalSettlementService` split (`refundDepositNet`, `finalizeRentalCompletion(…, {holdDeposit})`,
+`releaseHeldDeposit`, rent refunds reduce the owner payout), approval holds (72 h), owner collection shortens to +24 h and tells the owner, `runDepositHoldSweep`. C3 `concernRules.ts`
+(windows, evidence, money, wording), `concernService.ts`, `concernController.ts`, `/concerns` + `/admin/concerns` routes, `uploadEvidence` (40 MB, evidence routes only), restriction
+while damage is owed, return-check concerns closed by the check (after the approval notices, guarded), cron `:40` (unanswered → admin, expired holds → refund), HTTP Range on
+`/media/secure`. Tests: concernRules 17, concernService 14, depositHold 6; `reviewVerificationReturn` updated (hold rule); `rateLimiterPerUser` isolated from the on-disk store
+(a polluted local `data/rate-limit-store.json` from my own earlier run was deleted; gitignored, never on the server). **Full suite 513/513, tsc clean.**
+Decisions made while building (mine, within the rulings): every kind gives the other student 24 h to answer; the admin may decide earlier; a RETURN_CHECK concern is closed by the
+check's own decision (or by an admin with a note); an upheld defect sets the rental's end to decision + 24 h (no late fee if returned by then) and pauses the listing (`isListed=false`,
+`isFlagged`); damage compensation and owed payments are recorded as PENDING owner payouts (staff pay out, as with all manual payments); payment of what is owed is manual (reference +
+admin confirm) while payments are on the MANUAL kill switch. Spec line "late fees pause while a defect case is open" NOT built (the decision sets the end date instead).

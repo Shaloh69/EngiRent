@@ -48,7 +48,8 @@ import {
   storageDropForCommand,
 } from "./services/storageDropService";
 import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
-import { runCollectionSweep, runStorageDropSweep } from "./services/collectionSweepService";
+import { runCollectionSweep, runStorageDropSweep, runDepositHoldSweep } from "./services/collectionSweepService";
+import { runConcernSweep } from "./services/concernService";
 import { buildRetryFeedback } from "./services/retryFeedback";
 import { cancelOverdueUndepositedRentals } from "./services/overdueRentalCleanup";
 import {
@@ -1730,6 +1731,21 @@ cron.schedule("25 * * * *", async () => {
     logger.info(`[CRON] storage drop sweep: ${considered} checked item(s) on top, ${dropped} dropped`);
   } catch (err) {
     logger.error(`[CRON] storage drop sweep failed: ${(err as Error).message}`);
+  }
+});
+
+// Concerns v2: a case nobody answered within 24 h goes to an admin; a held
+// deposit whose owner window has closed (and has no damage case open) is
+// refunded. Money and messages only: nothing here drives hardware.
+cron.schedule("40 * * * *", async () => {
+  try {
+    const ready = await runConcernSweep(io);
+    const d = await runDepositHoldSweep();
+    if (ready > 0 || d.due > 0) {
+      logger.info(`[CRON] concerns: ${ready} case(s) to an admin; deposits: ${d.due} hold(s) due, ${d.released} refunded, ${d.waitingOnCase} waiting on a case`);
+    }
+  } catch (err) {
+    logger.error(`[CRON] concern/deposit sweep failed: ${(err as Error).message}`);
   }
 });
 

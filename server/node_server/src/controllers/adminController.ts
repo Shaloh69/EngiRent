@@ -788,6 +788,8 @@ export const reviewVerification = async (
         deadlineHours,
         note: reviewNotes ? `Admin note: ${reviewNotes}` : undefined,
       });
+      const { closeReturnCheckConcerns } = await import("../services/concernService");
+      await closeReturnCheckConcerns(req.app.get("io"), returnRental.id, "REJECTED");
       await recordAudit(req, {
         action: "dispute.open",
         targetType: "rental",

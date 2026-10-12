@@ -1,3 +1,4 @@
+import { adminConcern, adminConcerns, adminConfirmPayment, adminDecide, adminPreview } from "../controllers/concernController";
 import { Router } from "express";
 import { body, param } from "express-validator";
 import { authenticate, requireAdmin, requireStaff } from "../middleware/auth";
@@ -231,6 +232,27 @@ router.post(
   validate([param("id").isUUID(), body("preface").optional().isString().isLength({ max: 1000 })]),
   adminResendPrompt,
 );
+// Concerns v2 — reports of problems the camera cannot see (spec SPEC-CONCERNS-V2.md).
+router.get("/concerns", requireAdmin, adminConcerns);
+router.get("/concerns/:id", requireAdmin, validate([param("id").isUUID()]), adminConcern);
+router.post(
+  "/concerns/:id/preview",
+  requireAdmin,
+  validate([param("id").isUUID(), body("pct").isInt({ min: 0, max: 100 }), body("assessedAmount").optional({ nullable: true }).isFloat({ min: 0 })]),
+  adminPreview,
+);
+router.post(
+  "/concerns/:id/decide",
+  requireAdmin,
+  validate([
+    param("id").isUUID(),
+    body("pct").isInt({ min: 0, max: 100 }),
+    body("assessedAmount").optional({ nullable: true }).isFloat({ min: 0 }),
+    body("note").isString().isLength({ min: 20, max: 4000 }),
+  ]),
+  adminDecide,
+);
+router.post("/concerns/:id/confirm-payment", requireAdmin, validate([param("id").isUUID()]), adminConfirmPayment);
 // DRIVES THE ACTUATOR (G11 applies to anyone pressing it): same guards as the sweep.
 router.post("/disputes/:id/drop-wrong-item", requireAdmin, validate([param("id").isUUID()]), adminDropWrongItem);
 router.post(

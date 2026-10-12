@@ -3,6 +3,7 @@ import prisma from "../config/database";
 import { requestRelease, bayBusyWith } from "./retrievalService";
 import { decideStorageDrop, readRetrievalPolicy } from "./retrievalPolicy";
 import { dropToStorage } from "./storageDropService";
+import { releaseHeldDeposit } from "./rentalSettlementService";
 import { hasLiveGrantOnBay } from "./kioskBayAccessStore";
 import logger from "../utils/logger";
 import { voidRentalTransactions } from "./overdueRentalCleanup";
@@ -117,4 +118,51 @@ export async function runStorageDropSweep(
     if (await dropToStorage(io, r.id)) dropped += 1;
   }
   return { considered: candidates.length, dropped, refusals };
+}
+
+/**
+ * Concerns v2 (ruling 2): refund the deposits whose hold has run out. A hold
+ * set at return approval ends 24 h after the owner collects, or 72 h after
+ * approval at the latest; a rental with a damage report still open is skipped
+ * (the case decision releases it, after its deduction).
+ */
+export async function runDepositHoldSweep(
+  now: Date = new Date(),
+): Promise<{ due: number; released: number; waitingOnCase: number }> {
+  const due = await prisma.rental.findMany({
+    where: { depositHoldUntil: { not: null, lte: now } },
+    select: { id: true, renterId: true, item: { select: { title: true } } },
+  });
+  let released = 0;
+  let waitingOnCase = 0;
+  for (const r of due) {
+    const open = await prisma.concern.count({
+      where: { rentalId: r.id, kind: "DAMAGE_ON_RETURN", status: { in: ["AWAITING_RESPONSE", "UNDER_REVIEW"] } },
+    });
+    if (open > 0) {
+      waitingOnCase += 1;
+      continue;
+    }
+    if (await releaseHeldDeposit(r.id, "the owner's window to report damage closed")) {
+      released += 1;
+      const refund = await prisma.transaction.findFirst({
+        where: { rentalId: r.id, type: "DEPOSIT_REFUND" },
+        orderBy: { createdAt: "desc" },
+        select: { amount: true },
+      });
+      await prisma.notification.create({
+        data: {
+          userId: r.renterId,
+          title: "Deposit refunded",
+          message:
+            `The owner of ${r.item.title} reported no damage in time, so your ` +
+            `₱${(refund?.amount ?? 0).toFixed(2)} deposit has been refunded.`,
+          type: "PAYMENT_RECEIVED",
+          relatedEntityId: r.id,
+          relatedEntityType: "rental",
+        },
+      });
+    }
+  }
+  return { due: due.length, released, waitingOnCase };
 }

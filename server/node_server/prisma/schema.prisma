@@ -116,6 +116,8 @@ model User {
   messagesSent    Message[]
   disputesAsRenter Dispute[]     @relation("DisputeRenter")
   passwordResetCodes PasswordResetCode[]
+  concernsReported   Concern[] @relation("ConcernReporter")
+  concernsAgainst    Concern[] @relation("ConcernRespondent")
 
   @@index([email])
   @@index([studentId])
@@ -278,6 +280,11 @@ model Rental {
   claimedAt   DateTime?
   returnedAt  DateTime?
   completedAt DateTime?
+  /// Concerns v2 (2026-10-13): after a return is approved the renter's deposit is
+  /// HELD until the owner has had a chance to report hidden damage: 24 h after the
+  /// owner collects, at most 72 h after approval. Null = not held (refunded, or
+  /// never held). Released by the deposit sweep, or by a damage-case decision.
+  depositHoldUntil DateTime?
 
   // Relations
   item                Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -293,6 +300,7 @@ model Rental {
   retrievalLocker     Locker?       @relation("RetrievalLocker", fields: [retrievalLockerId], references: [id])
   conversation        Conversation?
   disputes            Dispute[]
+  concerns            Concern[]
 
   @@index([itemId])
   @@index([renterId])
@@ -505,6 +513,112 @@ model DisputeEvent {
 
 /// Ruling 13: a formal letter the ADMIN submits to a UCLM office. The content is
 /// snapshotted at generation, so what was submitted can always be shown exactly.
+// ── Concerns v2 (user rulings 2026-10-13) ──────────────────────────────────
+// A student reports a problem the locker camera cannot see, with a written
+// account, photos and (for damage) a video; the other student may answer; an
+// admin decides a percentage of responsibility. Separate from Dispute (the
+// wrong-item case with escalating fees) so none of that machinery fires here.
+// Spec: docs/redesign/SPEC-CONCERNS-V2.md.
+
+enum ConcernKind {
+  DEFECT_ON_RECEIPT // renter: the item was broken / incomplete when picked up
+  DAMAGE_ON_RETURN // owner: the item came back damaged in a way the camera missed
+  RETURN_CHECK // either: about a return that is still being checked
+}
+
+enum ConcernStatus {
+  AWAITING_RESPONSE // the other student has until responseDueAt to answer
+  UNDER_REVIEW // answered, or the answer window passed: an admin decides
+  UPHELD // 100% responsibility
+  PARTLY_UPHELD // 1-99%
+  NOT_UPHELD // 0%
+  CLOSED // a RETURN_CHECK concern closed by the return check's own decision
+}
+
+enum ConcernParty {
+  RENTER
+  OWNER
+}
+
+enum ConcernEvidenceType {
+  STATEMENT
+  PHOTO
+  VIDEO
+}
+
+model Concern {
+  id          String        @id @default(uuid())
+  referenceNo String        @unique // ER-CON-2026-0001
+  rentalId    String
+  rental      Rental        @relation(fields: [rentalId], references: [id])
+  kind        ConcernKind
+  status      ConcernStatus @default(AWAITING_RESPONSE)
+
+  reporterId    String
+  reporter      User         @relation("ConcernReporter", fields: [reporterId], references: [id])
+  reporterParty ConcernParty
+  respondentId  String
+  respondent    User         @relation("ConcernRespondent", fields: [respondentId], references: [id])
+  responseDueAt DateTime
+  respondedAt   DateTime?
+
+  // The admin's decision. responsibilityPct is the share borne by the student the
+  // case is AGAINST (the respondent): the owner for a defect, the renter for damage.
+  decidedAt         DateTime?
+  decidedById       String?
+  responsibilityPct Int?
+  assessedAmount    Float? // damage: the damage value the admin assessed (capped)
+  refundAmount      Float? // defect: rent given back to the renter
+  chargeAmount      Float? // damage: total charged to the renter
+  fromDeposit       Float? // damage: part of the charge taken from the held deposit
+  amountOwed        Float? // damage: the rest, owed by the renter
+  owedPaidAt        DateTime?
+  decisionNote      String?   @db.Text // the explanation both students read
+  repeatFlag        Boolean   @default(false) // 2+ upheld cases against the respondent in 90 days
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evidence ConcernEvidence[]
+  events   ConcernEvent[]
+
+  @@index([rentalId])
+  @@index([status])
+  @@index([respondentId, status])
+  @@index([reporterId])
+  @@map("concerns")
+}
+
+model ConcernEvidence {
+  id          String              @id @default(uuid())
+  concernId   String
+  concern     Concern             @relation(fields: [concernId], references: [id], onDelete: Cascade)
+  authorId    String
+  authorParty ConcernParty? // null for an admin
+  type        ConcernEvidenceType
+  text        String?             @db.Text // STATEMENT
+  path        String? // PHOTO / VIDEO: private storage path, served only through signed links
+  mime        String?
+  sizeBytes   Int?
+  createdAt   DateTime            @default(now())
+
+  @@index([concernId])
+  @@map("concern_evidence")
+}
+
+model ConcernEvent {
+  id        String   @id @default(uuid())
+  concernId String
+  concern   Concern  @relation(fields: [concernId], references: [id], onDelete: Cascade)
+  type      String // REPORTED | ANSWERED | READY | DECIDED | PAYMENT_SUBMITTED | PAYMENT_CONFIRMED | CLOSED | NOTE
+  actor     String // RENTER | OWNER | ADMIN | SYSTEM
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([concernId, createdAt])
+  @@map("concern_events")
+}
+
 model DisputeLetter {
   id          String @id @default(uuid())
   disputeId   String
@@ -973,6 +1087,13 @@ enum TransactionType {
   // THE KIOSK before the door unlocks. Paid in cash (PayMongo or the manual
   // fallback), never drawn from the deposit, so settlement does not deduct it.
   DISPUTE_FEE
+  // Concerns v2: rent given back to a renter whose item was defective on receipt
+  // (an upheld DEFECT_ON_RECEIPT case). Reduces the owner's payout at settlement.
+  RENTAL_REFUND
+  // Concerns v2: a renter paying what they owe for damage ABOVE the held deposit
+  // (an upheld DAMAGE_ON_RETURN case). Paid in cash, never a deposit deduction,
+  // so settlement ignores it; the owner is paid it separately.
+  DAMAGE_PAYMENT
 }
 
 enum TransactionStatus {

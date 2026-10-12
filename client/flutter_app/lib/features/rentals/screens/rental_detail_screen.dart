@@ -49,6 +49,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   StreamSubscription<Map<String, dynamic>>? _paymentRejectedSub;
   StreamSubscription<Map<String, dynamic>>? _reconnectSub;
   StreamSubscription<Map<String, dynamic>>? _depositConfirmedSub;
+  StreamSubscription<Map<String, dynamic>>? _anyChangeSub;
 
   // Checklist Stage 8 — the renter's on-time rate, shown only to the owner
   // (the party who actually benefits from knowing it) and only once there's
@@ -170,6 +171,17 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     // model or an admin, and without this the renter sits on a stale screen
     // and concludes the app is stuck. Same reasoning as the payment
     // subscriptions above.
+    // 2026-10-13 (found live): the return-check events (under review,
+    // approved, disputed) and case updates never refreshed this screen, so a
+    // screen left open kept a stale state: the concern button stayed after the
+    // admin approved, or never appeared when the return went to review. Any
+    // event about THIS rental now reloads it. The specific listeners above and
+    // below keep their own toasts.
+    _anyChangeSub = SocketService.instance.onAnyRentalChange.listen((event) {
+      if (!mounted || event['rentalId'] != widget.rentalId) return;
+      _load();
+    });
+
     _depositConfirmedSub =
         SocketService.instance.onDepositConfirmed.listen((event) {
       if (!mounted || event['rentalId'] != widget.rentalId) return;
@@ -188,6 +200,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     _paymentRejectedSub?.cancel();
     _reconnectSub?.cancel();
     _depositConfirmedSub?.cancel();
+    _anyChangeSub?.cancel();
     super.dispose();
   }
 
@@ -641,7 +654,8 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         _load();
       } else {
         final data = jsonDecode(resp.body);
-        final msg = data['message'] as String? ?? 'Could not file dispute.';
+        // The server's refusal is in `error` (errorHandler); `message` is only on success.
+        final msg = (data['error'] ?? data['message']) as String? ?? 'Could not send your concern.';
         if (!mounted) return;
         AppToast.error(context, 'Dispute Failed', msg);
       }

@@ -2,7 +2,7 @@ import type { Server } from "socket.io";
 import prisma from "../config/database";
 import logger from "../utils/logger";
 import { sendRentalCompleted } from "../utils/email";
-import { finalizeRentalCompletion } from "./rentalSettlementService";
+import { finalizeRentalCompletion, DEPOSIT_HOLD_AFTER_PICKUP_HOURS } from "./rentalSettlementService";
 import { recomputeItemAvailability } from "./itemAvailabilityService";
 import { releaseForOwnerPickup } from "./retrievalService";
 
@@ -63,8 +63,8 @@ export async function approveReturn(io: Server | undefined, rentalId: string): P
         userId: rental.renterId,
         title: "Return approved",
         message:
-          `Your return of ${rental.item.title} has been approved. Your security deposit ` +
-          `refund is being processed. The owner collects the item next.`,
+          `Your return of ${rental.item.title} has been approved. The owner collects the item next. ` +
+          `Your deposit is held until they have checked it (at most 3 days), then refunded automatically.`,
         type: "VERIFICATION_SUCCESS",
         relatedEntityId: rentalId,
         relatedEntityType: "rental",
@@ -80,7 +80,9 @@ export async function approveReturn(io: Server | undefined, rentalId: string): P
     where: { rentalId, type: { in: ["DEPOSIT_REFUND", "OWNER_PAYOUT"] } },
   });
   if (alreadySettled === 0) {
-    await finalizeRentalCompletion(rentalId);
+    // Concerns v2 (ruling 2): the owner is paid now; the deposit is HELD until
+    // they have had the chance to report damage the camera could not see.
+    await finalizeRentalCompletion(rentalId, { holdDeposit: true });
   } else {
     logger.warn(`[E6.R] rental ${rentalId} already has settlement rows — not settling again`);
   }
@@ -91,7 +93,20 @@ export async function approveReturn(io: Server | undefined, rentalId: string): P
   await onDisputeReturnApproved(io, rentalId);
 
   io?.to(`user:${rental.renterId}`).emit("return:approved", { rentalId });
+  // The owner's screen must refresh too (found live 2026-10-13: it never did, so
+  // an owner looking at the rental kept seeing "being checked").
+  io?.to(`user:${rental.ownerId}`).emit("return:approved", { rentalId });
   logger.info(`[E6.R] return APPROVED for rental ${rentalId}: settled, awaiting owner pickup`);
+
+  // Concerns v2: a concern raised while this return was being checked is
+  // settled by the check itself; both students are told. After the approval
+  // notices, and never allowed to undo them: the money has already moved.
+  try {
+    const { closeReturnCheckConcerns } = await import("./concernService");
+    await closeReturnCheckConcerns(io, rentalId, "APPROVED");
+  } catch (err) {
+    logger.error(`[CONCERN] could not close return-check concerns for ${rentalId}:`, err);
+  }
 }
 
 /**
@@ -153,6 +168,28 @@ export async function completeAfterOwnerPickup(
   // The transaction sets isAvailable unconditionally; this corrects it if a
   // later booking of the same item already covers today.
   await recomputeItemAvailability(rental.itemId);
+
+  // Concerns v2 (ruling 1): the owner now has DEPOSIT_HOLD_AFTER_PICKUP_HOURS to
+  // report damage the camera could not see; the renter's held deposit waits that
+  // long at most (never longer than the hold already set at approval).
+  if (rental.depositHoldUntil) {
+    const afterPickup = new Date(Date.now() + DEPOSIT_HOLD_AFTER_PICKUP_HOURS * 3_600_000);
+    const until = afterPickup < rental.depositHoldUntil ? afterPickup : rental.depositHoldUntil;
+    await prisma.rental.update({ where: { id: rentalId }, data: { depositHoldUntil: until } });
+    await prisma.notification.create({
+      data: {
+        userId: rental.ownerId,
+        title: "Check your item now",
+        message:
+          `You collected ${rental.item.title}. If you find damage the locker camera could not see, report it from the rental ` +
+          `before ${until.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}, ` +
+          `with photos, a short video and what is wrong. After that the renter's deposit is refunded.`,
+        type: "DISPUTE_UPDATE",
+        relatedEntityId: rentalId,
+        relatedEntityType: "rental",
+      },
+    });
+  }
 
   await Promise.all([
     sendRentalCompleted(rental.renter.email, {

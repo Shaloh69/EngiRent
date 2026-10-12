@@ -12,6 +12,7 @@ import adminRoutes from "./adminRoutes";
 import reviewRoutes from "./reviewRoutes";
 import feedbackRoutes from "./feedbackRoutes";
 import disputeRoutes from "./disputeRoutes";
+import concernRoutes from "./concernRoutes";
 
 const router = Router();
 
@@ -92,5 +93,6 @@ router.use("/admin", adminRoutes);
 router.use("/reviews", reviewRoutes);
 router.use("/feedback", feedbackRoutes);
 router.use("/disputes", disputeRoutes);
+router.use("/concerns", concernRoutes);
 
 export default router;

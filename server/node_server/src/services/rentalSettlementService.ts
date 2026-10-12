@@ -39,37 +39,49 @@ async function decryptAccountNumber(stored: unknown): Promise<string | null> {
   }
 }
 
-export async function finalizeRentalCompletion(rentalId: string): Promise<void> {
-  const rental = await prisma.rental.findUnique({
-    where: { id: rentalId },
-    include: {
-      item: { select: { title: true } },
-      renter: { select: { id: true, email: true, firstName: true } },
-      owner: {
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          payoutProvider: true,
-          payoutBic: true,
-          payoutInstitutionName: true,
-          payoutAccountName: true,
-          payoutAccountNumber: true,
-        },
-      },
-      transactions: { where: { status: "COMPLETED" } },
+const SETTLEMENT_INCLUDE = {
+  item: { select: { title: true } },
+  renter: { select: { id: true, email: true, firstName: true } },
+  owner: {
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      payoutProvider: true,
+      payoutBic: true,
+      payoutInstitutionName: true,
+      payoutAccountName: true,
+      payoutAccountNumber: true,
     },
-  });
-  if (!rental) return;
+  },
+  transactions: { where: { status: "COMPLETED" as const } },
+};
 
+function loadForSettlement(rentalId: string) {
+  return prisma.rental.findUnique({ where: { id: rentalId }, include: SETTLEMENT_INCLUDE });
+}
+type SettlementRental = NonNullable<Awaited<ReturnType<typeof loadForSettlement>>>;
+
+/** Concerns v2: the longest a returned renter's deposit is held for the owner's damage report. */
+export const DEPOSIT_HOLD_MAX_HOURS = 72;
+/** Concerns v2: once the owner has collected, they have this long to report hidden damage. */
+export const DEPOSIT_HOLD_AFTER_PICKUP_HOURS = 24;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Refund the renter's deposit minus whatever has been logged against it
+ * (DAMAGE_FEE / LATE_FEE / EXTENSION_FEE). Moved out of finalizeRentalCompletion
+ * unchanged (2026-10-13) so a HELD deposit can be released later by the same code.
+ */
+async function refundDepositNet(rental: SettlementRental): Promise<void> {
+  const rentalId = rental.id;
   const itemTitle = rental.item.title;
   const depositTxn = rental.transactions.find((t) => t.type === "SECURITY_DEPOSIT");
-  const rentalPaymentTxn = rental.transactions.find((t) => t.type === "RENTAL_PAYMENT");
   const deductions = rental.transactions
     .filter((t) => t.type === "DAMAGE_FEE" || t.type === "LATE_FEE" || t.type === "EXTENSION_FEE")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  // ── 1. Renter's security deposit refund (minus damage/late fees) ─────────
   if (depositTxn) {
     const refundAmount = Math.max(0, depositTxn.amount - deductions);
     const shortfall = deductions - depositTxn.amount;
@@ -164,6 +176,47 @@ export async function finalizeRentalCompletion(rentalId: string): Promise<void> 
     }
   }
 
+}
+
+/**
+ * `holdDeposit` (Concerns v2, ruling 2): a passed RETURN settles the owner now but
+ * HOLDS the renter's deposit until the owner has had the chance to report hidden
+ * damage (see DEPOSIT_HOLD_*); `releaseHeldDeposit` refunds it later. Every other
+ * caller (force-complete, dispute settlement) refunds at once, as before.
+ */
+export async function finalizeRentalCompletion(
+  rentalId: string,
+  opts: { holdDeposit?: boolean } = {},
+): Promise<void> {
+  const rental = await loadForSettlement(rentalId);
+  if (!rental) return;
+
+  const itemTitle = rental.item.title;
+  const depositTxn = rental.transactions.find((t) => t.type === "SECURITY_DEPOSIT");
+  const rentalPaymentTxn = rental.transactions.find((t) => t.type === "RENTAL_PAYMENT");
+
+  // ── 1. Renter's security deposit: held for the owner's check, or refunded now ──
+  if (depositTxn && opts.holdDeposit) {
+    const holdUntil = new Date(Date.now() + DEPOSIT_HOLD_MAX_HOURS * 3_600_000);
+    await prisma.rental.update({ where: { id: rentalId }, data: { depositHoldUntil: holdUntil } });
+    await prisma.notification.create({
+      data: {
+        userId: rental.renterId,
+        title: "Deposit held while the owner checks the item",
+        message:
+          `Your ₱${depositTxn.amount.toFixed(2)} deposit for ${itemTitle} is held until the owner has checked the item: ` +
+          `${DEPOSIT_HOLD_AFTER_PICKUP_HOURS} hours after they collect it, and never more than ${DEPOSIT_HOLD_MAX_HOURS / 24} days. ` +
+          `If they report no damage, it is refunded automatically.`,
+        type: "PAYMENT_RECEIVED",
+        relatedEntityId: rentalId,
+        relatedEntityType: "rental",
+      },
+    });
+    logger.info(`[SETTLEMENT] Rental ${rentalId}: deposit ₱${depositTxn.amount} HELD until ${holdUntil.toISOString()}`);
+  } else if (depositTxn) {
+    await refundDepositNet(rental);
+  }
+
   // ── 2. Owner's rental-payment payout ──────────────────────────────────────
   // Dispute v2: wrong-item fees the renter paid at the kiosk compensate the
   // owner for the time without their item, so they are paid out with the
@@ -172,6 +225,15 @@ export async function finalizeRentalCompletion(rentalId: string): Promise<void> 
   const disputeFees = rental.transactions
     .filter((t) => t.type === "DISPUTE_FEE")
     .reduce((sum, t) => sum + t.amount, 0);
+  // Concerns v2: rent given back to the renter for a defective item comes out
+  // of the owner's payout.
+  const rentRefunds = rental.transactions
+    .filter((t) => t.type === "RENTAL_REFUND")
+    .reduce((sum, t) => sum + t.amount, 0);
+  if (rentalPaymentTxn && rentRefunds > 0) {
+    rentalPaymentTxn.amount = Math.max(0, round2(rentalPaymentTxn.amount - rentRefunds));
+    logger.info(`[SETTLEMENT] Rental ${rentalId}: owner payout reduced by ₱${rentRefunds} rent refunded to the renter`);
+  }
   if (rentalPaymentTxn && disputeFees > 0) {
     rentalPaymentTxn.amount = Math.round((rentalPaymentTxn.amount + disputeFees) * 100) / 100;
     logger.info(`[SETTLEMENT] Rental ${rentalId}: owner payout includes ₱${disputeFees} in dispute fees`);
@@ -376,4 +438,23 @@ export async function refundRenterInFull(rentalId: string, reason: string): Prom
     logger.info(`[E6.V] renter refunded ₱${refunded} in full for rental ${rentalId} (${reason})`);
   }
   return refunded;
+}
+
+/**
+ * Concerns v2: release a HELD deposit (refund it minus anything logged against
+ * it). Called by the deposit sweep when the owner's window has closed with no
+ * damage report open, and by a damage-case decision after its deduction. Safe to
+ * repeat: a deposit already refunded is not refunded again.
+ */
+export async function releaseHeldDeposit(rentalId: string, why: string): Promise<boolean> {
+  const rental = await loadForSettlement(rentalId);
+  if (!rental) return false;
+  const depositTxn = rental.transactions.find((t) => t.type === "SECURITY_DEPOSIT");
+  const already = await prisma.transaction.count({ where: { rentalId, type: "DEPOSIT_REFUND" } });
+  if (depositTxn && already === 0) {
+    await refundDepositNet(rental);
+    logger.info(`[SETTLEMENT] Rental ${rentalId}: held deposit released (${why})`);
+  }
+  await prisma.rental.update({ where: { id: rentalId }, data: { depositHoldUntil: null } });
+  return Boolean(depositTxn && already === 0);
 }

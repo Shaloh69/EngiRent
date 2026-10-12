@@ -117,7 +117,22 @@ export async function getRestriction(userId: string): Promise<{
   reason: string | null;
   disputeId: string | null;
   suspendedUntilReview: boolean;
+  /** Concerns v2: a damage case with money still owed (null when none). */
+  concernId?: string | null;
 }> {
+  // Concerns v2 (ruling 4): damage above the deposit is owed; the account is
+  // limited until it is paid, exactly like an open wrong-item case.
+  const { owedConcernFor } = await import("./concernService");
+  const owed = await owedConcernFor(userId);
+  if (owed) {
+    return {
+      restricted: true,
+      reason: `You owe ₱${(owed.amountOwed ?? 0).toFixed(2)} for damage (case ${owed.referenceNo}). Pay it from the case in the app to lift this limit.`,
+      disputeId: null,
+      suspendedUntilReview: false,
+      concernId: owed.id,
+    };
+  }
   const [active, user] = await Promise.all([
     prisma.dispute.findFirst({
       where: { renterId: userId, status: { in: [...ACTIVE_DISPUTE_STATUSES] } },

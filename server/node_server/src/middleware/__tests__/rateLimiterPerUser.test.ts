@@ -5,6 +5,17 @@
  * anything else still counts against the IP.
  */
 
+// The limiter persists its counters to data/rate-limit-store.json. A test must
+// never read or write that file: an earlier run left full buckets on disk and
+// every later run started already over the limit (found 2026-10-13).
+jest.mock("fs", () => ({
+  ...jest.requireActual("fs"),
+  readFileSync: jest.fn(() => {
+    throw new Error("no persisted store in tests");
+  }),
+  writeFileSync: jest.fn(),
+  mkdirSync: jest.fn(),
+}));
 jest.mock("../../config/env", () => ({
   __esModule: true,
   default: { RATE_LIMIT_WINDOW_MS: "900000", RATE_LIMIT_MAX_REQUESTS: "3" },

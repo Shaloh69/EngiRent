@@ -37,3 +37,21 @@ export const uploadSingle = multerConfig.single("file");
 
 /** Accept up to 10 files under the field name `files` */
 export const uploadMultiple = multerConfig.array("files", 10);
+
+/**
+ * Concerns v2 evidence: up to 5 `photos` and 1 `video` in one request. The 40 MB
+ * ceiling exists ONLY here (a 30 s phone video at medium resolution); every other
+ * upload keeps MAX_FILE_SIZE. Types are checked again from the bytes on save
+ * (concernService.sniffEvidence), never trusted from the client.
+ */
+export const uploadEvidence = multer({
+  storage,
+  limits: { fileSize: 40 * 1024 * 1024, files: 6 },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/)/.test(file.mimetype) || file.mimetype === "application/octet-stream") cb(null, true);
+    else cb(new Error(`File type ${file.mimetype} is not allowed`));
+  },
+}).fields([
+  { name: "photos", maxCount: 5 },
+  { name: "video", maxCount: 1 },
+]);

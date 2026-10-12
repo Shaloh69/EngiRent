@@ -59,6 +59,7 @@ async function serveRelativePath(
   relativePath: string,
   res: Response,
   next: NextFunction,
+  req?: Request,
 ): Promise<void> {
   try {
     if (!(await storedFileExists(relativePath))) {
@@ -82,6 +83,28 @@ async function serveRelativePath(
     // governs who may *embed* an already-authorised response, not who may
     // fetch it.
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    // Concerns v2: evidence videos. Players ask for byte ranges to start and to
+    // seek; without this a video could only be played from the start, in full.
+    res.setHeader("Accept-Ranges", "bytes");
+    const range = req?.headers.range;
+    const m = typeof range === "string" ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+    if (m && (m[1] !== "" || m[2] !== "")) {
+      const size = buffer.length;
+      let start = m[1] === "" ? size - Number(m[2]) : Number(m[1]);
+      let end = m[1] !== "" && m[2] !== "" ? Number(m[2]) : size - 1;
+      start = Math.max(0, start);
+      end = Math.min(end, size - 1);
+      if (start > end || start >= size) {
+        res.status(416).setHeader("Content-Range", `bytes */${size}`);
+        res.end();
+        return;
+      }
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+      res.setHeader("Content-Length", String(end - start + 1));
+      res.end(buffer.subarray(start, end + 1));
+      return;
+    }
     res.send(buffer);
   } catch (error) {
     next(error);
@@ -134,7 +157,7 @@ router.get(
       });
       return;
     }
-    void serveRelativePath(relativePath, res, next);
+    void serveRelativePath(relativePath, res, next, req);
   },
 );
 
