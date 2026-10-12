@@ -83,13 +83,17 @@ export interface WindowFacts {
   claimedAt: Date | null;
   depositHoldUntil: Date | null;
   depositRefunded: boolean;
-  /** Kinds with a case still open on this rental (AWAITING_RESPONSE / UNDER_REVIEW). */
-  openKinds: ConcernKindName[];
+  /**
+   * Kinds that cannot be reported again on this rental: DEFECT_ON_RECEIPT and
+   * DAMAGE_ON_RETURN once reported at all (one of each per rental, decided or
+   * not), RETURN_CHECK while one is still open.
+   */
+  blockedKinds: ConcernKindName[];
 }
 
 /** Ruling 1 windows, per kind, for whoever is looking. */
 export function reportWindows(f: WindowFacts, now: Date): ReportWindow[] {
-  const open = (k: ConcernKindName) => f.openKinds.includes(k);
+  const open = (k: ConcernKindName) => f.blockedKinds.includes(k);
   const out: ReportWindow[] = [];
 
   // DEFECT_ON_RECEIPT — the renter, from pickup until 24 h after it.
@@ -99,7 +103,7 @@ export function reportWindows(f: WindowFacts, now: Date): ReportWindow[] {
     if (f.viewer !== "RENTER") reason = "Only the renter can report a problem with the item they received.";
     else if (f.status !== "ACTIVE" || !f.claimedAt) reason = "You can report this once you have picked the item up.";
     else if (closesAt && now > closesAt) reason = `Problems with the item must be reported within ${DEFECT_WINDOW_HOURS} hours of pickup.`;
-    else if (open("DEFECT_ON_RECEIPT")) reason = "You already reported a problem with this item; it is with an admin.";
+    else if (open("DEFECT_ON_RECEIPT")) reason = "A problem with this item has already been reported on this rental; see the case.";
     out.push({ kind: "DEFECT_ON_RECEIPT", canReport: reason === null, reason, closesAt: reason === null ? closesAt : null });
   }
 
@@ -111,7 +115,7 @@ export function reportWindows(f: WindowFacts, now: Date): ReportWindow[] {
     else if (!approved) reason = "You can report damage once the return has been approved.";
     else if (f.depositRefunded || !f.depositHoldUntil || now > f.depositHoldUntil)
       reason = "The time to report damage on this return has passed and the deposit has been refunded.";
-    else if (open("DAMAGE_ON_RETURN")) reason = "You already reported damage on this return; it is with an admin.";
+    else if (open("DAMAGE_ON_RETURN")) reason = "Damage on this return has already been reported; see the case.";
     out.push({ kind: "DAMAGE_ON_RETURN", canReport: reason === null, reason, closesAt: reason === null ? f.depositHoldUntil : null });
   }
 

@@ -46,7 +46,7 @@ describe("report windows (ruling 1)", () => {
     claimedAt: t0,
     depositHoldUntil: null,
     depositRefunded: false,
-    openKinds: [],
+    blockedKinds: [],
   };
   const w = (f: Partial<WindowFacts>, now: Date) =>
     Object.fromEntries(reportWindows({ ...base, ...f }, now).map((x) => [x.kind, x]));
@@ -74,7 +74,7 @@ describe("report windows (ruling 1)", () => {
 
   it("not before the return is approved, and not twice while a case is open", () => {
     expect(w({ viewer: "OWNER", status: "VERIFICATION", verificationStatus: "MANUAL_REVIEW", depositHoldUntil: at(48) }, at(1)).DAMAGE_ON_RETURN.canReport).toBe(false);
-    expect(w({ openKinds: ["DEFECT_ON_RECEIPT"] }, at(1)).DEFECT_ON_RECEIPT.reason).toMatch(/already reported/);
+    expect(w({ blockedKinds: ["DEFECT_ON_RECEIPT"] }, at(1)).DEFECT_ON_RECEIPT.reason).toMatch(/already been reported/);
   });
 
   it("a return-check concern only while the return is still being checked, for either student", () => {

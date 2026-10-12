@@ -34,6 +34,7 @@ import {
   Settings,
   ShieldAlert,
   Users,
+  FileWarning,
 } from "lucide-react";
 import Link from "next/link";
 import { ColorSchemeToggle } from "@/components/ui/ColorSchemeToggle";
@@ -50,6 +51,9 @@ const menuItems = [
   // the mandate calls out dispute resolution as a distinct admin
   // responsibility that shouldn't be buried in the general rentals table.
   { name: "Disputes", icon: ShieldAlert, href: "/disputes" },
+  // Concerns v2 (2026-10-13): problems the locker camera cannot see, reported
+  // by students with photos, a video and a written account.
+  { name: "Concerns", icon: FileWarning, href: "/concerns" },
   { name: "Payments", icon: CreditCard, href: "/payments" },
   // Renamed: this page lists AI condition checks on rentals, not student ID
   // reviews. The old label made it look like the ID queue and hid the fact

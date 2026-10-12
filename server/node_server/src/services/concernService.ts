@@ -170,7 +170,13 @@ export async function reportOptions(rentalId: string, userId: string, now = new 
   const viewer = party(rental, userId);
   if (!viewer) throw new ForbiddenError("Access denied");
   const [open, refunded, concerns] = await Promise.all([
-    prisma.concern.findMany({ where: { rentalId, status: { in: [...OPEN_STATUSES] } }, select: { kind: true } }),
+    prisma.concern.findMany({
+      where: {
+        rentalId,
+        OR: [{ kind: { in: ["DEFECT_ON_RECEIPT", "DAMAGE_ON_RETURN"] } }, { kind: "RETURN_CHECK", status: { in: [...OPEN_STATUSES] } }],
+      },
+      select: { kind: true },
+    }),
     prisma.transaction.count({ where: { rentalId, type: "DEPOSIT_REFUND" } }),
     prisma.concern.findMany({
       where: { rentalId },
@@ -186,7 +192,7 @@ export async function reportOptions(rentalId: string, userId: string, now = new 
       claimedAt: rental.claimedAt,
       depositHoldUntil: rental.depositHoldUntil,
       depositRefunded: refunded > 0,
-      openKinds: open.map((o) => o.kind as ConcernKindName),
+      blockedKinds: open.map((o) => o.kind as ConcernKindName),
     },
     now,
   );

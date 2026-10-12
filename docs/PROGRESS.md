@@ -10987,3 +10987,18 @@ Decisions made while building (mine, within the rulings): every kind gives the o
 check's own decision (or by an admin with a note); an upheld defect sets the rental's end to decision + 24 h (no late fee if returned by then) and pauses the listing (`isListed=false`,
 `isFlagged`); damage compensation and owed payments are recorded as PENDING owner payouts (staff pay out, as with all manual payments); payment of what is owed is manual (reference +
 admin confirm) while payments are on the MANUAL kill switch. Spec line "late fees pause while a defect case is open" NOT built (the decision sets the end date instead).
+
+### 2026-10-13 03:30 — Concerns v2: C3 seen against a PRIVATE local API; C4 admin console BUILT and SEEN
+
+User chose "Wait until the admin and app parts are ready" (nothing deployed). So every check runs against a **private local copy**: MySQL 8 in Docker on this PC
+(`engirent-localtest-mysql`, 127.0.0.1:3317, throwaway), the API built from this repo on :5055 with random throwaway secrets (env in the scratchpad, never committed), drawn stand-in
+images (no real photos, no faces), test users `*@local.test`. The live server, its database and the kiosk were not touched.
+**C3 seen end to end over HTTP** (`walk.sh`): report without a video refused with the reason; full report saved (statement, 2 photos, 1 video); the owner sees the evidence and a
+deadline and answers; the video is served as `206 Partial Content`; defect at 50% within 3 h of pickup → ₱45 of ₱90; damage 100% of ₱700 with ₱500 held → ₱500 from the deposit, ₱200
+owed; the renter is restricted until the payment is sent and confirmed, then not; a return-check concern opens. **Rule tightened while doing it:** one DEFECT and one DAMAGE report per
+rental (decided or not; `blockedKinds`), RETURN_CHECK one open at a time (31 concern tests pass).
+**C4 seen** (local admin console :3011, Playwright screenshots): Concerns list (4 counters, filters, reporter/respondent, answer countdown, evidence counts); case page (what-now banner,
+both sides' statements, photos with zoom, a playing video, listing + deposit + return photos on file, money facts, decision panel with %, presets, slider, the server's live preview of
+every peso and the exact words both students get, explanation box, confirm dialog, decided view, timeline). **Decided THROUGH THE UI** (50% defect): DB shows PARTLY_UPHELD, ₱45
+RENTAL_REFUND, end date moved to +24 h, listing unlisted + flagged, 2 notifications. **Fixed from the screenshots:** the damage amount was pre-filled with the cap (every case looked like
+the maximum); it now starts empty and Decide waits for it. Not yet seen: the payment-confirm card and a decided damage case in the UI (both covered by the API walk).

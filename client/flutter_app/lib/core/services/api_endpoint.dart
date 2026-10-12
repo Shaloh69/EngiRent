@@ -33,6 +33,12 @@ class ApiEndpoint {
     defaultValue: 'https://playlist-flux-misc-livestock.trycloudflare.com/api/v1',
   );
 
+  /// TEST BUILDS ONLY (`--dart-define=API_PINNED=true`): use [baked] and never
+  /// ask the registry or reuse a saved address, so a build can be pointed at a
+  /// private test API without the gist sending it to the live server. Off by
+  /// default: every release build behaves exactly as before.
+  static const bool pinned = bool.fromEnvironment('API_PINNED');
+
   static const String _prefKey = 'api_base_url_last_good';
   static String _current = baked;
   static String _source = 'built-in';
@@ -49,6 +55,11 @@ class ApiEndpoint {
   /// Called once before the first frame. Never throws and never waits longer
   /// than [timeout] on the network.
   static Future<void> init({Duration timeout = const Duration(seconds: 4)}) async {
+    if (pinned) {
+      _current = baked;
+      _source = 'pinned';
+      return;
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString(_prefKey);
@@ -63,6 +74,7 @@ class ApiEndpoint {
   /// Ask the registry again. Throttled to once a minute, because a request
   /// failing to connect is exactly when every screen will call this at once.
   static Future<bool> refresh({Duration timeout = const Duration(seconds: 4), bool force = false}) async {
+    if (pinned) return false;
     final now = DateTime.now();
     if (!force && _lastRefresh != null && now.difference(_lastRefresh!) < const Duration(minutes: 1)) {
       return false;
