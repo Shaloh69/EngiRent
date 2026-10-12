@@ -10794,3 +10794,20 @@ Admin drop-wrong-item and the E6.S owner-uncollected sweep (`:15`): unchanged. *
 G1: nothing here has been seen on the kiosk; the first real drop must be watched.**
 Test-case document re-revised for these rules: 158 → **162** cases (integration 22 → 26: deposit with a full lower compartment,
 checked item uncollected an hour, unchecked item never moved, late renter, return during a case uses a free upper door).
+
+### 2026-10-12 21:55 — bay-selection deploy REFUSED by the classifier ([Production Deploy]) after the user's "yes"
+
+Pre-checks done before the attempt: the 7 server files are byte-identical to the previous commit; no kiosk activity; server clock
+21:19 (outside the 07-21 drop window); read-only query: **0 rentals eligible for the new sweep** and no checked item on top
+of any bay, so the deploy would move no hardware. Nothing reached the server (API PID unchanged, no `pickBayForDeposit`
+in the server file). Waiting for an explicit approval through the question tool, as for the two earlier refusals.
+
+### 2026-10-12 21:25 — bay selection DEPLOYED (user: "Yes, deploy bay selection", via the question tool)
+
+7 files copied (server copies were identical to the previous commit), API PID 27332 → **24064**, health 200, compiled
+`dist` contains `runStorageDropSweep`, `pickBayForDeposit` and the `storage drop sweep` cron; KIOSK-001 reconnected 21:21:23.
+Pre-checks: no kiosk activity, 21:20 is outside the 07-21 window, **0 rentals eligible** for the new sweep → no hardware moved.
+**NOT seen working:** the first real drop (a checked item on top an hour, inside 07-21) and a long-lead deposit taking an
+upper-only bay have not happened yet; both need to be watched (G11 applies to the drop). **Warning found at restart:** the kiosk
+reports bay 3 `AVAILABLE` although its camera is "not initialised" since the cable was moved: a deposit could be assigned to
+bay 3 and then fail its check. It needs the camera fixed, or bay 3 put out of service (an admin kiosk command: the user's call).
