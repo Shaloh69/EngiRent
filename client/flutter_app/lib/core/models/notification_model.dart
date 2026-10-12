@@ -22,7 +22,7 @@ class NotificationModel {
       message: (json['message'] ?? '') as String,
       type: (json['type'] ?? 'SYSTEM_ANNOUNCEMENT') as String,
       isRead: (json['isRead'] ?? false) as bool,
-      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ?? DateTime.now(),
+      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString())?.toLocal() ?? DateTime.now(),
     );
   }
 }

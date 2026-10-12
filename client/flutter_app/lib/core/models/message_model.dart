@@ -18,8 +18,8 @@ class MessageModel {
     return MessageModel(
       id: json['id'],
       body: json['body'],
-      createdAt: DateTime.parse(json['createdAt']),
-      readAt: json['readAt'] != null ? DateTime.parse(json['readAt']) : null,
+      createdAt: DateTime.parse(json['createdAt']).toLocal(),
+      readAt: json['readAt'] != null ? DateTime.parse(json['readAt']).toLocal() : null,
       sender: MessageSender.fromJson(json['sender'] as Map<String, dynamic>),
     );
   }

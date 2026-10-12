@@ -40,7 +40,7 @@ class _Txn {
         type: j['type'] as String,
         status: j['status'] as String,
         amount: (j['amount'] as num).toDouble(),
-        createdAt: DateTime.parse(j['createdAt'] as String),
+        createdAt: DateTime.parse(j['createdAt'] as String).toLocal(),
         itemTitle: (j['rental'] as Map<String, dynamic>?)?['item']?['title'] as String?,
       );
 }

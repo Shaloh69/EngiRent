@@ -10903,3 +10903,14 @@ refused while another user on the same IP is not; anonymous still IP-limited; fo
 counted). tsc clean, full suite **469/469**. Deployed: server file was identical to HEAD first, no kiosk flow in the log, API PID 17256 → **31512**, health 200, compiled `dist` has
 `verifiedUserId`. **Seen live** (persisted store after 4 + 2 authenticated calls as two fixture users): separate `u:` buckets (5 and 2), the `a:` backstop counting my IP, and a forged token
 answered 401 and counted as anonymous. NOT done: a live run to the full 1000 (covered by the unit tests); the 2,000-request flood is not re-created on purpose.
+
+### 2026-10-12 23:25 — BUG (user): chat times 8 hours off. FIXED and RELEASED 1.14.3+37
+
+**Cause:** the server sends every timestamp in UTC (`…Z`; checked: Node, MySQL and the log agree, 15:06Z = 23:06 PHT). `DateTime.parse` keeps it UTC and `DateFormat` prints a UTC value as-is, so the chat
+showed 3 PM at 11 PM local. Only the new dispute screen converted (`toLocal()`); every other model/screen did not. **Fix:** `.toLocal()` where a time-of-day or date of an EVENT is read: message
+(created/read), feedback (created/resolved), notification, item created, rental created/releaseRequested/released/retrieved and rental transactions, transaction history, reviews. Deliberately NOT changed:
+rental `startDate`/`endDate` (calendar days; a different question). `server_times_are_local_test.dart` (3 tests; fail without the fix on any machine zone). **Seen on the emulator** set to Asia/Manila: Account
+Activity shows 4:27 PM / 4:31 PM for events whose server-written text says "4:27 PM" (UTC value would read 8:27 AM). **Release 1.14.3+37:** APK validated (testzip clean, live API in 3 ABIs, `CN=EngiRent`
+`3d113b7d…f1868`, versionCode 37, sha256 `790545ce…` equal local/server, 91,682,091 bytes served), website (server copies were HEAD) `/`, `/download`, `/changelog` show 1.14.3, EngiRentWeb PID 31128 → 32704;
+`AppRelease` 1.14.3 + `LATEST_APP_VERSION=1.14.3`; API PID 31512 → **30924** after the kiosk had been idle ~160 s (a door command on bays 3/4 had run 30 s earlier).
+Open: "what happens with Raise a concern for the owner" answered in chat (admin notified, no case, button stays after sending); the Pico "0.0%" explanation in chat (a second object in bay 1); the user's message ended at "Also".

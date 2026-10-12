@@ -61,7 +61,7 @@ class RentalModel {
       totalPrice: (json['totalPrice'] as num).toDouble(),
       securityDeposit: (json['securityDeposit'] as num).toDouble(),
       item: RentalItem.fromJson(json['item']),
-      createdAt: DateTime.parse(json['createdAt']),
+      createdAt: DateTime.parse(json['createdAt']).toLocal(),
       renter: json['renter'] != null
           ? RentalParty.fromJson(json['renter'] as Map<String, dynamic>)
           : null,
@@ -70,13 +70,13 @@ class RentalModel {
           .toList(),
       verificationStatus: json['verificationStatus'] as String?,
       releaseRequestedAt: json['releaseRequestedAt'] != null
-          ? DateTime.parse(json['releaseRequestedAt'] as String)
+          ? DateTime.parse(json['releaseRequestedAt'] as String).toLocal()
           : null,
       releasedAt: json['releasedAt'] != null
-          ? DateTime.parse(json['releasedAt'] as String)
+          ? DateTime.parse(json['releasedAt'] as String).toLocal()
           : null,
       retrievedAt: json['retrievedAt'] != null
-          ? DateTime.parse(json['retrievedAt'] as String)
+          ? DateTime.parse(json['retrievedAt'] as String).toLocal()
           : null,
     );
   }
@@ -256,7 +256,7 @@ class RentalTransaction {
       paymentMethod: json['paymentMethod'] as String? ?? '',
       paymentReferenceNo: json['paymentReferenceNo'] as String?,
       createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'] as String)
+          ? DateTime.tryParse(json['createdAt'] as String)?.toLocal()
           : null,
     );
   }

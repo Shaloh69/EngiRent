@@ -369,7 +369,7 @@ class _ReviewCard extends StatelessWidget {
         '${author?['firstName'] ?? ''} ${author?['lastName'] ?? ''}'.trim();
 
     final createdRaw = review['createdAt'] as String?;
-    final created = createdRaw == null ? null : DateTime.tryParse(createdRaw);
+    final created = createdRaw == null ? null : DateTime.tryParse(createdRaw)?.toLocal();
 
     return AppCard(
       padding: const EdgeInsets.all(AppSpacing.sm),

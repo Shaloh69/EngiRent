@@ -68,7 +68,7 @@ class ItemModel {
       averageRating: (json['averageRating'] as num?)?.toDouble() ?? 0.0,
       totalRentals: json['totalRentals'] ?? 0,
       owner: ItemOwner.fromJson(json['owner']),
-      createdAt: DateTime.parse(json['createdAt']),
+      createdAt: DateTime.parse(json['createdAt']).toLocal(),
       serialNumber: json['serialNumber'] as String?,
     );
   }

@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-12",
+    version: "1.14.3",
+    tag: "fix",
+    title: "Times now match your clock",
+    bullets: [
+      "Chat messages showed the server's time (UTC) instead of yours, so a message sent at 11:00 PM appeared as 3:00 PM. Messages, account activity, notifications, payments, reviews and feedback now show your local time",
+      "Rental start and end dates are unchanged",
+    ],
+  },
+  {
+    date: "2026-10-12",
     version: "1.14.2",
     tag: "fix",
     title: "No more request floods after a dropped connection",

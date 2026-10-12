@@ -26,8 +26,8 @@ class FeedbackReport {
       body: json['body'],
       status: json['status'] ?? 'NEW',
       adminNote: json['adminNote'],
-      createdAt: DateTime.parse(json['createdAt']),
-      resolvedAt: json['resolvedAt'] != null ? DateTime.parse(json['resolvedAt']) : null,
+      createdAt: DateTime.parse(json['createdAt']).toLocal(),
+      resolvedAt: json['resolvedAt'] != null ? DateTime.parse(json['resolvedAt']).toLocal() : null,
     );
   }
 }
