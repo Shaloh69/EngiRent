@@ -28,6 +28,18 @@ class RetryFeedbackCard extends StatelessWidget {
   static bool hasContent(String? reason, List<String> imageUrls) =>
       (reason != null && reason.trim().isNotEmpty) || imageUrls.isNotEmpty;
 
+  /// The attempt the person is now on after a retry. The server's
+  /// `attemptNumber` is the check that JUST ran (`returnAttemptCount + 1`, so
+  /// 1 on the first retry); the next one is that plus one. D-118: copying it
+  /// as-is left the screen on attempt 1 after the first retry, and everything
+  /// here only shows from attempt 2, so the AI's reason and the photos never
+  /// appeared on a real retry.
+  static int attemptAfterRetry(Object? checkedAttempt, int current) {
+    // Without a number, the check that ran was at least the first one.
+    final checked = checkedAttempt is num ? checkedAttempt.toInt() : (current < 1 ? 1 : current);
+    return checked + 1;
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasReason = reason != null && reason!.trim().isNotEmpty;

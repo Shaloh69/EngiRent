@@ -63,4 +63,14 @@ void main() {
     expect(RetryFeedbackCard.hasContent(reason, const []), isTrue);
     expect(RetryFeedbackCard.hasContent(null, urls), isTrue);
   });
+
+  // D-118: the server's attemptNumber is the check that just ran
+  // (returnAttemptCount + 1), so a first retry sends 1. The screen only shows
+  // the AI card from attempt 2, so the next attempt must be 2, not 1.
+  test('attemptAfterRetry: the first retry puts the person on attempt 2', () {
+    expect(RetryFeedbackCard.attemptAfterRetry(1, 0), 2); // the real first-retry payload
+    expect(RetryFeedbackCard.attemptAfterRetry(2, 2), 3);
+    expect(RetryFeedbackCard.attemptAfterRetry(null, 0), 2); // an older server sent no number
+    expect(RetryFeedbackCard.attemptAfterRetry(null, 2), 3);
+  });
 }

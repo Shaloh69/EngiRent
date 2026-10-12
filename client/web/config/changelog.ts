@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-13",
+    version: "1.14.6",
+    tag: "fix",
+    title: "The AI's reason and the locker photo now show on a retry",
+    bullets: [
+      "When the locker's check asks you to move the item and try again, the app now shows why (for example, \"More than one object is in the locker\") and the photo the locker camera took",
+      "Since 1.14.4 the server sent both, but the app counted the attempts one short and kept them hidden; found on a real return at the kiosk",
+    ],
+  },
+  {
+    date: "2026-10-13",
     version: "1.14.5",
     tag: "feature",
     title: "Report problems the locker camera cannot see",

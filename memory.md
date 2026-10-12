@@ -2709,3 +2709,7 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
   door cycle (02:11), restarted 02:15 after 3 quiet minutes. Lesson: "Kiosk disconnected" log lines are phone sockets, not the
   kiosk; the real signals are `PI-LOG` bay claims and `/api/v1/kiosk/*` calls (an `open-bay` line is logged when its door cycle
   ENDS). Live test used only test accounts: ER-CON-2026-0001 [TEST] on test rental f05cd079, decided 0%.
+- **2026-10-13 03:00 D-118:** the 1.14.4 retry feedback never showed: the server's `attemptNumber` is the check that JUST ran
+  (1 on the first retry), the app treated it as the next attempt and hid the card below attempt 2. Lesson: verify a socket-driven
+  screen through the real server emit, not a widget preview; on the private copy a stand-in AI (RETRY) + a kiosk socket with the
+  private secret drives the real chain with no hardware. RELEASED 1.14.6+40. D-117 wording fixed. Kiosk switched off by the user 02:59.

@@ -72,6 +72,17 @@ describe("report windows (ruling 1)", () => {
     expect(w({ ...owner, status: "COMPLETED", depositRefunded: true }, at(10)).DAMAGE_ON_RETURN.canReport).toBe(false);
   });
 
+  // D-117: each closed state says what actually happened.
+  it("says why damage cannot be reported: already reported, refunded, no hold, or time passed", () => {
+    const owner = { viewer: "OWNER" as const, status: "COMPLETED", verificationStatus: "APPROVED" };
+    expect(w({ ...owner, depositHoldUntil: null, blockedKinds: ["DAMAGE_ON_RETURN"] }, at(10)).DAMAGE_ON_RETURN.reason).toMatch(/already been reported/);
+    expect(w({ ...owner, depositHoldUntil: at(48), depositRefunded: true }, at(10)).DAMAGE_ON_RETURN.reason).toMatch(/deposit has been refunded/);
+    const noHold = w({ ...owner, depositHoldUntil: null }, at(10)).DAMAGE_ON_RETURN.reason!;
+    expect(noHold).toMatch(/settled without that hold/);
+    expect(noHold).not.toMatch(/refunded/);
+    expect(w({ ...owner, depositHoldUntil: at(48) }, at(49)).DAMAGE_ON_RETURN.reason).toBe("The time to report damage on this return has passed.");
+  });
+
   it("not before the return is approved, and not twice while a case is open", () => {
     expect(w({ viewer: "OWNER", status: "VERIFICATION", verificationStatus: "MANUAL_REVIEW", depositHoldUntil: at(48) }, at(1)).DAMAGE_ON_RETURN.canReport).toBe(false);
     expect(w({ blockedKinds: ["DEFECT_ON_RECEIPT"] }, at(1)).DEFECT_ON_RECEIPT.reason).toMatch(/already been reported/);

@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE CONCERNS v2 (entries at the END) - 2026-10-13 02:30 - DEPLOYED + RELEASED 1.14.5+39 (Prerelease39), tested live on test accounts (ER-CON-2026-0001 [TEST], decided 0%); API PID 24516, admin 29340, web 29756 - OPEN: D-117 (damage-window wording for rentals without a hold), SW-07 session restore (user to decide), D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
+[2026-10-13 03:00 - Concerns v2 LIVE (1.14.5); D-118 retry feedback FIXED + seen through the real chain, RELEASED 1.14.6+40; D-117 fixed live; API PID 28380 - KIOSK-001 OFF (user 02:59), reconnects on power-up - OPEN: SW-07 session restore (user to decide), real-kiosk retry with 1.14.6 unseen, D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11085,3 +11085,35 @@ password is only in the e2e suites' environment; the 1.14.5 release is installed
 this deploy whose deposit is not refunded, and decided cases (where "already reported; see the case" is right). Not shown in the app (closed windows are hidden), visible in
 `/concerns/options`. Fix with the next server change; not committed undeployed.
 **Still open from before:** SW-07 "Stay logged in" vs no session restore (user to decide).
+
+## D-118 RETRY FEEDBACK NEVER SHOWS (user 2026-10-13 ~02:45: "when a retry happens the app still does not show the AI's output or the live image"). G2 table, repo-derived
+
+**Re-derived cause (from the live log + code, not assumed):** a real return retried at 02:35:48 (rental `96e34250`, bay 2, quick check RETRY, then escalated on attempt 2). The server sent
+`return:retry` (the phone reloaded the rental at that second) but the phone **never requested a locker photo** (every `/media/secure/` GET in that window is the ML service). The server
+counts `attemptNumber = returnAttemptCount + 1` (`index.ts:850`, deposit `:550`): the check that JUST ran, so **1 on the first retry**. The app copies it as the UPCOMING attempt
+(`kiosk_scan_screen.dart:560` `_attempt = attemptNumber`), and both the AI card and the "Attempt N, reposition" line require `_attempt > 1` (`:227`, `:236`). So after the only retry there
+can be (the 2nd check escalates), `_attempt == 1` and the reason + photos are dropped. **My miss in 1.14.4:** the card was checked with a throwaway preview, never through `_onItemRetry`
+with the server's real payload; PROGRESS recorded "NOT seen: a real retry". `API_PUBLIC_URL` is public (the photo links would load).
+
+| # | Section | Where | Done when |
+|---|---------|-------|-----------|
+| R1 | App: on a retry the screen shows attempt `attemptNumber + 1`; the AI card + photos appear after the FIRST retry | `kiosk_scan_screen.dart` (+ a pure helper and a unit test with the server's real numbers) | test fails before, passes after |
+| R2 | Seen through the REAL chain on the private copy: a fake kiosk socket sends `kiosk:images` for a rental mid-return, a stand-in AI answers RETRY with a sentence, the real server emits `return:retry`, the app on the emulator shows the sentence and the locker photo | private local stack, emulator | screenshot of the kiosk screen after the emit |
+| R3 | Release 1.14.6+40 (all four places); no server change | app, website, AppRelease/LATEST | APK validated and live |
+
+Not changing: the server, the AI, the verdict rules, the kiosk.
+
+### 2026-10-13 03:00 — D-118 FIXED, SEEN through the real retry chain, RELEASED 1.14.6+40; D-117 fixed and deployed
+
+**R1:** `RetryFeedbackCard.attemptAfterRetry` (server `attemptNumber` = the check that just ran, so the screen is on that + 1; with no number, at least attempt 2), used by
+`_onItemRetry`; unit test with the server's real first-retry value (1 → 2). **R2 SEEN through the real chain** on the private copy: a stand-in AI on :5099 answering RETRY with a
+sentence (the only stub), the real server from the repo, a socket authenticated as a kiosk with the private copy's throwaway secret sending `kiosk:images` for an ACTIVE rental
+(`returnAttemptCount` 0). The real server answered the kiosk `verification_done: retry` + `open_door` (fake socket, no hardware) and emitted `return:retry`; the emulator on the real
+"Return to kiosk" screen showed "Attempt 2 — reposition…", "Why the AI asked you to move it" with the AI's sentence, and the locker photo (the phone's GET for it is in the API log).
+Deposits use the same handler and the same counting (`index.ts:550`). **D-117** (`reportWindows`): already reported / refunded / settled without a hold / time passed now each say so;
++1 test (concern tests 32/32, tsc clean); seen live: the old fixture says "settled without that hold", the decided test case says "already been reported; see the case".
+**R3 release 1.14.6+40:** APK testzip clean, live API in 3 ABIs, no private address, `CN=EngiRent` `3d113b7d…f1868`, versionCode 40, sha256 `c96ef1b4…5386` equal local/server;
+server `release.ts`/`changelog.ts`/`concernRules.ts` were HEAD first; web PID 29756 → restarted, `/changelog` + `/download` show 1.14.6, the APK serves 200 (92,370,791 bytes);
+`AppRelease` 1.14.6 + `LATEST_APP_VERSION=1.14.6`; API restarted after 15 quiet kiosk minutes, PID 24516 → **28380**, `latestVersion` 1.14.6, compiled `concernRules.js` has the new text.
+**Kiosk:** did not re-register after this restart; the user reported at 02:59 "kiosk is now off". It reconnects by itself when powered on.
+**Still unseen:** a retry at the real kiosk with 1.14.6 on a student's phone (needs a person at the locker; nothing for me to drive under G11).

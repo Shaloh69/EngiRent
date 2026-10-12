@@ -557,7 +557,7 @@ class _KioskScanScreenState extends State<KioskScanScreen>
     final reason = data['reason'];
     final urls = data['imageUrls'];
     setState(() {
-      _attempt = (data['attemptNumber'] as num?)?.toInt() ?? (_attempt + 1);
+      _attempt = RetryFeedbackCard.attemptAfterRetry(data['attemptNumber'], _attempt);
       _phase = _Phase.bay;
       _bayError = null;
       _retryReason = reason is String && reason.trim().isNotEmpty ? reason : null;

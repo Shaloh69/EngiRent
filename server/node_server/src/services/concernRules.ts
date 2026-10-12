@@ -113,9 +113,13 @@ export function reportWindows(f: WindowFacts, now: Date): ReportWindow[] {
     const approved = f.verificationStatus === "APPROVED" && (f.status === "VERIFICATION" || f.status === "COMPLETED");
     if (f.viewer !== "OWNER") reason = "Only the owner can report damage to a returned item.";
     else if (!approved) reason = "You can report damage once the return has been approved.";
-    else if (f.depositRefunded || !f.depositHoldUntil || now > f.depositHoldUntil)
-      reason = "The time to report damage on this return has passed and the deposit has been refunded.";
+    // D-117: one message for three different states read wrong (a decided case
+    // or a return settled before deposit holds existed said "refunded").
     else if (open("DAMAGE_ON_RETURN")) reason = "Damage on this return has already been reported; see the case.";
+    else if (f.depositRefunded) reason = "The deposit has been refunded, so damage can no longer be reported on this return.";
+    else if (!f.depositHoldUntil)
+      reason = "Damage can only be reported while the deposit is held after a return; this return was settled without that hold.";
+    else if (now > f.depositHoldUntil) reason = "The time to report damage on this return has passed.";
     out.push({ kind: "DAMAGE_ON_RETURN", canReport: reason === null, reason, closesAt: reason === null ? f.depositHoldUntil : null });
   }
 
