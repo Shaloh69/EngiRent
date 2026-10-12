@@ -2689,3 +2689,19 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
 - **Open:** locker 3 camera "not initialised" since the cable was moved; needs the cable reseated and a kiosk service restart
   (G11 yes). The Pi's SSH login hangs from this PC and from the server; USB tree not yet read.
 
+
+## 2026-10-13 ~01:45 PHT — Concerns v2 built and seen locally (C0-C6); NOT deployed
+- User request: hidden damage either way (owner hands over a broken item; renter returns one), more than one kind of
+  case, video + photos + full statement as evidence, and the old concern button vanished on approval. User ruled on
+  7 questions (spec `docs/redesign/SPEC-CONCERNS-V2.md`; rulings + build record in `docs/PROGRESS.md`, PHASE CONCERNS v2).
+- Built: server (Concern/Evidence/Event tables, deposit HELD after a passed return: 72 h max, 24 h after the owner
+  collects; :40 cron releases it), admin Concerns list + case page with a live money preview, app report/answer/case
+  screens with in-app 30 s video. Commits 495b388, 9a94321, 0943a8d (+ C6 docs).
+- **Verified only against a PRIVATE local copy** (Docker MySQL on 127.0.0.1:3317, API from the repo on :5055,
+  test build pinned with `--dart-define=API_PINNED=true`). User chose "wait until admin and app are ready" before
+  any deploy. Deploy still needs: `prisma db push` (additive), server files, API restart when the kiosk is idle,
+  admin files + EngiRentAdmin restart, full app release 1.14.5+39.
+- Old behaviour noticed, not changed: the app never restores a session on a cold start (always opens on Sign in),
+  which contradicts thesis case SW-07 "Stay logged in". Raised with the user.
+- Thesis test cases: 184 (SW 51, AD 35, IT 31, AC 17, DS 18 now include concerns); IT "Owner collects" corrected
+  (the deposit is no longer refunded at collection).

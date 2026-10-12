@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE CONCERNS v2 (G2 table + entries at the END) - 2026-10-13 01:30 - C0-C5 BUILT and SEEN against a PRIVATE local API (C5 on the emulator, both students + admin UI); NOT DEPLOYED (user: wait until admin and app are ready); NEXT: C6 thesis test cases + spec marked built, then ask to deploy (server db push + files, admin, full release 1.14.5+39) - live stack unchanged: API 1.14.4 per-user limit, APK 1.14.4+38 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
+[PHASE CONCERNS v2 (G2 table + entries at the END) - 2026-10-13 01:45 - C0-C6 DONE: built, SEEN against a PRIVATE local API, thesis cases (184) + spec updated; NOT DEPLOYED; NEXT: user's go to deploy (server db push + files, admin, full release 1.14.5+39) - live stack unchanged: API 1.14.4 per-user limit, APK 1.14.4+38 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11042,3 +11042,24 @@ Tests: server **513/513**, concern 31/31, app **63/63** (+1), admin tsc clean, a
 | 6 skipping verification | Absent: every fix above has a screenshot after the change; the session-loss sighting was investigated before being recorded |
 
 **Next:** C6 — thesis test cases for concerns, spec marked built; then ask the user to deploy (server db push + files + API restart when the kiosk is idle, admin, full app release 1.14.5+39).
+
+### 2026-10-13 01:45 — Concerns v2: C6 (thesis test cases, spec marked built). Deploy NOT done (awaiting the user)
+
+**Thesis test cases** (`EngiRent-Hub-Test-Cases-Revised.docx` + Word PDF, 31 pages, untracked as before; backups of the previous version kept outside the repo): 184 cases.
+Added: SW-37..43 "Problems with a Rental" (report a defect, report damage, concern during a check, when a report can be made, answer, follow to a decision, pay what is owed);
+AD-28..32 "Concerns" (list, review, decide a defect, decide damage, confirm a payment); IT "Problems with a Rental" (upheld defect, no damage reported, damage above the deposit,
+no answer in 24 h, the check closes the concern); AC (defect refund amount, damage split, repeat cases flagged); DS (evidence private, evidence file checks; the admin-only example
+now includes deciding a concern). **Corrected:** IT "Owner collects the item" said the deposit is refunded at collection; since C2 it is refunded 24 h after collection (at most
+72 h after approval) unless damage is reported. Every claim re-derived from the code before writing (deposit hold `rentalSettlementService.ts:199-201` /
+`returnApprovalService.ts:175-178`; repeat flag shown in `client/admin/src/app/concerns/page.tsx:174` and `[id]/page.tsx:112`; evidence sniffing + 40 MB `concernService.ts:49-99`).
+Rendered and looked at (pages 5, 12, 14): spec and results tables agree.
+**Doc vs repo conflict found:** SW-07 "Stay logged in: close and reopen the app → still logged in". The app has never restored a session on a cold start (`main.dart` initialRoute
+is always `/login`/onboarding; seen on the emulator after a force-stop). Raised with the user: either build session restore or reword SW-07. Not changed here.
+**Spec** `SPEC-CONCERNS-V2.md` marked BUILT (not deployed), with the two places the build differs from the proposal.
+
+**G5 six-symptom check at the C6 boundary — NO SYMPTOMS:** 1 re-deriving: every new expected result traced to code lines above; 2 vaguer summaries: absent; 3 losing the rules:
+absent (public repo: thesis documents stay untracked; nothing deployed without the user); 4 drifting to agreement: absent (the SW-07 conflict is surfaced, not papered over);
+5 batching: absent (document rendered and looked at before recording); 6 skipping verification: absent.
+
+**Next (needs the user):** deploy. Server: `prisma db push` (additive: 3 tables, 1 column, 2 enum values), copy the changed server files, restart the API only when the kiosk is idle.
+Admin: copy files, restart EngiRentAdmin. App: full release 1.14.5+39 (APK validated against the live API, website release + changelog, AppRelease + LATEST_APP_VERSION).

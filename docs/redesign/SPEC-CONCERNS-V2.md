@@ -1,9 +1,14 @@
 # SPEC — Concerns v2: hidden damage, more than one kind of dispute, real evidence
 
-> **Status: PROPOSAL, NOT BUILT.** Written 2026-10-13 from the user's request ("an owner can hand over an item
+> **Status: BUILT 2026-10-13 (C0-C6), seen against a private local copy of the API; NOT YET DEPLOYED.** The user
+> ruled on section 6 on 2026-10-13 (rulings and build record: `docs/PROGRESS.md`, "PHASE CONCERNS v2"). Where the
+> build differs from this proposal: the decision sets a return-by date (decision + 24 h, no late fee) instead of
+> pausing late fees while a defect case is open; a paused listing is re-listed by an admin (the owner asks through
+> Feedback), not by an owner "fixed" button. Sections 1-6 below are kept as the proposal that was ruled on.
+>
+> Original status: proposal written from the user's request ("an owner can hand over an item
 > that is broken in a way the camera cannot see; a renter can return one; the concern button vanishes the moment
-> the return is approved; evidence must be video, images and a full written account"). Nothing here is
-> implemented. Section 6 lists the decisions the user must make before any build starts (G2).
+> the return is approved; evidence must be video, images and a full written account").
 >
 > **Written for:** the user (to rule on section 6) and whoever builds it next.
 
