@@ -10834,3 +10834,15 @@ timings reported unchanged (bay 3 main 15 s / bottom 15 s / ext 18 s / ret 17 s:
 3 AVAILABLE, 4 AVAILABLE. **Not yet seen:** a real bay-3 image capture through the server (it is an admin kiosk command, G11: asked, not
 sent) and the touchscreen responding (the HID moved to hcd.0 port 2; needs a person's eyes). Backup of the old file on the Pi:
 `camera_manager.py.bak-20261012-cam3`.
+
+### 2026-10-12 21:55 — BUG (user): deposit check "no evidence / kiosk_images_unavailable" although the camera works. Cause: the Pi's upload failed
+
+Deposit of "Long Sleeve" (rental f5e5b68a, **bay 1**, not bay 3): capture 21:53:28 got 3 frames, the Pi's upload to `/kiosk/upload` hit its
+single 20 s limit (`Upload request failed:`, empty message = a timeout), the server received **0 kiosk images** (`kiosk: 0/0`), so the
+check logged "ML verification skipped … could not download reference images … infrastructure failure, NOT a real comparison" and the row
+went Pending with "No AI verdict". The server's access log has no `POST /kiosk/upload` at 13:53 UTC (the request never arrived); uploads at 13:35,
+13:38, 13:45, 13:54 all arrived. **Cause: the Pi's link.** It is on 2.4 GHz Wi-Fi (`GFiber_2.4_Coverage_e3280`, signal 75), `eth0` is DOWN, and a ping to
+the server over Tailscale lost 66% of 3 packets (82 ms when it got through); upload times ranged 1.4 s → 13 s → timeout. **Fix written (kiosk, NOT on the
+Pi):** `services/image_uploader.py` retries a transport failure up to 3 times (25 s each, 1 s / 3 s backoff, fresh form per attempt), logs the
+exception type, does not retry a server refusal (4xx); `tests/test_image_uploader.py` 5 tests; kiosk suite 145 passed. **Better fix: plug in
+Ethernet** (`eth0` exists). Rental f5e5b68a is Pending with no photos and the item physically in bay 1: needs an admin decision.
