@@ -5,6 +5,9 @@ class NotificationModel {
   final String type;
   final bool isRead;
   final DateTime createdAt;
+  // What the notification is about, so tapping it can open that thing.
+  final String? relatedEntityType; // 'rental', 'transaction', ...
+  final String? relatedEntityId;
 
   NotificationModel({
     required this.id,
@@ -13,6 +16,8 @@ class NotificationModel {
     required this.type,
     required this.isRead,
     required this.createdAt,
+    this.relatedEntityType,
+    this.relatedEntityId,
   });
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
@@ -23,6 +28,8 @@ class NotificationModel {
       type: (json['type'] ?? 'SYSTEM_ANNOUNCEMENT') as String,
       isRead: (json['isRead'] ?? false) as bool,
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString())?.toLocal() ?? DateTime.now(),
+      relatedEntityType: json['relatedEntityType'] as String?,
+      relatedEntityId: json['relatedEntityId'] as String?,
     );
   }
 }

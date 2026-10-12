@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[PHASE DISPUTE v2 (in progress, G2 table + entries at the END) + FORGOT PASSWORD (G2 table at the END) - 2026-10-12 19:55 - EMAIL LIVE (Gmail SMTP engirenthub.support, test sent 19:17); KIOSK-001 ONLINE again; D1-D3 server, D6 admin, D7 phone SEEN (except the kiosk pay/collect modes, guardian banner, My Listings prompt, owner case view); payments MANUAL until a LIVE PayMongo key; RELEASED 1.14.1+35 (forgot password, seen); NEXT: D7 kiosk-mode walk-through (G11) then D8 kiosk - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little - cases ER-DSP-2026-0001 (OPEN) and -0002 (TEST, overturned) - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
+[PHASE CONCERNS v2 (G2 table + entries at the END) - 2026-10-13 01:30 - C0-C5 BUILT and SEEN against a PRIVATE local API (C5 on the emulator, both students + admin UI); NOT DEPLOYED (user: wait until admin and app are ready); NEXT: C6 thesis test cases + spec marked built, then ask to deploy (server db push + files, admin, full release 1.14.5+39) - live stack unchanged: API 1.14.4 per-user limit, APK 1.14.4+38 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key - OPEN: D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11002,3 +11002,43 @@ both sides' statements, photos with zoom, a playing video, listing + deposit + r
 every peso and the exact words both students get, explanation box, confirm dialog, decided view, timeline). **Decided THROUGH THE UI** (50% defect): DB shows PARTLY_UPHELD, ₱45
 RENTAL_REFUND, end date moved to +24 h, listing unlisted + flagged, 2 notifications. **Fixed from the screenshots:** the damage amount was pre-filled with the cap (every case looked like
 the maximum); it now starts empty and Decide waits for it. Not yet seen: the payment-confirm card and a decided damage case in the UI (both covered by the API walk).
+
+### 2026-10-13 01:30 — Concerns v2: C5 app SEEN end to end on the emulator (private local API); NOT deployed
+
+Same private setup as C3/C4 (local MySQL in Docker, API from this repo on :5055, local admin console, test build pinned to the private API with `API_PINNED`; stand-in images,
+`*@local.test` users; the live server, its database and the kiosk untouched). Walked as both students, with the admin deciding THROUGH THE UI:
+- **Defect (renter):** report with statement, a photo from the emulator camera, a recorded video → case ER-CON-2026-0001 (DB: STATEMENT/PHOTO/VIDEO); the owner opens it from the
+  rental, answers (statement only); the case moves to "With an admin" on both phones by itself; admin decides 100% → both phones show UPHELD, ₱90 rent back (within 3 h), return-by date.
+- **Damage (owner, on the COMPLETED drill rental):** report with photo + video → ER-CON-2026-0003; admin decides 100% of ₱700 → DB ₱500 DAMAGE_FEE from the held deposit, ₱200 owed;
+  the renter opens the app straight onto the restricted case screen, submits a reference, sees "payment sent"; admin confirms in the console → limit lifted.
+- **Return check (renter) + answer with a video (owner):** ER-CON-2026-0002; approving the return check closes it ("settled together with the return check") on the phone live, and
+  sets `depositHoldUntil` = approval + 72 h. C0 (screen refreshes on its own) seen on every step above.
+
+**Fixed from the screens (each seen after the fix):** (1) after sending a report the case did not open (the section is rebuilt by the live refresh, so its `mounted` was false;
+the navigator is now held before the await); (2) titles on the black video-recorder and photo screens were dark-on-black (theme `titleTextStyle` beats `foregroundColor`);
+(3) the keyboard came back over a new photo/video (focus restored on pop; unfocused after the route returns); (4) a portrait video filled the screen and hid Send (capped at 360 px,
+letterboxed); (5) the return-check button gave no idea how long it lasts ("while an admin is checking the return"); per-kind example text; answer screen says "Your side";
+(6) the reported student's pill said "Waiting for the other student" (now "Waiting for your answer"), and "Owner (you)'s answer" read badly ("Your report"/"Your answer");
+(7) "listing paused until they confirm it is fixed" promised a button that does not exist: now "tell an admin (Profile > Send Feedback)", spec corrected; the owner's next step says so;
+(8) after paying, "What happens next" still said "Pay ₱200" (now "Your payment was sent, staff confirm within 24 h").
+**Found on the way, outside concerns, fixed:** (9) tapping a notification only marked it read; rental notifications now open the rental (`relatedEntity*` read from the API);
+(10) rental start/end dates were read as UTC (left so in 1.14.3), so "return by Oct 14, 12:53 AM" showed Oct 13: now local, + test; (11) the due chip counted whole 24 h periods
+("Due today" for tomorrow 12:53 AM, and for a few hours overdue): now calendar days, "Due tomorrow"/"Overdue"; (12) the "Settled" step said "Deposit refunded" while the deposit is
+held for the owner's damage window; (13) the listing card was 4 px short for a two-line title (line-height estimate raised).
+**Observed, not changed:** the app has never restored a session on a cold start (`initialRoute` is always `/login`; since the first app commit), so a force-stop means signing in
+again. Evidence videos have no sound (no microphone permission, by design). The emulator ran out of space for the 196 MB debug APK; a split-ABI release test build (x86_64, pinned to
+the private API) was used, and must never be published (the real release rebuild overwrites it).
+Tests: server **513/513**, concern 31/31, app **63/63** (+1), admin tsc clean, analyzer clean except the 5 old `crash_reporting.dart` notices.
+
+**G5 six-symptom check at the C5 boundary — ONE SYMPTOM:**
+
+| Symptom | Result |
+|---|---|
+| 1 re-deriving | Absent: status line re-derived from this file after a session restart; DB state queried, not assumed, before each claim |
+| 2 vaguer summaries | Absent |
+| 3 losing the rules | Absent: nothing deployed (user ruling), no hardware touched, G6 sweep before this commit |
+| 4 drifting to agreement | Absent |
+| 5 batching | **PRESENT**: several fixes went into one rebuild at a time (G1 says one unseen change at a time). Each was seen on screen before this entry, but they were stacked while unseen |
+| 6 skipping verification | Absent: every fix above has a screenshot after the change; the session-loss sighting was investigated before being recorded |
+
+**Next:** C6 — thesis test cases for concerns, spec marked built; then ask the user to deploy (server db push + files + API restart when the kiosk is idle, admin, full app release 1.14.5+39).

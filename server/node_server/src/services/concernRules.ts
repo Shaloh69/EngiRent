@@ -241,7 +241,8 @@ export function explainDecision(
         `The renter returns the item at the kiosk by ${returnBy.toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}, with no late fee. The deposit is refunded after the return as usual.`,
       );
     }
-    lines.push("The owner's listing is paused until they confirm the item is fixed.");
+    // Only an admin can list it again (Items page); the owner asks through Feedback.
+    lines.push("The owner's listing is paused until they tell an admin the item is fixed.");
     return lines.join(" ");
   }
   const lines = [

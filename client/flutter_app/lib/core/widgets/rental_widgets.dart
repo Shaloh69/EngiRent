@@ -61,7 +61,9 @@ const List<({String key, String label, String detail})> rentalLifecycle = [
   (
     key: 'COMPLETED',
     label: 'Settled',
-    detail: 'Deposit refunded and the owner paid out.'
+    // Not "deposit refunded": since Concerns v2 the deposit is held through the
+    // owner's damage-check window (up to 72 h) before it goes back.
+    detail: 'Return approved and the owner paid. The deposit goes back once the owner\'s damage-check window ends.'
   ),
 ];
 
@@ -181,15 +183,22 @@ class _DueChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final days = endDate.difference(DateTime.now()).inDays;
-    final overdue = days < 0;
+    // Calendar days, local. Whole 24 h periods said "Due today" for an item
+    // due at 12:53 AM tomorrow (beside an end date reading tomorrow), and
+    // "Due today" for one already a few hours overdue.
+    final now = DateTime.now();
+    final local = endDate.toLocal();
+    final overdue = local.isBefore(now);
+    final days = DateTime(local.year, local.month, local.day)
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
     final soon = days <= 1 && !overdue;
     final color = overdue
         ? AppColors.error
         : (soon ? AppColors.warning : AppColors.success);
     final text = overdue
-        ? '${days.abs()}d overdue'
-        : (days == 0 ? 'Due today' : '${days}d left');
+        ? (days == 0 ? 'Overdue' : '${days.abs()}d overdue')
+        : (days == 0 ? 'Due today' : (days == 1 ? 'Due tomorrow' : '${days}d left'));
     return StatusPill(label: text, color: color, dense: true);
   }
 }

@@ -61,7 +61,8 @@ A report requires **evidence** (section 4). While a case is open the button is r
 3. An **admin** decides:
    - **Upheld:** the renter returns the item at the kiosk (normal return flow, but no late fee), then gets the
      **deposit back in full** plus a **rent refund** (rule in section 6, Q3). The owner's payout is reduced to
-     match, the listing is **paused** until the owner confirms it is fixed, and the case is recorded on the owner.
+     match, the listing is **paused** until the owner tells an admin it is fixed (Profile > Send Feedback; the admin
+     lists it again from Items; there is no self-service "fixed" button, corrected 2026-10-13 in C5), and the case is recorded on the owner.
    - **Not upheld:** the rental carries on as booked; the clock resumes; the renter is told why.
 
 ### 3b. DAMAGE_ON_RETURN (owner → charge for hidden damage)

@@ -191,6 +191,31 @@ class ApiService {
     }, timeout: _uploadTimeout);
   }
 
+  /// Concerns v2 (2026-10-13): several files and text fields in ONE request
+  /// (`photos` x N and one `video`, plus a statement), with a long timeout: a
+  /// 30-second video on a slow connection takes far longer than a photo.
+  Future<http.Response> uploadParts(
+    String endpoint, {
+    Map<String, String> fields = const {},
+    List<MapEntry<String, String>> files = const [], // field name -> file path
+    Duration timeout = const Duration(minutes: 5),
+  }) async {
+    final url = Uri.parse('${AppConstants.baseUrl}$endpoint');
+    final token = await _storage.getAccessToken();
+    return _execute(() async {
+      final request = http.MultipartRequest('POST', url);
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      request.fields.addAll(fields);
+      for (final f in files) {
+        final mimeType = lookupMimeType(f.value) ?? (f.key == 'video' ? 'video/mp4' : 'image/jpeg');
+        final parts = mimeType.split('/');
+        request.files.add(await http.MultipartFile.fromPath(f.key, f.value, contentType: MediaType(parts[0], parts[1])));
+      }
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    }, timeout: timeout);
+  }
+
   /// Same upload endpoints as [uploadFile], but from in-memory bytes rather
   /// than a `dart:io` `File` path. `MultipartFile.fromPath` (used by
   /// [uploadFile]) has no filesystem to read from on Flutter Web — needed

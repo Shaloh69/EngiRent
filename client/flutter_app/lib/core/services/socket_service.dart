@@ -98,6 +98,10 @@ class SocketService {
   Stream<Map<String, dynamic>> get onDisputeUpdate => _disputeUpdate.stream;
   Stream<Map<String, dynamic>> get onDisputePaymentRequired => _disputePaymentRequired.stream;
   Stream<Map<String, dynamic>> get onDisputeVisitEnded => _disputeVisitEnded.stream;
+  /// Concerns v2: a case on one of my rentals changed (reported, answered,
+  /// decided, paid). Also feeds onAnyRentalChange, so an open rental refreshes.
+  final _concernUpdate = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get onConcernUpdate => _concernUpdate.stream;
 
   String? get currentUserId => _userId;
 
@@ -182,6 +186,7 @@ class SocketService {
       ..on('dispute:update', _handle(_disputeUpdate))
       ..on('dispute:payment_required', _handle(_disputePaymentRequired))
       ..on('dispute:visit_ended', _handle(_disputeVisitEnded))
+      ..on('concern:update', _handle(_concernUpdate))
       // Routed through _handle() deliberately: an approved payment advances
       // the rental (PENDING -> AWAITING_DEPOSIT once both sides are paid), so
       // every rentals list showing a status is now stale.

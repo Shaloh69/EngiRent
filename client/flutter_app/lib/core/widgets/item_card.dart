@@ -332,11 +332,13 @@ SliverGridDelegate itemGridDelegate(
 
   // Info block: two title lines, category, the price row, and the deposit
   // line. Line box ≈ fontSize × height factor; 1.25 for the title (set
-  // explicitly), ~1.3 for the rest under the default Material text height.
+  // explicitly), ~1.45 for the rest: the app's fonts (and the mono price) sit
+  // taller than Material's ~1.3, which left a two-line title 4 px short and
+  // striped "BOTTOM OVERFLOWED" across the card (seen 2026-10-13).
   final text = scaler.scale(13.5) * 1.25 * 2 // title, maxLines: 2
-      + scaler.scale(11) * 1.3 // category
-      + scaler.scale(16) * 1.3 // price row (tallest child)
-      + scaler.scale(10.5) * 1.3; // deposit line
+      + scaler.scale(11) * 1.45 // category
+      + scaler.scale(16) * 1.45 // price row (tallest child)
+      + scaler.scale(10.5) * 1.45; // deposit line
 
   const gaps = AppSpacing.hair + AppSpacing.xs + AppSpacing.hair;
   const padding = AppSpacing.sm * 2;

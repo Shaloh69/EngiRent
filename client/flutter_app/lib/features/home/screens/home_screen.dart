@@ -1,3 +1,4 @@
+import '../../concerns/screens/concern_case_screen.dart';
 import 'dart:async';
 import '../../disputes/dispute_api.dart';
 import '../../disputes/screens/dispute_case_screen.dart';
@@ -64,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkRestriction();
     final sock = SocketService.instance;
     _restrictionSubs.add(sock.onDisputeUpdate.listen((_) => _checkRestriction()));
+    _restrictionSubs.add(sock.onConcernUpdate.listen((_) => _checkRestriction()));
     _restrictionSubs.add(sock.onReturnDisputed.listen((_) => _checkRestriction()));
     _restrictionSubs.add(sock.onReconnected.listen((_) => _checkRestriction()));
   }
@@ -94,6 +96,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final disputeId = r['disputeId'] as String?;
       if (disputeId != null) {
         return DisputeCaseScreen(key: ValueKey(disputeId), disputeId: disputeId, restricted: true);
+      }
+      // Concerns v2: damage above the deposit is owed; the case is where they pay it.
+      final concernId = r['concernId'] as String?;
+      if (concernId != null) {
+        return ConcernCaseScreen(key: ValueKey(concernId), concernId: concernId, restricted: true);
       }
       return _SuspendedScreen(reason: r['reason'] as String?);
     }
@@ -1016,9 +1023,15 @@ class _NotificationsTabState extends State<_NotificationsTab> {
             icon: _notifIcon(n.type),
             color: _notifColor(n.type),
             onTap: () async {
+              final nav = Navigator.of(context);
               if (!n.isRead) {
                 await _service.markRead(n.id);
                 _load();
+              }
+              // A rental notification ("a problem was reported", "your case was
+              // decided", ...) says "open the rental"; tapping it now does.
+              if (n.relatedEntityType == 'rental' && n.relatedEntityId != null && nav.mounted) {
+                nav.pushNamed('/rentals/${n.relatedEntityId}');
               }
             },
           ),

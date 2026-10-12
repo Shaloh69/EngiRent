@@ -45,4 +45,22 @@ void main() {
     expect(t.createdAt!.isUtc, isFalse);
     expect(t.createdAt!.isAtSameMomentAs(instant), isTrue);
   });
+
+  // A concern decision sets endDate to an exact return-by instant; read as UTC
+  // it showed a day early in the Philippines (seen 2026-10-13).
+  test('rental start and end dates are local, same instant', () {
+    final r = RentalModel.fromJson({
+      'id': 'r1',
+      'status': 'ACTIVE',
+      'startDate': iso,
+      'endDate': iso,
+      'totalPrice': 90,
+      'securityDeposit': 300,
+      'createdAt': iso,
+      'item': {'id': 'i1', 'title': 'Calculator'},
+    });
+    expect(r.startDate.isUtc, isFalse);
+    expect(r.endDate.isUtc, isFalse);
+    expect(r.endDate.isAtSameMomentAs(instant), isTrue);
+  });
 }

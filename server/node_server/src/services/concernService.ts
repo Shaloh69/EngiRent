@@ -381,7 +381,11 @@ export async function runConcernSweep(io: Server | undefined, now = new Date()):
 
 // ── reading a case ─────────────────────────────────────────────────────────
 
-function nextStep(c: { status: string; kind: string; respondedAt: Date | null; responseDueAt: Date; amountOwed: number | null; owedPaidAt: Date | null }, viewer: "REPORTER" | "RESPONDENT"): string {
+function nextStep(
+  c: { status: string; kind: string; respondedAt: Date | null; responseDueAt: Date; amountOwed: number | null; owedPaidAt: Date | null },
+  viewer: "REPORTER" | "RESPONDENT",
+  paymentSent = false,
+): string {
   switch (c.status) {
     case "AWAITING_RESPONSE":
       return viewer === "RESPONDENT"
@@ -393,9 +397,23 @@ function nextStep(c: { status: string; kind: string; respondedAt: Date | null; r
       return "This concern was settled together with the return check.";
     default:
       if ((c.amountOwed ?? 0) > 0 && !c.owedPaidAt) {
+        // Sent but not yet confirmed: still "pay what you owe" read as if the
+        // payment had been lost (seen on the emulator 2026-10-13).
+        if (paymentSent) {
+          return viewer === "RESPONDENT" && c.kind === "DAMAGE_ON_RETURN"
+            ? "Your payment was sent. Staff confirm it within 24 hours; the limit on your account lifts then."
+            : `The renter has sent the ${peso(c.amountOwed ?? 0)}; staff are confirming it.`;
+        }
         return viewer === "RESPONDENT" && c.kind === "DAMAGE_ON_RETURN"
           ? `Pay the ${peso(c.amountOwed ?? 0)} you owe to lift the limit on your account.`
           : `The renter still owes ${peso(c.amountOwed ?? 0)}.`;
+      }
+      // An upheld defect pauses the owner's listing and moves the return date
+      // forward; say what each of them does now, not just "decided".
+      if (c.kind === "DEFECT_ON_RECEIPT" && (c.status === "UPHELD" || c.status === "PARTLY_UPHELD")) {
+        return viewer === "RESPONDENT"
+          ? "Your listing is paused because of this decision. Once the item is fixed, tell an admin through Profile > Send Feedback and they will list it again."
+          : "Return the item at the kiosk by the date in the decision below; there is no late fee. The rent given back is shown below.";
       }
       return "This case is decided.";
   }
@@ -436,7 +454,7 @@ export async function concernForParty(concernId: string, userId: string) {
     respondedAt: c.respondedAt,
     canRespond: role === "RESPONDENT" && !c.respondedAt && OPEN_STATUSES.includes(c.status as (typeof OPEN_STATUSES)[number]),
     respondRequirement: evidenceRequirement(c.kind as ConcernKindName, "RESPONDENT"),
-    nextStep: nextStep(c, role),
+    nextStep: nextStep(c, role, pendingPayment != null),
     decision: c.decidedAt
       ? {
           decidedAt: c.decidedAt,
@@ -683,7 +701,7 @@ export async function decideConcern(
         data: {
           isListed: false,
           isFlagged: true,
-          flagReason: `Defect upheld in case ${c.referenceNo} (${pct}% owner responsibility). Paused until the owner confirms it is fixed.`,
+          flagReason: `Defect upheld in case ${c.referenceNo} (${pct}% owner responsibility). Paused until the owner tells an admin it is fixed; list it again from Items.`,
         },
       });
     }

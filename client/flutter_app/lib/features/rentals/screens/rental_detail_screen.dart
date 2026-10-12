@@ -1,3 +1,4 @@
+import '../../concerns/widgets/rental_concern_section.dart';
 import 'dart:async';
 import '../../disputes/dispute_api.dart';
 import '../../disputes/screens/dispute_case_screen.dart';
@@ -601,69 +602,6 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     }
   }
 
-  Future<void> _initiateDispute() async {
-    final reasonCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Raise a concern', style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Tell the admin checking this return what you think they should know. They decide after looking at the locker photos.',
-              style: TextStyle(color: AppPalette.of(context).muted, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Reason',
-                hintText: 'e.g. Item was returned in good condition…',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Send to the admin'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    try {
-      final resp = await _api.post('/rentals/${_rental!.id}/dispute', {
-        'reason': reasonCtrl.text.trim().isEmpty
-            ? 'Verification disputed by user'
-            : reasonCtrl.text.trim(),
-      });
-      if (!mounted) return;
-      if (resp.statusCode == 200) {
-        AppToast.success(context, 'Sent', 'The admin checking this return will see it.');
-        _load();
-      } else {
-        final data = jsonDecode(resp.body);
-        // The server's refusal is in `error` (errorHandler); `message` is only on success.
-        final msg = (data['error'] ?? data['message']) as String? ?? 'Could not send your concern.';
-        if (!mounted) return;
-        AppToast.error(context, 'Dispute Failed', msg);
-      }
-    } catch (e) {
-      if (mounted) AppToast.error(context, 'Network Error', friendlyErrorMessage(e));
-    }
-  }
-
   // E3.1: was a second, private copy of the status table that disagreed with
   // rental_widgets.dart's — it had no PENDING arm at all, so the app's most
   // common rental state rendered as a banned generic grey here and as gold two
@@ -965,15 +903,17 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                                 'its way. The owner collects the item next, and you can '
                                 'leave a review once they have.',
                           ),
-                        if (_rental!.status == 'VERIFICATION' && !_rental!.returnApproved)
-                          _ActionButton(
-                            icon: Icons.gavel_rounded,
-                            label: 'Raise a concern about this return',
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-                            ),
-                            onTap: _initiateDispute,
-                          ),
+                        // Concerns v2 (2026-10-13): replaces the old "Raise a
+                        // concern about this return" button. Shows every report
+                        // this student can make now (defect after pickup, damage
+                        // after the return, a concern while the return is being
+                        // checked), each with its deadline, plus the cases on
+                        // this rental and, for the renter, the deposit hold.
+                        RentalConcernSection(
+                          key: ValueKey('concerns-${_rental!.id}-${_rental!.status}-${_rental!.verificationStatus}'),
+                          rentalId: _rental!.id,
+                          itemTitle: _rental!.item.title,
+                        ),
                         // E6.R (user ruling): only the renter reviews the item.
                         // The server refuses an owner's ITEM review as well.
                         if (_rental!.status == 'COMPLETED' && _viewerIsOwner == false) ...[

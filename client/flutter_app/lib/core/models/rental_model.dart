@@ -56,8 +56,12 @@ class RentalModel {
     return RentalModel(
       id: json['id'],
       status: json['status'],
-      startDate: DateTime.parse(json['startDate']),
-      endDate: DateTime.parse(json['endDate']),
+      // Local too (left UTC in 1.14.3 as "calendar days"). Bookings are sent
+      // as local midnight, and a concern decision sets an exact return-by
+      // instant; read as UTC, "return by Oct 14, 12:53 AM" showed as Oct 13.
+      // In UTC+8 this only moves a value forward, never to an earlier day.
+      startDate: DateTime.parse(json['startDate']).toLocal(),
+      endDate: DateTime.parse(json['endDate']).toLocal(),
       totalPrice: (json['totalPrice'] as num).toDouble(),
       securityDeposit: (json['securityDeposit'] as num).toDouble(),
       item: RentalItem.fromJson(json['item']),
