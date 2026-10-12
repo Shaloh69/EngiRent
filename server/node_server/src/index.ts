@@ -49,6 +49,7 @@ import {
 } from "./services/storageDropService";
 import { recordCompartmentAfterCommit } from "./services/lockerCompartments";
 import { runCollectionSweep, runStorageDropSweep } from "./services/collectionSweepService";
+import { buildRetryFeedback } from "./services/retryFeedback";
 import { cancelOverdueUndepositedRentals } from "./services/overdueRentalCleanup";
 import {
   reconcileItemAvailability,
@@ -624,6 +625,7 @@ io.on("connection", (socket: Socket) => {
               rentalId: rental_id,
               attemptNumber,
               confidence,
+              ...buildRetryFeedback(mlResult, image_urls),
             });
             return;
           }
@@ -896,6 +898,7 @@ io.on("connection", (socket: Socket) => {
               rentalId: rental_id,
               attemptNumber,
               confidence,
+              ...buildRetryFeedback(mlResult, image_urls),
             });
             return;
           }

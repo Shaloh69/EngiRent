@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-12",
+    version: "1.14.4",
+    tag: "feature",
+    title: "See why the AI asked you to try again",
+    bullets: [
+      "When the check at the locker asks you to move the item or try again, the app now shows the AI's reason (for example, \"More than one object is in the locker\") instead of a generic message",
+      "It also shows the photo the locker camera took, so you can see what the AI saw; tap a photo to enlarge it",
+      "Only the student who placed the item sees these photos",
+    ],
+  },
+  {
+    date: "2026-10-12",
     version: "1.14.3",
     tag: "fix",
     title: "Times now match your clock",

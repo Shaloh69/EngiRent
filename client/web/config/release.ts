@@ -28,15 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.14.3",
-  buildNumber: 37,
-  fileName: "Engirent_Prerelease37.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.14.4",
+  buildNumber: 38,
+  fileName: "Engirent_Prerelease38.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-12",
-  sizeMb: 87.4,
+  sizeMb: 87.6,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Times in chat, activity, payments and feedback now show your local time instead of an earlier time that was 8 hours off",
-    "Includes everything in 1.14.2: the fix for the app asking the server for your profile over and over, Forgot password, disputes and guardians",
+    "When the locker's AI check asks you to try again, the app now tells you why in plain words and shows the photo the locker camera took",
+    "Includes everything in 1.14.3: times now match your clock, plus the fix for the app asking the server for your profile over and over",
   ],
 };
 

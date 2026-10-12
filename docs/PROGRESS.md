@@ -10914,3 +10914,27 @@ Activity shows 4:27 PM / 4:31 PM for events whose server-written text says "4:27
 `3d113b7d…f1868`, versionCode 37, sha256 `790545ce…` equal local/server, 91,682,091 bytes served), website (server copies were HEAD) `/`, `/download`, `/changelog` show 1.14.3, EngiRentWeb PID 31128 → 32704;
 `AppRelease` 1.14.3 + `LATEST_APP_VERSION=1.14.3`; API PID 31512 → **30924** after the kiosk had been idle ~160 s (a door command on bays 3/4 had run 30 s earlier).
 Open: "what happens with Raise a concern for the owner" answered in chat (admin notified, no case, button stays after sending); the Pico "0.0%" explanation in chat (a second object in bay 1); the user's message ended at "Also".
+
+## RETRY FEEDBACK ON THE PHONE (user request 2026-10-12 ~23:50: "during a retry say the AI's reason to the phone, and the image from the locker"). G2 section table, repo-derived
+
+Derived from `index.ts` (the `deposit:retry` emit ~line 623 and `return:retry` ~895: payload is only `{rentalId, attemptNumber, confidence}`), `mlVerificationService.ts` (`MlResult.message`, `reposition`, `placement`), the
+kiosk upload (`image_urls` are already short-lived signed `/media/secure/` URLs the phone can load) and `kiosk_scan_screen.dart` (`_onItemRetry` sets phase `bay`; `_buildBay` shows a generic "Attempt N: reposition…").
+The recipient is the person who placed the item (owner on deposit, renter on return), i.e. the person standing at the locker; admins already see this in the console.
+
+| # | Section | Where | Done when |
+|---|---------|-------|-----------|
+| T1 | Server: both retry emits also carry `reason` (the AI's own sentence, trimmed), `reposition` (bool) and `imageUrls` (up to 3, http(s) only); built by one pure helper so the two emits cannot drift | `services/retryFeedback.ts` + `index.ts` (2 emits) | unit tests: sentence passed, capped at 3, non-URL values dropped, long text trimmed, missing message falls back |
+| T2 | Phone: the retry screen shows the AI's reason and the locker photo(s) (tap to enlarge), only on a retry; falls back to the generic line when the server sent nothing (old server / missed fields) | `kiosk_scan_screen.dart`, new `RetryFeedbackCard` widget | widget test; seen rendered on the emulator |
+| T3 | Release 1.14.4+38 (all four places) + deploy the server change (API restart, kiosk idle first) | repo, server, website | deployed, `/app-config` 1.14.4 |
+
+Not changing: the AI, the kiosk, the verdict rules, what an admin sees. The photo is shown only to the person who placed the item, over their own socket room. Unseen until a real retry happens at the kiosk (needs a G11-approved door), so the on-phone result of a real retry is reported separately.
+
+### 2026-10-13 00:25 — RETRY FEEDBACK ON THE PHONE built, deployed, RELEASED 1.14.4+38 (T1-T3 done)
+
+**T1 server:** `services/retryFeedback.ts` (`buildRetryFeedback`: the AI's own sentence trimmed to 240 chars, `reposition`, up to 3 http(s) photo URLs, anything else dropped) used by BOTH `deposit:retry` and `return:retry` in `index.ts`; sent only to the
+user who placed the item. 7 unit tests; server suite **476/476**. **T2 phone:** `features/kiosk/widgets/retry_feedback_card.dart` + `kiosk_scan_screen.dart` (`_onItemRetry` keeps `reason`/`imageUrls`, the locker screen shows the card only when `_attempt > 1`
+and there is something to show, cleared when the item is checked again; with an old server or no fields the screen keeps its generic line). 5 widget tests; app suite **62/62**. **Seen rendered** on the emulator with a throwaway preview (deleted, never committed): heading, the AI sentence, one
+large photo + two thumbnails, caption; tapping a photo opens it full size with Close. The photos in that preview were stand-in internet images. **NOT seen:** a REAL retry on the phone (needs a real retry at the kiosk, i.e. a door; the server emit is covered by the helper tests, the phone by the widget
+tests). **Deploy/release:** server `index.ts` was identical to HEAD first; API PID 30924 → 31276 (compiled `dist` has `buildRetryFeedback` x2); release 1.14.4+38: APK validated (testzip clean, live API in 3 ABIs, `CN=EngiRent` `3d113b7d…f1868`, versionCode 38, sha256 `ec40450b…` equal local/server, 91,895,123 bytes
+served), website + changelog (server copies were HEAD) show 1.14.4, EngiRentWeb PID 32704 → 29656, `AppRelease` 1.14.4 + `LATEST_APP_VERSION=1.14.4`, API PID 31276 → **24872**, `/app-config` latestVersion 1.14.4.
+User question answered in chat: the "Raise a concern" button is in the app on a rental's detail screen while its return is under check (`status == VERIFICATION && !returnApproved`); at 00:20 the only such rental was the Payong return (MANUAL_REVIEW).

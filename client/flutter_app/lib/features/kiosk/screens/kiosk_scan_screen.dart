@@ -7,6 +7,7 @@ import '../../../core/services/socket_service.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/theme/tokens.dart';
+import '../widgets/retry_feedback_card.dart';
 import 'face_verify_screen.dart';
 import '../../payments/screens/payment_webview_screen.dart';
 
@@ -58,6 +59,11 @@ class _KioskScanScreenState extends State<KioskScanScreen>
 
   _Phase _phase = _Phase.scanning;
   String _errorMessage = '';
+  // What the AI said on the last retry and the locker photos it was looking at
+  // (user request 2026-10-12). Cleared when the item is checked again.
+  String? _retryReason;
+  bool _retryReposition = false;
+  List<String> _retryImages = const [];
   // Captured from face:failed/kiosk:scan_error so a "Report a problem" tap
   // can name which physical kiosk this happened at — the phone never talks
   // to a kiosk directly, so this is otherwise unknowable app-side.
@@ -225,6 +231,16 @@ class _KioskScanScreenState extends State<KioskScanScreen>
               style: const TextStyle(fontSize: 14, height: 1.45, color: Colors.white70),
             ),
             const SizedBox(height: 24),
+
+            // A retry: say what the AI saw, with the locker camera's own photo.
+            if (_attempt > 1 && RetryFeedbackCard.hasContent(_retryReason, _retryImages)) ...[
+              RetryFeedbackCard(
+                reason: _retryReason,
+                reposition: _retryReposition,
+                imageUrls: _retryImages,
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // The countdown only exists while a door is actually unlocked.
             if (open) ...[
@@ -518,6 +534,8 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         setState(() {
           _doorSeconds = 0;
           _phase = _Phase.checking;
+          _retryReason = null;
+          _retryImages = const [];
         });
       } else {
         setState(() => _bayError = body['message'] as String? ??
@@ -536,10 +554,15 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   void _onItemRetry(Map<String, dynamic> data) {
     if (data['rentalId'] != widget.rentalId) return;
     if (!mounted) return;
+    final reason = data['reason'];
+    final urls = data['imageUrls'];
     setState(() {
       _attempt = (data['attemptNumber'] as num?)?.toInt() ?? (_attempt + 1);
       _phase = _Phase.bay;
       _bayError = null;
+      _retryReason = reason is String && reason.trim().isNotEmpty ? reason : null;
+      _retryReposition = data['reposition'] == true;
+      _retryImages = urls is List ? urls.whereType<String>().toList(growable: false) : const [];
     });
   }
 
