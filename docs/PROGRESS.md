@@ -10608,3 +10608,12 @@ restarted (PID 17856), `/app-config` → 1.14.0. Prerelease33 (old baked host) i
 **Next (G1 binds):** D8 (kiosk UI) is not started while D7's kiosk modes are unseen and the kiosk is offline. Options
 for the user: bring the kiosk online for a G11-approved walk-through of pay/collect, or approve building D8 in Vite
 dev mode first. D9 improvements after that.
+
+### 2026-10-12 18:05 — health check (user asked): all up, no restart needed; first reminder SEEN
+
+No reboot since 2026-10-11 15:14:37. All 7 tasks Running; API PID 17856, admin 11908, web 7644, ML 13148, MySQL
+3307; Docker containers Up 26 h. Tunnels unchanged (api `vcr-pamela-examines-baths`, admin
+`aid-astronomy-valuable-towers`, web `approved-combination-undefined-little`), all 200; `/app-config` 1.14.0; APK 34
+serves full length; gist points at the live API; CORS allows the admin origin. **D5 reminder seen live:**
+ER-DSP-2026-0001 got its day-1 reminder at 2026-10-12 13:02 PHT (the :02 sweep after 12:43), in-app; email NOT_SENT
+(no SMTP) recorded honestly; reminderStage 1; owed ₱60 (day 2).
