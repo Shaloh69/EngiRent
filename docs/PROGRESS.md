@@ -10846,3 +10846,14 @@ the server over Tailscale lost 66% of 3 packets (82 ms when it got through); upl
 Pi):** `services/image_uploader.py` retries a transport failure up to 3 times (25 s each, 1 s / 3 s backoff, fresh form per attempt), logs the
 exception type, does not retry a server refusal (4xx); `tests/test_image_uploader.py` 5 tests; kiosk suite 145 passed. **Better fix: plug in
 Ethernet** (`eth0` exists). Rental f5e5b68a is Pending with no photos and the item physically in bay 1: needs an admin decision.
+
+### 2026-10-12 22:05 — upload-retry fix COPIED to the Pi (not running yet); Long Sleeve deposit RESET (user: "Reset it for me please")
+
+**Pi:** `services/image_uploader.py` backed up as `image_uploader.py.bak-20261012-retry`, replaced, sha256 matches the repo (`9afea59d…`), parses and imports
+on the Pi (`_ATTEMPTS = 3`). The Pi's old copy was identical to the previous commit. The running kiosk process still has the OLD uploader until it is restarted
+(a power cycle by the user: `sudo` is refused). NOT seen: an upload surviving a timeout.
+**Reset (guarded script, state read first):** rental f5e5b68a (Long Sleeve) was `DEPOSITED / MANUAL_REVIEW`, bay 1 upper `OCCUPIED` by it, verification 0ee94f24 pending with no photos.
+Now: rental `AWAITING_DEPOSIT`, `depositedAt`/`verificationStatus` null, `depositLockerId` unchanged; the verification row `REJECTED` with a note explaining the reset; bay 1
+upper compartment `RESERVED` for this rental (whole bay `RESERVED`), lower `AVAILABLE`; both payment rows (₱30 rent, ₱300 deposit) untouched. No door or actuator was driven.
+The item is still physically in bay 1; the owner's next scan resumes in the same bay (D-89 resume rule) and "Item is placed" re-captures. The kiosk's occupancy display
+updates at its next push (the script had no socket). Not yet seen: the re-deposit working.
