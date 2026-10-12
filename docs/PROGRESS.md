@@ -10857,3 +10857,10 @@ Now: rental `AWAITING_DEPOSIT`, `depositedAt`/`verificationStatus` null, `deposi
 upper compartment `RESERVED` for this rental (whole bay `RESERVED`), lower `AVAILABLE`; both payment rows (₱30 rent, ₱300 deposit) untouched. No door or actuator was driven.
 The item is still physically in bay 1; the owner's next scan resumes in the same bay (D-89 resume rule) and "Item is placed" re-captures. The kiosk's occupancy display
 updates at its next push (the script had no socket). Not yet seen: the re-deposit working.
+
+### 2026-10-12 22:05 — Pi rebooted (user power-cycle): retry uploader now RUNNING; still on Wi-Fi
+
+Kiosk process started 22:00:45, the uploader file was written 21:59:58, so the running process has the retry code. `kiosk.camera` 1, 2, 3, 4 all ✓ again (locker 3 on
+hcd.1 usb-0:2). KIOSK-001 reconnected 22:01:44; occupancy 1 RESERVED (the Long Sleeve deposit waiting to be re-confirmed), 2 AVAILABLE (Hand Rivets collected), 3 and 4
+AVAILABLE. **`eth0` carrier = 0: no Ethernet link, the Pi is still on `GFiber_2.4_Coverage_e3280` (signal 75).** A 5-ping test to the server now: 0% loss, 44-57 ms
+(earlier 66% loss): the Wi-Fi is intermittent, not fixed. NOT yet seen: a deposit upload (re-deposit of the Long Sleeve) and the retry actually firing.
