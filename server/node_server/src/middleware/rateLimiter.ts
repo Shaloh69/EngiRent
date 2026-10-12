@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import env from "../config/env";
 import logger from "../utils/logger";
+import { verifyAccessToken } from "../utils/jwt";
 
 // In-memory store, periodically snapshotted to disk so limits survive a
 // process restart (a prior version reset entirely on restart, and separately
@@ -68,6 +69,21 @@ process.on("SIGINT", persist);
 const windowMs = parseInt(env.RATE_LIMIT_WINDOW_MS);
 const maxRequests = parseInt(env.RATE_LIMIT_MAX_REQUESTS);
 
+/** All authenticated requests from one IP share this many times the per-user limit. */
+const AUTHENTICATED_IP_MULTIPLIER = 5;
+
+/** The user id of a request whose access token VERIFIES, else null. Never throws. */
+function verifiedUserId(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) return null;
+  try {
+    const payload = verifyAccessToken(header.slice(7));
+    return typeof payload.userId === "string" && payload.userId ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
 export const rateLimiter = (
   req: Request,
   res: Response,
@@ -110,27 +126,45 @@ export const rateLimiter = (
     }
   }
 
-  const key = (req.headers["cf-connecting-ip"] as string | undefined) || req.ip || "unknown";
+  const ip = (req.headers["cf-connecting-ip"] as string | undefined) || req.ip || "unknown";
+  const userId = verifiedUserId(req);
+
+  // 2026-10-12 (found live): the bucket was per IP only, so one phone looping on
+  // /auth/profile used up the whole allowance and the admin console on the same
+  // IP was refused too. A request with a VERIFIED access token is now counted in
+  // its own user's bucket; everything else is counted by IP exactly as before
+  // (login and register are unauthenticated, so brute force stays IP-limited).
+  // A token only selects a bucket after it verifies: a forged one is just an
+  // anonymous request. Authenticated traffic also shares an IP-wide ceiling, so
+  // many accounts behind one address cannot be unbounded.
+  const keys: { key: string; max: number }[] = userId
+    ? [
+        { key: `u:${userId}`, max: maxRequests },
+        { key: `a:${ip}`, max: maxRequests * AUTHENTICATED_IP_MULTIPLIER },
+      ]
+    : [{ key: ip, max: maxRequests }];
+
   const now = Date.now();
-
-  if (!store[key] || now > store[key].resetTime) {
-    store[key] = { count: 1, resetTime: now + windowMs };
-    dirty = true;
-    next();
-    return;
+  for (const { key, max } of keys) {
+    const entry = store[key];
+    if (entry && now <= entry.resetTime && entry.count >= max) {
+      res.status(429).json({
+        success: false,
+        error: "Too many requests",
+        message: "Rate limit exceeded. Please try again later.",
+        retryAfter: Math.ceil((entry.resetTime - now) / 1000),
+      });
+      return;
+    }
   }
-
-  if (store[key].count >= maxRequests) {
-    res.status(429).json({
-      success: false,
-      error: "Too many requests",
-      message: "Rate limit exceeded. Please try again later.",
-      retryAfter: Math.ceil((store[key].resetTime - now) / 1000),
-    });
-    return;
+  for (const { key } of keys) {
+    const entry = store[key];
+    if (!entry || now > entry.resetTime) {
+      store[key] = { count: 1, resetTime: now + windowMs };
+    } else {
+      entry.count++;
+    }
   }
-
-  store[key].count++;
   dirty = true;
   next();
 };

@@ -10880,3 +10880,26 @@ sha256 `69be00a5…a457` equal local/server); website `release.ts` + dated `chan
 `/app-config` latestVersion 1.14.2. Admin console 200, API health 200, kiosk reconnected 22:54:14.
 **Still open (not done):** no server-side defence if another client loops (the limiter is per IP, so one bad client blocks everyone behind the same IP; a per-user ceiling or a
 separate admin allowance would stop that). Not seen: the Long Sleeve re-deposit; the first real storage drop; the bay-3 capture through the server; the touchscreen.
+
+## RATE LIMIT PER USER (user "yes" 2026-10-12 ~23:00 to "add a per-user limit"). G2 section table, repo-derived
+
+Derived from `middleware/rateLimiter.ts` (one bucket per `CF-Connecting-IP`, 1000 / 15 min on the live server, applied before authentication) and
+`utils/jwt.ts` (`verifyAccessToken`). Problem found tonight: one phone looping on `/auth/profile` exhausted the IP's bucket, so the admin console on the
+same IP got 429 on everything.
+
+| # | Section | Where | Done when |
+|---|---------|-------|-----------|
+| R1 | A request with a VERIFIED access token is counted in that user's own bucket (`u:<userId>`, same 1000 / 15 min); an unverified or missing token is counted by IP exactly as today (login brute force stays IP-limited). The token only selects a bucket after `verifyAccessToken` passes, so it cannot be used to pick someone else's bucket or to dodge the IP bucket | `middleware/rateLimiter.ts` | test: user A over the limit is refused while user B on the same IP is not; a forged token is counted by IP |
+| R2 | Backstop so authenticated traffic cannot be unbounded: all authenticated requests from one IP also share an IP ceiling of 5x the limit (`a:<ip>`) | same | test: the ceiling refuses once reached |
+| R3 | Deploy (API restart; the on-disk store keeps working: old IP keys are unchanged) | server | `/app-config` and admin console 200; live check with two tokens |
+
+Not changing: the limit numbers, the bypass secret, the kiosk, anything unauthenticated.
+
+### 2026-10-12 23:05 — per-user rate limit BUILT, TESTED, DEPLOYED (R1-R3 done; user: "yes", then "Yes, deploy the per-user limit")
+
+`middleware/rateLimiter.ts`: a request with a VERIFIED access token is counted in `u:<userId>` (same 1000 / 15 min) plus an IP-wide backstop `a:<ip>` of 5x; everything else is counted
+by IP exactly as before; a refused request is not counted against the other bucket; the bypass secret and limit numbers are untouched. `rateLimiterPerUser.test.ts` 6 tests (looping user
+refused while another user on the same IP is not; anonymous still IP-limited; forged token cannot pick a bucket; allowance follows the user across IPs; IP backstop; refusals not double
+counted). tsc clean, full suite **469/469**. Deployed: server file was identical to HEAD first, no kiosk flow in the log, API PID 17256 → **31512**, health 200, compiled `dist` has
+`verifiedUserId`. **Seen live** (persisted store after 4 + 2 authenticated calls as two fixture users): separate `u:` buckets (5 and 2), the `a:` backstop counting my IP, and a forged token
+answered 401 and counted as anonymous. NOT done: a live run to the full 1000 (covered by the unit tests); the 2,000-request flood is not re-created on purpose.
