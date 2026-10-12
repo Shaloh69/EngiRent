@@ -10938,3 +10938,11 @@ large photo + two thumbnails, caption; tapping a photo opens it full size with C
 tests). **Deploy/release:** server `index.ts` was identical to HEAD first; API PID 30924 → 31276 (compiled `dist` has `buildRetryFeedback` x2); release 1.14.4+38: APK validated (testzip clean, live API in 3 ABIs, `CN=EngiRent` `3d113b7d…f1868`, versionCode 38, sha256 `ec40450b…` equal local/server, 91,895,123 bytes
 served), website + changelog (server copies were HEAD) show 1.14.4, EngiRentWeb PID 32704 → 29656, `AppRelease` 1.14.4 + `LATEST_APP_VERSION=1.14.4`, API PID 31276 → **24872**, `/app-config` latestVersion 1.14.4.
 User question answered in chat: the "Raise a concern" button is in the app on a rental's detail screen while its return is under check (`status == VERIFICATION && !returnApproved`); at 00:20 the only such rental was the Payong return (MANUAL_REVIEW).
+
+### 2026-10-13 00:55 — "Concerns v2" PROPOSED (user request: hidden damage, more dispute types, video/photo/text evidence); NOT BUILT
+
+Spec: `docs/redesign/SPEC-CONCERNS-V2.md` (re-derived from the code; 7 decisions for the user in its section 6). **Bugs found while answering "the button does not show properly"**
+(not fixed yet, proposed as step 1): the rental detail screen does not reload on `return:under_review` / `return:approved` / `return:disputed` (only payment, deposit and reconnect
+events), so an open screen keeps a stale button; `return:approved` is sent to the renter only, never the owner; the concern toast reads `message` but the server sends `error`.
+Facts that shape the design: the deposit is refunded at return APPROVAL (before the owner collects), and the live upload limit is 10 MB per file (`video/mp4` already allowed).
+Waiting on the user's rulings; G2 table to be written from the spec once ruled.
