@@ -10699,3 +10699,48 @@ student account.
 | 6 skipping verification | **PRESENT, partly**: I reported the SMTP sender as written from an echo that was not the file (the `@` was lost); caught by the first real test, corrected to the user. And the code-in-subject leak was found only on the live log, after deploy: the "code is never logged" claim in my own comment was not tested until then |
 
 **Next:** D8 (kiosk UI). KIOSK-001 is ONLINE now, so the D7 kiosk pay/collect walk-through can happen with a G11 yes.
+
+### 2026-10-12 20:20 — test-case document revised (user request): `EngiRent-Hub-Test-Cases-Revised.docx` + `.pdf`
+
+134 → **158** test cases across the 9 categories (UT 7, SW 44, AD 30, KI 10, WB 6, IT 22, RT 9, AC 14, DS 16); each
+category's specification table and results table rebuilt from one list, IDs renumbered, "Table N lists its X test
+cases" sentences updated. **Removed as redundant (13):** UT-02 (= KI-02), UT-06 (phone camera, not kiosk hardware),
+IT-02 (= AC-06), IT-09 (= AC-03), AC-07 and DS-07 (= IT-04/IT-05), AC-11 (= IT-16), RT-08 (folded into UT-07),
+DS-04 (folded into SW-06), DS-13 (a case of DS-02), DS-14 (= SW-15), DS-15 (= AD-08), SW-02+SW-03 merged.
+**Rewritten (outdated by Dispute v2):** AD-21 "Settle a dispute", IT-13 "Return rejected", the kiosk-network and
+unclaimed-item wording, AC-01 vs IT-07 score thresholds (85 auto-approve / 60-84 review, one set of numbers).
+**Added:** forgot password, guardian, replacement value, kiosk-QR scan, dispute case / restricted account / review
+request / pay-or-collect (app); reject-a-return-opens-a-case, case review/actions/letters/close, kiosk payment alert,
+AI explanation (admin); the dispute IT group, email delivery; reset email and reconnect timings; fee schedule, fee
+cap, deadline/reminders, AI-explanation and case-record accuracy; reset-code, session, server-side restriction and
+case-access security tests. **Kiosk-screen tests for pay/collect were NOT added: D8 (the kiosk UI for them) is not
+built.** Verified against the code (verdict thresholds, fee bands, deadlines, restriction middleware, case
+authorization, retrieval policy); the rendered PDF was inspected page by page. Backups: scratchpad only. The three
+documents are still untracked (not committed, per the existing status).
+
+### 2026-10-12 20:45 — BUG found by the user: approving a return gave "Internal server error"; case ER-DSP-2026-0001 is half-approved
+
+User ran the kiosk walk-through themselves tonight (so the wrong-item collection WAS seen on hardware: bay 1 bottom door,
+20:33:42-52, `collect_wrong`, case event logged 20:33:50) and approved the return in Condition checks. **Cause (from the
+API log):** `approveReturn` writes `verificationStatus=APPROVED` in one transaction, THEN counts settlement rows; at
+20:34:32 MySQL on :3307 was unreachable for that count (D-108 relay drop) → 500, so: verification APPROVED 92.2, rental
+`VERIFICATION`/APPROVED, **no DEPOSIT_REFUND/OWNER_PAYOUT rows, dispute still RETURN_REVIEW**. And
+`reviewVerification`'s guard (`verificationStatus !== "APPROVED"`) then refuses any retry, so the admin button cannot
+finish it. MySQL is reachable again (count query ok 20:3x). **Fix written (NOT deployed):** `adminController.ts` now also
+treats a return with no settlement rows as unfinished, so a repeat Approve completes it; `approveReturn` is safe to
+repeat (settlement guarded by the same count, release is "already released", case close only touches active cases).
+tsc clean. Server copy was byte-identical to HEAD (compared 20:43). **Deploy REFUSED by the classifier
+([Production Deploy]); nothing reached the server (API PID 8924, no `returnSettled` in the server file).** Waiting on the
+user. G1: this fix + the bay-3 camera are both unfixed; nothing else is being built.
+
+### 2026-10-12 20:55 — approval bug FIXED, DEPLOYED, case ER-DSP-2026-0001 CLOSED (user: "Yes, deploy and finish the approval")
+
+Fix deployed (server file was identical to HEAD first; API PID 8924 → 27332, health 200, no kiosk activity since 20:34).
+`approveReturn` re-run once for rental 6a7ccbef (settlement rows before: 0, guard respected): DEPOSIT_REFUND ₱20
+COMPLETED (SECURITY_DEPOSIT → REFUNDED), OWNER_PAYOUT ₱90 PENDING (₱30 rent + the ₱60 dispute fees, "owner payout
+includes ₱60 in dispute fees"), dispute **RESOLVED / CORRECT_ITEM_RETURNED**, rental stays VERIFICATION awaiting the owner's
+pickup (by design, E6.R). Real emails went out for the first time: "Dispute closed [ER-DSP-2026-0001]" to the renter and
+"Your item is back" to the owner. The re-run had no socket (`io` undefined), so no live push, only the stored
+notification + email. **Seen:** log and DB read-back; NOT yet seen on the admin page after the fix (the admin's own Approve
+button path is the part the code change affects, never exercised again). The ₱90 owner payout stays PENDING until staff
+pay it out (manual mode). Root cause underneath remains D-108 (MySQL relay drops through Docker Desktop).

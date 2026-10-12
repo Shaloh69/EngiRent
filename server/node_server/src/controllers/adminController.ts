@@ -745,10 +745,26 @@ export const reviewVerification = async (
     // second click would settle the money twice, or a late REJECTED would
     // dispute a rental whose refund and payout have already gone out.
     const returnRental = verification.rental;
+    // "Approved" is written BEFORE the money settles (approveReturn), so a
+    // failure in between (found live 2026-10-12 20:34: the database dropped
+    // for a moment) left the rental APPROVED with no refund, no payout and the
+    // dispute still open, and this guard then refused every retry. A return
+    // whose settlement rows do not exist yet is still unfinished, so Approve
+    // may run again: approveReturn is safe to repeat (the settlement is
+    // guarded by this same count, the release and the case close are no-ops
+    // the second time).
+    const returnSettled = returnRental
+      ? (await prisma.transaction.count({
+          where: { rentalId: returnRental.id, type: { in: ["DEPOSIT_REFUND", "OWNER_PAYOUT"] } },
+        })) > 0
+      : false;
     const returnStillUnderReview =
       returnRental?.status === "VERIFICATION" &&
       returnRental.verificationStatus !== "APPROVED";
-    if (returnRental && status === "APPROVED" && returnStillUnderReview) {
+    // Only APPROVE may finish an unsettled approval; REJECT stays closed once approved.
+    const returnApprovalUnfinished =
+      returnRental?.status === "VERIFICATION" && !returnSettled;
+    if (returnRental && status === "APPROVED" && (returnStillUnderReview || returnApprovalUnfinished)) {
       // E6.R (2026-09-24) — the money settles now and the item is handed back
       // to its owner IN PLACE; the rental completes only when the owner opens
       // the bay and takes it (returnApprovalService.ts). This used to flip
