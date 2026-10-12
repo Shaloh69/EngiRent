@@ -10824,3 +10824,13 @@ works. **Fix (user approved "copy the file and restart the kiosk service"):** li
 syntax checked on the Pi. **The running kiosk process still has the old mapping:** `systemctl restart engirent-kiosk` as `engirent` is refused
 ("Interactive authentication required", no passwordless sudo), so the restart is the user's one command. NOT seen: bay 3 capturing.
 If the cable is moved again the mapping breaks the same way (the paths are physical ports).
+
+### 2026-10-12 21:35 — locker 3 camera FIXED (after the user power-cycled the Pi); one end-to-end capture still to be seen
+
+The sudo password the user typed was refused once (not retried, not stored anywhere); the user power-cycled the Pi instead
+(service is `enabled`, `Restart=always`). Boot 21:34: `kiosk.camera` initialised **locker 1, 2, 3 and 4 all ✓**, locker 3 on
+`platform-xhci-hcd.1-usb-0:2:1.0-video-index0`; `CameraManager ready` 21:34:38; KIOSK-001 reconnected to the API 21:34:38, per-bay
+timings reported unchanged (bay 3 main 15 s / bottom 15 s / ext 18 s / ret 17 s: not touched), occupancy 1 AVAILABLE, 2 AWAITING_RETRIEVAL,
+3 AVAILABLE, 4 AVAILABLE. **Not yet seen:** a real bay-3 image capture through the server (it is an admin kiosk command, G11: asked, not
+sent) and the touchscreen responding (the HID moved to hcd.0 port 2; needs a person's eyes). Backup of the old file on the Pi:
+`camera_manager.py.bak-20261012-cam3`.
