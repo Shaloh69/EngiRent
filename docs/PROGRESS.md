@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-13 03:00 - Concerns v2 LIVE (1.14.5); D-118 retry feedback FIXED + seen through the real chain, RELEASED 1.14.6+40; D-117 fixed live; API PID 28380 - KIOSK-001 OFF (user 02:59), reconnects on power-up - OPEN: SW-07 session restore (user to decide), real-kiosk retry with 1.14.6 unseen, D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api vcr-pamela-examines-baths / admin aid-astronomy-valuable-towers / web approved-combination-undefined-little (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
+[2026-10-14 18:15 - stack restarted after a 05:33 reboot (down ~12.5 h), rehosted, RELEASED 1.14.7+41; Concerns v2 + retry fix live; API PID 18388 - KIOSK-001 not connected (switched off 10-13) - OPEN: SW-07 session restore (user to decide), real-kiosk retry with 1.14.6+ unseen, D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api pioneer-profit-databases-writings / admin keeping-seller-accomplish-canal / web confidential-performer-reply-fare (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11117,3 +11117,11 @@ server `release.ts`/`changelog.ts`/`concernRules.ts` were HEAD first; web PID 29
 `AppRelease` 1.14.6 + `LATEST_APP_VERSION=1.14.6`; API restarted after 15 quiet kiosk minutes, PID 24516 → **28380**, `latestVersion` 1.14.6, compiled `concernRules.js` has the new text.
 **Kiosk:** did not re-register after this restart; the user reported at 02:59 "kiosk is now off". It reconnects by itself when powered on.
 **Still unseen:** a retry at the real kiosk with 1.14.6 on a student's phone (needs a person at the locker; nothing for me to drive under G11).
+
+### 2026-10-14 18:15 — Outage 05:33-18:05 (server reboot), stack restarted, rehosted, RELEASED 1.14.7+41
+
+Server booted 05:33; all 7 EngiRent tasks idle, no ports. Docker MySQL 3307 up. Started Node/ML/3 tunnels, then EngiRentWeb, then EngiRentAdmin. New hosts: api
+`pioneer-profit-databases-writings`, admin `keeping-seller-accomplish-canal`, web `confidential-performer-reply-fare`. `.env` API_PUBLIC_URL/CLIENT_WEB_URL/CLIENT_ADMIN_URL and admin
+`NEXT_PUBLIC_API_URL` re-pointed (admin chunks contain only the new host); gist `c9c8b972…` updated and read back. **1.14.7+41:** APK testzip clean, new API in 3 ABIs, `CN=EngiRent`
+`3d113b7d…f1868`, versionCode 41, sha256 `5133dfa8…2083` equal local/server; `/changelog` shows 1.14.7, the APK serves 200; `AppRelease` 1.14.7 + `LATEST_APP_VERSION=1.14.7`; API restarted
+after the `.env` edit (no kiosk connected): PID 18388, `/app-config` latestVersion 1.14.7 with the new web download link; ML `/api/v1/health` healthy (v2, models ready). KIOSK-001 not connected.

@@ -28,15 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.14.6",
-  buildNumber: 40,
-  fileName: "Engirent_Prerelease40.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-10-13",
+  version: "1.14.7",
+  buildNumber: 41,
+  fileName: "Engirent_Prerelease41.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-10-14",
   sizeMb: 88.1,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Fixed: when the locker asks you to try again, the app now really shows the AI's reason and the locker camera's photo (in 1.14.4 and 1.14.5 they were received but never shown)",
-    "Includes everything in 1.14.5: report problems the locker camera cannot see, with photos and a short video, and follow each case to its decision",
+    "Built for the server's new address after today's restart (the app also finds a new address by itself, so 1.14.6 keeps working)",
+    "Includes everything in 1.14.6: the AI's reason and the locker photo on a retry, and reporting problems the locker camera cannot see",
   ],
 };
 

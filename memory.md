@@ -2713,3 +2713,14 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
   (1 on the first retry), the app treated it as the next attempt and hid the card below attempt 2. Lesson: verify a socket-driven
   screen through the real server emit, not a widget preview; on the private copy a stand-in AI (RETRY) + a kiosk socket with the
   private secret drives the real chain with no hardware. RELEASED 1.14.6+40. D-117 wording fixed. Kiosk switched off by the user 02:59.
+
+## 2026-10-14 ~18:05 PHT — Server PC rebooted 05:33; stack restarted on request; rehosted; RELEASED 1.14.7+41
+- The server PC booted at 05:33 (cause not known to me); the 7 Interactive tasks did not start, so EngiRent was DOWN from
+  05:33 until ~18:05 (~12.5 h). Docker/MySQL (3307) had come back by itself. User: "server reset for me please".
+- Restarted Node, ML, the 3 tunnels, then web, then admin (one build at a time). New hosts: api pioneer-profit-databases-writings,
+  admin keeping-seller-accomplish-canal, web confidential-performer-reply-fare. Re-pointed API_PUBLIC_URL / CLIENT_WEB_URL /
+  CLIENT_ADMIN_URL in the node `.env` and NEXT_PUBLIC_API_URL in the admin `.env.local`; gist updated (note kept).
+- The API had started (18:05:32) BEFORE the `.env` edit, so it was restarted once more after the release record: PID 18388.
+  Lesson: the node task's process reads `.env` when `npm start` runs, after `tsc`; edit `.env` before starting the task.
+- Full release 1.14.7+41 (new baked URL): APK validated, website + changelog, AppRelease + LATEST_APP_VERSION=1.14.7.
+  KIOSK-001 had not connected by 18:15 (the user switched it off on 10-13 02:59).

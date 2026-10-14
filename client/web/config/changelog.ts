@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-14",
+    version: "1.14.7",
+    tag: "infra",
+    title: "New server address after a restart",
+    bullets: [
+      "The server restarted and its address changed; this build has the new address built in",
+      "Installed apps from 1.14.0 on find the new address by themselves, so updating is recommended but not required",
+    ],
+  },
+  {
     date: "2026-10-13",
     version: "1.14.6",
     tag: "fix",
