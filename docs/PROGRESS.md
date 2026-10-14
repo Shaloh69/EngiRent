@@ -11143,3 +11143,26 @@ expected result is kept, folded into the Test Case as "<steps> Check that <resul
 sub-categories. Additions beyond the original: real page breaks instead of blank lines, and header rows repeat on continuation pages. 185 cases, Tables 10-27, 37 pages, Word PDF;
 pages 1, 2, 4 and 29 rendered and looked at. Page numbers start at 1 (the thesis has this section at page 90). `.gitignore` now excludes `/EngiRent-Hub-*.docx|pdf` (the original
 contains the authors' names; the repo is public).
+
+## D-119 CAMERA SELF-RECONNECT (user 2026-10-14 ~23:00: camera 3 dead again; "yes please" to "make the kiosk reopen a camera by itself when a capture fails"). G2 table, repo-derived
+
+**Re-derived (API log, not assumed):** locker 3 captured 3 frames at 19:37; at 22:52 three admin test captures of bay 3 returned 0 frames
+("Camera read failed: /dev/v4l/by-path/platform-xhci-hcd.1-usb-0:2:1.0-video-index0"), bays 2 and 4 fine. `hardware/camera_manager.py` opens each camera ONCE in
+`CameraManager.__init__` and `capture_locker` only logs a failed `read()`; a stream that breaks (cable knocked, USB re-enumeration) stays dead until the service restarts, and a
+camera missing at boot is never retried. Pi access right now: Tailscale SSH asks for a browser check (the user's to approve); the Pi is not on the server's LAN today.
+
+| # | Section | Where | Done when |
+|---|---------|-------|-----------|
+| K1 | `capture_locker`: a camera not open at boot is opened on demand; on the first failed read, release + reopen once and retry; never more than one reopen per capture | `server/kiosk/hardware/camera_manager.py` | unit tests with fake captures (no hardware) |
+| K2 | Deploy to the Pi (file copy, Pi copy == HEAD first) + kiosk restart | Pi | needs Pi access (Tailscale check or LAN) and a restart (power cycle): user's call, G11 for the restart |
+| K3 | Seen: after the restart, a bay-3 admin test capture returns 3 frames; later, unplug/replug camera 3 and capture again without a restart | kiosk | log shows "reopened" and 3 frames |
+
+Not touching: GPIO, relays, doors, actuators, timings, the autostart supervisor.
+
+### 2026-10-14 23:20 — D-119 K1 BUILT and tested; NOT deployed (no Pi access: Tailscale SSH check pending the user)
+
+`camera_manager.py`: `_reopen(locker_id)` releases and reopens by the by-path device; `capture_locker` opens a camera missing at boot on demand and, on the first failed read
+of a capture, reopens once and retries that frame (never more than one reopen per capture). `tests/test_camera_reconnect.py` 5 tests through the real `CameraManager` with fake
+captures: 4 fail on HEAD's file, 5 pass with the change; kiosk suite **150/150**. **K2 blocked:** Tailscale SSH to `engirent-kiosk` prints "requires an additional check"
+(approval link given to the user); the Pi is not on the server's LAN. After access: compare the Pi's file to HEAD, back it up, copy, then a kiosk restart (power cycle) - G11.
+Camera 3 itself is still down (0 frames since at least 22:52).

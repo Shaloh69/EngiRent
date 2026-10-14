@@ -163,18 +163,46 @@ class CameraManager:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
+    def _device(self, locker_id: int) -> str:
+        usb_idx = LOCKER_PINS[locker_id]["camera_index"]
+        return USB_DEVICE_MAP.get(usb_idx, f"/dev/video{usb_idx * 2}")
+
+    def _reopen(self, locker_id: int) -> cv2.VideoCapture | None:
+        """D-119: release a camera and open it again. A stream that broke (a
+        knocked cable, a USB re-enumeration) used to stay dead until the
+        service restarted; reopening by its by-path name picks it up again
+        once it is back on the same port."""
+        old = self._usb.pop(locker_id, None)
+        if old is not None:
+            try:
+                old.release()
+            except Exception:
+                pass
+        w, h = LOCKER_RESOLUTION
+        device = self._device(locker_id)
+        cap = _open_usb(device, w, h)
+        if cap:
+            self._usb[locker_id] = cap
+            log.warning("Locker camera locker=%s reopened device=%s", locker_id, device)
+        else:
+            log.error("Locker camera locker=%s could not be reopened device=%s", locker_id, device)
+        return cap
+
     def capture_locker(self, locker_id: int, num_frames: int = 3) -> list[bytes]:
         if MOCK_CAMERA:
             return [self._mock_frame(1280, 960) for _ in range(num_frames)]
 
         cap = self._usb.get(locker_id)
         if cap is None:
-            log.error("Locker camera locker=%s not initialised", locker_id)
-            return []
+            # Missing at boot (unplugged then): try once now, it may be back.
+            log.error("Locker camera locker=%s not initialised, trying to open it now", locker_id)
+            cap = self._reopen(locker_id)
+            if cap is None:
+                return []
 
-        usb_idx = LOCKER_PINS[locker_id]["camera_index"]
-        device  = USB_DEVICE_MAP.get(usb_idx, "?")
+        device  = self._device(locker_id)
         frames  = []
+        reopened = False
         for i in range(num_frames):
             if i > 0:
                 time.sleep(0.5)
@@ -182,6 +210,18 @@ class CameraManager:
                 frames.append(self._read_frame(cap, device))
             except Exception as e:
                 log.error("Capture failed locker=%s frame=%s: %s", locker_id, i, e)
+                # One reopen per capture, then retry this frame; a camera that
+                # is really gone stops here instead of looping.
+                if reopened:
+                    continue
+                reopened = True
+                cap = self._reopen(locker_id)
+                if cap is None:
+                    break
+                try:
+                    frames.append(self._read_frame(cap, device))
+                except Exception as e2:
+                    log.error("Capture failed locker=%s frame=%s after reopen: %s", locker_id, i, e2)
 
         log.info("Captured %s frames from locker=%s", len(frames), locker_id)
         return frames
