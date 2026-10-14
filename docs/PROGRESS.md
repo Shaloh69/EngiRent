@@ -11125,3 +11125,9 @@ Server booted 05:33; all 7 EngiRent tasks idle, no ports. Docker MySQL 3307 up. 
 `NEXT_PUBLIC_API_URL` re-pointed (admin chunks contain only the new host); gist `c9c8b972…` updated and read back. **1.14.7+41:** APK testzip clean, new API in 3 ABIs, `CN=EngiRent`
 `3d113b7d…f1868`, versionCode 41, sha256 `5133dfa8…2083` equal local/server; `/changelog` shows 1.14.7, the APK serves 200; `AppRelease` 1.14.7 + `LATEST_APP_VERSION=1.14.7`; API restarted
 after the `.env` edit (no kiosk connected): PID 18388, `/app-config` latestVersion 1.14.7 with the new web download link; ML `/api/v1/health` healthy (v2, models ready). KIOSK-001 not connected.
+
+### 2026-10-14 19:55 — Thesis test cases updated (user: "Update the test cases please pdf"): 185 cases
+
+Added SW-33 "See why the AI asked for a retry" (the D-118 behaviour in 1.14.6: Attempt 2, the AI's reason, the locker photo, tap to enlarge); SW-34 onward renumbered, the
+"Table N lists its 52 test cases" sentence updated by the builder. Word PDF re-exported (31 pages), page 5 rendered and looked at. Documents stay untracked (public repo); the
+previous docx/pdf are backed up outside the repo. SW-07 "Stay logged in" left as written: it still fails against the app (no session restore) pending the user's decision.
