@@ -148,3 +148,7 @@ server/python_server/services/ml/cache_v2/
 
 # Playwright / emulator screenshots: may show faces, ID photos and student data (the repo is public).
 .playwright-mcp/
+
+# Thesis documents (real names, unpublished): never commit; the repo is public.
+/EngiRent-Hub-*.docx
+/EngiRent-Hub-*.pdf

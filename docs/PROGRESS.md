@@ -11131,3 +11131,15 @@ after the `.env` edit (no kiosk connected): PID 18388, `/app-config` latestVersi
 Added SW-33 "See why the AI asked for a retry" (the D-118 behaviour in 1.14.6: Attempt 2, the AI's reason, the locker photo, tap to enlarge); SW-34 onward renumbered, the
 "Table N lists its 52 test cases" sentence updated by the builder. Word PDF re-exported (31 pages), page 5 rendered and looked at. Documents stay untracked (public repo); the
 previous docx/pdf are backed up outside the repo. SW-07 "Stay logged in" left as written: it still fails against the app (no session restore) pending the user's decision.
+
+### 2026-10-14 20:40 — Test cases rebuilt in the ORIGINAL thesis format (user: "follow the format in the original document")
+
+Source of the format: `EngiRent-Hub-Original.docx` (the full thesis the user added; section "TEST CASES AND SCENARIOS", Tables 10-21). New builder (scratchpad
+`build_thesis_format.py`) starts from a copy of that file (fonts, page setup, footer), keeps only the test section and rebuilds it from the original's own paragraphs and tables:
+same headings and sentences ("This section presents a set of test cases and scenarios intended to assess…", "Table N presents…", "This section presents the results…"), bold
+two-line captions, the 2-column "Test Scenario | Test Case" table, the "Legend: P – Passed F – Failed" line (Response Time uses the original's two-line legend), and the trials
+table (TEST SCENARIO | TRIALS 1-10 | PERCENTAGE | REMARKS, "Unit's Overall Performance"). Dropped vs the revised layout: the ID and Expected Result columns and the group rows; each
+expected result is kept, folded into the Test Case as "<steps> Check that <result>". Admin console, kiosk interface and website follow the same template as Software Testing
+sub-categories. Additions beyond the original: real page breaks instead of blank lines, and header rows repeat on continuation pages. 185 cases, Tables 10-27, 37 pages, Word PDF;
+pages 1, 2, 4 and 29 rendered and looked at. Page numbers start at 1 (the thesis has this section at page 90). `.gitignore` now excludes `/EngiRent-Hub-*.docx|pdf` (the original
+contains the authors' names; the repo is public).
