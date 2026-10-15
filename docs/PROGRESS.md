@@ -11302,3 +11302,19 @@ google_mlkit_face_detection 0.14.0, image, path_provider.
 record numbers here; (3) admin console page for `/admin/face-reviews` (API done, no UI); (4) DEPLOY (one explicit yes, kiosk idle): `prisma db push`, copy ML app + `fetch_face_models.py`
 and run it, restart ML, API restart, then the release; `MIN_APP_VERSION` must move to the new build because the old app cannot pass any kiosk face step; (5) F5 real kiosk run (G11);
 (6) F6 thesis cases + website changelog + AppRelease/LATEST_APP_VERSION. Android only (iOS not supported by the capture controller; the app ships Android).
+
+### 2026-10-15 — Threshold tuning on openly licensed photos (user: "find images online to tune it"); anti-spoof attack side NOT measured
+
+Photos: Wikimedia Commons categories (CC BY / BY-SA / CC0 / PD only), fetched by `ml/eval/fetch_wild_faces.py` into the GITIGNORED `ml/tests/fixtures/faces/_wild/` with an `ATTRIBUTION.json`
+per group; measured by `ml/eval/wild_faces_report.py --max-yaw 15` (only near-frontal faces count: the hat rule judges the centre frame). Commons throttles hard (429s); a free-text search returned
+mostly museum paintings, so categories were used. Single photos tune single components; they are NOT blink/turn sequences from the students.
+
+| Component | Data | Result | Setting |
+|---|---|---|---|
+| Hat rule | 5 near-frontal caps, 17 bare, 3 hijab, 3 glasses | caps 5/5 refused, hat share >= 0.171; one glasses photo falsely refused at 0.043; bare 16/16 pass (1 headdress covering part of the forehead refused, as ruled); hijab: the two with the forehead visible pass, one with the forehead partly covered refused | `face_hat_min_share` 0.04 -> **0.08** |
+| Blink (EAR) | closed-eye photos vs bare | closed 0.096 / 0.101 / 0.155; open 0.226 - 0.402 (lowest 0.226) | kept 0.21 open / 0.19 closed / ratio 0.75; **narrow on the open side: retune from real phone sessions** |
+| Head turn | only turned heads in the first run (yaw 20 - 54 degrees measured) | solver returns plausible angles; no ground truth | kept 20 degrees |
+| Anti-spoof (MiniFASNetV2-SE) | 17 real near-frontal faces | **3 of 17 real faces scored fake** (-1.32, -0.84, -11.01); real range up to +18 | left at 0.0 (the model's own default). **No printed-photo or screen-replay sample was measured, so the attack side is unknown.** Env override `ML_FACE_SPOOF_MIN_MARGIN`; every attempt logs its margin |
+
+**Why the spoof threshold was not loosened:** moving it to catch the three real faces would be tuned against the wrong side (no attacks to test it on). The cost if it is too strict is a false SPOOF refusal at
+the kiosk (4 tries per scan); the user's phone test is the first real measurement. If real selfies also fail often, lower the margin on the server (no redeploy: an env var) once attack samples exist.

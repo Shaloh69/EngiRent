@@ -194,7 +194,11 @@ class Settings(BaseSettings):
     face_ear_closed_ratio_max: float = 0.75  # ...and clearly more closed than the centre
     face_centre_max_yaw_deg: float = 12.0  # centre frame faces the camera
     face_turn_min_yaw_deg: float = 20.0  # each turn frame, in its own direction
-    face_hat_min_share: float = 0.04  # hat pixels / head region below this: no covering
+    # Measured 2026-10-15 on openly licensed Commons photos (eval/wild_faces_report.py,
+    # near-frontal only): 5/5 caps had a hat share of 0.17 or more; the one false
+    # refusal (glasses, forehead fully visible) sat at 0.043. 0.08 splits them.
+    # Few photos, so treat the margin as thin and retune from real phone sessions.
+    face_hat_min_share: float = 0.08  # hat pixels / head region below this: no covering
     face_forehead_min_skin: float = 0.5  # covering allowed only with the forehead visible
     face_forehead_band: float = 0.25  # forehead band height, fraction of brow-to-chin
     face_frame_min_share: float = 0.01  # covering below the eyes on each side
