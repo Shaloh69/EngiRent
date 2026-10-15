@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-15",
+    version: "1.15.0",
+    tag: "feature",
+    title: "A guided face check: blink and turn your head",
+    bullets: [
+      "The kiosk now checks it is really you: look at the camera, blink, and turn your head left and right, in an order the server picks each time",
+      "A photo of a face, or a face on another phone's screen, is refused",
+      "Glasses are fine. Caps, hats and hoods are refused with a clear message; a head covering that leaves your whole face visible, like a hijab, is fine",
+      "Everyone updates their face once: tap \"Update your face with the new system now\" on the home screen. Until you do, the kiosk asks you to update first",
+      "If your new face does not match the one on your account, you confirm with your password and an admin approves it before it works at the kiosk",
+    ],
+  },
+  {
     date: "2026-10-14",
     version: "1.14.7",
     tag: "infra",
