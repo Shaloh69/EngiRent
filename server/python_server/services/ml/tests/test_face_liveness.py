@@ -133,29 +133,39 @@ def test_a_face_framing_covering_with_the_forehead_visible_passes():
     assert run(mask=_hijab(_bare())).passed
 
 
-@pytest.mark.parametrize("step", [CENTRE, BLINK])
-def test_a_photo_or_screen_on_a_frontal_frame_is_refused(step):
+def test_a_photo_or_screen_that_scores_low_on_every_facing_frame_is_refused():
     spec = good_spec()
-    spec[step]["spoof"] = -3.0
+    spec[CENTRE]["spoof"] = -3.0
+    spec[BLINK]["spoof"] = -3.0
     r = run(spec)
-    assert (r.passed, r.reason, r.step) == (False, "SPOOF", step)
+    assert (r.passed, r.reason, r.step) == (False, "SPOOF", CENTRE)
+
+
+def test_one_good_facing_frame_is_enough_because_single_real_frames_score_low_sometimes():
+    # Measured on real phones: a real face scored -5.95 / -2.71 on single frames,
+    # while every real attempt had one facing frame >= -0.22.
+    spec = good_spec()
+    spec[CENTRE]["spoof"] = -2.71
+    spec[BLINK]["spoof"] = -4.14
+    spec["BLINK2"] = {"lm": face_landmarks(0, 0.12), "spoof": -0.22}
+    assert run(spec, extras=("BLINK2",)).passed
 
 
 def test_the_spoof_margin_threshold_is_inclusive_at_the_configured_limit():
-    assert T.spoof_min_margin == -2.0
+    assert T.spoof_min_margin == -1.0
     spec = good_spec()
-    spec[CENTRE]["spoof"] = -2.0
+    spec[CENTRE]["spoof"] = spec[BLINK]["spoof"] = -1.0
     assert run(spec).passed
-    spec[CENTRE]["spoof"] = -2.01
+    spec[CENTRE]["spoof"] = spec[BLINK]["spoof"] = -1.01
     assert run(spec).reason == "SPOOF"
 
 
 def test_real_phone_faces_from_the_first_live_test_are_not_refused_as_spoofs():
     # Margins measured on two students' real attempts, 2026-10-15.
-    for margin in (-1.6003, -0.8002, -0.4211, 0.0468):
+    for centre, blink in ((-1.6003, 3.9), (-0.8002, -0.42), (-2.7148, 0.66), (-1.0234, -0.22), (-0.96, 6.99)):
         spec = good_spec()
-        spec[CENTRE]["spoof"] = margin
-        assert run(spec).passed, margin
+        spec[CENTRE]["spoof"], spec[BLINK]["spoof"] = centre, blink
+        assert run(spec).passed, (centre, blink)
 
 
 def test_turn_frames_are_not_spoof_checked_the_model_is_unreliable_there():
@@ -186,13 +196,18 @@ def test_no_blink_fails():
 def test_a_half_blink_fails_on_the_ratio_even_under_the_absolute_limit():
     spec = good_spec()
     spec[CENTRE]["lm"] = face_landmarks(0, 0.23)
-    spec[BLINK]["lm"] = face_landmarks(0, 0.20)  # at the absolute limit, but 0.87 of open
+    spec[BLINK]["lm"] = face_landmarks(0, 0.20)  # 0.87 of open: more than the 0.85 allowed
     assert run(spec).reason == "NO_BLINK"
 
 
 def test_blink_frames_measured_on_real_students_pass_or_fail_as_they_should():
     # (open, blink) from the first live test: three real blinks, one eyes-open frame.
-    for open_ear, blink_ear, expect in ((0.2124, 0.1627, True), (0.2488, 0.1589, True), (0.2192, 0.1969, False), (0.303, 0.4285, False)):
+    # Judged by eye on 8 attempts. 0.217 -> 0.179 (0.825) was a real blink and must pass,
+    # which is why the rule is relative to the person's own open eye, at 0.85.
+    for open_ear, blink_ear, expect in (
+        (0.2124, 0.1627, True), (0.2488, 0.1589, True), (0.2192, 0.1969, False), (0.303, 0.4285, False),
+        (0.217, 0.179, True), (0.163, 0.098, True), (0.200, 0.101, True),
+    ):
         spec = good_spec()
         spec[CENTRE]["lm"] = face_landmarks(0, open_ear)
         spec[BLINK]["lm"] = face_landmarks(0, blink_ear)
@@ -223,12 +238,12 @@ def test_an_extra_candidate_with_no_face_or_two_faces_is_ignored_not_fatal():
     assert r.passed and r.metrics["blink_candidates"] == 1
 
 
-def test_the_closest_shut_candidate_is_the_one_checked_for_spoof_and_same_person():
+def test_the_closest_shut_candidate_is_the_one_checked_for_same_person():
     spec = good_spec()
     spec[BLINK]["lm"] = face_landmarks(0, 0.30)
-    spec["BLINK2"] = {"lm": face_landmarks(0, 0.05), "spoof": -9.0, "enc": SOMEONE_ELSE}
+    spec["BLINK2"] = {"lm": face_landmarks(0, 0.05), "enc": SOMEONE_ELSE}
     r = run(spec, extras=("BLINK2",))
-    assert r.reason == "SPOOF" and r.step == BLINK
+    assert r.reason == "NOT_SAME_PERSON" and r.step == BLINK
 
 
 def test_a_turn_that_is_too_small_fails():
@@ -237,17 +252,56 @@ def test_a_turn_that_is_too_small_fails():
     assert (run(spec).reason, run(spec).step) == ("TURN_LEFT_SHORT", TURN_LEFT)
 
 
-def test_turning_the_wrong_way_fails():
+def test_turning_the_wrong_way_is_told_apart_from_not_turning_far_enough():
     spec = good_spec()
     spec[TURN_LEFT]["lm"], spec[TURN_RIGHT]["lm"] = spec[TURN_RIGHT]["lm"], spec[TURN_LEFT]["lm"]
+    assert run(spec).reason == "TURN_LEFT_WRONG"
+    spec = good_spec()
+    spec[TURN_LEFT]["lm"] = face_landmarks(-8)  # barely turned the right way
     assert run(spec).reason == "TURN_LEFT_SHORT"
+    spec = good_spec()
+    spec[TURN_RIGHT]["lm"] = face_landmarks(-30)  # turned LEFT when asked for right
+    assert run(spec).reason == "TURN_RIGHT_WRONG"
 
 
 def test_mirrored_frames_swap_which_image_direction_is_left():
     spec = good_spec()
     spec[TURN_LEFT]["lm"], spec[TURN_RIGHT]["lm"] = spec[TURN_RIGHT]["lm"], spec[TURN_LEFT]["lm"]
     assert run(spec, mirrored=True).passed
-    assert run(mirrored=True).reason == "TURN_LEFT_SHORT"
+    assert run(mirrored=True).reason == "TURN_LEFT_WRONG"
+
+
+def test_the_turn_decision_ignores_the_head_pose_solver_which_flips_at_large_turns():
+    # Real frame from the first live test: the face plainly pointed at the picture's
+    # right (a left turn) and solvePnP said -60 degrees. The ratio does not flip.
+    from app.face import liveness as L
+
+    spec = good_spec()
+    original = L.head_pose
+    L.head_pose = lambda lm, size: (-60.0, 0.0)
+    try:
+        assert run(spec).passed
+    finally:
+        L.head_pose = original
+
+
+def test_ratios_measured_on_real_phone_frames_decide_as_they_should():
+    # The weakest real left turn measured +0.34 and the strongest facing frame 0.12.
+    assert T.turn_min_yaw_ratio == 0.28 and T.centre_max_yaw_ratio == 0.20
+    import numpy as np
+
+    from app.face.geometry import yaw_ratio
+
+    def lm_with_ratio(r):
+        lm = np.zeros((68, 2))
+        lm[36] = (100, 100)
+        lm[45] = (200, 100)
+        lm[30] = (150 + 50 * r, 120)  # nose position between the eye corners
+        return lm
+
+    for r in (0.34, 0.42, 0.75, 1.13):
+        assert yaw_ratio(lm_with_ratio(r)) == pytest.approx(r, abs=1e-9)
+    assert yaw_ratio(lm_with_ratio(0.0)) == 0.0
 
 
 def test_a_different_person_on_the_blink_frame_fails():
@@ -401,3 +455,18 @@ def test_a_capture_failure_never_breaks_the_attempt(client, tmp_path, monkeypatc
     monkeypatch.setattr(face_liveness, "_DEBUG_FLAG", str(flag))
     monkeypatch.setattr(face_liveness, "_DEBUG_DIR", str(tmp_path / "not" / "a" / "dir\0bad"))
     assert client.post(URL, files=_files()).status_code == 200
+
+
+def test_the_phones_mirrored_claim_is_ignored_because_frames_are_never_mirrored(client):
+    # 1.15.2 still sends mirrored=true; the real frames are unmirrored, so a left turn
+    # (face toward the picture's right) must pass whatever the phone claims.
+    for claim in ("true", "false"):
+        body = client.post(URL, files=_files(), data={"mirrored": claim}).json()
+        assert body["passed"] and body["live"], claim
+
+
+def test_a_right_turn_that_is_too_small_fails_just_like_a_left_one():
+    spec = good_spec()
+    spec[TURN_RIGHT]["lm"] = face_landmarks(8)  # barely turned the right way (ratio about -0.1)
+    r = run(spec)
+    assert (r.reason, r.step) == ("TURN_RIGHT_SHORT", TURN_RIGHT)

@@ -12,10 +12,18 @@ looked at, which is what "glasses are fine" means here.
 
 The rule, in the order it is applied:
   1. hardly any `hat` pixels in the head region          -> pass
-  2. otherwise the forehead must be visible skin AND the covering must frame
-     the face (reach below the eyes on BOTH sides, as a hijab does; a cap or
-     a brimmed hat sits above the ears)                   -> pass
-  3. anything else                                        -> refuse (HAT)
+  2. otherwise the covering must leave the forehead visible (skin in the
+     forehead band at or above `forehead_min_skin`)       -> pass
+  3. a covering over the forehead                         -> refuse (HAT)
+
+History: the first version ALSO required the covering to frame the face below
+the eyes (hijab-shaped). On the first live test (2026-10-15, 21 attempts by
+two students, all judged by eye) that refused two plainly bare-headed faces:
+dark curly hair and a hand resting on the head were labelled `hat` (share
+0.24) while the forehead was fully visible (0.93-0.98). A cap or hood sits ON
+the forehead, so the forehead test alone is what separates them: the 5 caps
+measured earlier had forehead skin 0.29-0.47. Trade-off, accepted: a cap worn
+pushed back with the whole forehead showing now passes.
 
 Every number is a setting (`face_hat_*`, `face_forehead_*`) to be tuned on
 real captures; none of them is a guess presented as a measurement.
@@ -88,5 +96,5 @@ def assess_covering(
     need = max(1.0, frame_min_share * head_px)
     frames_face = bool(below[:, :jaw_left].sum() >= need and below[:, jaw_right:].sum() >= need)
 
-    refused = not (forehead_skin >= forehead_min_skin and frames_face)
+    refused = forehead_skin < forehead_min_skin
     return CoveringResult(refused, hat_share, forehead_skin, frames_face)

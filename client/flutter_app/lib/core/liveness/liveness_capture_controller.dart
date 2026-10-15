@@ -24,20 +24,21 @@ import 'package:path_provider/path_provider.dart';
 /// this file adds a sequence factory for the server's order and the
 /// best-frame selection.
 ///
-/// Left and right, settled from two live tests on real phones (2026-10-15):
-///  - 1.15.0: with the student's left mapped to the package's turnHeadRight (ML
-///    Kit yaw > 0), "turn left" PASSED on the phone, so a real left turn gives a
-///    POSITIVE ML Kit yaw: [kStudentLeftIsPackageRight] is true.
-///  - Those same frames reached the server pointing to the image's LEFT (yaw
-///    -73..-84), so the uploaded pictures are MIRRORED like the selfie preview:
-///    [kFramesAreMirrored] is true and the server is told so (`mirrored=true`).
-///  - 1.15.1 flipped the first constant instead, which stopped "turn left"
-///    from ever passing on the phone (nothing was uploaded). It was wrong.
+/// Left and right, SETTLED by looking at the 126 saved frames of 21 real attempts
+/// (2026-10-15), not by reading yaw numbers (which misled twice):
+///  - the student's left turn is a POSITIVE ML Kit yaw ([kStudentLeftIsPackageRight]
+///    is true): the phone accepted it, and the frames show the face pointing at the
+///    picture's right;
+///  - the uploaded pictures are NOT mirrored (in every "turn left" frame the face
+///    points at the picture's right), so the server is told `mirrored=false`.
+/// 1.15.0 sent mirrored=false and 1.15.2 mirrored=true; the server's head-angle
+/// solver had flipped its sign at large turns, which made both look wrong. The
+/// server now measures the turn with a ratio that cannot flip, and this is pinned
+/// by a test.
 const bool kStudentLeftIsPackageRight = true;
 
-/// The frames this controller encodes are mirrored left-right, like the preview
-/// the student sees; sent to the server as `mirrored=true`.
-const bool kFramesAreMirrored = true;
+/// The frames this controller encodes are NOT mirrored.
+const bool kFramesAreMirrored = false;
 
 /// The turn frame we send is the one nearest this ML Kit yaw (degrees) in the
 /// right direction, NOT the most extreme one. 1.15.0 sent the widest turn,
@@ -182,6 +183,11 @@ class LivenessCaptureController extends ChangeNotifier {
 
   _Candidate? _candidate;
 
+  /// Yaw of the previous frame, to measure how fast the head is moving: a frame
+  /// taken mid-movement is motion-blurred, and 6 of 21 real attempts failed on a
+  /// blurred frame (no face found).
+  double? _lastYaw;
+
   /// The few most-closed-eye frames of the blink step. A blink lasts ~150 ms and
   /// the stream delivers a few frames a second, so one frame often misses the
   /// closed moment; the server checks every candidate and keeps the best.
@@ -284,6 +290,7 @@ class LivenessCaptureController extends ChangeNotifier {
     stepIndex = 0;
     _candidate = null;
     _blinkPool.clear();
+    _lastYaw = null;
     _final.clear();
   }
 
@@ -399,10 +406,13 @@ class LivenessCaptureController extends ChangeNotifier {
     final yaw = f.headEulerAngleY ?? 0.0; // positive = face points at the image's right
     final bothOpen = math.min(l, r);
     final meanOpen = (l + r) / 2;
+    final speed = _lastYaw == null ? 0.0 : (yaw - _lastYaw!).abs();
+    _lastYaw = yaw;
     final double score;
     switch (currentKey) {
       case 'centre':
-        score = bothOpen - yaw.abs() / 40.0; // eyes open and frontal
+        // Eyes open, frontal and STILL (a moving head blurs the picture).
+        score = bothOpen - yaw.abs() / 40.0 - speed / 25.0;
       case 'BLINK':
         score = -meanOpen; // the most closed eyes
       case 'TURN_LEFT':
@@ -411,7 +421,9 @@ class LivenessCaptureController extends ChangeNotifier {
         // wrong way or barely turned scores far below any usable one.
         final sign = _turnSign(currentKey);
         final turned = yaw * sign;
-        score = turned < 15 ? -1000 + turned : -(turned - kTurnTargetDegrees).abs();
+        // Steady frames win: each degree of movement between frames costs as much
+        // as a degree away from the target, so a blurred mid-swing frame loses.
+        score = turned < 15 ? -1000 + turned : -(turned - kTurnTargetDegrees).abs() - speed;
       default:
         score = 0;
     }

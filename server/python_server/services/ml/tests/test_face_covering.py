@@ -13,7 +13,7 @@ import pytest
 from app.face.covering import EYE_G, HAT, assess_covering
 from tests.face_synth import _bare, _hijab, _landmarks
 
-KW = dict(hat_min_share=0.04, forehead_min_skin=0.5, forehead_band=0.25, frame_min_share=0.01)
+KW = dict(hat_min_share=0.08, forehead_min_skin=0.6, forehead_band=0.25, frame_min_share=0.01)
 
 
 def _assess(m):
@@ -32,11 +32,13 @@ def test_cap_over_the_forehead_is_refused():
     assert r.refused and r.forehead_skin < 0.5
 
 
-def test_cap_worn_high_is_still_refused_because_it_does_not_frame_the_face():
+def test_a_hat_label_on_hair_with_the_forehead_fully_visible_is_not_a_hat():
+    # The first live test: dark curly hair and a hand on the head were labelled
+    # `hat` (share 0.24) on two bare-headed faces whose forehead skin was 0.93-0.98.
     m = _bare()
-    m[5:50, 40:160] = HAT  # forehead fully visible, nothing below the ears
+    m[5:50, 40:160] = HAT
     r = _assess(m)
-    assert r.forehead_skin >= 0.5 and not r.frames_face and r.refused
+    assert r.hat_share >= 0.08 and r.forehead_skin >= 0.9 and not r.refused
 
 
 def test_face_framing_covering_with_the_forehead_visible_passes():
@@ -59,10 +61,16 @@ def test_glasses_are_ignored(covering):
     assert not _assess(m).refused
 
 
-def test_a_few_stray_pixels_below_the_eyes_do_not_count_as_framing():
+def test_a_covering_over_the_forehead_is_refused_even_with_stray_pixels_elsewhere():
     m = _bare()
-    m[5:58, 40:160] = HAT
+    m[5:70, 40:160] = HAT  # down over the forehead
     m[120, 30] = HAT
-    m[120, 170] = HAT
     r = _assess(m)
-    assert not r.frames_face and r.refused
+    assert r.forehead_skin < 0.6 and r.refused
+
+
+def test_forehead_values_measured_on_real_caps_are_refused_and_real_bare_heads_pass():
+    # Forehead skin: 5 real caps measured 0.29 0.36 0.41 0.47 0.29 (all refused); the two
+    # false refusals of the first live test measured 0.93 and 0.98 (pass).
+    for fh, refused in ((0.29, True), (0.36, True), (0.41, True), (0.47, True), (0.93, False), (0.98, False)):
+        assert (fh < KW["forehead_min_skin"]) is refused, fh

@@ -167,7 +167,7 @@ describe("what the student is told", () => {
   });
 
   it.each(["NO_FACE", "MULTIPLE_FACES", "SPOOF", "EYES_CLOSED", "NOT_FACING", "NO_BLINK",
-    "TURN_LEFT_SHORT", "TURN_RIGHT_SHORT", "NOT_SAME_PERSON", "NO_MATCH"])("has a specific sentence for %s", (code) => {
+    "TURN_LEFT_SHORT", "TURN_RIGHT_SHORT", "TURN_LEFT_WRONG", "TURN_RIGHT_WRONG", "NOT_SAME_PERSON", "NO_MATCH"])("has a specific sentence for %s", (code) => {
     expect(livenessMessage(code)).not.toBe(livenessMessage("SOMETHING_ELSE"));
   });
 });

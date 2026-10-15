@@ -57,6 +57,25 @@ def mean_ear(landmarks: np.ndarray) -> float:
     return (eye_aspect_ratio(lm[LEFT_EYE]) + eye_aspect_ratio(lm[RIGHT_EYE])) / 2.0
 
 
+def yaw_ratio(landmarks: np.ndarray) -> float:
+    """Where the nose tip sits between the two outer eye corners, as a signed
+    ratio in about [-1, +1]: 0 = facing the camera, positive = the face points
+    toward the picture's RIGHT edge, negative = toward the LEFT.
+
+    Unlike solvePnP's yaw this cannot flip sign: measured on 21 real phone
+    attempts (2026-10-15), PnP read -60 degrees for a plainly right-pointing
+    face while this ratio was correct in all 36 turn frames. The magnitude is
+    not degrees; calibrate thresholds from real frames.
+    """
+    lm = np.asarray(landmarks, dtype=np.float64)
+    d_left = lm[30, 0] - lm[36, 0]
+    d_right = lm[45, 0] - lm[30, 0]
+    total = d_left + d_right
+    if abs(total) < 1e-6:
+        return 0.0
+    return float((d_left - d_right) / total)
+
+
 def head_pose(landmarks: np.ndarray, image_size: tuple[int, int]) -> tuple[float, float]:
     """(yaw, pitch) in degrees from six landmarks and `cv2.solvePnP`.
 

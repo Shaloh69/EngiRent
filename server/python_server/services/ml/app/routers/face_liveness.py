@@ -135,7 +135,8 @@ def liveness_verify(
         backend,
         Thresholds.from_settings(settings),
         stored_encoding=template,
-        mirrored=mirrored,
+        # NOT the phone's claim: see settings.face_frames_mirrored.
+        mirrored=settings.face_frames_mirrored,
     )
     logger.info(
         "liveness-verify passed=%s live=%s reason=%s step=%s distance=%s metrics=%s",

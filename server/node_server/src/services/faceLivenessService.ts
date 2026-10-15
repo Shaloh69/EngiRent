@@ -198,6 +198,10 @@ export function livenessMessage(reason: string | null): string {
       return "Turn your head further to the left.";
     case "TURN_RIGHT_SHORT":
       return "Turn your head further to the right.";
+    case "TURN_LEFT_WRONG":
+      return "You turned to the right. Turn your head to your left.";
+    case "TURN_RIGHT_WRONG":
+      return "You turned to the left. Turn your head to your right.";
     case "NOT_SAME_PERSON":
       return "The same person must do every step. Try again.";
     case "NO_MATCH":

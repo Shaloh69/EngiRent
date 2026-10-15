@@ -163,9 +163,9 @@ void main() {
 // answer so a third change cannot happen by accident.
 void leftRightPins() {
   group('left and right (settled from two live tests)', () {
-    test('the student\'s left is a positive ML Kit yaw, and the frames are sent as mirrored', () {
+    test('the student\'s left is a positive ML Kit yaw, and the frames are NOT mirrored', () {
       expect(kStudentLeftIsPackageRight, isTrue);
-      expect(kFramesAreMirrored, isTrue);
+      expect(kFramesAreMirrored, isFalse);
     });
   });
 }
