@@ -17,6 +17,18 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-15",
+    version: "1.15.3",
+    tag: "fix",
+    title: "A more accurate face check, tuned on real test pictures",
+    bullets: [
+      "Fixed \"Remove your hat\" appearing on a bare head: dark hair or a hand on the head is no longer mistaken for a hat",
+      "Fixed \"Turn your head further\" when you had turned enough, and a turn the wrong way now says which way to turn",
+      "Blinking now works for different eye shapes and lighting, because it is compared with your own open eyes",
+      "Fewer real faces are refused as \"a photo or a screen\"; steadier pictures are chosen so fewer tries fail",
+    ],
+  },
+  {
+    date: "2026-10-15",
     version: "1.15.2",
     tag: "fix",
     title: "Turning your head left is detected again",

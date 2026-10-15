@@ -28,15 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.15.2",
-  buildNumber: 44,
-  fileName: "Engirent_Prerelease44.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.15.3",
+  buildNumber: 45,
+  fileName: "Engirent_Prerelease45.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-15",
   sizeMb: 115.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Fixes \"turn left\" not being detected in 1.15.1",
-    "Includes the guide and reactive ring from 1.15.1, and the more reliable blinks and turns",
+    "Head turns, blinks and head coverings are now judged much more accurately, based on real test pictures: no more \"remove your hat\" on a bare head, and blinks work for different eyes",
+    "Tells you if you turned the wrong way, and picks steadier pictures so fewer tries fail",
   ],
 };
 

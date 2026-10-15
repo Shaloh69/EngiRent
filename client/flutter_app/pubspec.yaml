@@ -1,7 +1,7 @@
 name: engirent
 description: EngiRent Hub - IoT-powered Smart Kiosk System for student rentals
 publish_to: 'none'
-version: 1.15.2+44
+version: 1.15.3+45
 
 environment:
   sdk: ^3.9.2
