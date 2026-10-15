@@ -67,6 +67,7 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
   String? _errorMsg;
   String? _blockedMsg; // a refusal a retry cannot fix (update your face, etc.)
   int? _attemptsRemaining;
+  int _rejects = 0; // each server refusal shakes the ring red
 
   @override
   void initState() {
@@ -176,6 +177,7 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
     setState(() {
       _uploading = false;
       _errorMsg = message;
+      if (message != null) _rejects++;
       if (next != null) _challenge = next;
       if (restart) _runKey = UniqueKey();
     });
@@ -247,6 +249,7 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
       onCaptured: _onCaptured,
       busy: _uploading,
       busyLabel: 'Verifying…',
+      rejectCount: _rejects,
     );
   }
 

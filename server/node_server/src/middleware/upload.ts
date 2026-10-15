@@ -46,6 +46,10 @@ export const uploadFaceFrames = multerConfig.fields([
   { name: "blink", maxCount: 1 },
   { name: "turn_left", maxCount: 1 },
   { name: "turn_right", maxCount: 1 },
+  // Optional extra candidates for the blink (a blink is ~150 ms; one frame can
+  // miss the closed moment). ML keeps the one with the most closed eyes.
+  { name: "blink2", maxCount: 1 },
+  { name: "blink3", maxCount: 1 },
   { name: "file", maxCount: 1 },
 ]);
 

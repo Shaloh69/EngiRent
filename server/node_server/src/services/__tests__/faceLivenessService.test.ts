@@ -99,6 +99,12 @@ describe("reading the frames", () => {
     expect(Object.keys(readFaceFrames(req as never))).toEqual(["centre", "blink", "turn_left", "turn_right"]);
   });
 
+  it("passes the optional extra blink candidates through, in order, and only those", () => {
+    const req = { files: { centre: [f], blink: [f], turn_left: [f], turn_right: [f], blink2: [f] } };
+    const frames = readFaceFrames(req as never);
+    expect(Object.keys(frames).sort()).toEqual(["blink", "blink2", "centre", "turn_left", "turn_right"]);
+  });
+
   it("tells an old app (one `file`) to update", () => {
     try {
       readFaceFrames({ files: { file: [f] } } as never);
@@ -126,6 +132,17 @@ describe("the ML call", () => {
     expect(form.get("return_encoding")).toBe("true");
     expect(form.get("mirrored")).toBe("true");
     expect(r.passed && r.matched).toBe(true);
+  });
+
+  it("forwards the extra blink candidates to ML when the phone sent them", async () => {
+    postMock.mockResolvedValue({ data: { passed: true, live: true, metrics: {} } });
+    await checkLivenessWithMl({ ...FRAMES, blink2: f, blink3: f }, {});
+    const form = postMock.mock.calls[0][1] as FormData;
+    expect(form.get("blink2")).toBeTruthy();
+    expect(form.get("blink3")).toBeTruthy();
+    postMock.mockClear();
+    await checkLivenessWithMl(FRAMES, {});
+    expect((postMock.mock.calls[0][1] as FormData).get("blink2")).toBeNull();
   });
 
   it("throws (fails closed) on a transport error", async () => {

@@ -24,13 +24,18 @@ import 'package:path_provider/path_provider.dart';
 /// this file adds a sequence factory for the server's order and the
 /// best-frame selection.
 ///
-/// Left and right: ML Kit's headEulerAngleY is positive when the face points
-/// at the right of the CAMERA IMAGE (Google's face-detection concepts page).
-/// On an unmirrored, upright front-camera frame that is the STUDENT'S left,
-/// and the package calls a positive yaw "right". So the server's TURN_LEFT is
-/// the package's turnHeadRight and vice versa ([kStudentLeftIsPackageRight]).
-/// This is the first thing to check on a real phone.
-const bool kStudentLeftIsPackageRight = true;
+/// Left and right: the package calls a NEGATIVE ML Kit yaw "turn left".
+/// 1.15.0 assumed the opposite (Google's page reads ambiguously) and the first
+/// live test (2026-10-15, two students, the ML log) showed every "left" frame
+/// arriving with the wrong sign at the server, so the student's left IS the
+/// package's turnHeadLeft: [kStudentLeftIsPackageRight] is false.
+const bool kStudentLeftIsPackageRight = false;
+
+/// The turn frame we send is the one nearest this ML Kit yaw (degrees) in the
+/// right direction, NOT the most extreme one. 1.15.0 sent the widest turn,
+/// which at 70-85 degrees is a profile: the face detector found no face in 6 of
+/// 15 attempts and the head-pose angle was meaningless.
+const double kTurnTargetDegrees = 35;
 
 /// The challenge the server issued: the order of the three steps + a nonce.
 class FaceChallenge {
@@ -66,6 +71,28 @@ class LivenessCapture {
 
 /// What the screen shows right now.
 enum LivenessPhase { starting, running, encoding, done, failed }
+
+/// What the camera sees right now, for the ring and the avatar to react to
+/// (the shiver, the dim dashes, the pulse). Derived from the package's own
+/// signal; it never decides anything, the server does.
+enum LivenessHint { searching, ready, tooFar, tooClose, offCentre, multiple }
+
+/// Pure mapping, so it can be tested without a camera.
+LivenessHint hintFromFlags({
+  required bool faceDetected,
+  required bool multipleFaces,
+  required bool tooFar,
+  required bool tooClose,
+  required bool outOfFrame,
+  required bool centered,
+}) {
+  if (!faceDetected) return LivenessHint.searching;
+  if (multipleFaces) return LivenessHint.multiple;
+  if (tooFar) return LivenessHint.tooFar;
+  if (tooClose) return LivenessHint.tooClose;
+  if (outOfFrame || !centered) return LivenessHint.offCentre;
+  return LivenessHint.ready;
+}
 
 class _Candidate {
   _Candidate(this.bytes, this.width, this.height, this.stride, this.rotation, this.score);
@@ -126,6 +153,14 @@ class LivenessCaptureController extends ChangeNotifier {
   /// True when a single face is being seen (the oval turns solid).
   bool faceOk = false;
 
+  /// What the camera sees right now; drives the ring and the avatar.
+  LivenessHint hint = LivenessHint.searching;
+
+  /// Counters the view watches to fire one-shot effects: a step passed (green
+  /// ripple, avatar nod) and a run that failed (red shake).
+  int passCount = 0;
+  int failCount = 0;
+
   /// The finished capture, once [phase] is [LivenessPhase.done].
   LivenessCapture? capture;
 
@@ -138,8 +173,19 @@ class LivenessCaptureController extends ChangeNotifier {
   int _rotation = 0;
 
   _Candidate? _candidate;
+
+  /// The few most-closed-eye frames of the blink step. A blink lasts ~150 ms and
+  /// the stream delivers a few frames a second, so one frame often misses the
+  /// closed moment; the server checks every candidate and keeps the best.
+  final List<_Candidate> _blinkPool = [];
   final Map<String, _Candidate> _final = {};
   DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// The sign of ML Kit's yaw that means "turned the way this step asks".
+  static double _turnSign(String serverStep) {
+    final leftIsPositive = kStudentLeftIsPackageRight;
+    return serverStep == 'TURN_LEFT' ? (leftIsPositive ? 1.0 : -1.0) : (leftIsPositive ? -1.0 : 1.0);
+  }
 
   static FaceActionType _typeFor(String serverStep) {
     switch (serverStep) {
@@ -203,6 +249,9 @@ class LivenessCaptureController extends ChangeNotifier {
       // landmark solver do not measure yaw identically.
       _analyzer = FaceActionAnalyzer(
         config: const FaceActionConfig(yawLeftThreshold: -25, yawRightThreshold: 25),
+        // A shorter smoothing window answers sooner (the default of 5 frames lags
+        // the head by about a second on a slow phone: "it is slow").
+        jitterFilter: FaceJitterFilter(windowSize: 3),
       );
       _restartFlow();
 
@@ -226,6 +275,7 @@ class LivenessCaptureController extends ChangeNotifier {
     _events = _flow!.events.listen(_onFlowEvent);
     stepIndex = 0;
     _candidate = null;
+    _blinkPool.clear();
     _final.clear();
   }
 
@@ -235,8 +285,17 @@ class LivenessCaptureController extends ChangeNotifier {
       case FaceChallengeEventType.stepPassed:
         final key = currentKey;
         final c = _candidate;
-        if (c != null) _final[key] = c;
+        if (key == 'BLINK' && _blinkPool.isNotEmpty) {
+          _blinkPool.sort((a, b) => b.score.compareTo(a.score));
+          _final['BLINK'] = _blinkPool[0];
+          if (_blinkPool.length > 1) _final['BLINK2'] = _blinkPool[1];
+          if (_blinkPool.length > 2) _final['BLINK3'] = _blinkPool[2];
+        } else if (c != null) {
+          _final[key] = c;
+        }
+        _blinkPool.clear();
         _candidate = null;
+        passCount++;
         stepIndex = (stepIndex + 1).clamp(0, 3);
         instruction = instructionFor(currentKey);
         notifyListeners();
@@ -288,6 +347,14 @@ class LivenessCaptureController extends ChangeNotifier {
       final sig = result.signal;
 
       faceOk = sig.singleFaceDetected;
+      hint = hintFromFlags(
+        faceDetected: sig.faceDetected,
+        multipleFaces: sig.multipleFacesDetected,
+        tooFar: sig.faceTooFar,
+        tooClose: sig.faceTooClose,
+        outOfFrame: sig.faceOutOfFrame,
+        centered: sig.faceCentered,
+      );
       if (!sig.faceDetected) {
         instruction = 'Looking for your face…';
       } else if (sig.multipleFacesDetected) {
@@ -331,9 +398,25 @@ class LivenessCaptureController extends ChangeNotifier {
       case 'BLINK':
         score = -meanOpen; // the most closed eyes
       case 'TURN_LEFT':
-        score = yaw; // the student's left is the image's right (positive yaw)
+      case 'TURN_RIGHT':
+        // Nearest the target angle in the right direction; a frame turned the
+        // wrong way or barely turned scores far below any usable one.
+        final sign = _turnSign(currentKey);
+        final turned = yaw * sign;
+        score = turned < 15 ? -1000 + turned : -(turned - kTurnTargetDegrees).abs();
       default:
-        score = -yaw;
+        score = 0;
+    }
+    if (currentKey == 'BLINK') {
+      // Keep the three most closed, copying bytes only when one earns a place.
+      if (_blinkPool.length >= 3 && score <= _blinkPool.map((c) => c.score).reduce(math.min)) return;
+      _blinkPool.add(_Candidate(Uint8List.fromList(plane.bytes), image.width, image.height, plane.bytesPerRow, _rotation, score));
+      if (_blinkPool.length > 3) {
+        _blinkPool.sort((a, b) => b.score.compareTo(a.score));
+        _blinkPool.removeLast();
+      }
+      _candidate = _blinkPool.reduce((a, b) => a.score >= b.score ? a : b);
+      return;
     }
     final best = _candidate;
     if (best != null && score <= best.score) return;
@@ -357,13 +440,17 @@ class LivenessCaptureController extends ChangeNotifier {
       if (cam != null && cam.value.isStreamingImages) await cam.stopImageStream();
 
       final keys = ['centre', ...challenge.order];
-      final missing = keys.where((k) => _final[k] == null).toList();
+      final missing = keys.where((k) => _final[k] == null).toList(); // extras are optional, added below
       if (missing.isNotEmpty) {
         throw StateError('Could not keep a picture for every step. Please try again.');
       }
       final dir = await getTemporaryDirectory();
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final files = <String, File>{};
+      // Extra blink candidates ride along when there are any.
+      for (final extra in const ['BLINK2', 'BLINK3']) {
+        if (_final[extra] != null) keys.add(extra);
+      }
       final jpegs = await Future.wait(keys.map((k) {
         final c = _final[k]!;
         return compute(_encodeNv21Jpeg, <String, Object>{
@@ -378,6 +465,8 @@ class LivenessCaptureController extends ChangeNotifier {
         final field = switch (keys[i]) {
           'centre' => 'centre',
           'BLINK' => 'blink',
+          'BLINK2' => 'blink2',
+          'BLINK3' => 'blink3',
           'TURN_LEFT' => 'turn_left',
           _ => 'turn_right',
         };
@@ -397,6 +486,7 @@ class LivenessCaptureController extends ChangeNotifier {
   void _fail(String message) {
     if (_disposed) return;
     error = message;
+    failCount++;
     phase = LivenessPhase.failed;
     final cam = camera;
     if (cam != null && cam.value.isStreamingImages) {

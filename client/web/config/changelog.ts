@@ -17,6 +17,18 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-15",
+    version: "1.15.1",
+    tag: "fix",
+    title: "A guide for the face check, and blinks and turns that are recognised",
+    bullets: [
+      "A friendly guide shows what to do next and says it in a bubble; the ring around your face pulses when ready, shivers if you are too far or too close, shows which way to turn, flashes green on each step and shakes red if a try is refused",
+      "From the first real tests: blinks are now recognised even when your eyes only close for a moment, and a head turn is read from a moderate angle instead of a full side-on view that the camera could not use",
+      "Left and right were reversed in 1.15.0 and are now correct",
+      "Fewer real faces are wrongly refused as \"a photo or a screen\"",
+    ],
+  },
+  {
+    date: "2026-10-15",
     version: "1.15.0",
     tag: "feature",
     title: "A guided face check: blink and turn your head",

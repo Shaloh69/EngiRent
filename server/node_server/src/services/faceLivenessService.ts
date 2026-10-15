@@ -90,7 +90,9 @@ setInterval(() => {
 // ── Frames ──────────────────────────────────────────────────────────────────
 
 export const FRAME_FIELDS = ["centre", "blink", "turn_left", "turn_right"] as const;
-export type FaceFrames = Record<(typeof FRAME_FIELDS)[number], Express.Multer.File>;
+export const OPTIONAL_FRAME_FIELDS = ["blink2", "blink3"] as const;
+export type FaceFrames = Record<(typeof FRAME_FIELDS)[number], Express.Multer.File> &
+  Partial<Record<(typeof OPTIONAL_FRAME_FIELDS)[number], Express.Multer.File>>;
 
 /** Code sent to an app too old to run the liveness check. */
 export const APP_UPDATE_REQUIRED = "APP_UPDATE_REQUIRED";
@@ -103,6 +105,10 @@ export const APP_UPDATE_REQUIRED = "APP_UPDATE_REQUIRED";
 export function readFaceFrames(req: Request): FaceFrames {
   const files = (req.files ?? {}) as Record<string, Express.Multer.File[] | undefined>;
   const frames = {} as FaceFrames;
+  for (const f of OPTIONAL_FRAME_FIELDS) {
+    const extra = files[f]?.[0];
+    if (extra) frames[f] = extra;
+  }
   for (const f of FRAME_FIELDS) {
     const got = files[f]?.[0];
     if (!got) {
@@ -141,6 +147,10 @@ export async function checkLivenessWithMl(
   const form = new FormData();
   for (const f of FRAME_FIELDS) {
     form.append(f, new Blob([new Uint8Array(frames[f].buffer)], { type: frames[f].mimetype }), `${f}.jpg`);
+  }
+  for (const f of OPTIONAL_FRAME_FIELDS) {
+    const extra = frames[f];
+    if (extra) form.append(f, new Blob([new Uint8Array(extra.buffer)], { type: extra.mimetype }), `${f}.jpg`);
   }
   if (opts.storedEncoding) form.append("stored_encoding", JSON.stringify(opts.storedEncoding));
   form.append("return_encoding", String(Boolean(opts.returnEncoding)));

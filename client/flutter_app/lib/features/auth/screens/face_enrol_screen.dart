@@ -39,6 +39,7 @@ class _FaceEnrolScreenState extends State<FaceEnrolScreen> {
   Key _runKey = UniqueKey();
   String? _loadError;
   String? _message; // last result sentence (a failed step, a wrong password)
+  int _rejects = 0; // each refusal shakes the ring red
   bool _busy = false;
 
   /// Frames kept while the student types their password.
@@ -166,6 +167,7 @@ class _FaceEnrolScreenState extends State<FaceEnrolScreen> {
     setState(() {
       _busy = false;
       _message = message;
+      if (message != null) _rejects++;
       _held = null;
       _heldReason = null;
       if (next != null) _challenge = next;
@@ -236,6 +238,7 @@ class _FaceEnrolScreenState extends State<FaceEnrolScreen> {
             onCaptured: (cap) => _send(cap),
             busy: _busy,
             busyLabel: 'Saving…',
+            rejectCount: _rejects,
           ),
         ),
         const SizedBox(height: AppSpacing.sm),

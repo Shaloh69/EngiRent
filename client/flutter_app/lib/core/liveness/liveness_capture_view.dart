@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 import '../theme/tokens.dart';
+import 'liveness_avatar.dart';
 import 'liveness_capture_controller.dart';
+import 'liveness_ring.dart';
 
-/// The guided face check, as a widget (spec F3). Layout follows the steps
-/// pattern of Amazon's Face Liveness / samviva (oval, instruction card, step
-/// dots) in EngiRent's own tokens. It only coaches: pictures leave through
-/// [onCaptured], and the server decides.
+/// The guided face check, as a widget (spec F3). A mascot coach shows and says
+/// what to do, the oval reacts to what the camera sees (it dims, pulses,
+/// shivers, sweeps toward the side to turn, ripples green on a pass, shakes red
+/// on a refusal), and four step dots track progress. Layout follows the steps
+/// pattern of Amazon's Face Liveness / samviva in EngiRent's own tokens. It
+/// only coaches: pictures leave through [onCaptured], and the server decides.
 ///
 /// Used by the kiosk verification screen, profile setup and "Update your face".
 class LivenessCaptureView extends StatefulWidget {
@@ -18,6 +22,7 @@ class LivenessCaptureView extends StatefulWidget {
     required this.onCaptured,
     this.busy = false,
     this.busyLabel = 'Checking…',
+    this.rejectCount = 0,
   });
 
   final FaceChallenge challenge;
@@ -30,13 +35,30 @@ class LivenessCaptureView extends StatefulWidget {
   final bool busy;
   final String busyLabel;
 
+  /// The parent adds one each time the server refuses a try: the ring shakes red.
+  final int rejectCount;
+
   @override
   State<LivenessCaptureView> createState() => _LivenessCaptureViewState();
 }
 
-class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsBindingObserver {
+class _LivenessCaptureViewState extends State<LivenessCaptureView>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   late LivenessCaptureController _c;
   bool _delivered = false;
+
+  late final AnimationController _loop =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  late final AnimationController _flash =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 850));
+  late final AnimationController _shake =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
+  late final AnimationController _nod =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+
+  int _seenPass = 0;
+  int _seenFail = 0;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -48,7 +70,20 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
   void _start() {
     _c = LivenessCaptureController(challenge: widget.challenge)..addListener(_onChange);
     _delivered = false;
+    _seenPass = 0;
+    _seenFail = 0;
     _c.start();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (_reduceMotion) {
+      _loop.stop();
+    } else if (!_loop.isAnimating) {
+      _loop.repeat();
+    }
   }
 
   @override
@@ -61,10 +96,24 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
       _c.dispose();
       _start();
     }
+    if (widget.rejectCount != old.rejectCount && !_reduceMotion) {
+      _shake.forward(from: 0);
+    }
   }
 
   void _onChange() {
     if (!mounted) return;
+    if (_c.passCount != _seenPass) {
+      _seenPass = _c.passCount;
+      if (!_reduceMotion) {
+        _flash.forward(from: 0);
+        _nod.forward(from: 0);
+      }
+    }
+    if (_c.failCount != _seenFail) {
+      _seenFail = _c.failCount;
+      if (!_reduceMotion) _shake.forward(from: 0);
+    }
     if (_c.phase == LivenessPhase.done && !_delivered && _c.capture != null) {
       _delivered = true;
       widget.onCaptured(_c.capture!);
@@ -84,6 +133,10 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _loop.dispose();
+    _flash.dispose();
+    _shake.dispose();
+    _nod.dispose();
     _c.removeListener(_onChange);
     _c.dispose();
     super.dispose();
@@ -92,11 +145,18 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
   /// The parent calls this after it has uploaded the frames, to remove them.
   Future<void> deleteFrames() => _c.deleteFiles();
 
+  bool get _problem =>
+      _c.hint == LivenessHint.tooFar ||
+      _c.hint == LivenessHint.tooClose ||
+      _c.hint == LivenessHint.offCentre ||
+      _c.hint == LivenessHint.multiple;
+
   @override
   Widget build(BuildContext context) {
     final failed = _c.phase == LivenessPhase.failed;
     final working = _c.phase == LivenessPhase.encoding || widget.busy;
     final cam = _c.camera;
+    final stepKey = _c.currentKey;
 
     return Column(
       children: [
@@ -130,7 +190,19 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
                         ),
                       ),
                     ),
-                  CustomPaint(painter: _OvalPainter(active: _c.faceOk && !failed)),
+                  AnimatedBuilder(
+                    animation: Listenable.merge([_loop, _flash, _shake]),
+                    builder: (context, _) => CustomPaint(
+                      painter: ReactiveRingPainter(RingStyle(
+                        hint: failed ? LivenessHint.ready : _c.hint,
+                        stepKey: working || _c.phase == LivenessPhase.starting ? 'centre' : stepKey,
+                        t: _loop.value,
+                        pass: _flash.isAnimating ? _flash.value : 0,
+                        fail: _shake.isAnimating ? _shake.value : 0,
+                        reduceMotion: _reduceMotion,
+                      )),
+                    ),
+                  ),
                   if (working)
                     Container(
                       color: Colors.black.withValues(alpha: 0.55),
@@ -163,10 +235,13 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
               ? Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      _c.error ?? 'Something went wrong.',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.4),
+                    CoachRow(
+                      avatar: AnimatedBuilder(
+                        animation: _loop,
+                        builder: (_, __) => LivenessAvatar(stepKey: 'centre', t: _loop.value, worried: true, reduceMotion: _reduceMotion),
+                      ),
+                      text: _c.error ?? 'Something went wrong.',
+                      tone: CoachTone.warn,
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     ElevatedButton(
@@ -181,11 +256,20 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
                     ),
                   ],
                 )
-              : _InstructionCard(
+              : CoachRow(
+                  avatar: AnimatedBuilder(
+                    animation: Listenable.merge([_loop, _nod]),
+                    builder: (_, __) => LivenessAvatar(
+                      stepKey: working ? 'centre' : stepKey,
+                      t: _loop.value,
+                      nod: _nod.isAnimating ? _nod.value : 0,
+                      worried: _problem,
+                      reduceMotion: _reduceMotion,
+                    ),
+                  ),
                   text: working ? widget.busyLabel : _c.instruction,
-                  stepLabel: _c.phase == LivenessPhase.running
-                      ? 'Step ${(_c.stepIndex + 1).clamp(1, 4)} of 4'
-                      : null,
+                  stepLabel: _c.phase == LivenessPhase.running ? 'Step ${(_c.stepIndex + 1).clamp(1, 4)} of 4' : null,
+                  tone: _problem ? CoachTone.warn : CoachTone.normal,
                 ),
         ),
       ],
@@ -196,41 +280,6 @@ class _LivenessCaptureViewState extends State<LivenessCaptureView> with WidgetsB
     _c.removeListener(_onChange);
     _c.dispose();
     setState(_start);
-  }
-}
-
-class _InstructionCard extends StatelessWidget {
-  const _InstructionCard({required this.text, this.stepLabel});
-  final String text;
-  final String? stepLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: AppRadius.card,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (stepLabel != null)
-              Text(stepLabel!, style: const TextStyle(fontSize: 11.5, color: Color(0xFF9FBFB8))),
-            const SizedBox(height: 2),
-            Text(
-              text,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -255,7 +304,8 @@ class _StepDots extends StatelessWidget {
       children: [
         for (var i = 0; i < keys.length; i++) ...[
           if (i > 0) Container(width: 18, height: 2, color: Colors.white24),
-          Container(
+          AnimatedContainer(
+            duration: AppMotion.base,
             width: 34,
             height: 34,
             decoration: BoxDecoration(
@@ -278,40 +328,4 @@ class _StepDots extends StatelessWidget {
       ],
     );
   }
-}
-
-class _OvalPainter extends CustomPainter {
-  _OvalPainter({required this.active});
-  final bool active;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final target = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.46),
-      width: size.width * 0.68,
-      height: size.width * 0.68 * 1.3,
-    );
-    canvas.drawPath(
-      Path.combine(PathOperation.difference, Path()..addRect(Offset.zero & size), Path()..addOval(target)),
-      Paint()..color = const Color(0xFF07100E).withValues(alpha: 0.55),
-    );
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..color = active ? AppColors.primaryOnDark : Colors.white.withValues(alpha: 0.4);
-    if (active) {
-      canvas.drawOval(target, paint);
-    } else {
-      for (final m in (Path()..addOval(target)).computeMetrics()) {
-        var d = 0.0;
-        while (d < m.length) {
-          canvas.drawPath(m.extractPath(d, (d + 8).clamp(0, m.length)), paint);
-          d += 14;
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_OvalPainter old) => old.active != active;
 }

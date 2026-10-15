@@ -28,16 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.15.0",
-  buildNumber: 42,
-  fileName: "Engirent_Prerelease42.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.15.1",
+  buildNumber: 43,
+  fileName: "Engirent_Prerelease43.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-15",
-  sizeMb: 115.6,
+  sizeMb: 115.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "A guided face check at the kiosk: look at the camera, blink, and turn your head left and right, in an order picked each time",
-    "A photo or a screen held up to the camera is refused; glasses are fine, caps, hats and hoods are not",
-    "Everyone updates their face once from the home screen (\"Update your face with the new system now\") before the kiosk accepts it",
+    "A friendly guide shows what to do in the face check, and the ring around your face reacts: it pulses when ready, shivers if you are too far, and shows which way to turn",
+    "Blinks and head turns are now recognised much more reliably, and it answers sooner",
+    "Fewer real faces are wrongly refused as \"a photo or a screen\"",
   ],
 };
 
