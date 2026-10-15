@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/liveness/liveness_capture_controller.dart';
 import '../../../core/utils/error_utils.dart';
 import '../../../core/theme/tokens.dart';
 import '../widgets/retry_feedback_card.dart';
@@ -420,6 +421,8 @@ class _KioskScanScreenState extends State<KioskScanScreen>
           rentalId: widget.rentalId,
           mode: widget.mode,
           kioskId: (data['kioskId'] as String?) ?? _kioskId,
+          // Face liveness: the random step order + nonce the server chose.
+          challenge: FaceChallenge.fromJson(data['challenge']),
           // E3.2 / spec 2.3. The server's ABSOLUTE deadline for this kiosk
           // session, forwarded untouched. Null on an older server, and the
           // countdown then renders nothing rather than inventing 120s.
