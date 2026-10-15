@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-14 18:15 - stack restarted after a 05:33 reboot (down ~12.5 h), rehosted, RELEASED 1.14.7+41; Concerns v2 + retry fix live; API PID 18388 - KIOSK-001 not connected (switched off 10-13) - OPEN: SW-07 session restore (user to decide), real-kiosk retry with 1.14.6+ unseen, D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api pioneer-profit-databases-writings / admin keeping-seller-accomplish-canal / web confidential-performer-reply-fare (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
+[2026-10-15 - NEXT SESSION: face recognition revamp (blink, turn left/right, glasses OK, hat refused) - spec docs/redesign/SPEC-FACE-LIVENESS.md, NOT BUILT, user to rule on its section 7 - stack live on 1.14.7+41 (API PID 18388) - D-119 camera self-reconnect installed on the Pi, restart waits for the user's yes (G11); camera 3 down - OPEN: SW-07 session restore (user to decide), D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api pioneer-profit-databases-writings / admin keeping-seller-accomplish-canal / web confidential-performer-reply-fare (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11166,3 +11166,14 @@ of a capture, reopens once and retries that frame (never more than one reopen pe
 captures: 4 fail on HEAD's file, 5 pass with the change; kiosk suite **150/150**. **K2 blocked:** Tailscale SSH to `engirent-kiosk` prints "requires an additional check"
 (approval link given to the user); the Pi is not on the server's LAN. After access: compare the Pi's file to HEAD, back it up, copy, then a kiosk restart (power cycle) - G11.
 Camera 3 itself is still down (0 frames since at least 22:52).
+
+### 2026-10-15 — NEXT SESSION SET (user): revamp face recognition (blink, turn left/right, glasses OK, hat refused). Spec written, NOT BUILT
+
+User: "Forget what I set up here, let's change the next step of the system. Next session: revamp the entirety of the facial recognition. Applying turning left and right. Can scan with
+glasses but won't scan if there is a hat. Needs to blink for full recognition. Find templates online for the phone design page and the code implementation."
+Research done and written up in `docs/redesign/SPEC-FACE-LIVENESS.md` (current flow re-derived: one still photo, no on-device detection, dlib distance ≤ 0.5, no liveness;
+templates: `flutter_liveness_actions` (MIT, verified publisher) for the logic, `samviva` (MIT) + Amplify Face Liveness + Dribbble tags for the screen, `yakhyo/face-parsing`
+BiSeNet ONNX (MIT, `hat` + `eye_g` classes) for hat/glasses, dlib landmarks for EAR blink + solvePnP yaw). Trust architecture unchanged (spec §2). **Next concrete step:** the user
+rules on spec §7 (random order; religious head coverings; re-enrol existing users; passive anti-spoof), then copy spec §5 into a G2 table and start F1.
+**Still open from 10-14:** D-119 camera self-reconnect is INSTALLED on the Pi (backup `camera_manager.py.bak-20261014-d119`) but not running: the kiosk restart waits for the user's
+yes (G11); camera 3 down since 22:11 (replugged; stale handle).
