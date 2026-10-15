@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-15",
+    version: "1.15.4",
+    tag: "fix",
+    title: "Scanning always reaches the face check, and no false \"Update your face\"",
+    bullets: [
+      "If the app's live connection to the server dropped, a scan could go nowhere and the app kept waiting; it now reconnects before sending the scan and says plainly if it cannot",
+      "After scanning, the screen now says \"Checking with the kiosk\" and that the locker opens only after your face check; it used to say \"Opening a locker\", which read as if the door opened first (it never did)",
+      "Students who had already updated their face were asked to update it again after logging in; fixed on the server for every app version",
+    ],
+  },
+  {
+    date: "2026-10-15",
     version: "1.15.3",
     tag: "fix",
     title: "A more accurate face check, tuned on real test pictures",

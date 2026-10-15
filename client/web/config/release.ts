@@ -28,15 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.15.3",
-  buildNumber: 45,
-  fileName: "Engirent_Prerelease45.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.15.4",
+  buildNumber: 46,
+  fileName: "Engirent_Prerelease46.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-15",
   sizeMb: 115.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Head turns, blinks and head coverings are now judged much more accurately, based on real test pictures: no more \"remove your hat\" on a bare head, and blinks work for different eyes",
-    "Tells you if you turned the wrong way, and picks steadier pictures so fewer tries fail",
+    "Scanning the kiosk code now always reaches the face check: if the connection to the server dropped, the app reconnects first, and tells you plainly if it cannot",
+    "The screen after scanning says \"Checking with the kiosk\": the locker opens only after your face check, when you tap Open",
+    "No more \"Update your face\" for students who already did",
   ],
 };
 
