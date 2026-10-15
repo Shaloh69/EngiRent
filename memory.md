@@ -2724,3 +2724,11 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
   Lesson: the node task's process reads `.env` when `npm start` runs, after `tsc`; edit `.env` before starting the task.
 - Full release 1.14.7+41 (new baked URL): APK validated, website + changelog, AppRelease + LATEST_APP_VERSION=1.14.7.
   KIOSK-001 had not connected by 18:15 (the user switched it off on 10-13 02:59).
+
+## 2026-10-15 ~20:20 PHT — Face liveness revamp built, DEPLOYED and RELEASED as 1.15.0+42 (not yet tested on a phone)
+- **What:** guided check (blink + turn left/right in a server-random order, nonce per attempt), passive anti-spoof, hat/hood refused (glasses and a covering that leaves the whole face visible allowed), everyone re-enrols via the home banner; an old enrolment (`User.faceEnrolmentVersion` < 2) no longer passes the kiosk face step. Re-enrolment must match the old template, else password + admin review (`/admin/face-reviews`, admin page "Face updates"). Spec `docs/redesign/SPEC-FACE-LIVENESS.md`; build record `docs/PROGRESS.md` (end).
+- **Deployed:** ML (new `app/face/*`, `/api/v1/face/liveness-verify`, weights in `ml/models_face/` fetched by `deploy/fetch_face_models.py`), API + additive `prisma db push`, admin, website, APK Prerelease42. **Next APK N = 43.**
+- **Gotchas learned:** `ssh ... powershell -EncodedCommand` + stdin base64 is the quote-proof way to run scripts and push files (see the push/remote helpers pattern in the PROGRESS entry); `scp` of a 121 MB APK to `D:/ENG/deploy-staging/` worked this time; the CLIXML preamble hides the first output line; Wikimedia Commons throttles hard (use categories, standard 960 px thumbnails, back off).
+- **Open:** user's phone test (check left/right first), anti-spoof false rejects (3/17), real-photo threshold tuning, kiosk run F5 (G11), thesis cases F6, delete the junk dir `D:\ENG\EngiRent\server
+ode_server${f` on the server.
+

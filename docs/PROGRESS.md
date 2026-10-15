@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-15 - PHASE FACE LIVENESS: F1 + F1b (ML, 138 tests), F2 + F2b (Node, 573 tests, 16/16 mutations), F3 + F4 (app, 69 tests, debug APK builds) all COMMITTED; NOTHING deployed, nothing seen on a phone; BLOCKED on the user: deploy yes (db push + ML weights + API restart + release), real face frames to tune thresholds; admin page for /admin/face-reviews NOT built; F5/F6 open]
+[2026-10-15 - PHASE FACE LIVENESS: F1-F4 + admin page + release 1.15.0+42 DEPLOYED and live (ML, API pid after 20:1x restart, admin, web, APK, AppRelease + LATEST_APP_VERSION); NOT yet tested on a phone or at the kiosk (user tests); anti-spoof flagged 3/17 real faces, attack side unmeasured; stray dir node_server${f on the server needs the user's delete; OPEN: user phone test, F5 kiosk run (G11), F6 thesis cases, SW-07, D-119 restart (G11)]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11318,3 +11318,16 @@ mostly museum paintings, so categories were used. Single photos tune single comp
 
 **Why the spoof threshold was not loosened:** moving it to catch the three real faces would be tuned against the wrong side (no attacks to test it on). The cost if it is too strict is a false SPOOF refusal at
 the kiosk (4 tries per scan); the user's phone test is the first real measurement. If real selfies also fail often, lower the margin on the server (no redeploy: an env var) once attack samples exist.
+
+### 2026-10-15 20:20 — DEPLOYED: face liveness (user: "build then deploy"), 1.15.0+42 released. Seen by me: routes and release places; NOT seen: any face on a phone
+
+**Server (desktop-gklhcri), in this order, one service at a time, kiosk offline, no kiosk flow in the log:**
+1. **ML** (`venv-v2`, which already had dlib/face_recognition/onnxruntime): 3 files backed up as `*.bak-20261015-face`, 11 files pushed (sha256 verified each), `deploy/fetch_face_models.py` run on the server (both weights hash-checked), `EngiRentMl` restarted (tree of `svc-ml.bat` only). `/api/v1/health` healthy (v2 ready), OpenAPI lists `/api/v1/face/liveness-verify`, and `load_backend()` loads dlib + both ONNX models under the server's Python in 5 s.
+2. **API**: 11 files backed up (`*.bak-20261015-face`), 14 pushed (hashes verified), API stopped, `prisma db push` (additive: User.faceEnrolmentVersion + 4 pending-face columns, "in sync"), client regenerated, `EngiRentNode` rebuilt and started. Live checks with the admin account: profile shows `faceEnrolmentVersion: 1`, `/auth/face/challenge` issues varying orders (4 distinct in 13 draws) and a 32-hex nonce, `/admin/face-reviews` 200 (empty), `/auth/face/enrol` without frames -> 400 `APP_UPDATE_REQUIRED`, `/kiosk/verify-face` unauthenticated -> 401.
+3. **Admin**: `AdminLayout.tsx` backed up, 2 files pushed, `EngiRentAdmin` rebuilt; `/face-reviews` serves 200 with "Face updates" in the page.
+4. **Release 1.15.0+42** (all four places): APK validated (testzip clean; only the live API host in all 3 ABIs; signer `CN=EngiRent` SHA-256 `3d113b7d...f1868` = every earlier build; versionCode 42; 121,227,209 B; sha256 `e9e2dfdf0450596ab8a8a880c6e5a6472ef810df0168e73577fabffd2250af6f` = server copy); uploaded as `Engirent_Prerelease42.eda64bd1739319a926f51503eb0bf6a6.apk` (HTTP 200, same length); `release.ts` + `changelog.ts` pushed, `EngiRentWeb` rebuilt (download page shows 1.15.0, changelog entry live); `AppRelease` 1.15.0 build 42 (3 highlights) written; `LATEST_APP_VERSION` 1.14.7 -> 1.15.0 (`.env` backed up `.env.bak-release42-20261015`, UTF-8 no BOM, 53 lines before and after); API restarted; public `/app-config` -> latestVersion 1.15.0, 3 highlights. `MIN_APP_VERSION` NOT raised (it would lock renters out of the whole app); an old app instead gets "Update the EngiRent app" at the face step. Gist already matched (tunnels did not rotate).
+
+**Mishaps, in the open:** (a) one push loop did not expand a shell variable, so 14 Node files were written to ONE junk path, `D:\ENG\EngiRent\server
+ode_server${f\...` (a directory named `node_server${f`, 11,863 bytes of a copy of `storageService.ts`); no live file was touched, the real files were pushed correctly afterwards; my cleanup was refused by the classifier and not retried: **the user should delete that directory**. (b) The ssh/PowerShell CLIXML preamble swallowed the first output line of several checks until I noticed (the first AppRelease read-back looked empty and was not).
+
+**Not measured / not done:** anti-spoof flags 3 of 17 real faces and its attack side has no samples; EAR open margin is thin (lowest open 0.226 vs limit 0.21); the left/right sign (`kStudentLeftIsPackageRight`) is unverified on a phone; the test account's saved password no longer logs in (not reset); iOS unsupported; the kiosk (offline) has not run this flow (F5, G11); thesis cases not updated (F6); the new admin page has not been opened in a browser.
