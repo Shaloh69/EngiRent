@@ -190,8 +190,10 @@ class Settings(BaseSettings):
     face_match_max_distance: float = 0.5  # same as the 1-photo check (_dlib_verify)
     face_same_person_max_distance: float = 0.6  # step frames vs the centre frame
     face_ear_open_min: float = 0.21  # centre frame: eyes must be open
-    face_ear_closed_max: float = 0.19  # blink frame: eyes must be closed...
-    face_ear_closed_ratio_max: float = 0.75  # ...and clearly more closed than the centre
+    # First live test 2026-10-15 (two students, 15 attempts): real blink frames read
+    # 0.16-0.20 against open 0.21-0.30; the old 0.19 / 0.75 failed real blinks.
+    face_ear_closed_max: float = 0.20  # blink frame: eyes must be closed...
+    face_ear_closed_ratio_max: float = 0.82  # ...and clearly more closed than the centre
     face_centre_max_yaw_deg: float = 12.0  # centre frame faces the camera
     face_turn_min_yaw_deg: float = 20.0  # each turn frame, in its own direction
     # Measured 2026-10-15 on openly licensed Commons photos (eval/wild_faces_report.py,
@@ -207,7 +209,12 @@ class Settings(BaseSettings):
     # Passive anti-spoof (F1b): real - spoof logit must be at least this on the
     # centre AND blink frames. 0.0 = the model's own p >= 0.5 default; raise it
     # for fewer spoofs and more false refusals (its docs/LIMITATIONS.md).
-    face_spoof_min_margin: float = 0.0
+    # First live test 2026-10-15: real phone faces scored -5.95, -1.60, -0.80, -0.42
+    # (4 of 15 attempts refused) and a clean pair 2.7 / 4.0; at 0.0 it locked real
+    # students out. -2.0 admits all but the -5.95 case. The attack side is STILL
+    # unmeasured (no photo / screen samples), so this is a usability call, not a
+    # security measurement: revisit when attack samples exist.
+    face_spoof_min_margin: float = -2.0
     face_antispoof_model: str = "models_face/antispoof_minifasv2se_98_20_int8.onnx"
 
     model_config = {"env_prefix": "ML_"}

@@ -72,7 +72,12 @@ class DlibOnnxBackend:
         self._spoof_input = self._spoof.get_inputs()[0].name
 
     def faces(self, rgb):
-        return [tuple(int(v) for v in b) for b in self._fr.face_locations(rgb, model="hog")]
+        found = self._fr.face_locations(rgb, model="hog")
+        if not found:
+            # A turned or small face: look again at twice the size. Only paid
+            # when nothing was found, so a normal frame costs one pass.
+            found = self._fr.face_locations(rgb, number_of_times_to_upsample=2, model="hog")
+        return [tuple(int(v) for v in b) for b in found]
 
     def landmarks(self, rgb, box):
         top, right, bottom, left = box

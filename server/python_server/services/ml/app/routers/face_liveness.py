@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..config import settings
 from ..face.backend import FaceModelsUnavailable, decode_frame, load_backend
-from ..face.liveness import BLINK, CENTRE, TURN_LEFT, TURN_RIGHT, Thresholds, check_liveness
+from ..face.liveness import BLINK, CENTRE, EXTRA_BLINKS, TURN_LEFT, TURN_RIGHT, Thresholds, check_liveness
 from ..models.schemas import LivenessVerifyResponse
 from ..security import require_api_key
 
@@ -29,6 +29,42 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _SERVICE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Test capture (opt-in, 2026-10-15). Normally NOTHING about an attempt is kept:
+# the phone deletes its frames and this service answers and forgets. While a
+# file named `face_debug.on` exists in the service folder, each attempt's frames
+# and verdict are written to `face_debug/` here, so a tester's real attempts can
+# be replayed against fixes. These are real faces: the folder is private to this
+# machine, files older than 24 hours are removed on the next attempt, and
+# deleting `face_debug.on` switches it off at once (no restart).
+_DEBUG_FLAG = os.path.join(_SERVICE_ROOT, "face_debug.on")
+_DEBUG_DIR = os.path.join(_SERVICE_ROOT, "face_debug")
+_DEBUG_KEEP_SECONDS = 24 * 3600
+
+
+def _debug_capture(raw: dict[str, bytes], verdict: dict) -> None:
+    if not os.path.isfile(_DEBUG_FLAG):
+        return
+    try:
+        import time as _t
+
+        os.makedirs(_DEBUG_DIR, exist_ok=True)
+        now = _t.time()
+        for name in os.listdir(_DEBUG_DIR):
+            p = os.path.join(_DEBUG_DIR, name)
+            if now - os.path.getmtime(p) > _DEBUG_KEEP_SECONDS:
+                for f in os.listdir(p):
+                    os.remove(os.path.join(p, f))
+                os.rmdir(p)
+        folder = os.path.join(_DEBUG_DIR, _t.strftime("%H%M%S") + "-" + str(verdict.get("reason") or "PASS"))
+        os.makedirs(folder, exist_ok=True)
+        for key, data in raw.items():
+            with open(os.path.join(folder, key + ".jpg"), "wb") as f:
+                f.write(data)
+        with open(os.path.join(folder, "verdict.json"), "w", encoding="utf-8") as f:
+            json.dump(verdict, f)
+    except Exception:  # a capture problem must never affect the attempt
+        logger.warning("face debug capture failed", exc_info=True)
 
 
 def _resolve(p: str) -> str:
@@ -63,6 +99,8 @@ def liveness_verify(
     blink: UploadFile = File(..., description="Eyes closed"),
     turn_left: UploadFile = File(..., description="Head turned to the student's left"),
     turn_right: UploadFile = File(..., description="Head turned to the student's right"),
+    blink2: UploadFile | None = File(default=None, description="Optional second candidate for the blink"),
+    blink3: UploadFile | None = File(default=None, description="Optional third candidate for the blink"),
     stored_encoding: str | None = Form(default=None, description="JSON, 128 floats: compare the centre frame with it"),
     return_encoding: bool = Form(default=False, description="Return the centre frame's template (enrolment)"),
     mirrored: bool = Form(default=False, description="The phone flipped its frames left-right"),
@@ -75,13 +113,21 @@ def liveness_verify(
 
     template = _parse_encoding(stored_encoding)
     frames = {}
-    for step, upload in ((CENTRE, centre), (BLINK, blink), (TURN_LEFT, turn_left), (TURN_RIGHT, turn_right)):
+    raw: dict[str, bytes] = {}
+    uploads = [(CENTRE, centre), (BLINK, blink), (TURN_LEFT, turn_left), (TURN_RIGHT, turn_right)]
+    uploads += [(k, u) for k, u in (("BLINK2", blink2), ("BLINK3", blink3)) if u is not None]
+    for step, upload in uploads:
         data = upload.file.read()
         if not data:
+            if step in EXTRA_BLINKS:
+                continue  # an empty optional extra is simply not a candidate
             raise HTTPException(status_code=400, detail=f"{step} frame is empty")
+        raw[step.lower()] = data
         try:
             frames[step] = decode_frame(data, settings.face_max_image_side)
         except Exception as e:
+            if step in EXTRA_BLINKS:
+                continue
             raise HTTPException(status_code=400, detail=f"{step} frame cannot be decoded") from e
 
     r = check_liveness(
@@ -95,6 +141,7 @@ def liveness_verify(
         "liveness-verify passed=%s live=%s reason=%s step=%s distance=%s metrics=%s",
         r.passed, r.live, r.reason, r.step, r.distance, r.metrics,
     )
+    _debug_capture(raw, {"passed": r.passed, "reason": r.reason, "step": r.step, "distance": r.distance, "mirrored": mirrored, "metrics": r.metrics})
     return LivenessVerifyResponse(
         passed=r.passed,
         live=r.live,

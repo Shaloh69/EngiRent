@@ -27,6 +27,11 @@ from .geometry import head_pose, mean_ear
 
 CENTRE, BLINK, TURN_LEFT, TURN_RIGHT = "CENTRE", "BLINK", "TURN_LEFT", "TURN_RIGHT"
 STEPS = (CENTRE, BLINK, TURN_LEFT, TURN_RIGHT)
+# A blink lasts ~150 ms and a phone samples a few frames per second, so the
+# phone may send up to two more candidates of the blink; the closest-shut one
+# is the one that counts (first live test 2026-10-15: one frame often missed
+# the closed moment and a real blink read as "no blink").
+EXTRA_BLINKS = ("BLINK2", "BLINK3")
 
 # Reason codes (SPOOF = passive anti-spoof, F1b). Node maps each to the sentence the student sees; the code
 # itself never reaches a screen.
@@ -122,7 +127,8 @@ def check_liveness(
     stored_encoding: np.ndarray | None = None,
     mirrored: bool = False,
 ) -> LivenessResult:
-    """Decide on one frame set. `frames` maps each of STEPS to an RGB image.
+    """Decide on one frame set. `frames` maps each of STEPS to an RGB image,
+    plus optionally BLINK2 / BLINK3 (more candidates for the blink).
 
     `mirrored` says the phone flipped its frames left-right (a selfie
     preview). It only decides which image direction counts as the student's
@@ -166,10 +172,27 @@ def check_liveness(
     if cov.refused:
         return _fail(HAT, CENTRE, metrics)
 
+    # The blink: the candidate with the most closed eyes counts. Extras with no
+    # clear single face are ignored (the required BLINK frame was checked above).
+    blink_key = BLINK
+    blink_ear = mean_ear(marks[BLINK])
+    for extra in EXTRA_BLINKS:
+        if extra not in frames:
+            continue
+        found = backend.faces(frames[extra])
+        if len(found) != 1:
+            continue
+        lm = backend.landmarks(frames[extra], found[0])
+        ear = mean_ear(lm)
+        boxes[extra], marks[extra] = found[0], lm
+        if ear < blink_ear:
+            blink_key, blink_ear = extra, ear
+    metrics["blink_candidates"] = float(1 + sum(1 for e in EXTRA_BLINKS if e in marks))
+
     # A printed photo or a screen: checked on the two frontal frames, where the
     # model is reliable (its LIMITATIONS: +/-30 degrees). Both must read real.
-    for step in (CENTRE, BLINK):
-        margin = backend.spoof_margin(frames[step], marks[step])
+    for step, key in ((CENTRE, CENTRE), (BLINK, blink_key)):
+        margin = backend.spoof_margin(frames[key], marks[key])
         metrics[f"spoof_margin_{step.lower()}"] = round(margin, 4)
         if margin < t.spoof_min_margin:
             return _fail(SPOOF, step, metrics)
@@ -181,9 +204,8 @@ def check_liveness(
     if abs(pose(CENTRE)) > t.centre_max_yaw_deg:
         return _fail(NOT_FACING, CENTRE, metrics)
 
-    ear_closed = mean_ear(marks[BLINK])
-    metrics["ear_blink"] = round(ear_closed, 4)
-    if ear_closed > t.ear_closed_max or ear_closed > t.ear_closed_ratio_max * ear_open:
+    metrics["ear_blink"] = round(blink_ear, 4)
+    if blink_ear > t.ear_closed_max or blink_ear > t.ear_closed_ratio_max * ear_open:
         return _fail(NO_BLINK, BLINK, metrics)
 
     # On an unmirrored front camera the student's left is the picture's right,
@@ -194,15 +216,17 @@ def check_liveness(
     if -left_sign * pose(TURN_RIGHT) < t.turn_min_yaw_deg:
         return _fail(TURN_RIGHT_SHORT, TURN_RIGHT, metrics)
 
-    # One person throughout: a swap between steps (a photo for the centre
-    # frame, a live accomplice for the movements) fails here.
+    # One person throughout: a swap between the centre frame and the live
+    # movements fails here. Checked on the blink frame only: it is frontal, so
+    # the comparison is reliable, and each extra encoding costs ~0.3 s (turned
+    # heads also drift further from the centre template, which would refuse
+    # the real student).
     centre_enc = np.asarray(backend.encoding(frames[CENTRE], boxes[CENTRE]), dtype=np.float64)
-    for step in (BLINK, TURN_LEFT, TURN_RIGHT):
-        enc = np.asarray(backend.encoding(frames[step], boxes[step]), dtype=np.float64)
-        d = float(np.linalg.norm(enc - centre_enc))
-        metrics[f"same_person_{step.lower()}"] = round(d, 4)
-        if d > t.same_person_max_distance:
-            return _fail(NOT_SAME_PERSON, step, metrics)
+    enc = np.asarray(backend.encoding(frames[blink_key], boxes[blink_key]), dtype=np.float64)
+    d = float(np.linalg.norm(enc - centre_enc))
+    metrics["same_person_blink"] = round(d, 4)
+    if d > t.same_person_max_distance:
+        return _fail(NOT_SAME_PERSON, BLINK, metrics)
 
     result = LivenessResult(live=True, encoding=centre_enc.tolist(), metrics=metrics)
     if stored_encoding is not None:

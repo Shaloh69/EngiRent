@@ -21,6 +21,7 @@ from app.face.backend import FaceModelsUnavailable
 from app.face.liveness import (
     BLINK,
     CENTRE,
+    EXTRA_BLINKS,
     STEPS,
     TURN_LEFT,
     TURN_RIGHT,
@@ -44,7 +45,7 @@ class FakeBackend:
         self.mask = _bare() if mask is None else mask
 
     def _step(self, rgb):
-        return STEPS[int(rgb[0, 0, 0]) // 40]
+        return ALL_KEYS[int(rgb[0, 0, 0]) // 30]
 
     def faces(self, rgb):
         return [(10, 110, 110, 10)] * self.spec[self._step(rgb)].get("faces", 1)
@@ -62,9 +63,12 @@ class FakeBackend:
         return self.spec[self._step(rgb)].get("spoof", 2.0)
 
 
+ALL_KEYS = (*STEPS, *EXTRA_BLINKS)
+
+
 def frame(step: str) -> np.ndarray:
     f = np.zeros((480, 640, 3), dtype=np.uint8)
-    f[0, 0, 0] = STEPS.index(step) * 40
+    f[0, 0, 0] = ALL_KEYS.index(step) * 30
     return f
 
 
@@ -82,8 +86,11 @@ def good_spec() -> dict:
     }
 
 
-def run(spec=None, mask=None, **kw):
-    return check_liveness(FRAMES, FakeBackend(spec or good_spec(), mask), T, **kw)
+def run(spec=None, mask=None, extras=(), **kw):
+    frames = dict(FRAMES)
+    for k in extras:
+        frames[k] = frame(k)
+    return check_liveness(frames, FakeBackend(spec or good_spec(), mask), T, **kw)
 
 
 # ── the decision ───────────────────────────────────────────────────────────
@@ -129,17 +136,26 @@ def test_a_face_framing_covering_with_the_forehead_visible_passes():
 @pytest.mark.parametrize("step", [CENTRE, BLINK])
 def test_a_photo_or_screen_on_a_frontal_frame_is_refused(step):
     spec = good_spec()
-    spec[step]["spoof"] = -1.5
+    spec[step]["spoof"] = -3.0
     r = run(spec)
     assert (r.passed, r.reason, r.step) == (False, "SPOOF", step)
 
 
-def test_the_spoof_margin_threshold_is_inclusive_at_zero():
+def test_the_spoof_margin_threshold_is_inclusive_at_the_configured_limit():
+    assert T.spoof_min_margin == -2.0
     spec = good_spec()
-    spec[CENTRE]["spoof"] = 0.0
+    spec[CENTRE]["spoof"] = -2.0
     assert run(spec).passed
-    spec[CENTRE]["spoof"] = -0.01
+    spec[CENTRE]["spoof"] = -2.01
     assert run(spec).reason == "SPOOF"
+
+
+def test_real_phone_faces_from_the_first_live_test_are_not_refused_as_spoofs():
+    # Margins measured on two students' real attempts, 2026-10-15.
+    for margin in (-1.6003, -0.8002, -0.4211, 0.0468):
+        spec = good_spec()
+        spec[CENTRE]["spoof"] = margin
+        assert run(spec).passed, margin
 
 
 def test_turn_frames_are_not_spoof_checked_the_model_is_unreliable_there():
@@ -169,9 +185,50 @@ def test_no_blink_fails():
 
 def test_a_half_blink_fails_on_the_ratio_even_under_the_absolute_limit():
     spec = good_spec()
-    spec[CENTRE]["lm"] = face_landmarks(0, 0.22)
-    spec[BLINK]["lm"] = face_landmarks(0, 0.18)  # <= 0.19, but 0.82 of open
+    spec[CENTRE]["lm"] = face_landmarks(0, 0.23)
+    spec[BLINK]["lm"] = face_landmarks(0, 0.20)  # at the absolute limit, but 0.87 of open
     assert run(spec).reason == "NO_BLINK"
+
+
+def test_blink_frames_measured_on_real_students_pass_or_fail_as_they_should():
+    # (open, blink) from the first live test: three real blinks, one eyes-open frame.
+    for open_ear, blink_ear, expect in ((0.2124, 0.1627, True), (0.2488, 0.1589, True), (0.2192, 0.1969, False), (0.303, 0.4285, False)):
+        spec = good_spec()
+        spec[CENTRE]["lm"] = face_landmarks(0, open_ear)
+        spec[BLINK]["lm"] = face_landmarks(0, blink_ear)
+        assert (run(spec).reason != "NO_BLINK") is expect, (open_ear, blink_ear)
+
+
+def test_a_missed_blink_frame_is_rescued_by_a_better_candidate():
+    spec = good_spec()
+    spec[BLINK]["lm"] = face_landmarks(0, 0.30)  # the required frame missed the closed moment
+    spec["BLINK2"] = {"lm": face_landmarks(0, 0.05)}
+    r = run(spec, extras=("BLINK2",))
+    assert r.passed and r.metrics["blink_candidates"] == 2 and r.metrics["ear_blink"] < 0.1
+
+
+def test_extra_candidates_that_are_no_help_change_nothing():
+    spec = good_spec()
+    spec[BLINK]["lm"] = face_landmarks(0, 0.30)
+    spec["BLINK2"] = {"lm": face_landmarks(0, 0.29)}
+    spec["BLINK3"] = {"lm": face_landmarks(0, 0.28)}
+    assert run(spec, extras=("BLINK2", "BLINK3")).reason == "NO_BLINK"
+
+
+def test_an_extra_candidate_with_no_face_or_two_faces_is_ignored_not_fatal():
+    spec = good_spec()
+    spec["BLINK2"] = {"lm": face_landmarks(0, 0.05), "faces": 0}
+    spec["BLINK3"] = {"lm": face_landmarks(0, 0.05), "faces": 2}
+    r = run(spec, extras=("BLINK2", "BLINK3"))
+    assert r.passed and r.metrics["blink_candidates"] == 1
+
+
+def test_the_closest_shut_candidate_is_the_one_checked_for_spoof_and_same_person():
+    spec = good_spec()
+    spec[BLINK]["lm"] = face_landmarks(0, 0.30)
+    spec["BLINK2"] = {"lm": face_landmarks(0, 0.05), "spoof": -9.0, "enc": SOMEONE_ELSE}
+    r = run(spec, extras=("BLINK2",))
+    assert r.reason == "SPOOF" and r.step == BLINK
 
 
 def test_a_turn_that_is_too_small_fails():
@@ -193,11 +250,19 @@ def test_mirrored_frames_swap_which_image_direction_is_left():
     assert run(mirrored=True).reason == "TURN_LEFT_SHORT"
 
 
-@pytest.mark.parametrize("step", [BLINK, TURN_LEFT, TURN_RIGHT])
-def test_a_different_person_on_any_step_fails(step):
+def test_a_different_person_on_the_blink_frame_fails():
+    spec = good_spec()
+    spec[BLINK]["enc"] = SOMEONE_ELSE
+    assert (run(spec).reason, run(spec).step) == ("NOT_SAME_PERSON", BLINK)
+
+
+@pytest.mark.parametrize("step", [TURN_LEFT, TURN_RIGHT])
+def test_turned_frames_are_not_identity_checked(step):
+    # A turned head drifts from the frontal template and would refuse the real
+    # student; each encoding also costs ~0.3 s.
     spec = good_spec()
     spec[step]["enc"] = SOMEONE_ELSE
-    assert (run(spec).reason, run(spec).step) == ("NOT_SAME_PERSON", step)
+    assert run(spec).passed
 
 
 def test_a_live_stranger_is_live_but_does_not_pass():
@@ -297,3 +362,42 @@ def test_real_loader_fails_closed_when_either_weights_file_is_missing(monkeypatc
     with pytest.raises(FaceModelsUnavailable):
         backend_mod.load_backend(*paths)
     assert backend_mod._backend is None
+
+
+# ── opt-in test capture ────────────────────────────────────────────────────
+
+
+def test_nothing_is_kept_unless_the_flag_file_exists(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(face_liveness, "_DEBUG_FLAG", str(tmp_path / "face_debug.on"))
+    monkeypatch.setattr(face_liveness, "_DEBUG_DIR", str(tmp_path / "face_debug"))
+    assert client.post(URL, files=_files()).status_code == 200
+    assert not (tmp_path / "face_debug").exists()
+
+
+def test_with_the_flag_the_frames_and_verdict_are_kept_and_old_ones_purged(client, tmp_path, monkeypatch):
+    import os
+    import time
+
+    flag, folder = tmp_path / "face_debug.on", tmp_path / "face_debug"
+    monkeypatch.setattr(face_liveness, "_DEBUG_FLAG", str(flag))
+    monkeypatch.setattr(face_liveness, "_DEBUG_DIR", str(folder))
+    flag.write_text("")
+    old = folder / "000000-OLD"
+    old.mkdir(parents=True)
+    (old / "centre.jpg").write_bytes(b"x")
+    os.utime(old, (time.time() - 90000, time.time() - 90000))
+
+    assert client.post(URL, files=_files()).status_code == 200
+
+    kept = sorted(p.name for p in folder.iterdir())
+    assert len(kept) == 1 and kept[0].endswith("-PASS"), kept  # the 25 h old one is gone
+    files = sorted(p.name for p in (folder / kept[0]).iterdir())
+    assert files == ["blink.jpg", "centre.jpg", "turn_left.jpg", "turn_right.jpg", "verdict.json"]
+
+
+def test_a_capture_failure_never_breaks_the_attempt(client, tmp_path, monkeypatch):
+    flag = tmp_path / "face_debug.on"
+    flag.write_text("")
+    monkeypatch.setattr(face_liveness, "_DEBUG_FLAG", str(flag))
+    monkeypatch.setattr(face_liveness, "_DEBUG_DIR", str(tmp_path / "not" / "a" / "dir\0bad"))
+    assert client.post(URL, files=_files()).status_code == 200

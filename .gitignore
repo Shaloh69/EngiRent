@@ -156,3 +156,7 @@ server/python_server/services/ml/models_face/
 # Thesis documents (real names, unpublished): never commit; the repo is public.
 /EngiRent-Hub-*.docx
 /EngiRent-Hub-*.pdf
+
+# Face liveness test capture (server only, real faces): never commit
+server/python_server/services/ml/face_debug/
+server/python_server/services/ml/face_debug.on
