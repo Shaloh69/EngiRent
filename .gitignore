@@ -145,6 +145,10 @@ server/python_server/services/ml/eval/data/
 server/python_server/services/ml/eval/runs/
 server/python_server/services/ml/.venv-eval/
 server/python_server/services/ml/cache_v2/
+# Face liveness (2026-10-15): real face frames are biometric data and the repo is public. Local only, never committed.
+server/python_server/services/ml/tests/fixtures/faces/
+# Face model weights (BiSeNet face parsing etc.): fetched by deploy/fetch_face_models.py, hash-checked, not committed.
+server/python_server/services/ml/models_face/
 
 # Playwright / emulator screenshots: may show faces, ID photos and student data (the repo is public).
 .playwright-mcp/

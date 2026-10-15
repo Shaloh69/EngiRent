@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-15 - NEXT SESSION: face recognition revamp (blink, turn left/right, glasses OK, hat refused) - spec docs/redesign/SPEC-FACE-LIVENESS.md, NOT BUILT, user to rule on its section 7 - stack live on 1.14.7+41 (API PID 18388) - D-119 camera self-reconnect installed on the Pi, restart waits for the user's yes (G11); camera 3 down - OPEN: SW-07 session restore (user to decide), D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api pioneer-profit-databases-writings / admin keeping-seller-accomplish-canal / web confidential-performer-reply-fare (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
+[2026-10-15 - PHASE FACE LIVENESS: G2 table F1-F6 in PROGRESS.md (end); F1 BUILT + synthetic-tested, waits for real face frames from the user (G1: F1b not started); re-enrolment ruling RECEIVED (old-template match, else password + admin review) - stack live on 1.14.7+41 (API PID 18388) - D-119 camera self-reconnect installed on the Pi, restart waits for the user's yes (G11); camera 3 down - OPEN: SW-07 session restore (user to decide), D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api pioneer-profit-databases-writings / admin keeping-seller-accomplish-canal / web confidential-performer-reply-fare (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -184,6 +184,13 @@ each:**
   2026-09-11.
 
 ### Session entries
+
+**2026-10-15 (FACE LIVENESS, F1 boundary) — G5 six-symptom check. NO SYMPTOMS.**
+(1) Re-deriving: none; the code was read once for the G2 table and built on. (2) Vaguer summaries: no; the F1 entry names files, codes and numbers.
+(3) Losing the rules: status line on every reply; G2 table written before code; ignore rule proven with `git check-ignore` before any fixture or weight
+landed; nothing committed with a face in it. (4) Drifting toward agreement: no; the spec's label map was re-read from the model's own code, and six
+gaps in the spec were found against the repo. (5) Batching: no; F1b is NOT started while F1 waits for real frames (G1). (6) Skipping verification:
+F1 is recorded as NOT verified on real faces; synthetic tests are mutation-checked (13/13 killed) and are not claimed as the "seen" bar.
 
 **2026-09-17/18 (third outage → D-82…D-86 → D-81) — G5 check, run unprompted.
 TWO SYMPTOMS, both caught; one process defect recurred.**
@@ -11183,3 +11190,78 @@ yes (G11); camera 3 down since 22:11 (replugged; stale handle).
 (1) random step order chosen by the server: yes; (2) religious head coverings that leave the whole face visible are allowed, caps/hats/hoods refused: yes; (3) everyone re-enrols:
 a home-screen prompt "Update your face with the new system now" until done; read as: old enrolments no longer pass the kiosk face step (user sent to the update flow);
 (4) passive anti-spoofing: yes, in the next session. Spec sections F1b and F2b added. Next session starts at the G2 table from spec §5.
+
+## PHASE FACE LIVENESS (user 2026-10-15: build from `docs/redesign/SPEC-FACE-LIVENESS.md`, rulings §7 final). G2 section table, repo-derived, written before any edit
+
+**Spec §1 re-checked against the code (2026-10-15), it still matches:** `face_verify_screen.dart` (576 lines) uses `camera ^0.11.0+2`, one `takePicture()` (:144),
+posts field `file` + `rentalId` to `/kiosk/verify-face`; its own comment (:319-324) says there is no on-device face detector. Enrolment `profile_setup_screen.dart` :90
+`takePicture()` → `/auth/register-face` (:135) → `/auth/profile/complete` (:170). Node `compareFaceWithMl` (`faceVerificationService.ts`:157) posts one `captured_image`
+to ML `/api/v1/verify-face`, 20 s timeout, no local fallback; called from 2 places (`kioskController.ts`:674 wrong-item collect, :754 normal step). ML
+`verification.py` `_dlib_verify` match at distance ≤ 0.5 (:503). Session `kioskSessionStore.ts`: 120 s TTL, 4 attempts, opened at `index.ts`:1280 and :1406, which also emit
+`kiosk:face_required`. No liveness, no hat rule anywhere. `User` has `faceEncoding` (encrypted) + `profileImage`, no enrolment version.
+
+**Found while re-checking, not in the spec (each changes the build):**
+1. **ML `register_face` and `verify_face` are `async def` calling blocking dlib** (`verification.py`:381, :510): the same trap that froze the whole ML service on 2026-09-25
+   for `/verify`. 4-5 frames + BiSeNet + anti-spoof per attempt makes it much worse. New endpoints are plain `def` (FastAPI threadpool).
+2. **The ML `verify-face` still has a Haar + colour-histogram fallback** (:556-603) when dlib is missing. Node fails closed on an ML *error*, but this fallback answers
+   200 with a weak verdict. The new endpoint refuses (fails closed) when dlib or any liveness model is missing.
+3. **Re-enrolment cannot reuse `/auth/profile/complete`**: it requires the ID photo + guardian consent again and resets `verificationStatus` to PENDING (authController
+   ~:610), which would put every approved student back in the admin queue. F2b needs its own face-only enrolment endpoint.
+4. **Re-enrolment is an account-takeover path** if it accepts any live face: anyone with a student's password could bind their own face and pass the kiosk as them.
+   (The same gap exists today through a profile re-submit, since `isVerified` is kept.) Needs a ruling, see "Ruling needed" below.
+5. **Deploy order matters**: once the server requires liveness and refuses old enrolments, app 1.14.7 cannot pass any kiosk face step and every student must re-enrol.
+   Server + app must ship together, old clients get a plain "Update the app" refusal, and `MIN_APP_VERSION` moves up. Deploy only with the kiosk idle.
+6. **Time budget**: the 120 s session must fit the guided steps + upload + ML (now 20 s timeout) for up to 4 attempts. Measured on a real phone in F3; the TTL is NOT
+   changed without a ruling (it is part of the trust architecture).
+7. Stale comment: `verifyFaceFromApp`'s header (kioskController ~:612) says "the caller must pass the QR token"; it takes none. Fix in F2.
+
+| # | Section | Where | Done when (seen, not just tested) | State |
+|---|---------|-------|-----------|-------|
+| F1 | ML `POST /api/v1/face/liveness-verify` (`def`, API key): frame set (centre open-eyes + one per step) + issued order + nonce; one face per frame; same person across frames; centre frame matches the stored encoding (dlib ≤ 0.5, unchanged); yaw per turn frame (dlib 68-pt + `cv2.solvePnP`); blink by EAR (closed frame low, centre high); hat refused via BiSeNet ONNX (`yakhyo/face-parsing`, MIT, label map read from its code), `eye_g` ignored, a covering that leaves forehead-to-chin visible passes; one plain reason code per failure; fails closed when dlib/models are missing | `server/python_server/services/ml` (onnxruntime 1.19.2 already pinned) | pytest on LOCAL, gitignored face fixtures (new ignore rule first, `git check-ignore -v` proven); thresholds printed from real captures | BUILT, synthetic tests 51 + mutation 13/13; real frames pending |
+| F1b | ML passive anti-spoof on the centre frame (Silent-Face-Anti-Spoofing MiniFASNet or equivalent; **licence read from the repo before download**); refuse photo / screen replay | ML | pytest incl. a photo-of-a-photo and a phone-screen fixture (local only) | not started |
+| F2 | Node: at `openKioskSession` issue a random permutation of BLINK/TURN_LEFT/TURN_RIGHT + nonce, store in the session, send in `kiosk:face_required`; `/kiosk/verify-face` takes the frame set + nonce, forwards to F1, maps reason codes to plain messages; a single-photo (old app) request gets "Update the app"; both call sites (:674, :754) | `kioskSessionStore.ts`, `faceVerificationService.ts`, `kioskController.ts`, `index.ts` | Jest (mutation-checked) + an e2e over HTTP against a PRIVATE local API with fixtures | not started |
+| F2b | `User.faceEnrolmentVersion` (additive, default 1); kiosk face step refuses version < 2 with "Update your face with the new system first"; face-only enrolment endpoint (see ruling); app home-screen prompt "Update your face with the new system now" until done | Prisma, Node, app | prompt seen on the emulator; refusal seen through the real chain on the private API | not started |
+| F3 | App guided capture: `camera` image stream + `google_mlkit_face_detection` + `flutter_liveness_actions` (coaching only), oval + instruction card + step dots on the samviva / Amplify pattern in EngiRent tokens; steps in the server's order; JPEG-compressed frames; replaces the single shot in `face_verify_screen.dart` | `client/flutter_app` | seen on the user's REAL phone (not the emulator) | not started |
+| F4 | Enrolment (profile setup AND the update prompt) uses the F3 capture; hat refused at enrolment too | app + Node + ML | seen on a real phone | not started |
+| F5 | Real kiosk run: QR → liveness → verify → bay grant (G11: door opens on the student's tap; ask first) | kiosk | one real flow with the user present | not started |
+| F6 | Thesis test cases (blink, left/right, glasses pass, hat refused, hijab-style covering passes, photo refused, old enrolment refused) + full release (APK, website + changelog, AppRelease + LATEST/MIN_APP_VERSION) | docs, release | all four release places, live URLs from the tunnel logs | not started |
+
+**Order (G1, one unseen change at a time):** F1 → F1b → F2 → F2b (server) → F3 → F4 → deploy together → F5 → F6. F1/F1b/F2 are verified by tests + the private
+local API (nothing deployed); F3 is the first that needs the user's phone.
+
+**Ruling needed before F2b (finding 4):** how is a re-enrolment authorised? Recommendation: the new live capture must match the OLD template (dlib ≤ 0.5) to replace
+it; if it does not match (appearance changed, or no old template), the account password is re-entered AND the new face goes to admin review before it passes a kiosk.
+
+**Not touching:** QR validation, `resolveFaceSubject`, the session store's TTL/attempt cap, the ML key path, GPIO/doors/timings, the autostart supervisor.
+**Still open, carried:** D-119 (installed on the Pi, kiosk restart waits for the user's yes, camera 3 down); SW-07 session restore (user to decide).
+
+### 2026-10-15 — Ruling (user: "yes do whats reccomended"): how a face re-enrolment is authorised
+
+The new live capture must match the account's OLD template (dlib distance ≤ 0.5) to replace it. If it does not match, or there is no old template, the account password
+is re-entered AND the new face goes to admin review; until an admin approves it, it does not pass a kiosk face step. Applies to F2b/F4.
+
+### 2026-10-15 — F1 BUILT and tested on synthetic faces; NOT verified on real faces (waits for the user's frames). Nothing deployed
+
+**Built (ML service, all new except 3 small edits):** `app/face/geometry.py` (EAR; yaw/pitch from `cv2.solvePnP` on six dlib points, read from the head's forward
+vector, sign defined on the IMAGE: yaw > 0 = face points at the picture's right), `app/face/covering.py` (BiSeNet labels from `yakhyo/face-parsing`
+`utils/common.py`: argmax 6 = `eye_g`, 18 = `hat`; rule: hat share < 0.04 passes; otherwise passes only if the forehead band is ≥ 50 % skin AND the covering
+reaches below the eyes on both sides; else HAT), `app/face/liveness.py` (decision; reason codes NO_FACE, MULTIPLE_FACES, HAT, EYES_CLOSED, NOT_FACING, NO_BLINK,
+TURN_LEFT_SHORT, TURN_RIGHT_SHORT, NOT_SAME_PERSON, NO_MATCH; match ≤ 0.5 unchanged; returns the centre template for enrolment), `app/face/backend.py` (dlib +
+ONNX Runtime, EXIF-upright, frames capped at 960 px, raises `FaceModelsUnavailable`), `app/routers/face_liveness.py` (`POST /api/v1/face/liveness-verify`, plain `def`,
+API key, files `centre|blink|turn_left|turn_right`, forms `stored_encoding`, `return_encoding`, `mirrored`; 503 when any model is missing = fail closed; a
+malformed template is a 400, never "no template"), 13 `ML_FACE_*` settings in `config.py`, schema `LivenessVerifyResponse`, router registered in `main.py`.
+`deploy/fetch_face_models.py` fetches the weights and checks sha256 `0d9bd318…e33f` (= GitHub's published digest for `resnet18.onnx`, 53,205,364 B).
+`.gitignore`: `ml/tests/fixtures/faces/` and `ml/models_face/` (both proven with `git check-ignore -v`).
+
+**Tests:** `test_face_geometry.py` (12), `test_face_covering.py` (8), `test_face_liveness.py` (31: decision + route via a fake backend), `test_face_real_backend.py`
+(real dlib + BiSeNet: models load, a no-face frame gives 200 NO_FACE; fixture cases skip when absent). **Mutation check: 13/13 rules broken one at a time, every
+one turned a test red** (scratchpad `mutate_face.py`). Full ML suite in `.venv-eval` **132 passed, 2 skipped**; `app.main` imports with the new route.
+Local `.venv-eval` gained `dlib-bin 20.0.1.post1`, `face_recognition 1.3.0 --no-deps`, `face_recognition_models 0.3.0` (the server's Dockerfile pattern).
+
+**Not verified (G1, the one open change):** every threshold (EAR 0.21 / 0.19 / 0.75, yaw 12 / 20, hat 0.04, forehead 0.5) is a literature starting value, and
+whether BiSeNet labels a real cap / hood / hijab as `hat` at all is unknown. Done-when needs real frames in `tests/fixtures/faces/<case>/` (layout in
+`test_face_real_backend.py`'s docstring). **F1b is not started** until F1 is seen on real frames.
+
+**Licences:** face parsing code MIT; its weights are trained on CelebAMask-HQ (non-commercial research/education only: fine for the thesis, noted in the fetch
+script). F1b candidate `minivision-ai/Silent-Face-Anti-Spoofing`: **Apache-2.0**, MiniFASNetV2 + V1SE `.pth` (~1.8 MB each) in the repo, PyTorch (already on
+the server).

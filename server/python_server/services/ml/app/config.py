@@ -183,6 +183,24 @@ class Settings(BaseSettings):
     image_fetch_timeout_seconds: float = 5.0
     image_fetch_max_bytes: int = 10_000_000  # 10 MB
 
+    # Face liveness (2026-10-15, docs/redesign/SPEC-FACE-LIVENESS.md). Starting
+    # values from the literature (EAR ~0.25-0.35 open; turns of 20-30 degrees);
+    # NOT yet tuned on real captures. Retune from the fixture run and record
+    # the measured numbers in PROGRESS.md before changing any of these.
+    face_match_max_distance: float = 0.5  # same as the 1-photo check (_dlib_verify)
+    face_same_person_max_distance: float = 0.6  # step frames vs the centre frame
+    face_ear_open_min: float = 0.21  # centre frame: eyes must be open
+    face_ear_closed_max: float = 0.19  # blink frame: eyes must be closed...
+    face_ear_closed_ratio_max: float = 0.75  # ...and clearly more closed than the centre
+    face_centre_max_yaw_deg: float = 12.0  # centre frame faces the camera
+    face_turn_min_yaw_deg: float = 20.0  # each turn frame, in its own direction
+    face_hat_min_share: float = 0.04  # hat pixels / head region below this: no covering
+    face_forehead_min_skin: float = 0.5  # covering allowed only with the forehead visible
+    face_forehead_band: float = 0.25  # forehead band height, fraction of brow-to-chin
+    face_frame_min_share: float = 0.01  # covering below the eyes on each side
+    face_max_image_side: int = 960  # frames are downscaled to this before detection
+    face_parsing_model: str = "models_face/face_parsing_resnet18.onnx"
+
     model_config = {"env_prefix": "ML_"}
 
 

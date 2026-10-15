@@ -95,6 +95,20 @@ class FaceRegisterResponse(BaseModel):
     message: str = Field(description="Human-readable result message")
 
 
+class LivenessVerifyResponse(BaseModel):
+    """POST /face/liveness-verify. `reason` is a code (app/face/liveness.py);
+    Node turns it into the sentence the student sees."""
+
+    passed: bool = Field(description="Live, and the same person as stored_encoding when one was given")
+    live: bool = Field(description="Every liveness step passed: one bare-headed face, blink, both turns, same person")
+    reason: str | None = Field(default=None, description="First failure code, null when passed")
+    step: str | None = Field(default=None, description="CENTRE | BLINK | TURN_LEFT | TURN_RIGHT the failure was found on")
+    matched: bool | None = Field(default=None, description="Centre frame vs stored_encoding; null when none was given")
+    distance: float | None = Field(default=None, description="dlib distance of that comparison")
+    encoding: list[float] | None = Field(default=None, description="Centre frame's 128-float template, only with return_encoding and live")
+    metrics: dict[str, float] = Field(default_factory=dict, description="Measured EAR / yaw / covering values, for tuning")
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str
