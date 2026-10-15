@@ -39,7 +39,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "faces"
 FRAMES = ("centre", "blink", "turn_left", "turn_right")
 
 try:
-    BACKEND = load_backend(face_liveness._model_path())
+    BACKEND = load_backend(*face_liveness._model_paths())
 except FaceModelsUnavailable as e:  # pragma: no cover - environment dependent
     pytest.skip(f"face models unavailable: {e}", allow_module_level=True)
 
@@ -70,6 +70,18 @@ def test_the_parsing_model_returns_a_crop_sized_mask_of_known_labels():
     rgb = np.random.default_rng(0).integers(0, 255, (480, 640, 3), dtype=np.uint8)
     mask, lm = BACKEND.parse(rgb, (150, 380, 330, 260))
     assert mask.ndim == 2 and mask.max() <= 18 and lm.shape == (68, 2)
+
+
+def test_the_antispoof_model_scores_a_crop_built_from_landmarks():
+    from tests.face_synth import face_landmarks
+
+    rgb = np.random.default_rng(1).integers(0, 255, (480, 640, 3), dtype=np.uint8)
+    lm = face_landmarks(0, 0.3)
+    lm[0:17, 0] = np.linspace(260, 380, 17)  # a jaw line, so the box has width
+    lm[0:17, 1] = 330
+    lm[17:27, 1] = 200
+    margin = BACKEND.spoof_margin(rgb, lm)
+    assert isinstance(margin, float) and np.isfinite(margin)
 
 
 def _cases():

@@ -28,7 +28,7 @@ from .geometry import head_pose, mean_ear
 CENTRE, BLINK, TURN_LEFT, TURN_RIGHT = "CENTRE", "BLINK", "TURN_LEFT", "TURN_RIGHT"
 STEPS = (CENTRE, BLINK, TURN_LEFT, TURN_RIGHT)
 
-# Reason codes. Node maps each to the sentence the student sees; the code
+# Reason codes (SPOOF = passive anti-spoof, F1b). Node maps each to the sentence the student sees; the code
 # itself never reaches a screen.
 NO_FACE = "NO_FACE"
 MULTIPLE_FACES = "MULTIPLE_FACES"
@@ -40,6 +40,7 @@ TURN_LEFT_SHORT = "TURN_LEFT_SHORT"
 TURN_RIGHT_SHORT = "TURN_RIGHT_SHORT"
 NOT_SAME_PERSON = "NOT_SAME_PERSON"
 NO_MATCH = "NO_MATCH"
+SPOOF = "SPOOF"
 
 
 class FaceBackend(Protocol):
@@ -56,6 +57,9 @@ class FaceBackend(Protocol):
         """(mask, landmarks) in one shared frame: the parsing mask of a crop
         around the face and the face's landmarks translated into that crop."""
 
+    def spoof_margin(self, rgb: np.ndarray, landmarks: np.ndarray) -> float:
+        """real - spoof logit: >= 0 reads as a live face, < 0 as a photo/screen."""
+
 
 @dataclass(frozen=True)
 class Thresholds:
@@ -70,6 +74,7 @@ class Thresholds:
     forehead_min_skin: float
     forehead_band: float
     frame_min_share: float
+    spoof_min_margin: float
 
     @classmethod
     def from_settings(cls, s) -> "Thresholds":
@@ -85,6 +90,7 @@ class Thresholds:
             forehead_min_skin=s.face_forehead_min_skin,
             forehead_band=s.face_forehead_band,
             frame_min_share=s.face_frame_min_share,
+            spoof_min_margin=s.face_spoof_min_margin,
         )
 
 
@@ -159,6 +165,14 @@ def check_liveness(
     metrics["covering_frames_face"] = float(cov.frames_face)
     if cov.refused:
         return _fail(HAT, CENTRE, metrics)
+
+    # A printed photo or a screen: checked on the two frontal frames, where the
+    # model is reliable (its LIMITATIONS: +/-30 degrees). Both must read real.
+    for step in (CENTRE, BLINK):
+        margin = backend.spoof_margin(frames[step], marks[step])
+        metrics[f"spoof_margin_{step.lower()}"] = round(margin, 4)
+        if margin < t.spoof_min_margin:
+            return _fail(SPOOF, step, metrics)
 
     ear_open = mean_ear(marks[CENTRE])
     metrics["ear_centre"] = round(ear_open, 4)

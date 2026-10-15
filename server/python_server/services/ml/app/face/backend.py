@@ -12,6 +12,9 @@ The encoder runs with face_recognition's defaults (5-point alignment, no
 jitter), the same as /register-face, so a new template stays comparable with
 an enrolment made before the revamp: that comparison is what authorises a
 re-enrolment (PROGRESS.md, ruling 2026-10-15).
+
+Anti-spoof: MiniFASNetV2-SE from facenox/face-antispoof-onnx (Apache-2.0),
+see antispoof.py.
 """
 
 from __future__ import annotations
@@ -24,6 +27,8 @@ import threading
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
+
+from . import antispoof
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +52,7 @@ class DlibOnnxBackend:
     _MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     _STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-    def __init__(self, parsing_model_path: str):
+    def __init__(self, parsing_model_path: str, antispoof_model_path: str):
         try:
             import dlib
             import face_recognition
@@ -55,13 +60,16 @@ class DlibOnnxBackend:
             import onnxruntime as ort
         except ImportError as e:
             raise FaceModelsUnavailable(f"face libraries missing: {e}") from e
-        if not os.path.isfile(parsing_model_path):
-            raise FaceModelsUnavailable(f"face parsing model missing: {parsing_model_path}")
+        for path in (parsing_model_path, antispoof_model_path):
+            if not os.path.isfile(path):
+                raise FaceModelsUnavailable(f"face model missing: {path}")
         self._fr = face_recognition
         self._dlib = dlib
         self._predictor = dlib.shape_predictor(face_recognition_models.pose_predictor_model_location())
         self._session = ort.InferenceSession(parsing_model_path, providers=["CPUExecutionProvider"])
         self._input = self._session.get_inputs()[0].name
+        self._spoof = ort.InferenceSession(antispoof_model_path, providers=["CPUExecutionProvider"])
+        self._spoof_input = self._spoof.get_inputs()[0].name
 
     def faces(self, rgb):
         return [tuple(int(v) for v in b) for b in self._fr.face_locations(rgb, model="hog")]
@@ -93,15 +101,19 @@ class DlibOnnxBackend:
         return mask, lm
 
 
+    def spoof_margin(self, rgb, landmarks):
+        return antispoof.real_minus_spoof(self._spoof, self._spoof_input, rgb, landmarks)
+
+
 _backend: DlibOnnxBackend | None = None
 _lock = threading.Lock()
 
 
-def load_backend(parsing_model_path: str) -> DlibOnnxBackend:
+def load_backend(parsing_model_path: str, antispoof_model_path: str) -> DlibOnnxBackend:
     """One backend per process; models load on first use (a few seconds)."""
     global _backend
     with _lock:
         if _backend is None:
-            _backend = DlibOnnxBackend(parsing_model_path)
-            logger.info("face liveness backend loaded (dlib + BiSeNet %s)", parsing_model_path)
+            _backend = DlibOnnxBackend(parsing_model_path, antispoof_model_path)
+            logger.info("face liveness backend loaded (dlib, %s, %s)", parsing_model_path, antispoof_model_path)
         return _backend

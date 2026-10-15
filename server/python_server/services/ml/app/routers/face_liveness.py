@@ -31,9 +31,12 @@ router = APIRouter()
 _SERVICE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _model_path() -> str:
-    p = settings.face_parsing_model
+def _resolve(p: str) -> str:
     return p if os.path.isabs(p) else os.path.join(_SERVICE_ROOT, p)
+
+
+def _model_paths() -> tuple[str, str]:
+    return _resolve(settings.face_parsing_model), _resolve(settings.face_antispoof_model)
 
 
 def _parse_encoding(raw: str | None) -> np.ndarray | None:
@@ -65,7 +68,7 @@ def liveness_verify(
     mirrored: bool = Form(default=False, description="The phone flipped its frames left-right"),
 ):
     try:
-        backend = load_backend(_model_path())
+        backend = load_backend(*_model_paths())
     except FaceModelsUnavailable as e:
         logger.error("liveness-verify refused, models unavailable: %s", e)
         raise HTTPException(status_code=503, detail="Face liveness models unavailable") from e

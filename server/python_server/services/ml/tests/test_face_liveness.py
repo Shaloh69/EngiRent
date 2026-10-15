@@ -58,6 +58,9 @@ class FakeBackend:
     def parse(self, rgb, box):
         return self.mask, _landmarks()
 
+    def spoof_margin(self, rgb, landmarks):
+        return self.spec[self._step(rgb)].get("spoof", 2.0)
+
 
 def frame(step: str) -> np.ndarray:
     f = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -121,6 +124,29 @@ def test_a_cap_is_refused():
 
 def test_a_face_framing_covering_with_the_forehead_visible_passes():
     assert run(mask=_hijab(_bare())).passed
+
+
+@pytest.mark.parametrize("step", [CENTRE, BLINK])
+def test_a_photo_or_screen_on_a_frontal_frame_is_refused(step):
+    spec = good_spec()
+    spec[step]["spoof"] = -1.5
+    r = run(spec)
+    assert (r.passed, r.reason, r.step) == (False, "SPOOF", step)
+
+
+def test_the_spoof_margin_threshold_is_inclusive_at_zero():
+    spec = good_spec()
+    spec[CENTRE]["spoof"] = 0.0
+    assert run(spec).passed
+    spec[CENTRE]["spoof"] = -0.01
+    assert run(spec).reason == "SPOOF"
+
+
+def test_turn_frames_are_not_spoof_checked_the_model_is_unreliable_there():
+    spec = good_spec()
+    spec[TURN_LEFT]["spoof"] = -3.0
+    spec[TURN_RIGHT]["spoof"] = -3.0
+    assert run(spec).passed
 
 
 def test_eyes_closed_on_the_centre_frame_fail():
@@ -212,7 +238,7 @@ def _files(skip: str | None = None, empty: str | None = None):
 def client(monkeypatch):
     app = FastAPI()
     app.include_router(face_liveness.router, prefix="/api/v1")
-    monkeypatch.setattr(face_liveness, "load_backend", lambda _p: FakeBackend(good_spec()))
+    monkeypatch.setattr(face_liveness, "load_backend", lambda *_p: FakeBackend(good_spec()))
     monkeypatch.setattr(settings, "api_key", "")
     return TestClient(app)
 
@@ -231,7 +257,7 @@ def test_route_happy_path_and_encoding_only_on_request(client):
 def test_route_a_failed_check_is_a_200_with_a_reason_not_an_error(client, monkeypatch):
     spec = good_spec()
     spec[BLINK]["lm"] = face_landmarks(0, 0.3)
-    monkeypatch.setattr(face_liveness, "load_backend", lambda _p: FakeBackend(spec))
+    monkeypatch.setattr(face_liveness, "load_backend", lambda *_p: FakeBackend(spec))
     body = client.post(URL, files=_files(), data={"return_encoding": "true"}).json()
     assert (body["passed"], body["live"], body["reason"], body["encoding"]) == (False, False, "NO_BLINK", None)
 
@@ -256,15 +282,18 @@ def test_route_requires_the_api_key_when_one_is_configured(client, monkeypatch):
 
 
 def test_route_fails_closed_with_503_when_models_are_missing(client, monkeypatch):
-    def unavailable(_p):
+    def unavailable(*_p):
         raise FaceModelsUnavailable("no weights")
 
     monkeypatch.setattr(face_liveness, "load_backend", unavailable)
     assert client.post(URL, files=_files()).status_code == 503
 
 
-def test_real_loader_fails_closed_on_a_missing_weights_file(monkeypatch):
+@pytest.mark.parametrize("which", ["parsing", "antispoof"])
+def test_real_loader_fails_closed_when_either_weights_file_is_missing(monkeypatch, which):
     monkeypatch.setattr(backend_mod, "_backend", None)
+    parsing, spoof = face_liveness._model_paths()
+    paths = ("does/not/exist.onnx", spoof) if which == "parsing" else (parsing, "does/not/exist.onnx")
     with pytest.raises(FaceModelsUnavailable):
-        backend_mod.load_backend("does/not/exist.onnx")
+        backend_mod.load_backend(*paths)
     assert backend_mod._backend is None

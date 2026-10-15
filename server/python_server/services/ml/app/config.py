@@ -200,6 +200,11 @@ class Settings(BaseSettings):
     face_frame_min_share: float = 0.01  # covering below the eyes on each side
     face_max_image_side: int = 960  # frames are downscaled to this before detection
     face_parsing_model: str = "models_face/face_parsing_resnet18.onnx"
+    # Passive anti-spoof (F1b): real - spoof logit must be at least this on the
+    # centre AND blink frames. 0.0 = the model's own p >= 0.5 default; raise it
+    # for fewer spoofs and more false refusals (its docs/LIMITATIONS.md).
+    face_spoof_min_margin: float = 0.0
+    face_antispoof_model: str = "models_face/antispoof_minifasv2se_98_20_int8.onnx"
 
     model_config = {"env_prefix": "ML_"}
 

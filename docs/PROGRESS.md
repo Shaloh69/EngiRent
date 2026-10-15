@@ -11265,3 +11265,26 @@ whether BiSeNet labels a real cap / hood / hijab as `hat` at all is unknown. Don
 **Licences:** face parsing code MIT; its weights are trained on CelebAMask-HQ (non-commercial research/education only: fine for the thesis, noted in the fetch
 script). F1b candidate `minivision-ai/Silent-Face-Anti-Spoofing`: **Apache-2.0**, MiniFASNetV2 + V1SE `.pth` (~1.8 MB each) in the repo, PyTorch (already on
 the server).
+
+### 2026-10-15 — User ruling: "find working open-source code … fully implement it … leave testing to me"
+
+**G1 is waived for this phase by the user**: F1b, F2, F2b, F3, F4 are built back to back without stopping for on-screen verification; the user tests on a real
+phone. Every section still gets its automated tests (mutation-checked where there is a rule) and `flutter analyze` / `tsc` / builds; nothing is recorded as SEEN until the
+user reports it. **Not waived:** deploying to the live server and releasing the app (it locks every student out of the kiosk until they re-enrol, so it is one
+explicit yes), G11, the trust architecture, no face image in git.
+
+**Open-source code adopted (licences read from each repo, versions pinned):**
+- Phone: `flutter_liveness_actions` 1.4.0 (MIT, pvlKryu, commit `2c437f2`): challenge flow, quality + multi-face gates, guidance. Camera → ML Kit wiring follows its
+  `example/lib/services/camera_liveness_session.dart`. Key frames (most-closed eyes, widest turn) are kept by EngiRent's own code: the package never stores frames.
+- Server anti-spoof (F1b): `facenox/face-antispoof-onnx` (Apache-2.0, commit `2f8dd93`), MiniFASNetV2-SE, `models/best/98.20/best_model_quantized.onnx` (626,197 B), its own
+  `src/inference/preprocess.py` + `crop()` ported (square crop ×1.5, RGB /255, 128×128 reflect-letterbox, logits [real, spoof], real when real − spoof ≥ logit(0.5) = 0).
+- Server face parsing (F1): `yakhyo/face-parsing` (MIT), already in.
+- Left/right: Google's ML Kit page says a positive Euler Y is "looking to the right of the camera" = the student's LEFT on an unmirrored front-camera frame, so the
+  server's TURN_LEFT maps to the package's `turnHeadRight`. One named constant in the app; **first thing to check on the phone.**
+
+**Build decisions (from the repo, recorded so the user can overrule):**
+- First enrolment (profile setup) uses the liveness flow and becomes version 2 directly; it already goes through the existing ID review. The password/admin-review rule
+  applies to RE-enrolment only (ruling 2026-10-15).
+- The template is never round-tripped through the phone any more: the liveness enrolment stores it server-side (today `completeProfile` accepts an encoding from the
+  client, which a modified client could forge). Old apps keep the old two-step path, which stays version 1 and is refused at the kiosk.
+- A new random order + nonce is issued per attempt: at `kiosk:face_required`, and again in every failed `/kiosk/verify-face` reply.
