@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-15 - PHASE FACE LIVENESS: G2 table F1-F6 in PROGRESS.md (end); F1 BUILT + synthetic-tested, waits for real face frames from the user (G1: F1b not started); re-enrolment ruling RECEIVED (old-template match, else password + admin review) - stack live on 1.14.7+41 (API PID 18388) - D-119 camera self-reconnect installed on the Pi, restart waits for the user's yes (G11); camera 3 down - OPEN: SW-07 session restore (user to decide), D-112, D-113, D-116, D-108, D-106, D-97, D-98, D-99, D-105 - URLs api pioneer-profit-databases-writings / admin keeping-seller-accomplish-canal / web confidential-performer-reply-fare (re-derive before quoting) - payments MANUAL until a LIVE PayMongo key]
+[2026-10-15 - PHASE FACE LIVENESS: F1 + F1b (ML, 138 tests), F2 + F2b (Node, 573 tests, 16/16 mutations), F3 + F4 (app, 69 tests, debug APK builds) all COMMITTED; NOTHING deployed, nothing seen on a phone; BLOCKED on the user: deploy yes (db push + ML weights + API restart + release), real face frames to tune thresholds; admin page for /admin/face-reviews NOT built; F5/F6 open]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11288,3 +11288,17 @@ explicit yes), G11, the trust architecture, no face image in git.
 - The template is never round-tripped through the phone any more: the liveness enrolment stores it server-side (today `completeProfile` accepts an encoding from the
   client, which a modified client could forge). Old apps keep the old two-step path, which stays version 1 and is refused at the kiosk.
 - A new random order + nonce is issued per attempt: at `kiosk:face_required`, and again in every failed `/kiosk/verify-face` reply.
+
+### 2026-10-15 — F3/F4 app BUILT (commit ee6150a); the whole phase is code-complete but NOT deployed and NOT seen
+
+App: `core/liveness/liveness_capture_controller.dart` (camera NV21 stream -> ML Kit -> flutter_liveness_actions analyzer + a flow controller fed the SERVER's order; best frame per
+step, encoded to JPEG in an isolate; frames deleted after upload), `liveness_capture_view.dart` (oval, step dots, instruction card), `face_verify_screen.dart` (kiosk check, handles
+409 CHALLENGE_EXPIRED, new challenge after each miss, FACE_UPDATE_REQUIRED / FACE_REVIEW_PENDING / APP_UPDATE_REQUIRED panels), `face_enrol_screen.dart` (setup + update, password
+step for a non-matching re-enrolment), profile setup uses it (no selfie, no template sent), home banners ("Update your face with the new system now", "waiting for review").
+`flutter analyze` no new findings (5 pre-existing in crash_reporting.dart), 69 tests, `flutter build apk --debug` OK. pubspec: flutter_liveness_actions 1.3.4 (resolver; 1.4.0 read),
+google_mlkit_face_detection 0.14.0, image, path_provider.
+
+**Open, in order:** (1) real-phone test by the user: check left/right first (`kStudentLeftIsPackageRight`), then blink, glasses, hat; (2) real frames -> tune ML thresholds (config.py `face_*`),
+record numbers here; (3) admin console page for `/admin/face-reviews` (API done, no UI); (4) DEPLOY (one explicit yes, kiosk idle): `prisma db push`, copy ML app + `fetch_face_models.py`
+and run it, restart ML, API restart, then the release; `MIN_APP_VERSION` must move to the new build because the old app cannot pass any kiosk face step; (5) F5 real kiosk run (G11);
+(6) F6 thesis cases + website changelog + AppRelease/LATEST_APP_VERSION. Android only (iOS not supported by the capture controller; the app ships Android).
