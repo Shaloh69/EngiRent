@@ -11177,3 +11177,9 @@ BiSeNet ONNX (MIT, `hat` + `eye_g` classes) for hat/glasses, dlib landmarks for 
 rules on spec §7 (random order; religious head coverings; re-enrol existing users; passive anti-spoof), then copy spec §5 into a G2 table and start F1.
 **Still open from 10-14:** D-119 camera self-reconnect is INSTALLED on the Pi (backup `camera_manager.py.bak-20261014-d119`) but not running: the kiosk restart waits for the user's
 yes (G11); camera 3 down since 22:11 (replugged; stale handle).
+
+### 2026-10-15 — Face revamp: user ruled on SPEC-FACE-LIVENESS §7
+
+(1) random step order chosen by the server: yes; (2) religious head coverings that leave the whole face visible are allowed, caps/hats/hoods refused: yes; (3) everyone re-enrols:
+a home-screen prompt "Update your face with the new system now" until done; read as: old enrolments no longer pass the kiosk face step (user sent to the update flow);
+(4) passive anti-spoofing: yes, in the next session. Spec sections F1b and F2b added. Next session starts at the G2 table from spec §5.

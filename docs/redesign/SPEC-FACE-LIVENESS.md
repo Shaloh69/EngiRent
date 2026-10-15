@@ -1,6 +1,6 @@
 # SPEC — Face recognition revamp: blink + head turn liveness, glasses allowed, hats refused
 
-> **Status: PROPOSAL, NOT BUILT.** Written 2026-10-15 from the user's request for the next session:
+> **Status: RULED 2026-10-15 (section 7), NOT BUILT.** Written 2026-10-15 from the user's request for the next session:
 > "revamp the entirety of the facial recognition — turning left and right; can scan with glasses but won't
 > scan if there is a hat; needs to blink for full recognition; find templates online for the phone design
 > page and the code implementation." Section 7 lists what the user must rule on before the build (G2).
@@ -98,7 +98,9 @@ How they all detect it: ML Kit's `headEulerAngleY` for left/right turns and
 | F1 | ML: `/face/liveness-verify` (or extend the face route) taking a frame set + issued order: same-person, match, yaw per step, EAR blink, hat refusal (BiSeNet ONNX), plain reasons, fail closed | `server/python_server/services/ml` | unit tests on local, gitignored fixtures; never a real face in git |
 | F2 | Node: issue a random challenge order + nonce with the face step, keep it in the session store, forward the frame set to ML, map reasons to messages | `faceVerificationService.ts`, kiosk routes | e2e over HTTP with fixtures |
 | F3 | App: new guided capture (camera image stream + `google_mlkit_face_detection` + `flutter_liveness_actions`), UI on the samviva/Amplify step pattern in EngiRent's design system; replaces the single photo in `face_verify_screen.dart` | `client/flutter_app` | seen on a **real phone** (the emulator's camera is a virtual room) |
-| F4 | Enrolment: profile setup uses the same flow; hat refused at enrolment too | app + ML | seen on a real phone |
+| F1b | ML: passive anti-spoof (photo / screen replay) on the centred frame; licence checked before use | ML service | tests on local fixtures incl. a photo-of-a-photo |
+| F2b | Server: face-enrolment version per user; kiosk face step refuses an old enrolment with "update your face first"; app home-screen prompt "Update your face with the new system now" until done | Prisma (additive), Node, app | seen on the emulator (prompt) + real phone (enrolment) |
+| F4 | Enrolment: profile setup AND the update prompt use the same flow; hat refused at enrolment too | app + ML | seen on a real phone |
 | F5 | Real kiosk run: verify → open-bay (G11: the door opens on the student's tap, ask first) | kiosk | one real flow with the user present |
 | F6 | Thesis test cases (blink, left/right, glasses pass, hat refused, photo refused) + full release | docs, release | all four release places |
 
@@ -111,7 +113,23 @@ How they all detect it: ML Kit's `headEulerAngleY` for left/right turns and
 - **Upload size**: 4-5 frames instead of 1; compress JPEGs on the phone.
 - **ML service** gains an ONNX Runtime dependency + ~43 MB model on the server.
 
-## 7. Decisions for the user (before F1)
+## 7. Decisions — RULED by the user 2026-10-15
+
+1. **Random order, chosen by the server per attempt: YES.**
+2. **Religious head coverings allowed: YES.** Refuse caps, hats and hoods; allow head coverings that leave the
+   whole face (forehead to chin) visible. The hat check must not refuse a hijab: test on such a case before release.
+3. **Everyone re-enrols with the new flow.** A prompt on the app's home screen: "Update your face with the new
+   system now", shown to every user enrolled before the revamp until they complete the new enrolment.
+   Reading of "make everyone register again": the old enrolment no longer passes the kiosk face step; a user who
+   has not updated is sent to the update flow (the kiosk step tells them why). Server tracks this per user
+   (e.g. a face-enrolment version).
+4. **Passive anti-spoofing (photo / screen replay): YES, in the next session** (Silent-Face-Anti-Spoofing or an
+   equivalent licensed model, server-side, on the centred frame).
+
+Added build sections because of these rulings: **F2b** enrolment version + home-screen update prompt + kiosk
+refusal for old enrolments; **F1b** passive anti-spoof in the ML service.
+
+### Original questions (kept for the record)
 
 1. **Challenge order**: random per attempt, chosen by the server (recommended, blocks replays) or a fixed
    order (blink, left, right)?
