@@ -84,7 +84,7 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
     try {
       final resp = await _api.uploadParts(
         '/kiosk/verify-face',
-        fields: {'rentalId': widget.rentalId, 'nonce': cap.nonce, 'mirrored': 'false'},
+        fields: {'rentalId': widget.rentalId, 'nonce': cap.nonce, 'mirrored': kFramesAreMirrored ? 'true' : 'false'},
         files: cap.uploadFiles,
         timeout: const Duration(seconds: 90),
       );

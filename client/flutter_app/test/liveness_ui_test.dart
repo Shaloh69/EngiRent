@@ -26,6 +26,7 @@ LivenessHint hint({
     );
 
 void main() {
+  leftRightPins();
   group('hintFromFlags', () {
     test('no face is searching, whatever else is true', () {
       expect(hint(face: false, far: true, multi: true), LivenessHint.searching);
@@ -153,6 +154,18 @@ void main() {
           await File(out).writeAsBytes(bytes!.buffer.asUint8List());
         });
       }
+    });
+  });
+}
+
+// Left/right was wrong in 1.15.0 (frames mirrored but sent as unmirrored) and
+// wrong again in 1.15.1 (the phone-side sign flipped). These pin the settled
+// answer so a third change cannot happen by accident.
+void leftRightPins() {
+  group('left and right (settled from two live tests)', () {
+    test('the student\'s left is a positive ML Kit yaw, and the frames are sent as mirrored', () {
+      expect(kStudentLeftIsPackageRight, isTrue);
+      expect(kFramesAreMirrored, isTrue);
     });
   });
 }

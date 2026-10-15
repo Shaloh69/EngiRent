@@ -24,12 +24,20 @@ import 'package:path_provider/path_provider.dart';
 /// this file adds a sequence factory for the server's order and the
 /// best-frame selection.
 ///
-/// Left and right: the package calls a NEGATIVE ML Kit yaw "turn left".
-/// 1.15.0 assumed the opposite (Google's page reads ambiguously) and the first
-/// live test (2026-10-15, two students, the ML log) showed every "left" frame
-/// arriving with the wrong sign at the server, so the student's left IS the
-/// package's turnHeadLeft: [kStudentLeftIsPackageRight] is false.
-const bool kStudentLeftIsPackageRight = false;
+/// Left and right, settled from two live tests on real phones (2026-10-15):
+///  - 1.15.0: with the student's left mapped to the package's turnHeadRight (ML
+///    Kit yaw > 0), "turn left" PASSED on the phone, so a real left turn gives a
+///    POSITIVE ML Kit yaw: [kStudentLeftIsPackageRight] is true.
+///  - Those same frames reached the server pointing to the image's LEFT (yaw
+///    -73..-84), so the uploaded pictures are MIRRORED like the selfie preview:
+///    [kFramesAreMirrored] is true and the server is told so (`mirrored=true`).
+///  - 1.15.1 flipped the first constant instead, which stopped "turn left"
+///    from ever passing on the phone (nothing was uploaded). It was wrong.
+const bool kStudentLeftIsPackageRight = true;
+
+/// The frames this controller encodes are mirrored left-right, like the preview
+/// the student sees; sent to the server as `mirrored=true`.
+const bool kFramesAreMirrored = true;
 
 /// The turn frame we send is the one nearest this ML Kit yaw (degrees) in the
 /// right direction, NOT the most extreme one. 1.15.0 sent the widest turn,

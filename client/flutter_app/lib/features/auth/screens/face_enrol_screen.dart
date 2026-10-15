@@ -93,7 +93,7 @@ class _FaceEnrolScreenState extends State<FaceEnrolScreen> {
         '/auth/face/enrol',
         fields: {
           'nonce': cap.nonce,
-          'mirrored': 'false',
+          'mirrored': kFramesAreMirrored ? 'true' : 'false',
           if (widget.setup) 'biometricConsent': widget.biometricConsent ? 'true' : 'false',
           if (password != null) 'password': password,
         },

@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-15",
+    version: "1.15.2",
+    tag: "fix",
+    title: "Turning your head left is detected again",
+    bullets: [
+      "1.15.1 stopped recognising a turn to the left; this build fixes it, and the left and right checks now agree between the phone and the server",
+    ],
+  },
+  {
+    date: "2026-10-15",
     version: "1.15.1",
     tag: "fix",
     title: "A guide for the face check, and blinks and turns that are recognised",
