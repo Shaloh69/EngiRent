@@ -239,6 +239,12 @@ export const login = async (
           parentContact: user.parentContact,
           guardianConsentAt: user.guardianConsentAt,
           restrictedUntilReviewAt: user.restrictedUntilReviewAt,
+          // Face liveness (2026-10-15). Omitted at first, the D-1 pattern again:
+          // every login then read as "enrolment version 1" and the app told
+          // students who had ALREADY updated their face to update it (found by
+          // the user the same evening; the DB had them on version 2).
+          faceEnrolmentVersion: user.faceEnrolmentVersion,
+          pendingFaceAt: user.pendingFaceAt,
         },
         tokens: { accessToken, refreshToken },
       },

@@ -70,6 +70,11 @@ class AuthProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
       _connectSocket();
+      // The login reply is a hand-written field list and has twice missed a
+      // field this app depends on (D-1, then the face-enrolment fields on
+      // 2026-10-15, which told already-updated students to update their face).
+      // The profile endpoint is the one complete definition: load it now.
+      unawaited(loadUser());
       return true;
     } else {
       _error = result['error'] as String?;
@@ -106,6 +111,27 @@ class AuthProvider with ChangeNotifier {
     await _authService.logout();
     _user = null;
     notifyListeners();
+  }
+
+  /// Makes sure the live connection is up before something that depends on it
+  /// (a kiosk scan). If it is down, reconnects with a fresh token and waits up
+  /// to [timeout]. Returns whether it is connected.
+  ///
+  /// Found 2026-10-15: after the server restarted, one phone's connection never
+  /// came back while its normal requests kept working, so a kiosk scan went
+  /// nowhere and the app waited on "Opening a locker…" with no reply.
+  Future<bool> ensureSocketConnected({Duration timeout = const Duration(seconds: 8)}) async {
+    if (SocketService.instance.isConnected) return true;
+    if (_user == null) return false;
+    final token = await _storage.getAccessToken();
+    SocketService.instance.reconnect(userId: _user!.id, accessToken: token);
+    _listenForVerificationDecisions();
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (SocketService.instance.isConnected) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    return SocketService.instance.isConnected;
   }
 
   Future<void> _connectSocket() async {

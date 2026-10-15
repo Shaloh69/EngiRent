@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/socket_service.dart';
 import '../../../core/services/api_service.dart';
@@ -10,6 +11,7 @@ import '../../../core/utils/error_utils.dart';
 import '../../../core/theme/tokens.dart';
 import '../widgets/retry_feedback_card.dart';
 import 'face_verify_screen.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../payments/screens/payment_webview_screen.dart';
 
 enum _Phase { scanning, waiting, pay, bay, checking, success, failed }
@@ -379,24 +381,44 @@ class _KioskScanScreenState extends State<KioskScanScreen>
       _kioskId = tokenKioskId;
     }
 
-    final userId = SocketService.instance.currentUserId ?? '';
+    setState(() => _phase = _Phase.waiting);
+    unawaited(_sendScan(raw));
+  }
+
+  /// Sends the scan only over a live connection. Found 2026-10-15: after a
+  /// server restart one phone's live link never came back while its normal
+  /// requests worked, so the scan was sent into nothing and this screen sat on
+  /// its waiting text with no answer. Now the link is checked (and rebuilt
+  /// with a fresh token) first, and a dead link is said out loud.
+  Future<void> _sendScan(String raw) async {
+    final ok = await context.read<AuthProvider>().ensureSocketConnected();
+    if (!mounted || _phase != _Phase.waiting) return;
+    if (!ok) {
+      setState(() {
+        _phase = _Phase.failed;
+        _errorMessage = "Can't reach the EngiRent server right now. Check your internet, "
+            'then scan the kiosk code again.';
+      });
+      return;
+    }
 
     SocketService.instance.emit('app:kiosk_scan', {
       'token': raw,
       'rentalId': widget.rentalId,
       'mode': widget.mode,
-      'userId': userId,
+      'userId': SocketService.instance.currentUserId ?? '',
     });
 
-    setState(() => _phase = _Phase.waiting);
-
-    // Timeout matches kiosk QR TTL (90 s) plus a small buffer
-    _timeout = Timer(const Duration(seconds: 95), () {
+    // The kiosk answers within a few seconds when it is online. Waiting the
+    // full 90 s QR lifetime left people staring at a spinner; 30 s is long
+    // enough for a slow network and short enough to be useful.
+    _timeout?.cancel();
+    _timeout = Timer(const Duration(seconds: 30), () {
       if (_phase == _Phase.waiting && mounted) {
         setState(() {
           _phase = _Phase.failed;
-          _errorMessage = 'No response from the kiosk. The code may have expired — '
-              'tap refresh on the kiosk screen and scan the new one.';
+          _errorMessage = "The kiosk didn't answer. Check that the kiosk screen is on and "
+              'showing a code, then scan the new code.';
         });
       }
     });
@@ -859,30 +881,20 @@ class _KioskScanScreenState extends State<KioskScanScreen>
         _ => 'Return to kiosk',
       };
 
-  String get _waitingLabel => switch (widget.mode) {
-        'place' => 'Opening a locker…',
-        'retrieve' || 'collect' => 'Unlocking your locker…',
-        'dispute' => 'Checking your case…',
-        _ => 'Confirming your return…',
-      };
+  /// Shown right after the scan, BEFORE the face check. It must not say a
+  /// locker is opening (it said "Opening a locker…" until 2026-10-15, which
+  /// read as if the door opened without a face check).
+  String get _waitingLabel => 'Checking with the kiosk…';
 
-  /// What the user physically does after the QR scan. Since 2026-09-03,
-  /// identity verification happens in a page on THIS phone, not at the
-  /// kiosk — the kiosk no longer has a camera to look at.
+  /// What the user physically does after the QR scan. Identity verification
+  /// happens on THIS phone (the kiosk has no camera), and the locker opens
+  /// only after it, when the student taps Open.
   String get _waitingDetail => switch (widget.mode) {
-        'place' =>
-          "We're checking with the kiosk. A verification page will open on "
-              'your phone next — once confirmed, a locker door opens.',
-        'retrieve' || 'collect' =>
-          "We're checking with the kiosk. A verification page will open on "
-              'your phone next — once confirmed, your locker opens.',
         'dispute' =>
-          "We're checking with the kiosk. A verification page will open on "
-              'your phone next, then you pay the amount owed and the locker opens.',
-        _ =>
-          "We're checking with the kiosk. A verification page will open on "
-              'your phone next — once confirmed, open the locker and place '
-              'the item back inside.',
+          'Next: check your face on this phone, then pay the amount owed. '
+              'The locker opens only after that.',
+        _ => 'Next: check your face on this phone. The locker opens only after '
+            'that, when you tap Open.',
       };
 
   String get _successLabel => switch (widget.mode) {

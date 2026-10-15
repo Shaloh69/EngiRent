@@ -122,6 +122,19 @@ class SocketService {
 
   bool get isConnected => _socket?.connected ?? false;
 
+  /// Throw away the current connection (even if it thinks it is retrying) and
+  /// build a fresh one with [accessToken]. Used when a screen needs the link
+  /// NOW and finds it down.
+  void reconnect({required String userId, String? accessToken}) {
+    // Keep "connected before": this is a dropped link being restored, so the
+    // first connect afterwards must fire the resync that refetches missed events.
+    // (Restored AFTER connect(): connect() itself calls disconnect(), which
+    // resets the flag; restoring it before was undone at once. A test caught it.)
+    final wasConnected = _hasConnectedOnce;
+    connect(userId: userId, accessToken: accessToken);
+    _hasConnectedOnce = wasConnected;
+  }
+
   void connect({required String userId, String? accessToken}) {
     if (_socket != null && _socket!.connected && _userId == userId) return;
     disconnect();
@@ -134,7 +147,11 @@ class SocketService {
         .setTransports(['websocket'])
         .setExtraHeaders(accessToken != null ? {'Authorization': 'Bearer $accessToken'} : {})
         .enableReconnection()
-        .setReconnectionDelay(3000);
+        .setReconnectionDelay(3000)
+        // A NEW connection manager every time. socket_io_client caches managers
+        // per address, so without this a "fresh" connect after a drop could be
+        // handed the old, dead one back.
+        .enableForceNew();
     // D-40. There was a `.setReconnectionAttempts(double.infinity.toInt())`
     // here. `double.infinity.toInt()` THROWS `Unsupported operation: Infinity
     // or NaN toInt` in Dart — so this whole method threw before `io.io(...)`
