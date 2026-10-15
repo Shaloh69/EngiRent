@@ -27,11 +27,9 @@
  * safer and gives all three actions (deposit/claim/return) the same shape.
  */
 
-import axios from "axios";
 import type { Server as SocketIOServer } from "socket.io";
 import prisma from "../config/database";
 import logger from "../utils/logger";
-import env from "../config/env";
 import { decryptFaceEncoding } from "../utils/crypto";
 import { grantBayAccess } from "./kioskBayAccessStore";
 // E5 — one definition of "long lead", "usable bay" and "which door holds it".
@@ -136,57 +134,39 @@ export function resolveFaceSubject(rental: {
   };
 }
 
-export interface MlFaceResult {
-  detected: boolean;
-  verified: boolean;
-  confidence: number;
-}
+/** Codes the app acts on (opens "Update your face", or explains the wait). */
+export const FACE_UPDATE_REQUIRED = "FACE_UPDATE_REQUIRED";
+export const FACE_REVIEW_PENDING = "FACE_REVIEW_PENDING";
 
 /**
- * Compare a captured face against the enrolled identity, via the ML service.
- *
- * Prefers the stored encoding (no image download or re-encode on the ML side)
- * and falls back to the reference photo URL for accounts enrolled before
- * encoding capture existed — the same priority the ML endpoint documents.
- *
- * Note there is deliberately **no local fallback** here. The kiosk used to
- * substitute a much weaker Haar-cascade check when the ML service was
- * unreachable, which meant a security-relevant downgrade could happen quietly.
- * If the model is unreachable now, this throws and the door stays shut.
+ * F2b (ruling 2026-10-15): only a face enrolled through the liveness flow
+ * (version 2) passes a kiosk face step. Returns why not, or null when this
+ * user may proceed. Checked when the kiosk session would open (so nobody is
+ * walked through the steps for nothing) AND again in /kiosk/verify-face
+ * (the server-side guarantee).
  */
-export async function compareFaceWithMl(
-  imageBuffer: Buffer,
-  mimeType: string,
-  subject: FaceSubject,
-): Promise<MlFaceResult> {
-  const formData = new FormData();
-  formData.append(
-    "captured_image",
-    new Blob([new Uint8Array(imageBuffer)], { type: mimeType }),
-    "face.jpg",
-  );
-  formData.append("reference_image_url", subject.referenceFaceUrl);
-  if (subject.storedEncoding) {
-    formData.append("stored_encoding", JSON.stringify(subject.storedEncoding));
+export async function faceEnrolmentGate(
+  userId: string,
+): Promise<{ code: string; message: string; kioskMessage: string } | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { faceEnrolmentVersion: true, faceEncoding: true, pendingFaceAt: true },
+  });
+  if (u?.pendingFaceAt) {
+    return {
+      code: FACE_REVIEW_PENDING,
+      message: "Your new face is waiting for an admin to approve it. You can use the kiosk once it is approved.",
+      kioskMessage: "This account's new face is waiting for approval. Please try again later.",
+    };
   }
-
-  const resp = await axios.post(
-    `${env.ML_SERVICE_URL}/api/v1/verify-face`,
-    formData,
-    {
-      timeout: 20_000,
-      headers: {
-        ...(env.ML_SERVICE_API_KEY && { "X-API-Key": env.ML_SERVICE_API_KEY }),
-      },
-    },
-  );
-
-  const body = (resp.data ?? {}) as Record<string, unknown>;
-  return {
-    detected: Boolean(body.detected ?? body.face_detected),
-    verified: Boolean(body.verified),
-    confidence: Number(body.confidence ?? 0),
-  };
+  if (!u || u.faceEnrolmentVersion < 2 || !u.faceEncoding) {
+    return {
+      code: FACE_UPDATE_REQUIRED,
+      message: "Update your face with the new system first: open the EngiRent app home screen and tap \"Update your face\". Then scan the kiosk again.",
+      kioskMessage: "Update your face in the EngiRent app first, then scan again.",
+    };
+  }
+  return null;
 }
 
 /**
@@ -301,7 +281,8 @@ export async function assignLocker(
  * Apply a *successful* verification: open the door, advance the rental, and
  * tell both the phone and the kiosk what happened.
  *
- * Call this only once `compareFaceWithMl` has returned `verified: true` — a
+ * Call this only once the liveness check (faceLivenessService) has passed AND
+ * matched the enrolled template — a
  * bad match never reaches here at all. The controller returns a retryable
  * failure straight from the HTTP response instead (see
  * kioskController.ts's verifyFaceFromApp), so a mismatch never touches the

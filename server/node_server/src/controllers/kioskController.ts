@@ -43,14 +43,24 @@ import { v4 as uuidv4 } from "uuid";
 import {
   isKioskActionable,
   resolveFaceSubject,
-  compareFaceWithMl,
   applyFaceVerificationOutcome,
+  faceEnrolmentGate,
+  FACE_UPDATE_REQUIRED,
 } from "../services/faceVerificationService";
 import {
   getKioskSession,
   consumeKioskSession,
   recordFailedFaceAttempt,
+  faceChallengeMatches,
+  rotateFaceChallenge,
 } from "../services/kioskSessionStore";
+import {
+  checkLivenessWithMl,
+  livenessMessage,
+  publicChallenge,
+  readFaceFrames,
+  type LivenessResult,
+} from "../services/faceLivenessService";
 
 /**
  * POST /kiosk/deposit
@@ -604,18 +614,21 @@ export const releaseLockerByNumber = async (
 /**
  * POST /kiosk/verify-face
  *
- * The phone-side replacement for the kiosk's removed face camera
- * (design mandate §2.13). The app uploads a freshly captured selfie; this
- * endpoint decides whether it matches the enrolled identity and, if so, opens
+ * The phone-side identity check before a locker opens (design mandate §2.13;
+ * face liveness revamp 2026-10-15, SPEC-FACE-LIVENESS.md). The app uploads the
+ * four frames of the guided check (`centre`, `blink`, `turn_left`,
+ * `turn_right`) and the `nonce` of the challenge it answered. This endpoint
+ * decides whether they show the enrolled person, alive, and only then opens
  * the locker.
  *
- * The app sends an **image**, never a verdict — see faceVerificationService.ts
+ * The app sends **frames**, never a verdict — see faceVerificationService.ts
  * for why that distinction is the whole security model of this endpoint.
  *
- * Bound to a live kiosk session: the caller must pass the QR token they just
- * scanned, and it must still be inside the kiosk's 90 s TTL. That is what stops
- * a verification from being replayed later, away from the kiosk, and it is why
- * the token is re-checked here rather than trusted from the earlier scan.
+ * Bound to a live kiosk session that only the kiosk's own QR validation can
+ * open (kioskSessionStore.ts). There is deliberately no token or kiosk field:
+ * which kiosk this is comes from that session alone. The challenge (a random
+ * step order + nonce) lives in the same session and is re-issued after every
+ * failed attempt, so a recorded attempt cannot be replayed.
  */
 export const verifyFaceFromApp = async (
   req: AuthRequest,
@@ -624,10 +637,16 @@ export const verifyFaceFromApp = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new ForbiddenError("Authentication required");
-    if (!req.file) throw new ValidationError("A face image is required");
 
-    const { rentalId } = req.body as { rentalId?: string };
+    const { rentalId, nonce, mirrored } = req.body as {
+      rentalId?: string;
+      nonce?: string;
+      mirrored?: string;
+    };
     if (!rentalId) throw new ValidationError("rentalId is required");
+
+    // An app from before the revamp sends one photo: tell it to update.
+    const frames = readFaceFrames(req);
 
     // The kioskId is deliberately NOT taken from anything the client sends.
     // It comes only from a session the kiosk itself opened — see
@@ -646,146 +665,108 @@ export const verifyFaceFromApp = async (
       );
     }
 
-    // Dispute v2, ruling 8 — the renter collecting their OWN wrong item. Same
-    // shape as every other step: the session came from the kiosk's own QR
-    // check, the person is derived from the Dispute row (never the request),
-    // the face is compared server-side, and only a pass creates a grant.
-    const wrongItemDisputeId = disputeIdFromTarget(rentalId);
-    if (wrongItemDisputeId) {
-      const d = await prisma.dispute.findUnique({
-        where: { id: wrongItemDisputeId },
-        include: {
-          renter: { select: { id: true, profileImage: true, faceEncoding: true } },
-        },
-      });
-      if (!d || !d.wrongItemLockerId || !d.wrongItemPlacedAt || d.wrongItemCollectedAt || !d.wrongItemDoor) {
-        throw new ValidationError("There is no item of yours waiting to be collected");
-      }
-      if (d.renterId !== req.user.userId) {
-        throw new ForbiddenError("You are not the person this step requires verification from");
-      }
-      const subject = {
-        userId: d.renterId,
-        storedEncoding: decryptFaceEncoding(d.renter.faceEncoding ?? null),
-        referenceFaceUrl: signedMediaUrl(d.renter.profileImage) ?? "",
-      };
-      let wiResult;
-      try {
-        wiResult = await compareFaceWithMl(req.file.buffer, req.file.mimetype, subject);
-      } catch (err) {
-        logger.error(`Face verification unavailable for ${rentalId}:`, err);
-        throw new ValidationError("Verification service is unavailable right now — please try again in a moment");
-      }
-      if (!wiResult.verified) {
-        const { exhausted, attemptsRemaining } = recordFailedFaceAttempt(rentalId);
-        res.json({
-          success: true,
-          data: { verified: false, detected: wiResult.detected, confidence: wiResult.confidence, action: "none", mustRescan: exhausted, attemptsRemaining },
-          message: exhausted
-            ? "We couldn't match your face after several tries — please scan the kiosk QR code again"
-            : "We couldn't match your face — please try again",
-        });
-        return;
-      }
-      consumeKioskSession(rentalId);
-      const bay = await prisma.locker.findUnique({ where: { id: d.wrongItemLockerId } });
-      if (!bay) throw new ValidationError("We can't find the locker holding your item. Please contact staff.");
-      const door = d.wrongItemDoor as "main_door" | "bottom_door";
-      const wiGrant = grantBayAccess({
-        rentalId,
-        userId: d.renterId,
-        kioskId: session.kioskId,
-        action: "collect_wrong",
-        lockerNumber: bay.lockerNumber,
-        door,
-      });
-      const wiIo = req.app.get("io");
-      wiIo?.to(`user:${d.renterId}`).emit("face:verified", {
-        rentalId,
-        action: "collect_wrong",
-        kioskId: session.kioskId,
-        lockerNumber: bay.lockerNumber,
-        door,
-        grantExpiresAt: wiGrant.expiresAt,
-      });
-      logger.info(`[APP-FACE] ${rentalId}: renter verified to collect their own item, bay ${bay.lockerNumber} ${door}`);
-      res.json({
-        success: true,
-        data: { verified: true, detected: wiResult.detected, confidence: wiResult.confidence, action: "collect_wrong", lockerNumber: bay.lockerNumber, door },
-        message: "Identity confirmed",
+    // The frames must answer THIS attempt's challenge. A stale nonce is not
+    // counted as an attempt; the phone is handed the live challenge instead.
+    if (!faceChallengeMatches(rentalId, nonce)) {
+      res.status(409).json({
+        success: false,
+        code: "CHALLENGE_EXPIRED",
+        error: "These steps have expired. Please follow the new steps.",
+        data: { challenge: publicChallenge(session.challenge) },
       });
       return;
     }
 
-    const rental = await prisma.rental.findUnique({
-      where: { id: rentalId },
-      include: {
-        owner: { select: { profileImage: true, faceEncoding: true } },
-        renter: { select: { profileImage: true, faceEncoding: true } },
-      },
-    });
-    if (!rental) throw new NotFoundError("Rental not found");
-
-    if (!isKioskActionable(rental)) {
-      throw new ValidationError(
-        `Rental status "${rental.status}" is not actionable at a kiosk`,
-      );
+    // Who must verify. Dispute v2, ruling 8: `wi:<disputeId>` is the renter
+    // collecting their OWN wrong item, derived from the Dispute row; anything
+    // else from the rental's own state (resolveFaceSubject). Never the request.
+    const wrongItemDisputeId = disputeIdFromTarget(rentalId);
+    let subject: { userId: string; storedEncoding: number[] | null };
+    let wrongItem: { renterId: string; lockerId: string; door: "main_door" | "bottom_door" } | null = null;
+    if (wrongItemDisputeId) {
+      const d = await prisma.dispute.findUnique({
+        where: { id: wrongItemDisputeId },
+        include: { renter: { select: { id: true, faceEncoding: true } } },
+      });
+      if (!d || !d.wrongItemLockerId || !d.wrongItemPlacedAt || d.wrongItemCollectedAt || !d.wrongItemDoor) {
+        throw new ValidationError("There is no item of yours waiting to be collected");
+      }
+      subject = { userId: d.renterId, storedEncoding: decryptFaceEncoding(d.renter.faceEncoding ?? null) };
+      wrongItem = { renterId: d.renterId, lockerId: d.wrongItemLockerId, door: d.wrongItemDoor as "main_door" | "bottom_door" };
+    } else {
+      const rental = await prisma.rental.findUnique({
+        where: { id: rentalId },
+        include: {
+          owner: { select: { profileImage: true, faceEncoding: true } },
+          renter: { select: { profileImage: true, faceEncoding: true } },
+        },
+      });
+      if (!rental) throw new NotFoundError("Rental not found");
+      if (!isKioskActionable(rental)) {
+        throw new ValidationError(
+          `Rental status "${rental.status}" is not actionable at a kiosk`,
+        );
+      }
+      // A second, independent check of the fact the session's userId already
+      // encodes — cheap, and it stays correct even if a rental somehow changes
+      // status mid-session.
+      subject = resolveFaceSubject(rental);
     }
-
-    // Whose face is required is derived from the rental's own state, never
-    // from the request — otherwise the wrong party could open the locker.
-    // (This is a second, independent check of the same fact the session's
-    // userId already encodes — cheap, and it stays correct even if a rental
-    // somehow changes status mid-session.)
-    const subject = resolveFaceSubject(rental);
     if (subject.userId !== req.user.userId) {
       throw new ForbiddenError(
         "You are not the person this step requires verification from",
       );
     }
-    if (!subject.storedEncoding && !subject.referenceFaceUrl) {
-      throw new ValidationError(
-        "No enrolled face on this account — finish profile setup first",
+
+    // F2b: only a liveness enrolment passes, and never one waiting for review.
+    const gate = await faceEnrolmentGate(subject.userId);
+    if (gate) throw Object.assign(new ValidationError(gate.message), { code: gate.code });
+    // Without a template the ML check would judge liveness alone, and a live
+    // stranger would pass. Refuse instead (fail closed).
+    if (!subject.storedEncoding) {
+      throw Object.assign(
+        new ValidationError("No enrolled face on this account — update your face in the app first"),
+        { code: FACE_UPDATE_REQUIRED },
       );
     }
 
-    let result;
+    let result: LivenessResult;
     try {
-      result = await compareFaceWithMl(
-        req.file.buffer,
-        req.file.mimetype,
-        subject,
-      );
+      result = await checkLivenessWithMl(frames, {
+        storedEncoding: subject.storedEncoding,
+        mirrored: mirrored === "true",
+      });
     } catch (err) {
-      // Fail closed. The kiosk's old local Haar-cascade fallback is gone on
-      // purpose: a quietly weaker identity check is worse than a clear error.
-      // The session is left open (not consumed, no attempt recorded) — an
-      // ML outage isn't a bad match, and shouldn't burn the user's retry
-      // budget or force them to rescan.
-      logger.error(`Face verification unavailable for rental ${rentalId}:`, err);
+      // Fail closed. An ML outage isn't a bad match: the session stays open,
+      // no attempt is recorded and the same challenge stands, so the student
+      // can resend the frames they already took.
+      logger.error(`Face verification unavailable for ${rentalId}:`, err);
       throw new ValidationError(
         "Verification service is unavailable right now — please try again in a moment",
       );
     }
 
-    if (!result.verified) {
+    // Opening needs BOTH: every liveness step passed AND the centre frame is
+    // the enrolled person. `passed` already implies the second when a template
+    // is sent; the explicit `matched === true` keeps it so if that ever changes.
+    const verified = result.passed && result.matched === true;
+    const confidence = result.distance == null ? 0 : Math.max(0, Math.min(1, 1 - result.distance / 0.6));
+
+    if (!verified) {
       const { exhausted, attemptsRemaining } = recordFailedFaceAttempt(rentalId);
+      const nextChallenge = exhausted ? null : rotateFaceChallenge(rentalId);
       logger.info(
         `[APP-FACE]  rental=${rentalId} user=${req.user.userId} kiosk=${session.kioskId} ` +
-          `verified=false confidence=${(result.confidence * 100).toFixed(1)}% ` +
-          `exhausted=${exhausted} attemptsRemaining=${attemptsRemaining}`,
+          `verified=false reason=${result.reason} step=${result.step} distance=${result.distance} ` +
+          `exhausted=${exhausted} attemptsRemaining=${attemptsRemaining} metrics=${JSON.stringify(result.metrics)}`,
       );
 
       // A failed match used to be reported to the PHONE only. Once the
       // attempts were exhausted the session was dead — the person has to
       // rescan the QR — but the kiosk was never told, so it sat on "Check your
-      // phone — we're verifying it's you" indefinitely, with a Cancel button
-      // that could not dislodge it. Found on screen 2026-09-18.
-      //
-      // Only the EXHAUSTED case is sent. A retryable miss is deliberately
-      // left alone: "check your phone" is still the truth, the person is
-      // retrying there, and flashing an error on the kiosk mid-retry is the
-      // flicker the original design avoided on purpose.
+      // phone — we're verifying it's you" indefinitely (found on screen
+      // 2026-09-18). Only the EXHAUSTED case is sent: a retryable miss is left
+      // alone so the kiosk screen does not flicker mid-retry.
       if (exhausted) {
         const io = req.app.get("io");
         io?.to(`kiosk:${session.kioskId}`).emit("kiosk:command", {
@@ -799,15 +780,47 @@ export const verifyFaceFromApp = async (
         success: true,
         data: {
           verified: false,
-          detected: result.detected,
-          confidence: result.confidence,
+          detected: result.reason !== "NO_FACE",
+          confidence,
+          reason: result.reason,
           action: "none",
           mustRescan: exhausted,
           attemptsRemaining,
+          challenge: nextChallenge ? publicChallenge(nextChallenge) : null,
         },
         message: exhausted
-          ? "We couldn't match your face after several tries — please scan the kiosk QR code again"
-          : "We couldn't match your face — please try again",
+          ? "We couldn't verify your face after several tries — please scan the kiosk QR code again"
+          : livenessMessage(result.reason),
+      });
+      return;
+    }
+
+    if (wrongItem) {
+      consumeKioskSession(rentalId);
+      const bay = await prisma.locker.findUnique({ where: { id: wrongItem.lockerId } });
+      if (!bay) throw new ValidationError("We can't find the locker holding your item. Please contact staff.");
+      const wiGrant = grantBayAccess({
+        rentalId,
+        userId: wrongItem.renterId,
+        kioskId: session.kioskId,
+        action: "collect_wrong",
+        lockerNumber: bay.lockerNumber,
+        door: wrongItem.door,
+      });
+      const wiIo = req.app.get("io");
+      wiIo?.to(`user:${wrongItem.renterId}`).emit("face:verified", {
+        rentalId,
+        action: "collect_wrong",
+        kioskId: session.kioskId,
+        lockerNumber: bay.lockerNumber,
+        door: wrongItem.door,
+        grantExpiresAt: wiGrant.expiresAt,
+      });
+      logger.info(`[APP-FACE] ${rentalId}: renter verified to collect their own item, bay ${bay.lockerNumber} ${wrongItem.door}`);
+      res.json({
+        success: true,
+        data: { verified: true, detected: true, confidence, action: "collect_wrong", lockerNumber: bay.lockerNumber, door: wrongItem.door },
+        message: "Identity confirmed",
       });
       return;
     }
@@ -819,7 +832,7 @@ export const verifyFaceFromApp = async (
       io,
       rentalId,
       kioskId: session.kioskId,
-      confidence: result.confidence,
+      confidence,
     });
 
     // Verified is single-use either way — a locker either opened or the
@@ -829,8 +842,7 @@ export const verifyFaceFromApp = async (
 
     logger.info(
       `[APP-FACE]  rental=${rentalId} user=${req.user.userId} kiosk=${session.kioskId} ` +
-        `detected=${result.detected} verified=true ` +
-        `confidence=${(result.confidence * 100).toFixed(1)}% action=${action}` +
+        `verified=true distance=${result.distance} action=${action}` +
         (outcomeError ? ` error=${outcomeError}` : ""),
     );
 
@@ -838,8 +850,8 @@ export const verifyFaceFromApp = async (
       success: true,
       data: {
         verified: true,
-        detected: result.detected,
-        confidence: result.confidence,
+        detected: true,
+        confidence,
         action,
         // Dispute v2: what the renter owes before the door opens.
         ...(dispute && { dispute }),

@@ -18,7 +18,8 @@ import {
 } from "../controllers/authController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validation";
-import { uploadSingle } from "../middleware/upload";
+import { uploadFaceFrames, uploadSingle } from "../middleware/upload";
+import { enrolFace, getFaceChallenge } from "../controllers/faceEnrolController";
 
 const router = Router();
 
@@ -114,6 +115,14 @@ router.post("/profile/complete", authenticate, completeProfile);
 // itself), and stores the same photo as the user's canonical face/avatar
 // image (protected)
 router.post("/register-face", authenticate, uploadSingle, registerFace);
+
+// Face liveness (2026-10-15): the guided enrolment. A random step order +
+// nonce, then the four frames. Used by profile setup AND by "Update your
+// face"; see faceEnrolController.ts for the re-enrolment rule (old-template
+// match, else password + admin review). The legacy /register-face above stays
+// for old apps; what it produces is version 1 and does not pass the kiosk.
+router.get("/face/challenge", authenticate, getFaceChallenge);
+router.post("/face/enrol", authenticate, uploadFaceFrames, enrolFace);
 
 // Upload the school-ID photo — private storage, never a client-supplied URL
 // (protected)
