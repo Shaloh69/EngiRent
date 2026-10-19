@@ -8,6 +8,7 @@ import {
 } from "../utils/errors";
 import logger from "../utils/logger";
 import { notifyAdmins } from "../services/adminRoom";
+import { wake as wakePaymentGateway } from "../services/paymentGateway";
 import {
   findOverlappingRentals,
   recomputeItemAvailability,
@@ -156,6 +157,8 @@ export const createRental = async (
     });
 
     logger.info(`Rental created: ${rental.id} by user ${req.user.userId}`);
+    // The renter pays next: wake the payment gateway now (SPEC §4 pre-wake).
+    wakePaymentGateway();
 
     res.status(201).json({
       success: true,
@@ -300,6 +303,10 @@ export const getRentalById = async (
     ) {
       throw new ForbiddenError("Access denied");
     }
+
+    // The renter opening an unpaid booking is about to tap Pay: wake the
+    // payment gateway so it is awake by then (SPEC §4 pre-wake).
+    if (rental.status === "PENDING" && rental.renterId === req.user.userId) wakePaymentGateway();
 
     res.json({
       success: true,

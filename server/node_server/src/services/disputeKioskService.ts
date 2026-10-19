@@ -12,9 +12,11 @@ import { peso } from "./disputeMessages";
 import {
   createCheckoutSession,
   expireCheckoutSession,
-  paymongoConfigured,
-  paymongoIsTestMode,
 } from "./paymongoService";
+import { activeEnv, assertGatewayMode, envOf, GatewayWaking, wake } from "./paymentGateway";
+
+/** D2 (user ruling 2026-10-19): a kiosk dispute fee waits this long for a waking gateway, then offers GCash with admin confirmation. */
+export const GATEWAY_WAIT_MS = 90_000;
 
 /**
  * Ruling 6 — pay AT THE KIOSK, before the door unlocks.
@@ -115,6 +117,7 @@ export async function startDisputeVisit(
   };
   visit.timer.unref?.();
   visits.set(p.rentalId, visit);
+  wake(); // a dispute fee may be paid in this visit: wake the gateway now (SPEC §4)
 
   await recordEvent(d.id, {
     type: "KIOSK_VISIT",
@@ -197,6 +200,22 @@ export async function createDisputePayment(
   let paymentUrl: string | null = (tx?.paymentDetails as { checkoutUrl?: string } | null)?.checkoutUrl ?? null;
   let mode: "PAYMONGO" | "MANUAL" = tx ? (tx.paymongoCheckoutId ? "PAYMONGO" : "MANUAL") : "PAYMONGO";
 
+  // P2: check the gateway before recording a payment. A sleeping gateway gets
+  // "Connecting…" until GATEWAY_WAIT_MS after the visit started (it was woken
+  // when the visit began), then the manual fallback (D2). A gateway that
+  // reports the wrong mode fails closed into the manual fallback at once.
+  let gatewayOk = false;
+  const gw = activeEnv();
+  if (!tx && gw) {
+    try {
+      await assertGatewayMode(gw);
+      gatewayOk = true;
+    } catch (err) {
+      if (err instanceof GatewayWaking && Date.now() - visit.startedAt < GATEWAY_WAIT_MS) throw err;
+      logger.error(`[DISPUTE] payment gateway unavailable for ${d.referenceNo} (${(err as Error).message}); manual fallback`);
+    }
+  }
+
   if (!tx) {
     tx = await prisma.transaction.create({
       data: {
@@ -211,7 +230,7 @@ export async function createDisputePayment(
       },
     });
     mode = "MANUAL";
-    if (paymongoConfigured()) {
+    if (gatewayOk) {
       try {
         const checkout = await createCheckoutSession({
           amount: money.owed,
@@ -227,6 +246,7 @@ export async function createDisputePayment(
           where: { id: tx.id },
           data: {
             paymongoCheckoutId: checkout.checkoutId,
+            paymentEnv: checkout.paymentEnv,
             paymentDetails: { kioskVisit: true, kioskId: visit.kioskId, checkoutUrl: checkout.checkoutUrl } as never,
           },
         });
@@ -246,7 +266,7 @@ export async function createDisputePayment(
       actorRole: "RENTER",
       actorId: p.userId,
       channel: "KIOSK",
-      message: `${peso(money.owed)} via ${mode === "PAYMONGO" ? `PayMongo${paymongoIsTestMode() ? " (TEST mode: simulated, no real money)" : ""}` : "manual transfer, waiting for an admin"}.`,
+      message: `${peso(money.owed)} via ${mode === "PAYMONGO" ? `PayMongo${envOf(tx) === "sandbox" ? " (TEST mode: simulated, no real money)" : ""}` : "manual transfer, waiting for an admin"}.`,
       metadata: { transactionId: tx.id },
     });
     if (mode === "MANUAL") {
@@ -278,7 +298,7 @@ export async function createDisputePayment(
     amount: tx.amount,
     paymentMode: mode,
     paymentUrl,
-    testMode: mode === "PAYMONGO" && paymongoIsTestMode(),
+    testMode: mode === "PAYMONGO" && envOf(tx) === "sandbox",
     instructions:
       mode === "MANUAL"
         ? {
@@ -429,7 +449,8 @@ export async function endVisit(io: Server, rentalId: string, why: "timeout" | "c
     const tx = await prisma.transaction.findUnique({ where: { id: v.transactionId } });
     if (tx && (tx.status === "PENDING" || tx.status === "PROCESSING") && tx.paymongoCheckoutId) {
       try {
-        await expireCheckoutSession(tx.paymongoCheckoutId);
+        const e = envOf(tx);
+        if (e) await expireCheckoutSession(e, tx.paymongoCheckoutId);
       } catch (err) {
         logger.warn(`[DISPUTE] could not expire checkout ${tx.paymongoCheckoutId}: ${(err as Error).message}`);
       }

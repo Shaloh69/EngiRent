@@ -174,6 +174,18 @@ describe("answering and the 24 h sweep", () => {
 });
 
 describe("deciding", () => {
+  it("P2: a PayMongo rent payment is refunded through its own gateway (no PayMongo key on this server)", async () => {
+    const { createRefund } = jest.requireMock("../../controllers/paymentController");
+    (createRefund as jest.Mock).mockReset().mockResolvedValue("ref_1");
+    db.concern.findUnique.mockResolvedValue(concernRow({ status: "UNDER_REVIEW" }) as never);
+    db.transaction.findMany.mockResolvedValue([{ type: "RENTAL_PAYMENT", amount: 216, status: "COMPLETED" }] as never);
+    db.transaction.findFirst.mockResolvedValue({ id: "t-pay", paymongoPaymentId: "pay_9", paymentEnv: "sandbox" } as never);
+    await decideConcern(undefined, "c1", "admin-1", { pct: 50, note: "Reported an hour after pickup; the owner's own photos show the crack." }, now);
+    expect(createRefund).toHaveBeenCalledWith(expect.objectContaining({ paymentId: "pay_9", amount: 108, from: expect.objectContaining({ id: "t-pay" }) }));
+    const refund = db.transaction.create.mock.calls.map((c) => c[0].data).find((d) => d.type === "RENTAL_REFUND")!;
+    expect(refund.paymentMethod).toBe("PayMongo");
+  });
+
   it("a defect reported within 3 h of pickup: the base is the WHOLE rent (ruling 3)", async () => {
     db.concern.findUnique.mockResolvedValue(concernRow({ status: "UNDER_REVIEW" }) as never);
     db.transaction.findMany.mockResolvedValue([{ type: "RENTAL_PAYMENT", amount: 216, status: "COMPLETED" }] as never);

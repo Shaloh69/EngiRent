@@ -689,9 +689,9 @@ export async function decideConcern(
         where: { rentalId: c.rentalId, type: "RENTAL_PAYMENT", status: "COMPLETED" },
       });
       let method = "Ledger (staff refund the renter by hand)";
-      if (payTx?.paymongoPaymentId && env.PAYMONGO_SECRET_KEY) {
+      if (payTx?.paymongoPaymentId) {
         try {
-          await createRefund({ paymentId: payTx.paymongoPaymentId, amount: refund, reason: "others" });
+          await createRefund({ paymentId: payTx.paymongoPaymentId, amount: refund, reason: "others", from: payTx });
           method = "PayMongo";
         } catch (err) {
           logger.error(`[CONCERN] PayMongo rent refund failed for ${c.referenceNo}; recorded for a manual refund`, err);

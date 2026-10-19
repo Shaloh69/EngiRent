@@ -110,3 +110,29 @@ describe("runDepositHoldSweep", () => {
     expect(titles).toContain("Deposit refunded");
   });
 });
+
+describe("P2: a PayMongo deposit with NO PayMongo key on this server", () => {
+  const PM_DEPOSIT = { id: "t-dep", type: "SECURITY_DEPOSIT", amount: 300, paymongoPaymentId: "pay_dep", paymentEnv: "sandbox" };
+  const { createRefund } = jest.requireMock("../../controllers/paymentController");
+  beforeEach(() => (createRefund as jest.Mock).mockReset());
+
+  it("is refunded through its own gateway, not as a ledger-only refund", async () => {
+    (createRefund as jest.Mock).mockResolvedValue("ref_1");
+    db.rental.findUnique.mockResolvedValue(rental([PM_DEPOSIT, RENT]) as never);
+    await finalizeRentalCompletion("r1");
+    expect(createRefund).toHaveBeenCalledWith(expect.objectContaining({ paymentId: "pay_dep", amount: 300, from: expect.objectContaining({ id: "t-dep" }) }));
+    const dep = createdTypes().find((d) => d.type === "DEPOSIT_REFUND") as { paymentMethod?: string } | undefined;
+    expect(dep?.paymentMethod).toBe("PayMongo");
+  });
+
+  it("a refund the gateway can't make leaves the deposit owed (no DEPOSIT_REFUND, not REFUNDED) and tells the renter", async () => {
+    (createRefund as jest.Mock).mockRejectedValue(new Error("its sandbox payment gateway is not configured on this server"));
+    db.rental.findUnique.mockResolvedValue(rental([PM_DEPOSIT, RENT]) as never);
+    await finalizeRentalCompletion("r1");
+    expect(createdTypes().find((d) => d.type === "DEPOSIT_REFUND")).toBeUndefined();
+    const refunded = db.transaction.update.mock.calls.some((c) => (c[0] as { data: { status?: string } }).data.status === "REFUNDED");
+    expect(refunded).toBe(false);
+    const titles = db.notification.create.mock.calls.map((c) => (c[0] as { data: { title: string } }).data.title);
+    expect(titles).toContain("Deposit Refund Delayed");
+  });
+});

@@ -14,7 +14,10 @@ jest.mock("../../config/database", () => ({
 }));
 jest.mock("../../controllers/paymentController", () => ({ createRefund: jest.fn().mockResolvedValue({}) }));
 jest.mock("../payoutService", () => ({ createTransfer: jest.fn() }));
-jest.mock("../../config/env", () => ({ __esModule: true, default: { PAYMONGO_SECRET_KEY: "sk_test_x" } }));
+// P2: NO PayMongo key on this server (SPEC §8.5 removes it; the gateway holds
+// it). A PayMongo payment must still be refunded through PayMongo, never
+// recorded as a ledger-only refund.
+jest.mock("../../config/env", () => ({ __esModule: true, default: {} }));
 
 import prisma from "../../config/database";
 import { refundRenterInFull } from "../rentalSettlementService";
@@ -66,7 +69,15 @@ describe("refundRenterInFull", () => {
   it("uses a real PayMongo refund when the payment went through PayMongo", async () => {
     rentalWith([{ id: "t-pay", type: "RENTAL_PAYMENT", amount: 20, paymongoPaymentId: "pay_123", paymentDetails: null }]);
     await refundRenterInFull("r1", "wrong item");
-    expect(refundMock).toHaveBeenCalledWith({ paymentId: "pay_123", amount: 20, reason: "others" });
+    expect(refundMock).toHaveBeenCalledWith({
+      paymentId: "pay_123",
+      amount: 20,
+      reason: "others",
+      from: expect.objectContaining({ id: "t-pay" }), // its own gateway decides
+    });
+    expect(prismaMock.transaction.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymentDetails: expect.objectContaining({ refund: expect.objectContaining({ via: "PayMongo" }) }) }) }),
+    );
   });
 
   it("a failed PayMongo refund leaves the row owed and tells the renter and the admins", async () => {

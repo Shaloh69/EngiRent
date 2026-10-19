@@ -56,16 +56,24 @@ const envSchema = z.object({
   PAYMENT_MANUAL_ACCOUNT_NUMBER: z.string().optional(),
   PAYMENT_MANUAL_CONFIRM_WINDOW: z.string().default("within 24 hours"),
 
-  // PayMongo
+  // Payment gateway (SPEC-PAYMENT-GATEWAY.md §3.2): every PayMongo call goes
+  // through the gateway on Render, which alone holds the PayMongo key.
+  // PAYMENT_GATEWAY picks the gateway NEW payments use; PAYMENT_MODE=MANUAL
+  // above still overrides it (kill switch). See services/paymentGateway.ts.
+  PAYMENT_GATEWAY: z.enum(["sandbox", "live"]).optional(),
+  PAYMENT_GATEWAY_SANDBOX_URL: z.string().optional(),
+  PAYMENT_GATEWAY_SANDBOX_TOKEN: z.string().optional(),
+  PAYMENT_GATEWAY_LIVE_URL: z.string().optional(),
+  PAYMENT_GATEWAY_LIVE_TOKEN: z.string().optional(),
+
+  // PayMongo: NO LONGER USED by any call (P2 moved them all to the gateway).
+  // Kept so an old .env still parses; SPEC §8.5 removes them from the file.
+  // PAYMONGO_WEBHOOK_SECRET is still read by the old /payments/confirm route.
   PAYMONGO_SECRET_KEY: z.string().optional(),
   PAYMONGO_PUBLIC_KEY: z.string().optional(),
   PAYMONGO_WEBHOOK_SECRET: z.string().optional(),
-  // Disbursements (Transfers V2) — the platform's own PayMongo Wallet, i.e.
-  // the `source_account` every outbound owner-payout Transfer moves money
-  // from. Optional: if unset, source_account is omitted from the request
-  // entirely (PayMongo's docs suggest this defaults to the account's own
-  // wallet, but this is unconfirmed from docs alone — verify against the
-  // real sandbox response in Phase 4's live audit before trusting it blind).
+  // Disbursements source wallet: now configured on the gateway (Render), where
+  // PayMongo requires it (D-21 corrected 2026-10-19). Unused here.
   PAYMONGO_SOURCE_ACCOUNT_NUMBER: z.string().optional(),
   PAYMONGO_SOURCE_ACCOUNT_NAME: z.string().optional(),
   PAYMONGO_SOURCE_ACCOUNT_BIC: z.string().optional(),

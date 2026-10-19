@@ -1,8 +1,9 @@
 import type { Server } from "socket.io";
 import prisma from "../config/database";
 import logger from "../utils/logger";
-import { paymongoConfigured, retrieveCheckoutSession, expireCheckoutSession } from "./paymongoService";
-import { markTransactionFailed, markTransactionPaid } from "./paymentConfirmationService";
+import { confirmFromCheckout, expireCheckoutSession, CheckoutOutcome } from "./paymongoService";
+import { markTransactionFailed } from "./paymentConfirmationService";
+import { activeEnv, envOf, gatewayConfigured } from "./paymentGateway";
 
 /**
  * Ruling 6 (2026-10-11): confirm PayMongo payments by ASKING PayMongo, not by
@@ -19,6 +20,12 @@ import { markTransactionFailed, markTransactionPaid } from "./paymentConfirmatio
  * API restarted, or the visit ended) and it is older than 15 minutes, it is
  * expired at PayMongo and marked failed, so the fees resume and it can never
  * be paid by surprise later.
+ *
+ * P2 (SPEC-PAYMENT-GATEWAY.md §3.2): each row is asked about through the
+ * gateway of its OWN paymentEnv, and confirmed only by confirmFromCheckout
+ * (paid AND the same amount). The sweep runs while ANY gateway is configured,
+ * even under the PAYMENT_MODE=MANUAL kill switch: stopping new payments must
+ * not strand a checkout someone already paid.
  */
 
 const FAST_MS = 5_000;
@@ -30,21 +37,17 @@ const ORPHAN_DISPUTE_FEE_MS = 15 * 60_000;
 let tick = 0;
 let running = false;
 
-/** Check one transaction now. Returns what PayMongo said, or "skip". */
-export async function pollOne(io: Server | undefined, transactionId: string): Promise<"paid" | "expired" | "open" | "skip"> {
-  const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
-  if (!tx?.paymongoCheckoutId || !(tx.status === "PENDING" || tx.status === "PROCESSING")) return "skip";
-  const state = await retrieveCheckoutSession(tx.paymongoCheckoutId);
-  if (state.state === "paid") {
-    await markTransactionPaid(io, tx.id, { via: "PAYMONGO_POLL", paymentId: state.paymentId, referenceNo: state.referenceNo });
-  } else if (state.state === "expired") {
-    await markTransactionFailed(io, tx.id, { via: "CHECKOUT_EXPIRED", reason: "the PayMongo checkout expired" });
-  }
-  return state.state;
+/** Check one transaction now, on its own gateway. Returns what PayMongo said, or "skip". */
+export async function pollOne(io: Server | undefined, transactionId: string): Promise<CheckoutOutcome> {
+  return confirmFromCheckout(io, transactionId, "PAYMONGO_POLL");
+}
+
+function anyGatewayConfigured(): boolean {
+  return gatewayConfigured("sandbox") || gatewayConfigured("live");
 }
 
 async function sweep(io: Server): Promise<void> {
-  if (running || !paymongoConfigured()) return;
+  if (running || !anyGatewayConfigured()) return;
   running = true;
   try {
     tick += 1;
@@ -56,7 +59,7 @@ async function sweep(io: Server): Promise<void> {
         paymongoCheckoutId: { not: null },
         createdAt: { gte: new Date(now - (slow ? SLOW_WINDOW_MS : FAST_WINDOW_MS)) },
       },
-      select: { id: true, type: true, createdAt: true, paymongoCheckoutId: true, disputeId: true, rentalId: true },
+      select: { id: true, type: true, createdAt: true, paymongoCheckoutId: true, paymentEnv: true, disputeId: true, rentalId: true },
       take: 50,
     });
     for (const row of rows) {
@@ -66,7 +69,8 @@ async function sweep(io: Server): Promise<void> {
           const { getVisit } = await import("./disputeKioskService");
           if (!getVisit(row.rentalId)) {
             try {
-              await expireCheckoutSession(row.paymongoCheckoutId as string);
+              const e = envOf(row);
+              if (e) await expireCheckoutSession(e, row.paymongoCheckoutId as string);
             } catch {
               /* already closed: the failure below still applies */
             }
@@ -87,8 +91,16 @@ async function sweep(io: Server): Promise<void> {
   }
 }
 
+/** Test seam: one sweep, now. */
+export const _sweepOnce = (io: Server): Promise<void> => sweep(io);
+
 export function startPaymentPoller(io: Server): void {
   const t = setInterval(() => void sweep(io), FAST_MS);
   t.unref?.();
-  logger.info(`[PAYMONGO-POLL] started (${paymongoConfigured() ? "PayMongo configured" : "PayMongo NOT configured: manual fallback only"})`);
+  const e = activeEnv();
+  logger.info(
+    `[PAYMONGO-POLL] started (new payments: ${e ? `${e} gateway` : "manual fallback only"}; polling gateways: ${
+      ["sandbox", "live"].filter((g) => gatewayConfigured(g as "sandbox" | "live")).join(", ") || "none"
+    })`,
+  );
 }

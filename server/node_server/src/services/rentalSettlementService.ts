@@ -1,9 +1,9 @@
 import prisma from "../config/database";
-import env from "../config/env";
 import logger from "../utils/logger";
 import { decryptJson, isEncryptedBlob, EncryptedBlob } from "../utils/crypto";
 import { createRefund } from "../controllers/paymentController";
-import { createTransfer, TransferRail } from "./payoutService";
+import { canAutoPayout, createTransfer, TransferRail } from "./payoutService";
+import { envOf } from "./paymentGateway";
 
 // ---------------------------------------------------------------------------
 // Shared "a rental just reached COMPLETED" money-movement logic — used by
@@ -104,12 +104,16 @@ async function refundDepositNet(rental: SettlementRental): Promise<void> {
       });
     }
 
-    if (refundAmount > 0 && env.PAYMONGO_SECRET_KEY && depositTxn.paymongoPaymentId) {
+    // P2: decided by HOW the deposit was paid, not by a key on this server. A
+    // PayMongo deposit is refunded through its own gateway; if that fails it
+    // stays owed (the catch below), never a ledger-only refund.
+    if (refundAmount > 0 && depositTxn.paymongoPaymentId) {
       try {
         await createRefund({
           paymentId: depositTxn.paymongoPaymentId,
           amount: refundAmount,
           reason: "others",
+          from: depositTxn,
         });
         await prisma.$transaction([
           prisma.transaction.create({
@@ -152,8 +156,8 @@ async function refundDepositNet(rental: SettlementRental): Promise<void> {
         });
       }
     } else if (refundAmount > 0) {
-      // PayMongo not configured (local dev/demo) or no paymongoPaymentId on
-      // record — fall back to a ledger-only refund rather than blocking
+      // No paymongoPaymentId: a manual (GCash, admin-confirmed) deposit, or
+      // local dev — fall back to a ledger-only refund rather than blocking
       // rental completion entirely, mirroring createPayment's existing
       // mock-checkout-when-unconfigured pattern.
       await prisma.$transaction([
@@ -244,9 +248,15 @@ export async function finalizeRentalCompletion(
     const payoutReady =
       owner.payoutBic && owner.payoutProvider && owner.payoutAccountName && accountNumber;
 
-    if (payoutReady && env.PAYMONGO_SECRET_KEY) {
+    // P2: an automatic transfer only through the gateway the rent was paid
+    // in, while it is the active one and reports a wallet (payoutService
+    // canAutoPayout). Otherwise staff pay it out: PENDING, never "COMPLETED".
+    const paidVia = envOf(rentalPaymentTxn);
+    const auto = payoutReady ? await canAutoPayout(paidVia) : false;
+
+    if (payoutReady && auto && paidVia) {
       try {
-        const transfer = await createTransfer({
+        const transfer = await createTransfer(paidVia, {
           amount: rentalPaymentTxn.amount,
           provider: owner.payoutProvider as TransferRail,
           purpose: "Rental payout",
@@ -325,16 +335,32 @@ export async function finalizeRentalCompletion(
         },
       });
     } else {
-      // payoutReady but PAYMONGO_SECRET_KEY unset (local dev/demo).
+      // A destination is set, but no automatic transfer is possible (manual
+      // payment, MANUAL kill switch, no PayMongo wallet yet, or the rent was
+      // paid through a gateway that is no longer the active one). Before P2
+      // this was recorded COMPLETED "Ledger (PayMongo not configured)": money
+      // shown as paid out that nobody sent.
+      const testPayment = paidVia === "sandbox";
       await prisma.transaction.create({
         data: {
           rentalId,
           userId: owner.id,
           type: "OWNER_PAYOUT",
           amount: rentalPaymentTxn.amount,
-          status: "COMPLETED",
-          paidAt: new Date(),
-          paymentMethod: "Ledger (PayMongo not configured)",
+          status: "PENDING",
+          paymentMethod: testPayment
+            ? "Rental payout (staff pay out; TEST payment: no real money was collected)"
+            : "Rental payout (staff pay out)",
+        },
+      });
+      await prisma.notification.create({
+        data: {
+          userId: owner.id,
+          title: "Rental payout on its way",
+          message: `₱${rentalPaymentTxn.amount.toFixed(2)} for ${itemTitle} will be sent to your ${owner.payoutInstitutionName ?? "payout"} account by staff.`,
+          type: "PAYMENT_RECEIVED",
+          relatedEntityId: rentalId,
+          relatedEntityType: "rental",
         },
       });
     }
@@ -372,10 +398,12 @@ export async function refundRenterInFull(rentalId: string, reason: string): Prom
   let refunded = 0;
   for (const txn of rental.transactions) {
     if (txn.amount <= 0) continue;
-    const viaPayMongo = Boolean(env.PAYMONGO_SECRET_KEY && txn.paymongoPaymentId);
+    // P2: by how it was paid. A PayMongo payment whose gateway can't refund it
+    // throws into the catch: still owed, renter and admins told.
+    const viaPayMongo = Boolean(txn.paymongoPaymentId);
     try {
       if (viaPayMongo) {
-        await createRefund({ paymentId: txn.paymongoPaymentId as string, amount: txn.amount, reason: "others" });
+        await createRefund({ paymentId: txn.paymongoPaymentId as string, amount: txn.amount, reason: "others", from: txn });
       }
       const details = {
         ...((txn.paymentDetails as Record<string, unknown> | null) ?? {}),

@@ -122,7 +122,7 @@ The **admin console** gets a "Payment service" card:
 - The PayMongo secret key lives **only** in Render's environment settings for that service. It is **not** in the repo (the repo is public), not in `render.yaml` (`sync: false`) and not on the server PC.
 - The main API and the gateway share one random 32-byte token per mode. Webhook forwards are HMAC-signed with it and carry a timestamp; anything older than 5 minutes is refused, so a replay can't confirm a payment twice. `markTransactionPaid` is also idempotent.
 - **The main API never trusts a forwarded "paid" on its own.** On a gateway event it asks the gateway `GET /checkouts/:id` and only marks the payment paid if PayMongo says paid, for an amount equal to the transaction's. The webhook speeds things up but never decides anything on its own.
-- Production startup interlock: `sk_live_` + `ALLOW_LIVE=yes`, and the main API refuses `PAYMENT_GATEWAY=live` while `PAYMENT_MODE=MANUAL`. **Before going live: confirm the live key was rotated** (the old one was exposed on 2026-09-06).
+- Production startup interlock: `sk_live_` + `ALLOW_LIVE=yes`, and the main API refuses `PAYMENT_GATEWAY=live` while `PAYMENT_MODE=MANUAL`. **Clarified in P2 (2026-10-19):** "refuses" means MANUAL creates no payment on ANY gateway; the API still starts, because the §8.7 emergency stop is exactly "set MANUAL and restart" with `live` still set. Payments already made through a gateway are still polled and refunded on their own gateway. **Before going live: confirm the live key was rotated** (the old one was exposed on 2026-09-06).
 
 ## 7. Phase table (G2): one row at a time, each verified before the next
 

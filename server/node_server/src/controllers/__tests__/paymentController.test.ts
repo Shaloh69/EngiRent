@@ -15,7 +15,7 @@ jest.mock("axios"); // avoid any real network call to PayMongo
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import prisma from "../../config/database";
-import { createPayment, confirmPayment } from "../paymentController";
+import { createPayment, confirmPayment, createRefund, refundPayment } from "../paymentController";
 import { AuthRequest } from "../../middleware/auth";
 import env from "../../config/env";
 import crypto from "crypto";
@@ -397,11 +397,20 @@ describe("createPayment — PAYMENT_MODE=MANUAL kill switch (the manual fallback
     // test passes for the wrong reason on a machine with no key configured.
     (env as any).PAYMONGO_SECRET_KEY = "sk_test_pretend";
     (env as any).PAYMENT_MODE = "MANUAL";
+    // P2: and a fully configured LIVE gateway. MANUAL must still win (SPEC section 6).
+    (env as any).PAYMENT_GATEWAY = "live";
+    (env as any).PAYMENT_GATEWAY_LIVE_URL = "https://pay-live.example";
+    (env as any).PAYMENT_GATEWAY_LIVE_TOKEN = "l".repeat(40);
+    (axios.get as jest.Mock).mockReset();
+    (axios.request as jest.Mock).mockReset();
   });
 
   afterEach(() => {
     (env as any).PAYMENT_MODE = realMode;
     (env as any).PAYMONGO_SECRET_KEY = realKey;
+    (env as any).PAYMENT_GATEWAY = undefined;
+    (env as any).PAYMENT_GATEWAY_LIVE_URL = undefined;
+    (env as any).PAYMENT_GATEWAY_LIVE_TOKEN = undefined;
   });
 
   function mockRental(over: Record<string, unknown> = {}) {
@@ -438,6 +447,8 @@ describe("createPayment — PAYMENT_MODE=MANUAL kill switch (the manual fallback
     );
 
     expect(axios.post).not.toHaveBeenCalled();
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.request).not.toHaveBeenCalled();
   });
 
   it("returns paymentUrl null and an awaiting-confirmation state, not a checkout URL", async () => {
@@ -544,25 +555,29 @@ describe("createPayment — PAYMENT_MODE=MANUAL kill switch (the manual fallback
   });
 });
 
-// The dormant path must stay intact — the ruling says PayMongo is switched
-// off, not deleted, and switching back should be a config change.
-describe("createPayment — PAYMONGO mode still builds a checkout (dormant, not deleted)", () => {
-  const realMode = (env as any).PAYMENT_MODE;
-  const realKey = env.PAYMONGO_SECRET_KEY;
+// P2 (SPEC-PAYMENT-GATEWAY.md §3): the checkout comes from the payment
+// gateway, never from PayMongo directly. Each guard below was removed once and
+// one of these tests failed (PROGRESS.md P2 mutation log).
+describe("createPayment — through the payment gateway (P2)", () => {
+  const G = ["PAYMENT_MODE", "PAYMENT_GATEWAY", "PAYMENT_GATEWAY_SANDBOX_URL", "PAYMENT_GATEWAY_SANDBOX_TOKEN", "PAYMENT_GATEWAY_LIVE_URL", "PAYMENT_GATEWAY_LIVE_TOKEN", "PAYMONGO_SECRET_KEY"];
+  const saved: Record<string, unknown> = {};
+  const healthOk = (mode: string, keyMode: string) => (axios.get as jest.Mock).mockResolvedValue({ data: { mode, keyMode } });
+  const checkoutOk = () =>
+    (axios.request as jest.Mock).mockResolvedValue({ data: { checkoutId: "cs_1", checkoutUrl: "https://checkout.paymongo.com/cs_1" } });
 
   beforeEach(() => {
+    for (const k of G) saved[k] = (env as any)[k];
     mockReset(prismaMock);
     (axios.post as jest.Mock).mockReset();
+    (axios.get as jest.Mock).mockReset();
+    (axios.request as jest.Mock).mockReset();
     (env as any).PAYMENT_MODE = "PAYMONGO";
-    (env as any).PAYMONGO_SECRET_KEY = "sk_test_pretend";
-  });
-
-  afterEach(() => {
-    (env as any).PAYMENT_MODE = realMode;
-    (env as any).PAYMONGO_SECRET_KEY = realKey;
-  });
-
-  it("calls PayMongo and returns its checkout URL", async () => {
+    (env as any).PAYMENT_GATEWAY = "sandbox";
+    (env as any).PAYMENT_GATEWAY_SANDBOX_URL = "https://pay-sandbox.example";
+    (env as any).PAYMENT_GATEWAY_SANDBOX_TOKEN = "s".repeat(40);
+    (env as any).PAYMENT_GATEWAY_LIVE_URL = "https://pay-live.example";
+    (env as any).PAYMENT_GATEWAY_LIVE_TOKEN = "l".repeat(40);
+    (env as any).PAYMONGO_SECRET_KEY = undefined; // the key is on Render now
     prismaMock.rental.findUnique.mockResolvedValue({
       id: "rental-1",
       renterId: "renter-1",
@@ -571,82 +586,161 @@ describe("createPayment — PAYMONGO mode still builds a checkout (dormant, not 
       item: { title: "Laptop" },
     } as never);
     prismaMock.transaction.findFirst.mockResolvedValue(null as never);
-    prismaMock.transaction.create.mockImplementation(
-      ({ data }: any) => Promise.resolve({ id: "txn-1", ...data }) as never,
-    );
-    prismaMock.transaction.update.mockResolvedValue({ id: "txn-1" } as never);
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: {
-        data: {
-          id: "cs_1",
-          attributes: { checkout_url: "https://checkout.paymongo.com/cs_1" },
-        },
-      },
-    });
-
-    const res = makeRes();
-    await createPayment(
-      makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }),
-      res,
-      jest.fn(),
-    );
-
-    expect(axios.post).toHaveBeenCalled();
-    const payload = (res.json as jest.Mock).mock.calls[0][0];
-    expect(payload.data.paymentUrl).toBe("https://checkout.paymongo.com/cs_1");
-  });
-});
-
-describe("createPayment — PayMongo primary (ruling 6, 2026-10-11)", () => {
-  const realMode = (env as any).PAYMENT_MODE;
-  const realKey = env.PAYMONGO_SECRET_KEY;
-  beforeEach(() => {
-    mockReset(prismaMock);
-    (axios.post as jest.Mock).mockReset();
-    (env as any).PAYMONGO_SECRET_KEY = "sk_test_pretend";
-    (env as any).PAYMENT_MODE = "PAYMONGO";
-    prismaMock.rental.findUnique.mockResolvedValue({
-      id: "rental-1",
-      renterId: "renter-1",
-      totalPrice: 5000,
-      securityDeposit: 500,
-      item: { title: "Laptop" },
-    } as never);
-    prismaMock.transaction.findFirst.mockResolvedValue(null as never);
-    prismaMock.transaction.create.mockImplementation(
-      ({ data }: any) => Promise.resolve({ id: "txn-1", ...data }) as never,
-    );
+    prismaMock.transaction.create.mockImplementation(({ data }: any) => Promise.resolve({ id: "txn-1", ...data }) as never);
     prismaMock.transaction.update.mockImplementation(
       ({ data }: any) => Promise.resolve({ id: "txn-1", rentalId: "rental-1", ...data }) as never,
     );
   });
   afterEach(() => {
-    (env as any).PAYMENT_MODE = realMode;
-    (env as any).PAYMONGO_SECRET_KEY = realKey;
+    for (const k of G) (env as any)[k] = saved[k];
   });
 
-  it("returns a PayMongo checkout URL when PayMongo answers", async () => {
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: { data: { id: "cs_1", attributes: { checkout_url: "https://checkout.paymongo.com/cs_1" } } },
-    });
+  async function pay() {
     const res = makeRes();
     await createPayment(makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }), res, jest.fn());
-    const payload = (res.json as jest.Mock).mock.calls[0][0];
+    return { res, payload: (res.json as jest.Mock).mock.calls[0]?.[0] };
+  }
+
+  it("creates the checkout on the sandbox gateway, records paymentEnv, and says TEST mode", async () => {
+    healthOk("sandbox", "test");
+    checkoutOk();
+    const { payload } = await pay();
     expect(payload.data.paymentMode).toBe("PAYMONGO");
     expect(payload.data.paymentUrl).toBe("https://checkout.paymongo.com/cs_1");
     expect(payload.data.testMode).toBe(true);
+    const req = (axios.request as jest.Mock).mock.calls[0][0];
+    expect(req.url).toBe("https://pay-sandbox.example/checkouts");
+    expect(req.data.amount).toBe(5000); // pesos, from the rental, never the client
+    expect(prismaMock.transaction.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymongoCheckoutId: "cs_1", paymentEnv: "sandbox" }) }),
+    );
+    expect(axios.post).not.toHaveBeenCalled(); // nothing goes to api.paymongo.com
   });
 
-  it("falls back to MANUAL (never a mock URL) when PayMongo is unavailable", async () => {
-    (axios.post as jest.Mock).mockRejectedValue(new Error("PayMongo down"));
-    const res = makeRes();
-    await createPayment(makeReq({ rentalId: "rental-1", type: "RENTAL_PAYMENT" }), res, jest.fn());
-    const payload = (res.json as jest.Mock).mock.calls[0][0];
+  it("on the live gateway: paymentEnv live, no TEST mode", async () => {
+    (env as any).PAYMENT_GATEWAY = "live";
+    healthOk("live", "live");
+    checkoutOk();
+    const { payload } = await pay();
+    expect(payload.data.testMode).toBe(false);
+    expect((axios.request as jest.Mock).mock.calls[0][0].url).toBe("https://pay-live.example/checkouts");
+    expect(prismaMock.transaction.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymentEnv: "live" }) }),
+    );
+  });
+
+  it("a sleeping gateway: 503 with the 'Connecting…' copy, and NO transaction recorded", async () => {
+    (axios.get as jest.Mock).mockRejectedValue(Object.assign(new Error("timeout"), { code: "ECONNABORTED" }));
+    const { res, payload } = await pay();
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(payload.code).toBe("PAYMENT_SERVICE_WAKING");
+    expect(payload.message).toMatch(/^Connecting to the payment service/);
+    expect(prismaMock.transaction.create).not.toHaveBeenCalled();
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  it("a gateway reporting the wrong mode: fails closed (no checkout), manual fallback", async () => {
+    healthOk("live", "live"); // PAYMENT_GATEWAY=sandbox, but the URL is the live gateway
+    checkoutOk();
+    const { payload } = await pay();
+    expect(axios.request).not.toHaveBeenCalled();
+    expect(payload.data.paymentMode).toBe("MANUAL");
+    expect(payload.data.paymentUrl).toBeNull();
+    expect(prismaMock.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymentMethod: "Manual" }) }),
+    );
+  });
+
+  it("the gateway fails creating the checkout: manual fallback (never a mock URL)", async () => {
+    healthOk("sandbox", "test");
+    (axios.request as jest.Mock).mockRejectedValue({ response: { status: 502 } });
+    const { payload } = await pay();
     expect(payload.data.paymentMode).toBe("MANUAL");
     expect(payload.data.paymentUrl).toBeNull();
     expect(payload.data.instructions.amount).toBe(5000);
-    expect(prismaMock.transaction.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { paymentMethod: "Manual" } }),
-    );
+    expect(prismaMock.transaction.update).toHaveBeenCalledWith(expect.objectContaining({ data: { paymentMethod: "Manual" } }));
+  });
+
+  it("a reused sandbox checkout stays TEST mode after a switch to live", async () => {
+    (env as any).PAYMENT_GATEWAY = "live";
+    prismaMock.transaction.findFirst.mockResolvedValue({
+      id: "txn-1",
+      status: "PENDING",
+      paymentMethod: "PayMongo",
+      paymongoCheckoutId: "cs_old",
+      paymentEnv: "sandbox",
+      paymentDetails: { checkoutUrl: "https://checkout.paymongo.com/cs_old" },
+    } as never);
+    const { payload } = await pay();
+    expect(payload.data.paymentUrl).toBe("https://checkout.paymongo.com/cs_old");
+    expect(payload.data.testMode).toBe(true);
+    expect(axios.get).not.toHaveBeenCalled(); // no new checkout, so no health check needed
+  });
+});
+
+describe("createRefund / refundPayment — through the payment's OWN gateway (P2.4)", () => {
+  const G = ["PAYMENT_MODE", "PAYMENT_GATEWAY", "PAYMENT_GATEWAY_SANDBOX_URL", "PAYMENT_GATEWAY_SANDBOX_TOKEN", "PAYMENT_GATEWAY_LIVE_URL", "PAYMENT_GATEWAY_LIVE_TOKEN", "PAYMONGO_SECRET_KEY"];
+  const saved: Record<string, unknown> = {};
+  beforeEach(() => {
+    for (const k of G) saved[k] = (env as any)[k];
+    mockReset(prismaMock);
+    (axios.request as jest.Mock).mockReset();
+    (env as any).PAYMENT_MODE = "PAYMONGO";
+    (env as any).PAYMENT_GATEWAY = "live";
+    (env as any).PAYMENT_GATEWAY_SANDBOX_URL = "https://pay-sandbox.example";
+    (env as any).PAYMENT_GATEWAY_SANDBOX_TOKEN = "s".repeat(40);
+    (env as any).PAYMENT_GATEWAY_LIVE_URL = "https://pay-live.example";
+    (env as any).PAYMENT_GATEWAY_LIVE_TOKEN = "l".repeat(40);
+    (env as any).PAYMONGO_SECRET_KEY = undefined;
+  });
+  afterEach(() => {
+    for (const k of G) (env as any)[k] = saved[k];
+  });
+
+  it("a sandbox payment is refunded on the sandbox gateway while live is active", async () => {
+    (axios.request as jest.Mock).mockResolvedValue({ data: { refundId: "ref_1", status: "pending" } });
+    await expect(
+      createRefund({ paymentId: "pay_1", amount: 150, reason: "others", from: { paymentEnv: "sandbox", paymongoPaymentId: "pay_1" } }),
+    ).resolves.toBe("ref_1");
+    const req = (axios.request as jest.Mock).mock.calls[0][0];
+    expect(req.url).toBe("https://pay-sandbox.example/refunds");
+    expect(req.data).toEqual({ paymentId: "pay_1", amount: 150, reason: "others" });
+  });
+
+  it("refuses (throws) when that payment's gateway is not configured here, and sends nothing", async () => {
+    (env as any).PAYMENT_GATEWAY_LIVE_URL = "";
+    await expect(
+      createRefund({ paymentId: "pay_1", amount: 150, reason: "others", from: { paymentEnv: "live", paymongoPaymentId: "pay_1" } }),
+    ).rejects.toThrow(/not configured/);
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  it("refuses a payment with no recognisable gateway (an unknown paymentEnv is never guessed)", async () => {
+    await expect(
+      createRefund({ paymentId: "pay_1", amount: 150, reason: "others", from: { paymentEnv: "prod", paymongoPaymentId: "pay_1" } }),
+    ).rejects.toThrow(/no payment gateway is recorded/);
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  it("still refunds under the MANUAL kill switch (it stops new payments, not refunds)", async () => {
+    (env as any).PAYMENT_MODE = "MANUAL";
+    (axios.request as jest.Mock).mockResolvedValue({ data: { refundId: "ref_2", status: "pending" } });
+    await expect(
+      createRefund({ paymentId: "pay_1", amount: 150, reason: "others", from: { paymentEnv: "live", paymongoPaymentId: "pay_1" } }),
+    ).resolves.toBe("ref_2");
+  });
+
+  it("admin refund of a PayMongo payment whose gateway is missing: error, and the payment is NOT marked refunded", async () => {
+    (env as any).PAYMENT_GATEWAY_LIVE_URL = "";
+    prismaMock.transaction.findUnique.mockResolvedValue({
+      id: "tx-1", status: "COMPLETED", amount: 150, paymongoPaymentId: "pay_1", paymentEnv: "live", rentalId: "r-1", userId: "u-1",
+      rental: { item: { title: "Laptop" } },
+    } as never);
+    const next = jest.fn();
+    const req = { params: { transactionId: "tx-1" }, user: { userId: "admin-1", role: "ADMIN" } } as unknown as AuthRequest;
+    await refundPayment(req, makeRes(), next);
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/refund failed/i) }));
+    expect(prismaMock.transaction.update).not.toHaveBeenCalled();
+    expect(prismaMock.transaction.create).not.toHaveBeenCalled();
   });
 });

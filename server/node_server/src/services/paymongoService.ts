@@ -1,115 +1,105 @@
-import axios from "axios";
-import env from "../config/env";
+import type { Server } from "socket.io";
+import prisma from "../config/database";
+import logger from "../utils/logger";
+import {
+  activeEnv,
+  assertGatewayMode,
+  createCheckout,
+  envOf,
+  expireCheckout,
+  gatewayConfigured,
+  getCheckout,
+  PaymentEnv,
+  sameAmount,
+  type CheckoutState,
+} from "./paymentGateway";
+import { markTransactionPaid, markTransactionFailed, ConfirmVia } from "./paymentConfirmationService";
 
 /**
- * PayMongo checkout sessions — one place for every call this server makes.
+ * PayMongo checkout sessions, as the rest of the API sees them.
  *
  * User ruling 2026-10-11 (Dispute v2, ruling 6, extended to ALL payments):
  * PayMongo is the PRIMARY way to pay and manual admin confirmation is the
- * FALLBACK when PayMongo is unavailable. The 2026-09-06 "manual for the time
- * being" ruling is superseded.
+ * FALLBACK when PayMongo is unavailable.
  *
- * The confirmation does NOT depend on the webhook. The webhook still works when
- * PayMongo can reach this server, but the API sits behind a Cloudflare quick
- * tunnel whose hostname changes on every restart, and the registered webhook
- * points at a dead host. So the server asks PayMongo itself
- * (`retrieveCheckoutSession`) while a payment is pending: see paymentPoller.ts.
+ * Since P2 (SPEC-PAYMENT-GATEWAY.md) nothing here talks to PayMongo directly:
+ * every call goes through the payment gateway on Render, which holds the key.
+ * The confirmation still does NOT depend on the webhook: the poller asks the
+ * gateway (paymentPoller.ts), and a webhook forwarded by the gateway
+ * (POST /payments/gateway-event) only makes it faster. Both end in
+ * confirmFromCheckout below, which never trusts anything but PayMongo's own
+ * answer for the transaction's own gateway.
  */
 
-const PAYMONGO_BASE = "https://api.paymongo.com/v1";
+export type { CheckoutState };
 
+/** True when NEW payments are created through a gateway (not MANUAL, gateway configured). */
 export function paymongoConfigured(): boolean {
-  return Boolean(env.PAYMONGO_SECRET_KEY) && env.PAYMENT_MODE !== "MANUAL";
+  return activeEnv() !== null;
 }
 
-/** True when the installed key is a TEST key: payments are simulated, no real money moves. */
+/** True when new payments are simulated: the active gateway is the sandbox. */
 export function paymongoIsTestMode(): boolean {
-  return (env.PAYMONGO_SECRET_KEY ?? "").startsWith("sk_test_");
+  return activeEnv() === "sandbox";
 }
 
-function auth() {
-  const key = env.PAYMONGO_SECRET_KEY ?? "";
-  return {
-    Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
-    "Content-Type": "application/json",
-  };
-}
-
+/**
+ * Create a checkout on the active gateway, after checking that the gateway
+ * really is that mode (fails closed on a mismatch). Throws GatewayWaking when
+ * it is asleep, GatewayUnavailable when it is wrong or missing.
+ */
 export async function createCheckoutSession(params: {
-  amount: number; // PHP; converted to centavos
+  amount: number; // PHP; the gateway converts to centavos
   name: string;
   description: string;
   successUrl: string;
   cancelUrl: string;
   metadata: Record<string, string>;
-}): Promise<{ checkoutUrl: string; checkoutId: string }> {
-  const { data } = await axios.post(
-    `${PAYMONGO_BASE}/checkout_sessions`,
-    {
-      data: {
-        attributes: {
-          billing: { name: "EngiRent Hub Student" },
-          send_email_receipt: false,
-          show_description: true,
-          show_line_items: true,
-          line_items: [
-            {
-              currency: "PHP",
-              amount: Math.round(params.amount * 100),
-              description: params.description,
-              name: params.name,
-              quantity: 1,
-            },
-          ],
-          payment_method_types: ["gcash", "paymaya", "card", "brankas_bdo"],
-          description: params.description,
-          success_url: params.successUrl,
-          cancel_url: params.cancelUrl,
-          metadata: params.metadata,
-        },
-      },
-    },
-    { headers: auth(), timeout: 15_000 },
-  );
-  return {
-    checkoutUrl: data.data.attributes.checkout_url as string,
-    checkoutId: data.data.id as string,
-  };
+}): Promise<{ checkoutUrl: string; checkoutId: string; paymentEnv: PaymentEnv }> {
+  const e = activeEnv();
+  if (!e) throw new Error("No payment gateway is active (PAYMENT_MODE=MANUAL or PAYMENT_GATEWAY unset)");
+  await assertGatewayMode(e);
+  const out = await createCheckout(e, params);
+  return { ...out, paymentEnv: e };
 }
 
-export interface CheckoutState {
-  /** "paid" once a payment on the session succeeded; "expired" once PayMongo
-   *  closed it; otherwise "open". */
-  state: "paid" | "expired" | "open";
-  paymentId?: string;
-  referenceNo?: string;
-}
-
-/** Ask PayMongo what happened to a checkout session. Throws on a network error. */
-export async function retrieveCheckoutSession(checkoutId: string): Promise<CheckoutState> {
-  const { data } = await axios.get(`${PAYMONGO_BASE}/checkout_sessions/${checkoutId}`, {
-    headers: auth(),
-    timeout: 10_000,
-  });
-  const attrs = data?.data?.attributes ?? {};
-  const payments: Array<{ id?: string; attributes?: { status?: string } }> = attrs.payments ?? [];
-  const paid = payments.find((p) => p?.attributes?.status === "paid");
-  const intentStatus = attrs.payment_intent?.attributes?.status;
-  if (paid || intentStatus === "succeeded") {
-    return {
-      state: "paid",
-      paymentId: paid?.id ?? attrs.payment_intent?.id,
-      referenceNo: attrs.reference_number,
-    };
-  }
-  if (attrs.status === "expired") return { state: "expired" };
-  return { state: "open" };
+/** Ask the transaction's own gateway what happened to its checkout. Throws on a network error. */
+export async function retrieveCheckoutSession(e: PaymentEnv, checkoutId: string): Promise<CheckoutState> {
+  return getCheckout(e, checkoutId);
 }
 
 /** Close a checkout so it can no longer be paid (a kiosk visit timed out). */
-export async function expireCheckoutSession(checkoutId: string): Promise<void> {
-  await axios.post(`${PAYMONGO_BASE}/checkout_sessions/${checkoutId}/expire`, {}, {
-    headers: auth(),
-    timeout: 10_000,
-  });
+export async function expireCheckoutSession(e: PaymentEnv, checkoutId: string): Promise<void> {
+  await expireCheckout(e, checkoutId);
+}
+
+export type CheckoutOutcome = "paid" | "expired" | "open" | "skip" | "amount_mismatch";
+
+/**
+ * THE confirmation rule for a gateway payment, used by the poller and by the
+ * forwarded webhook alike (SPEC §6: "never trust a forwarded paid on its own"):
+ * ask the transaction's OWN gateway, and mark it paid only if PayMongo says
+ * paid for exactly the transaction's amount. Idempotent (markTransactionPaid).
+ */
+export async function confirmFromCheckout(io: Server | undefined, transactionId: string, via: ConfirmVia): Promise<CheckoutOutcome> {
+  const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
+  if (!tx?.paymongoCheckoutId || !(tx.status === "PENDING" || tx.status === "PROCESSING")) return "skip";
+  const e = envOf(tx);
+  if (!e || !gatewayConfigured(e)) return "skip";
+  const state = await getCheckout(e, tx.paymongoCheckoutId);
+  if (state.state === "paid") {
+    if (!sameAmount(state.amount, tx.amount)) {
+      logger.error(
+        `[PAYMENT] ${tx.id}: PayMongo says checkout ${tx.paymongoCheckoutId} was paid ₱${state.amount}, but the transaction is ₱${tx.amount}. NOT confirmed; an admin must look.`,
+      );
+      return "amount_mismatch";
+    }
+    await markTransactionPaid(io, tx.id, { via, paymentId: state.paymentId, referenceNo: state.referenceNo });
+    return "paid";
+  }
+  if (state.state === "expired") {
+    await markTransactionFailed(io, tx.id, { via: "CHECKOUT_EXPIRED", reason: "the PayMongo checkout expired" });
+    return "expired";
+  }
+  return "open";
 }

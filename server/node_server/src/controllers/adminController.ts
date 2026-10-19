@@ -37,6 +37,7 @@ import { recordAudit } from "../services/auditLogService";
 import { openDispute } from "../services/disputeService";
 import { plainVerdict } from "../services/aiVerdictSummary";
 import { markTransactionFailed, markTransactionPaid } from "../services/paymentConfirmationService";
+import { describeGateway } from "../services/paymentGateway";
 import { sendCsv } from "../utils/csv";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
@@ -1731,16 +1732,10 @@ async function checkMlService(): Promise<HealthCheck> {
   }
 }
 
-function checkPaymongo(): HealthCheck {
-  const key = env.PAYMONGO_SECRET_KEY;
-  const configured = Boolean(key) && !key!.includes("your-") && !key!.includes("change-me");
-  return {
-    name: "PayMongo",
-    ok: configured,
-    detail: configured
-      ? "PAYMONGO_SECRET_KEY is configured"
-      : "PAYMONGO_SECRET_KEY is unset or still a placeholder",
-  };
+/** P2: the payment gateway new payments use (the PayMongo key now lives only on the gateway). */
+async function checkPaymongo(): Promise<HealthCheck> {
+  const d = await describeGateway();
+  return { name: "Payment gateway (PayMongo)", ok: d.ok, detail: d.detail };
 }
 
 async function checkAdminConsole(): Promise<HealthCheck> {
@@ -1770,7 +1765,7 @@ export const getSystemHealth = async (
       checkDatabase(),
       Promise.resolve(checkStorageDir()),
       checkMlService(),
-      Promise.resolve(checkPaymongo()),
+      checkPaymongo(),
       checkAdminConsole(),
     ]);
     // The Node API responding at all is this check itself succeeding.

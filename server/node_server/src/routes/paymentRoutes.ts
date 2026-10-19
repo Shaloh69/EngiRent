@@ -7,6 +7,7 @@ import {
   getTransactions,
   refundPayment,
   getReceivingInstitutions,
+  gatewayEvent,
 } from "../controllers/paymentController";
 import { authenticate, requireAdmin, requireVerified } from "../middleware/auth";
 import { blockIfRestricted } from "../middleware/restriction";
@@ -42,6 +43,11 @@ router.post(
 // controller. No `authenticate` here by design (PayMongo can't send a user
 // JWT); confirmPayment enforces signature verification instead.
 router.post("/confirm", confirmPayment);
+
+// A PayMongo webhook forwarded by the payment gateway (SPEC-PAYMENT-GATEWAY.md
+// §3.3). No `authenticate`: gatewayEvent checks the gateway's HMAC signature
+// and timestamp, then re-checks the checkout with PayMongo before anything.
+router.post("/gateway-event", gatewayEvent);
 
 // Get transactions (protected)
 router.get("/", authenticate, getTransactions);

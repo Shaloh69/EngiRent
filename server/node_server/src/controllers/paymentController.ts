@@ -10,51 +10,48 @@ import {
 import logger from "../utils/logger";
 import env from "../config/env";
 import crypto from "crypto";
-import axios from "axios";
 import { listReceivingInstitutions } from "../services/payoutService";
+import { confirmFromCheckout, createCheckoutSession } from "../services/paymongoService";
 import {
-  createCheckoutSession,
-  paymongoConfigured,
-  paymongoIsTestMode,
-} from "../services/paymongoService";
+  activeEnv,
+  assertGatewayMode,
+  envOf,
+  GatewayUnavailable,
+  GatewayWaking,
+  refund as gatewayRefund,
+  verifyGatewayEvent,
+  WAKING_MESSAGE,
+} from "../services/paymentGateway";
 import { markTransactionPaid } from "../services/paymentConfirmationService";
 
 // ---------------------------------------------------------------------------
-// PayMongo helpers
+// Refunds (through the payment gateway, P2)
 // ---------------------------------------------------------------------------
 
-const PAYMONGO_BASE = "https://api.paymongo.com/v1";
-
-function paymongoAuth(): string {
-  const key = env.PAYMONGO_SECRET_KEY ?? "";
-  return `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
-}
-
+/**
+ * Refund (part of) a PayMongo payment through the gateway the payment was MADE
+ * in (`from` is the original transaction row), not the active one: a sandbox
+ * payment can only be refunded by the sandbox, and a live one by live.
+ * Throws when that gateway is not configured here, so every caller keeps the
+ * money owed and tells a person, instead of recording a refund that never
+ * left (before P2 the callers keyed on PAYMONGO_SECRET_KEY, which SPEC §8.5
+ * removes, and would then have recorded ledger-only refunds as COMPLETED).
+ * Works under PAYMENT_MODE=MANUAL: the kill switch stops new payments, not
+ * refunds of money already taken.
+ */
 export async function createRefund(params: {
   paymentId: string;
   amount: number; // PHP
   reason: string;
+  from: { paymentEnv?: string | null; paymongoCheckoutId?: string | null; paymongoPaymentId?: string | null };
 }): Promise<string> {
-  const { data } = await axios.post(
-    `${PAYMONGO_BASE}/refunds`,
-    {
-      data: {
-        attributes: {
-          amount: Math.round(params.amount * 100),
-          payment_id: params.paymentId,
-          reason: params.reason,
-          notes: "EngiRent Hub automated refund",
-        },
-      },
-    },
-    {
-      headers: {
-        Authorization: paymongoAuth(),
-        "Content-Type": "application/json",
-      },
-    },
-  );
-  return data.data.id as string;
+  const e = envOf(params.from);
+  if (!e) {
+    throw new GatewayUnavailable(`Cannot refund PayMongo payment ${params.paymentId}: no payment gateway is recorded for it`);
+  }
+  // An unconfigured gateway is refused inside gatewayRefund (paymentGateway.need).
+  const out = await gatewayRefund(e, { paymentId: params.paymentId, amount: params.amount, reason: params.reason });
+  return out.refundId;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,11 +78,7 @@ export const getReceivingInstitutions = async (
     if (!["instapay", "pesonet"].includes(provider)) {
       throw new ValidationError("provider must be 'instapay' or 'pesonet'");
     }
-    if (!env.PAYMONGO_SECRET_KEY) {
-      res.json({ success: true, data: { institutions: [] } });
-      return;
-    }
-
+    // Empty when no gateway is configured (listReceivingInstitutions).
     const institutions = await listReceivingInstitutions(
       provider as "instapay" | "pesonet",
     );
@@ -211,6 +204,30 @@ export const createPayment = async (
     const existingCheckoutUrl =
       (existing?.paymentDetails as { checkoutUrl?: string } | null)?.checkoutUrl ?? null;
 
+    // P2: a checkout will be needed. Check the gateway BEFORE recording
+    // anything: a sleeping one (free Render, ~1 min to wake) gets the SPEC §5
+    // message and a retry, not a silent switch to manual GCash; a gateway that
+    // reports the wrong mode fails closed into the manual fallback below.
+    let gatewayOk = false;
+    const gw = activeEnv();
+    if (gw && !existingCheckoutUrl && !existing?.paymongoCheckoutId) {
+      try {
+        await assertGatewayMode(gw);
+        gatewayOk = true;
+      } catch (gwErr) {
+        if (gwErr instanceof GatewayWaking) {
+          res.status(503).json({
+            success: false,
+            code: "PAYMENT_SERVICE_WAKING",
+            message: WAKING_MESSAGE,
+            data: { retryAfterSeconds: 10 },
+          });
+          return;
+        }
+        logger.error(`[PAYMENT] ${(gwErr as Error).message} Using the manual fallback.`);
+      }
+    }
+
     let transaction =
       existing ??
       (await prisma.transaction.create({
@@ -223,12 +240,12 @@ export const createPayment = async (
           // Naming the real rail matters in the ledger: an admin reconciling
           // a GCash inbox against a row labelled "PayMongo" has to know to
           // disbelieve the label.
-          paymentMethod: paymongoConfigured() ? "PayMongo" : "Manual",
+          paymentMethod: gatewayOk ? "PayMongo" : "Manual",
         },
       }));
 
     let checkoutUrl: string | null = existingCheckoutUrl;
-    if (!checkoutUrl && !transaction.paymongoCheckoutId && paymongoConfigured()) {
+    if (!checkoutUrl && !transaction.paymongoCheckoutId && gatewayOk) {
       try {
         const result = await createCheckoutSession({
           amount: parsedAmount,
@@ -243,6 +260,7 @@ export const createPayment = async (
           where: { id: transaction.id },
           data: {
             paymongoCheckoutId: result.checkoutId,
+            paymentEnv: result.paymentEnv,
             paymentMethod: "PayMongo",
             paymentDetails: { checkoutUrl: result.checkoutUrl } as never,
           },
@@ -263,8 +281,10 @@ export const createPayment = async (
           paymentUrl: checkoutUrl,
           paymentMode: "PAYMONGO",
           status: "AWAITING_CHECKOUT",
-          // On TEST keys PayMongo simulates the payment: no real money moves.
-          testMode: paymongoIsTestMode(),
+          // A sandbox-gateway payment is simulated: no real money moves.
+          // From the row, not the active mode: a reused sandbox checkout
+          // stays a test payment after a switch to live.
+          testMode: envOf(transaction) === "sandbox",
         },
       });
       return;
@@ -433,6 +453,62 @@ export const confirmPayment = async (
   }
 };
 
+/**
+ * POST /payments/gateway-event — a PayMongo webhook, verified and forwarded by
+ * the payment gateway on Render (SPEC-PAYMENT-GATEWAY.md §3.3, §6).
+ *
+ * Public (the gateway has no user), so it is authenticated by
+ * X-Gateway-Signature = HMAC(that mode's gateway token, `${ts}.${rawBody}`),
+ * refused when older than 5 minutes. Even a valid event decides NOTHING by
+ * itself: confirmFromCheckout asks the transaction's own gateway for the
+ * checkout and confirms only if PayMongo says paid, for exactly the
+ * transaction's amount. A sandbox event can never touch a live row. The poller
+ * does the same work every 5 s, so an event refused or lost here only means a
+ * slower confirmation. The gateway does not retry a 4xx.
+ */
+export const gatewayEvent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const raw = (req as unknown as { rawBody?: string }).rawBody;
+    const mode = req.body?.mode;
+    if (typeof raw !== "string" || (mode !== "sandbox" && mode !== "live")) {
+      res.status(400).json({ success: false, message: "Not a gateway event" });
+      return;
+    }
+    const why = verifyGatewayEvent(
+      mode,
+      raw,
+      req.header("X-Gateway-Timestamp") ?? undefined,
+      req.header("X-Gateway-Signature") ?? undefined,
+    );
+    if (why) {
+      logger.warn(`[GATEWAY-EVENT] refused (${mode}): ${why}`);
+      res.status(401).json({ success: false, message: "Invalid gateway signature" });
+      return;
+    }
+    const checkoutId = req.body?.checkoutId;
+    if (typeof checkoutId !== "string" || !checkoutId) {
+      // e.g. a payment.paid event: no checkout to look up; the poller covers it.
+      res.status(202).json({ success: true, outcome: "ignored" });
+      return;
+    }
+    const tx = await prisma.transaction.findUnique({ where: { paymongoCheckoutId: checkoutId } });
+    if (!tx) {
+      res.status(404).json({ success: false, message: "No transaction for this checkout" });
+      return;
+    }
+    if (envOf(tx) !== mode) {
+      logger.error(`[GATEWAY-EVENT] ${mode} event for ${tx.id}, which belongs to the ${envOf(tx) ?? "manual"} rail: refused`);
+      res.status(409).json({ success: false, message: "Event mode does not match the transaction" });
+      return;
+    }
+    const outcome = await confirmFromCheckout(req.app?.get("io"), tx.id, "PAYMONGO_WEBHOOK");
+    logger.info(`[GATEWAY-EVENT] ${req.body?.type ?? "event"} ${checkoutId} -> ${outcome}`);
+    res.json({ success: true, outcome });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Polled by the Phone App's checkout WebView (payment_webview_screen.dart's
 // "Check Status" button) as a fallback to the primary success/cancel
 // redirect-navigation detection.
@@ -522,13 +598,15 @@ export const refundPayment = async (
     if (transaction.status !== "COMPLETED")
       throw new ValidationError("Only completed transactions can be refunded");
 
-    // Attempt real PayMongo refund when payment ID is stored
-    if (env.PAYMONGO_SECRET_KEY && transaction.paymongoPaymentId) {
+    // A PayMongo payment is refunded through its own gateway, or not at all:
+    // a failure leaves it COMPLETED (still owed), never a ledger-only "refund".
+    if (transaction.paymongoPaymentId) {
       try {
         await createRefund({
           paymentId: transaction.paymongoPaymentId,
           amount: transaction.amount,
           reason: "others",
+          from: transaction,
         });
       } catch (pmErr) {
         logger.error("PayMongo refund failed:", pmErr);

@@ -386,6 +386,11 @@ model Transaction {
   paymentTransactionId String? @unique
   paymongoPaymentId    String? // PayMongo payment ID for refunds
   paymongoCheckoutId   String? @unique // Checkout session ID
+  /// Which payment gateway this row belongs to: "sandbox" or "live"
+  /// (SPEC-PAYMENT-GATEWAY.md §3.2). Polls, re-checks and refunds go to THAT
+  /// gateway, never the active one. Null = manual, or a pre-P2 PayMongo row
+  /// (all made with the TEST key: services/paymentGateway.ts envOf).
+  paymentEnv           String?
 
   // Payment gateway response
   paymentMethod  String @default("PayMongo")

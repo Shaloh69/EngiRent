@@ -1,4 +1,5 @@
 import express, { Application } from "express";
+import { keepRawBody } from "./utils/rawBody";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -111,7 +112,8 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "10mb" }));
+// keepRawBody: the payment gateway signs the exact bytes it sends.
+app.use(express.json({ limit: "10mb", verify: keepRawBody }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
 // Rate limiting applies uniformly, including /admin — a prior version of this
