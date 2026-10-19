@@ -28,16 +28,17 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.15.4",
-  buildNumber: 46,
-  fileName: "Engirent_Prerelease46.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-10-15",
-  sizeMb: 115.7,
+  version: "1.16.0",
+  buildNumber: 47,
+  fileName: "Engirent_Prerelease47.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-10-19",
+  sizeMb: 114.6,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Scanning the kiosk code now always reaches the face check: if the connection to the server dropped, the app reconnects first, and tells you plainly if it cannot",
-    "The screen after scanning says \"Checking with the kiosk\": the locker opens only after your face check, when you tap Open",
-    "No more \"Update your face\" for students who already did",
+    "The face check is back to a single photo, with the friendly guide and the reacting ring kept; no blinking or head turns",
+    "Fixed a black camera after switching apps and a quick double tap taking two photos",
+    "A damage case you have paid now shows \"Settled\" with the date the payment was confirmed",
+    "Everyone on 1.15.x needs this update to pass the face check",
   ],
 };
 

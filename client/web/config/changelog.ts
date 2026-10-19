@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-19",
+    version: "1.16.0",
+    tag: "release",
+    title: "Back to the one-photo face check, with the new guide; paid cases say \"Settled\"",
+    bullets: [
+      "The face check is back to a single photo: no more blinking or head turns. The blink-and-turn check (1.15.x) was too unreliable and has been taken out until it is properly tested",
+      "The friendly guide and the ring around your face stay: they tell you to move closer, centre your face or keep only one person in the picture, but they never stop you from taking the photo",
+      "Fixed a black camera after switching apps, a quick double tap taking two photos, and a few rare camera errors",
+      "A damage case you have paid (or that the deposit covered) now shows \"Settled\" with the date the payment was confirmed; the decision still says who was responsible",
+      "Everyone on 1.15.x needs this update to pass the face check at the kiosk",
+    ],
+  },
+  {
     date: "2026-10-15",
     version: "1.15.4",
     tag: "fix",
