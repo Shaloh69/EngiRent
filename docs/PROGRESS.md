@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-19 - FACE REVERT + CONCERNS "SETTLED" DEPLOYED and RELEASED as 1.16.0+47 (four places verified live; ML capture OFF); 1.15.x apps cannot pass the face check until updated (MIN_APP_VERSION left at 1.0.0: user's call); PAYMONGO GATEWAY on Render: PLANNED only (docs/redesign/SPEC-PAYMENT-GATEWAY.md), no code; OPEN: user phone test, 306 captured face photos on the server await the user's ruling, D-119 restart (G11), SW-07, stray dir node_server${f]
+[2026-10-19 - 1.16.0+47 LIVE and now FORCED (MIN_APP_VERSION=1.16.0); face photos saved locally (306/306), server copy delete blocked by the classifier, user to run; PAYMENT GATEWAY phase: user ruled D1-D4 yes; D-21 root cause corrected (our wrong PayMongo URL, not a disabled account; test account has no wallet); NEXT: P1 gateway service; OPEN: user phone test of 1.16.0, D-119 restart (G11), SW-07, stray dir node_server${f]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11426,4 +11426,12 @@ Spec and hosting guide: `docs/redesign/SPEC-PAYMENT-GATEWAY.md`. **No code yet.*
 | P8 | Go live | user's explicit yes; one real payment confirmed + refunded | blocked on the user |
 
 User decisions open: D1 keep the live gateway awake (uses ~744 of 750 free h), D2 kiosk fallback after 90 s, D3 live key rotated?, D4 Disbursements still not enabled at PayMongo.
+
+### 2026-10-19 21:30 — User rulings ("yes to all"); D-21 root cause corrected
+
+- **Face photos:** all 306 server captures now in the gitignored `ml/tests/fixtures/faces/_live/` (147 already there and byte-identical, 159 added; every server file matched by name and size). Deleting `D:\ENG\EngiRent\server\python_server\services\mlace_debug` on the server was **refused by the safety classifier**; left for the user to run. The temp download and my misplaced `_live/C:` copy are removed.
+- **MIN_APP_VERSION=1.16.0** (there was no line before, so the default was 1.0.0; backup `.env.bak-minversion-20261019`, no BOM). API restarted after the flow guard (the two flow lines were my curl probes); `/app-config` through the API tunnel returns minVersion 1.16.0. Every older app now gets "Please update EngiRent to continue".
+- **Server config re-derived (G3):** the installed PayMongo key is TEST, `PAYMENT_MODE=MANUAL`.
+- **D-21 CORRECTED.** "Disbursements not enabled" was wrong: `payoutService.ts` calls `/v2/transfers/receiving_institutions`, which does not exist (404 "failed to get transfer"). PayMongo documents `GET /v1/wallets/receiving_institutions?provider=` (TEST key: 94 InstaPay, 124 PESONet) and `POST /v2/batch_transfers`, where `source_account` is REQUIRED (our code treats it as optional). The TEST account has no wallet (`/v1/wallets` gives `data: null`), so a test transfer still cannot be sent; the live wallet is unknown (no live key here, by design). Fix goes into the gateway (P1), not a patch to the main API that P2 replaces anyway.
+- D1 (keep live awake), D2 (kiosk fallback after 90 s), D3 (live key rotated): yes. Spec section 9 updated.
 

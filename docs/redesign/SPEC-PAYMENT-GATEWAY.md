@@ -216,14 +216,13 @@ Then:
 ### 8.8 Keeping the live gateway awake (optional, see D1)
 If you choose it, add a free uptime monitor (e.g. UptimeRobot) that requests `https://engirent-pay-live.onrender.com/health` every 10 minutes. It uses about 744 of the 750 free hours, so **don't** do this for the sandbox as well. Render's docs don't forbid it; they only say that inbound traffic keeps the service awake.
 
-## 9. Decisions only you can make
+## 9. Decisions (ruled by the user 2026-10-19: "yes to all")
 
-- **D1. Keep the live gateway awake?**
-  - **Yes:** payments start instantly. It uses nearly all the free hours, and only one service can be kept awake.
-  - **No:** the first payment after 15 quiet minutes waits about a minute, with the "Connecting…" message.
-  - Recommended: **yes, for live only**, once live.
-- **D2. Do disputes paid at the kiosk wait for a waking gateway, or fall back to "pay by GCash, admin confirms" after 90 s?** Recommended: wait up to 90 s, then offer the fallback.
-- **D3. Was the live key rotated?** Production (P7) does not start until you say yes.
-- **D4. Payouts to owners stay manual** until PayMongo enables Disbursements on the account. Their API still returned 404 when last checked. That is a PayMongo account request, not code.
+- **D1 — Keep the live gateway awake: YES.** Uptime monitor on `engirent-pay-live` `/health` every 10 min, once live (8.8). The sandbox is never kept awake.
+- **D2 — Kiosk fallback: YES.** A kiosk dispute fee waits up to 90 s for a waking gateway, then offers GCash with admin confirmation.
+- **D3 — Live key rotated: YES** (user, 2026-10-19). The new live key goes ONLY into Render's environment for `engirent-pay-live`, never into the repo, the chat or the server PC.
+- **D4 — Disbursements: CORRECTED 2026-10-19.** The September finding "Disbursements not enabled (404)" came from **our own wrong URL**: `payoutService.ts` calls `GET /v2/transfers/receiving_institutions`, which does not exist. The documented call is `GET /v1/wallets/receiving_institutions?provider=instapay|pesonet`, and with the TEST key it returns 94 InstaPay and 124 PESONet banks. Creating a transfer is `POST /v2/batch_transfers` and **requires** `source_account {number, name, bic: PAEYPHM2XXX}` (our code makes it optional). In TEST mode the account has **no wallet** (`GET /v1/wallets` gives `data: null`), so a test transfer cannot be sent yet. To check: PayMongo dashboard, **Wallet**, in test and in live mode. The gateway's `/health` will report `walletReady: true/false`, so this is visible without guessing. The gateway (P1) uses the correct paths and a required source wallet (`PAYMONGO_SOURCE_ACCOUNT_NUMBER`/`_NAME` on Render).
+
+Other rulings the same day: `MIN_APP_VERSION=1.16.0` (forced update, set and verified live); the 306 captured face photos copied to the gitignored `_live` folder (all 306 verified by name and size).
 
 Sources: [Render free tier](https://render.com/docs/free), [PayMongo webhook retry logic](https://developers.paymongo.com/docs/webhook-retry-logic), [PayMongo retry a webhook delivery](https://developers.paymongo.com/docs/retry-a-webhook-delivery), [PayMongo webhook key concepts](https://docs.paymongo.com/docs/developer-tools-webhooks-key-concepts), [PayMongo test cards](https://developers.paymongo.com/docs/payment-acceptance-testing), [PayMongo webhooks / events](https://developers.paymongo.com/docs/webhooks).
