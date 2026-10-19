@@ -11410,3 +11410,20 @@ User: "the renter already paid the damage or replacement fee, why is it still up
 **Process faults, mine, caught and cleaned:** twice a bash `\$` escape turned a remote path into a literal `$...` (once the push failed outright; once both web config files went to a junk file `client\web\config$f`, found because the page still said 1.15.4, removed). Use single-quoted remote paths. **Not done, needs the user:** (1) the 306 captured face photos still on the server (`ml/face_debug`), only 147 of which were ever copied to the gitignored `_live` folder; my attempt to merge the rest locally was blocked by the safety classifier (biometric data) and left a temp download plus a misplaced copy under `_live/C:/...` on this PC; (2) whether to force 1.16.0 with MIN_APP_VERSION (1.15.x face checks now fail with 404).
 **Not verified:** nothing on a phone or at the kiosk.
 
+### 2026-10-19 — PHASE PAYMENT GATEWAY: PLANNED (user request: PayMongo as a separate service on Render's free tier, survives restarts, clear waiting messages, separate sandbox and production)
+
+Spec and hosting guide: `docs/redesign/SPEC-PAYMENT-GATEWAY.md`. **No code yet.** Repo-derived inputs: every PayMongo call site (checkout create/retrieve/expire, refunds, transfers, key check, webhook verify) moves behind the gateway; `markTransactionPaid` is already idempotent; the poller stays as the backstop. Render free facts (15 min sleep, ~1 min wake, 750 h/month, disk wiped, restart at any time) and PayMongo webhook facts (30 s timeout, 12 retries over ~2.25 h, disabled after 3 exhausted events) checked on 2026-10-19 against their docs.
+
+| # | Section | Done when | State |
+|---|---------|-----------|-------|
+| P1 | Gateway service (`server/payment_gateway/`, `render.yaml`): health, checkouts, refunds, webhook verify + forward, mode interlocks, token auth | unit tests, guards mutation-checked | not started |
+| P2 | Main API uses the gateway; `paymentEnv` column; poller per mode; `/payments/gateway-event` (verify, then re-check with PayMongo); pre-wake | Node tests + payment e2e vs a local sandbox gateway | not started |
+| P3 | `engirent-pay-sandbox` on Render + test-mode webhook | test payment confirms via webhook alone AND via poller alone | not started (needs the user's Render account) |
+| P4 | Restart drills (API restart mid-payment, sleeping gateway, tunnel rotation) | each confirms; timings recorded | not started |
+| P5 | App/kiosk/admin messages + TEST MODE strip + admin "Payment service" card | rendered and looked at; sleeping state seen on a phone | not started |
+| P6 | Release | four places verified | not started |
+| P7 | `engirent-pay-live` with a ROTATED live key, still on sandbox | /health live; a 1-peso checkout created and expired unpaid | blocked on D3 (key rotation) |
+| P8 | Go live | user's explicit yes; one real payment confirmed + refunded | blocked on the user |
+
+User decisions open: D1 keep the live gateway awake (uses ~744 of 750 free h), D2 kiosk fallback after 90 s, D3 live key rotated?, D4 Disbursements still not enabled at PayMongo.
+
