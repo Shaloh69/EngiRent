@@ -127,8 +127,8 @@ class _RentalConcernSectionState extends State<RentalConcernSection> {
                         style: TextStyle(fontSize: 12, color: p.muted)),
                     const SizedBox(height: 6),
                     StatusPill(
-                      label: ConcernText.status(c['status'] as String, mine: c['mine'] == true),
-                      color: ConcernText.statusColor(c['status'] as String),
+                      label: ConcernText.status(c['status'] as String, mine: c['mine'] == true, settled: c['settled'] == true),
+                      color: ConcernText.statusColor(c['status'] as String, settled: c['settled'] == true),
                       dense: true,
                     ),
                   ]),

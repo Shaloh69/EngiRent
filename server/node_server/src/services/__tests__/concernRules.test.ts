@@ -6,9 +6,31 @@ import {
   evidenceProblems,
   evidenceRequirement,
   explainDecision,
+  isSettled,
   reportWindows,
   WindowFacts,
 } from "../concernRules";
+
+describe("isSettled (upheld stays upheld; the case is finished once nothing is owed)", () => {
+  const paidAt = new Date("2026-10-15T15:18:43Z");
+  const dmg = (status: string, amountOwed: number | null, owedPaidAt: Date | null) => ({ kind: "DAMAGE_ON_RETURN", status, amountOwed, owedPaidAt });
+  it("an upheld damage case whose remainder was paid and confirmed is settled (ER-CON-2026-0002)", () => {
+    expect(isSettled(dmg("UPHELD", 200, paidAt))).toBe(true);
+    expect(isSettled(dmg("PARTLY_UPHELD", 50, paidAt))).toBe(true);
+  });
+  it("covered entirely by the deposit is settled at the decision", () => {
+    expect(isSettled(dmg("UPHELD", 0, null))).toBe(true);
+    expect(isSettled(dmg("UPHELD", null, null))).toBe(true);
+  });
+  it("still owed, or a payment sent but not yet confirmed, is not settled", () => {
+    expect(isSettled(dmg("UPHELD", 200, null))).toBe(false);
+  });
+  it("open, not upheld and other kinds are never called settled", () => {
+    expect(isSettled(dmg("UNDER_REVIEW", 0, null))).toBe(false);
+    expect(isSettled(dmg("NOT_UPHELD", 0, null))).toBe(false);
+    expect(isSettled({ kind: "DEFECT_ON_RECEIPT", status: "UPHELD", amountOwed: null, owedPaidAt: null })).toBe(false);
+  });
+});
 
 /** Concerns v2 rules (user rulings 2026-10-13). These pin the windows and every peso. */
 

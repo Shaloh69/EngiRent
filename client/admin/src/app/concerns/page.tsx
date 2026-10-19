@@ -13,8 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatValue } from "@/components/ui/UnknownValue";
 import { roleColor } from "../theme";
 import {
-  CONCERN_STATUS_COLOR,
-  CONCERN_STATUS_LABEL,
+  concernBadge,
   ConcernListRow,
   countdown,
   KIND_EXPLAINED,
@@ -199,8 +198,8 @@ export default function ConcernsPage() {
                   </Text>
                 </Table.Td>
                 <Table.Td>
-                  <Badge color={CONCERN_STATUS_COLOR[r.status]} variant="light">
-                    {CONCERN_STATUS_LABEL[r.status]}
+                  <Badge color={concernBadge(r.status, r.settled).color} variant="light">
+                    {concernBadge(r.status, r.settled).label}
                   </Badge>
                 </Table.Td>
                 <Table.Td>

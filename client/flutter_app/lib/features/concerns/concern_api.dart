@@ -38,7 +38,12 @@ class ConcernApi {
     return r.statusCode == 200 ? _data(r.body) : null;
   }
 
+  /// Tests render the real case screen from a recorded case through this.
+  @visibleForTesting
+  static Future<Map<String, dynamic>> Function(String id)? getOverride;
+
   static Future<Map<String, dynamic>> get(String id) async {
+    if (getOverride != null) return getOverride!(id);
     final r = await _api.get('/concerns/$id');
     if (r.statusCode != 200) throw Exception(message(r.body, 'Could not load the case'));
     return _data(r.body)!;
@@ -138,7 +143,13 @@ class ConcernText {
 
   /// [mine]: the viewer reported this case. The one being reported is the
   /// "other student", so they must not be told they are waiting for themselves.
-  static String status(String s, {bool mine = true}) => switch (s) {
+  ///
+  /// [settled]: the server's `settled` (a decided damage case with nothing left
+  /// to pay). The ruling stays "upheld", but the pill leads with "Settled" so a
+  /// renter who has paid is not left wondering why it is still upheld.
+  static String status(String s, {bool mine = true, bool settled = false}) => switch (s) {
+        'UPHELD' when settled => 'Settled · upheld',
+        'PARTLY_UPHELD' when settled => 'Settled · partly upheld',
         'AWAITING_RESPONSE' => mine ? 'Waiting for the other student' : 'Waiting for your answer',
         'UNDER_REVIEW' => 'With an admin',
         'UPHELD' => 'Decided: upheld',
@@ -148,7 +159,8 @@ class ConcernText {
         _ => s,
       };
 
-  static Color statusColor(String s) => switch (s) {
+  static Color statusColor(String s, {bool settled = false}) => switch (s) {
+        'UPHELD' || 'PARTLY_UPHELD' when settled => AppColors.success,
         'AWAITING_RESPONSE' => AppColors.info,
         'UNDER_REVIEW' => AppColors.warning,
         'UPHELD' => AppColors.error,

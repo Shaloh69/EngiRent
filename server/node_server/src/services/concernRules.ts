@@ -208,6 +208,19 @@ export function decisionStatus(pct: number): "UPHELD" | "PARTLY_UPHELD" | "NOT_U
   return p === 0 ? "NOT_UPHELD" : p === 100 ? "UPHELD" : "PARTLY_UPHELD";
 }
 
+/**
+ * A decided damage case with nothing left to pay: the deposit covered it, or
+ * the renter paid the rest and staff confirmed it. The ruling ("upheld") never
+ * changes — it records who was responsible — but the case is finished, and the
+ * screens must say so (2026-10-15: a renter who had paid still saw a red
+ * "Decided: upheld" and "Still owed … (paid)", and asked why it was upheld).
+ */
+export function isSettled(c: { kind: string; status: string; amountOwed: number | null; owedPaidAt: Date | string | null }): boolean {
+  if (c.kind !== "DAMAGE_ON_RETURN") return false;
+  if (c.status !== "UPHELD" && c.status !== "PARTLY_UPHELD") return false;
+  return (c.amountOwed ?? 0) <= 0 || c.owedPaidAt != null;
+}
+
 export const KIND_TITLE: Record<ConcernKindName, string> = {
   DEFECT_ON_RECEIPT: "Problem with the item received",
   DAMAGE_ON_RETURN: "Damage found after the return",

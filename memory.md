@@ -2732,3 +2732,10 @@ No outage. **Planned** API restarts, each after checking the log for a live kios
 - **Open:** user's phone test (check left/right first), anti-spoof false rejects (3/17), real-photo threshold tuning, kiosk run F5 (G11), thesis cases F6, delete the junk dir `D:\ENG\EngiRent\server
 ode_server${f` on the server.
 
+## 2026-10-19 — Face liveness REVERTED (branch `face-liveness`); concerns "settled" fix; neither deployed yet
+
+- User ruling 2026-10-15: back to the one-photo face check, keep the new look (mascot coach + reactive ring, coaching only) and the scan fixes; the liveness work lives on branch `face-liveness`. User verdict: "too buggy and needs better bug testing and implementation" -> every new guard now has a test shown to fail when the guard is removed; the face screen is tested end to end on a fake `CameraPlatform` (`test/face_coach_camera_test.dart`, `test/face_verify_screen_test.dart`).
+- DB keeps the 5 face-enrolment columns (unused) so `prisma db push` never drops them.
+- Concerns: UPHELD is the ruling and never changes; a paid (or deposit-covered) damage case is `settled` (server `isSettled`), shown as "Settled · upheld". ER-CON-2026-0002 is the real paid case.
+- Live server still runs the liveness build and test capture (`ml/face_debug.on`) until the revert is deployed (PROGRESS.md R5/R6).
+

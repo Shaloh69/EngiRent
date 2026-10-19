@@ -32,8 +32,7 @@ import api from "@/lib/api";
 import { useAdminRefetch } from "@/lib/useAdminSocket";
 import { roleColor } from "../../theme";
 import {
-  CONCERN_STATUS_COLOR,
-  CONCERN_STATUS_LABEL,
+  concernBadge,
   ConcernDetail,
   ConcernEvidenceRow,
   ConcernPreview,
@@ -106,8 +105,8 @@ export default function ConcernCasePage() {
           <div>
             <Group gap="sm">
               <Title order={2}>{c.referenceNo}</Title>
-              <Badge size="lg" color={CONCERN_STATUS_COLOR[c.status]} variant="light">
-                {CONCERN_STATUS_LABEL[c.status]}
+              <Badge size="lg" color={concernBadge(c.status, c.settled).color} variant="light">
+                {concernBadge(c.status, c.settled).label}
               </Badge>
               {c.repeatFlag && (
                 <Badge size="lg" color={roleColor.cta} variant="light" leftSection={<Repeat size={12} />}>

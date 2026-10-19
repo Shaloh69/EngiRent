@@ -32,6 +32,7 @@ import {
   sniffEvidence,
   submitOwedPayment,
   confirmOwedPayment,
+  concernForParty,
 } from "../concernService";
 
 const db = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -267,5 +268,61 @@ describe("paying what is owed", () => {
     db.concern.findFirst.mockResolvedValue({ id: "c1", referenceNo: "ER-CON-2026-0001", amountOwed: 500, rentalId: "rental-1" } as never);
     await expect(owedConcernFor(renter.id)).resolves.toMatchObject({ amountOwed: 500 });
     expect(db.concern.findFirst.mock.calls[0][0]!.where).toMatchObject({ respondentId: renter.id, owedPaidAt: null });
+  });
+
+  // 2026-10-15, ER-CON-2026-0002: the renter paid, staff confirmed, and the case
+  // still read as a red "upheld" with nothing saying it was finished.
+  describe("what the case says after the decision", () => {
+    const paidAt = new Date("2026-10-15T15:18:43Z");
+    const view = (over: object) => {
+      db.concern.findUnique.mockResolvedValue({
+        ...owed,
+        reporterId: owner.id,
+        reporterParty: "OWNER",
+        rental: { ...rentalRow(), item: { title: "Calculator" } },
+        evidence: [],
+        events: [],
+        decidedAt: now,
+        ...over,
+      } as never);
+      db.transaction.findFirst.mockResolvedValue(null as never);
+    };
+
+    it("paid and confirmed: settled for both students, no payment asked, the ruling explained", async () => {
+      view({ amountOwed: 200, owedPaidAt: paidAt });
+      const r = await concernForParty("c1", renter.id);
+      expect(r.status).toBe("UPHELD");
+      expect(r.settled).toBe(true);
+      expect(r.payment).toBeNull();
+      expect(r.nextStep).toMatch(/^Settled\. Your ₱200\.00 payment was confirmed/);
+      expect(r.nextStep).toMatch(/limit on your account is lifted/);
+      expect(r.nextStep).toMatch(/stays on record as upheld/);
+      const o = await concernForParty("c1", owner.id);
+      expect(o.settled).toBe(true);
+      expect(o.nextStep).toMatch(/^Settled\. The renter paid the ₱200\.00/);
+    });
+
+    it("still owed: not settled, and the renter is asked to pay", async () => {
+      view({ amountOwed: 200, owedPaidAt: null });
+      const r = await concernForParty("c1", renter.id);
+      expect(r.settled).toBe(false);
+      expect(r.payment).not.toBeNull();
+      expect(r.nextStep).toMatch(/^Pay the ₱200\.00 you owe/);
+    });
+
+    it("payment sent, not yet confirmed: not settled, told staff are confirming", async () => {
+      view({ amountOwed: 200, owedPaidAt: null });
+      db.transaction.findFirst.mockResolvedValue({ id: "t-pay", amount: 200 } as never);
+      const r = await concernForParty("c1", renter.id);
+      expect(r.settled).toBe(false);
+      expect(r.nextStep).toMatch(/Your payment was sent/);
+    });
+
+    it("covered by the deposit: settled from the start", async () => {
+      view({ amountOwed: 0, owedPaidAt: null });
+      const r = await concernForParty("c1", renter.id);
+      expect(r.settled).toBe(true);
+      expect(r.nextStep).toMatch(/covered by the deposit/);
+    });
   });
 });

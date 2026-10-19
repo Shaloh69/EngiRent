@@ -29,6 +29,17 @@ export const CONCERN_STATUS_COLOR: Record<ConcernStatus, string> = {
   CLOSED: "gray",
 };
 
+/**
+ * The badge for a case. `settled` comes from the server (a decided damage case
+ * with nothing left to pay): the ruling stays upheld, but the case is finished.
+ */
+export function concernBadge(status: ConcernStatus, settled?: boolean): { label: string; color: string } {
+  if (settled && (status === "UPHELD" || status === "PARTLY_UPHELD")) {
+    return { label: `Settled · ${CONCERN_STATUS_LABEL[status].toLowerCase()}`, color: "emerald" };
+  }
+  return { label: CONCERN_STATUS_LABEL[status], color: CONCERN_STATUS_COLOR[status] };
+}
+
 /** What each kind means, in one line, for the list and the case header. */
 export const KIND_EXPLAINED: Record<ConcernKind, string> = {
   DEFECT_ON_RECEIPT: "The renter says the item was broken or incomplete when they picked it up.",
@@ -60,6 +71,7 @@ export interface ConcernListRow {
   videos: number;
   amountOwed: number | null;
   owedPaidAt: string | null;
+  settled?: boolean;
   repeatFlag: boolean;
   createdAt: string;
   decidedAt: string | null;
@@ -123,6 +135,7 @@ export interface ConcernDetail {
   fromDeposit: number | null;
   amountOwed: number | null;
   owedPaidAt: string | null;
+  settled?: boolean;
   decisionNote: string | null;
   repeatFlag: boolean;
   rental: {

@@ -26,6 +26,7 @@ import {
   evidenceProblems,
   evidenceRequirement,
   explainDecision,
+  isSettled,
   reportWindows,
   clampPct,
 } from "./concernRules";
@@ -208,6 +209,7 @@ export async function reportOptions(rentalId: string, userId: string, now = new 
       ...c,
       mine: c.reporterId === userId,
       title: KIND_TITLE[c.kind as ConcernKindName],
+      settled: isSettled(c),
     })),
   };
 }
@@ -396,6 +398,17 @@ function nextStep(
     case "CLOSED":
       return "This concern was settled together with the return check.";
     default:
+      if (isSettled(c)) {
+        const paid = (c.amountOwed ?? 0) > 0 && c.owedPaidAt;
+        if (viewer === "RESPONDENT") {
+          return paid
+            ? `Settled. Your ${peso(c.amountOwed ?? 0)} payment was confirmed on ${when(c.owedPaidAt as Date)} and the limit on your account is lifted. Nothing more to do. The decision stays on record as upheld: it says who was responsible for the damage, not that anything is still owed.`
+            : "Settled. The cost was covered by the deposit. Nothing more to do. The decision stays on record as upheld: it says who was responsible for the damage, not that anything is still owed.";
+        }
+        return paid
+          ? `Settled. The renter paid the ${peso(c.amountOwed ?? 0)} they owed (confirmed ${when(c.owedPaidAt as Date)}); staff pay it out to you. Nothing more to do.`
+          : "Settled. The cost was taken from the renter's deposit and paid to you. Nothing more to do.";
+      }
       if ((c.amountOwed ?? 0) > 0 && !c.owedPaidAt) {
         // Sent but not yet confirmed: still "pay what you owe" read as if the
         // payment had been lost (seen on the emulator 2026-10-13).
@@ -455,6 +468,7 @@ export async function concernForParty(concernId: string, userId: string) {
     canRespond: role === "RESPONDENT" && !c.respondedAt && OPEN_STATUSES.includes(c.status as (typeof OPEN_STATUSES)[number]),
     respondRequirement: evidenceRequirement(c.kind as ConcernKindName, "RESPONDENT"),
     nextStep: nextStep(c, role, pendingPayment != null),
+    settled: isSettled(c),
     decision: c.decidedAt
       ? {
           decidedAt: c.decidedAt,
@@ -527,6 +541,7 @@ export async function adminListConcerns(filter: "open" | "decided" | "all" = "op
     videos: c.evidence.filter((e) => e.type === "VIDEO").length,
     amountOwed: c.amountOwed,
     owedPaidAt: c.owedPaidAt,
+    settled: isSettled(c),
     repeatFlag: c.repeatFlag,
     createdAt: c.createdAt,
     decidedAt: c.decidedAt,
@@ -637,6 +652,7 @@ export async function adminGetConcern(concernId: string) {
     },
     preview,
     pendingPayment,
+    settled: isSettled(c),
     priorUpheldAgainstRespondent: priorUpheld,
   };
 }

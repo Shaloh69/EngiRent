@@ -144,7 +144,10 @@ class _ConcernCaseScreenState extends State<ConcernCaseScreen> {
             // into a narrow column.
             Text(c['title'] as String, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
-            StatusPill(label: ConcernText.status(status, mine: mineFirst), color: ConcernText.statusColor(status)),
+            StatusPill(
+              label: ConcernText.status(status, mine: mineFirst, settled: c['settled'] == true),
+              color: ConcernText.statusColor(status, settled: c['settled'] == true),
+            ),
             const SizedBox(height: 6),
             Text('${c['itemTitle']} · reported ${ConcernText.when((events.isNotEmpty ? events.first['at'] : null) as String?)}',
                 style: TextStyle(color: p.muted)),
@@ -311,7 +314,13 @@ class _DecisionCard extends StatelessWidget {
         MapEntry('Damage assessed', ConcernText.peso(d['assessedAmount'] as num?)),
         MapEntry('Taken from the deposit', ConcernText.peso(d['fromDeposit'] as num?)),
         if (((d['amountOwed'] as num?) ?? 0) > 0)
-          MapEntry('Still owed by the renter', '${ConcernText.peso(d['amountOwed'] as num?)}${d['owedPaidAt'] != null ? ' (paid)' : ''}'),
+          if (d['owedPaidAt'] != null) ...[
+            // Two short rows: InfoRow gives its value full width, so one long
+            // "₱200.00 · Oct 15, 11:18 PM" squeezed the label to a column.
+            MapEntry('Paid by the renter', ConcernText.peso(d['amountOwed'] as num?)),
+            MapEntry('Payment confirmed', ConcernText.when(d['owedPaidAt'] as String?)),
+          ] else
+            MapEntry('Still owed by the renter', ConcernText.peso(d['amountOwed'] as num?)),
       ],
     ];
     return AppCard(
@@ -319,7 +328,10 @@ class _DecisionCard extends StatelessWidget {
         Row(children: [
           const Icon(Icons.gavel_rounded, size: 18),
           const SizedBox(width: 8),
-          Text('The decision · ${ConcernText.when(d['decidedAt'] as String?)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+          Expanded(
+            child: Text('The decision · ${ConcernText.when(d['decidedAt'] as String?)}',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
         ]),
         const SizedBox(height: 8),
         for (final r in rows) InfoRow(label: r.key, value: r.value),
