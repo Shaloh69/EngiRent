@@ -2739,3 +2739,12 @@ ode_server${f` on the server.
 - Concerns: UPHELD is the ruling and never changes; a paid (or deposit-covered) damage case is `settled` (server `isSettled`), shown as "Settled · upheld". ER-CON-2026-0002 is the real paid case.
 - Live server still runs the liveness build and test capture (`ml/face_debug.on`) until the revert is deployed (PROGRESS.md R5/R6).
 
+
+## 2026-10-19 — Payment gateway P2: the main API talks to PayMongo ONLY through the gateway (built + e2e-tested, NOT deployed)
+
+- `services/paymentGateway.ts` is the one client. `PAYMENT_GATEWAY=sandbox|live` + `PAYMENT_GATEWAY_{SANDBOX,LIVE}_{URL,TOKEN}`; `PAYMENT_MODE=MANUAL` still the kill switch (no new payment on any gateway; the API still starts; existing gateway payments are still polled/refunded on their own gateway).
+- `Transaction.paymentEnv` decides which gateway a row talks to (poll, re-check, expire, refund). Null + a PayMongo id = pre-P2 = sandbox (only the TEST key was ever installed). **The live DB does not have the column yet**: push it (ADD only, check the target first) when P2 is deployed.
+- `confirmFromCheckout` is the one confirm rule (paid AND same amount, own gateway), used by the poller and `POST /payments/gateway-event` (HMAC over the raw bytes, 5-min window).
+- Refunds/payouts are decided by HOW the money was paid, not by a key on the server: once `PAYMONGO_SECRET_KEY` leaves `.env` nothing records a refund/payout as done without money. Payouts are automatic only on the active gateway with `/status walletReady=true`; otherwise OWNER_PAYOUT PENDING "(staff pay out)".
+- PayMongo refuses a refund before the funds settle (`available_balance_insufficient`); our side fails closed.
+- e2e: `scripts/e2e-payment-gateway.mjs` (needs a running API + gateway + someone paying a TEST card). Scratch env kept on the server: `D:\ENG\p2-scratch`, DB `engirent_p2scratch`.
