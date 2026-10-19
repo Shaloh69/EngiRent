@@ -1,102 +1,68 @@
+# Render Blueprint — ONLY the PayMongo payment gateway (docs/redesign/SPEC-PAYMENT-GATEWAY.md).
+# The rest of EngiRent runs on the self-hosted server PC, not on Render.
+# The old whole-stack blueprint is in docs/predated/deploy/render-2026-08-old-stack.yaml.
+#
+# THIS REPO IS PUBLIC: no secret goes in this file. Every value marked `sync: false`
+# is typed into the Render dashboard (hosting guide, SPEC section 8).
 services:
-  # ─── Node.js / Express API ───────────────────────────────────────────────────
+  # ─── Sandbox (TEST keys, no real money). Allowed to sleep. ───────────────────
   - type: web
-    name: engirent-api
+    name: engirent-pay-sandbox
     runtime: node
-    rootDir: server/node_server
-    region: singapore
     plan: free
-    buildCommand: npm install --production=false && npm run build
+    region: singapore
+    rootDir: server/payment_gateway
+    buildCommand: npm ci && npm run build
     startCommand: npm start
-    preDeployCommand: npx prisma db push && npx prisma db seed
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        sync: false                  # Set manually in Render dashboard
-      - key: JWT_SECRET
-        sync: false                  # Set manually in Render dashboard
-      - key: JWT_EXPIRE
-        value: 7d
-      - key: JWT_REFRESH_SECRET
-        sync: false                  # Set manually in Render dashboard
-      - key: JWT_REFRESH_EXPIRE
-        value: 30d
-      - key: KIOSK_SHARED_SECRET
-        sync: false                  # Set manually — must match the Pi's KIOSK_SHARED_SECRET
-      - key: SUPABASE_URL
-        sync: false                  # Set manually in Render dashboard
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false                  # Set manually in Render dashboard
-      - key: SUPABASE_STORAGE_BUCKET
-        value: media
-      - key: ML_SERVICE_URL
-        value: https://engirent-ml.onrender.com
-      - key: ML_SERVICE_API_KEY
-        sync: false                  # Set manually — must match the ML service's ML_API_KEY
-      - key: CLIENT_WEB_URL
-        value: https://engirent-web.onrender.com
-      - key: CLIENT_MOBILE_URL
-        value: https://engirent-web.onrender.com
-      - key: CLIENT_ADMIN_URL
-        value: https://engirent-admin.onrender.com
-      - key: RATE_LIMIT_WINDOW_MS
-        value: "900000"
-      - key: RATE_LIMIT_MAX_REQUESTS
-        value: "100"
-      - key: LOG_LEVEL
-        value: info
-      - key: ADMIN_EMAIL
-        sync: false                  # Set manually in Render dashboard
-      - key: ADMIN_PASSWORD
-        sync: false                  # Set manually in Render dashboard
-      - key: ADMIN_STUDENT_ID
-        sync: false                  # Set manually in Render dashboard (optional)
+      - key: PAYMENT_ENV
+        value: sandbox
+      - key: NODE_VERSION
+        value: "22"
+      - key: ENDPOINT_GIST_URL
+        value: https://gist.githubusercontent.com/Shaloh69/c9c8b972eb40e09fb42e726668404045/raw/engirent-endpoint.json
+      - key: PAYMONGO_SECRET_KEY
+        sync: false            # sk_test_... (the gateway refuses to start with anything else)
+      - key: PAYMONGO_WEBHOOK_SECRET
+        sync: false            # whsk_... from the TEST-mode webhook (guide 8.4); empty until then
+      - key: GATEWAY_TOKEN
+        sync: false            # 32+ random chars; the same value goes in the main API's PAYMENT_GATEWAY_SANDBOX_TOKEN
+      - key: PAYMONGO_SOURCE_ACCOUNT_NUMBER
+        sync: false            # optional: the TEST wallet, for test transfers
+      - key: PAYMONGO_SOURCE_ACCOUNT_NAME
+        sync: false
 
-  # ─── Next.js Admin Console ───────────────────────────────────────────────────
+  # ─── Production (LIVE keys, real money). Kept awake by an uptime monitor (D1). ─
   - type: web
-    name: engirent-admin
+    name: engirent-pay-live
     runtime: node
-    rootDir: client/admin
-    region: singapore
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: NEXT_PUBLIC_API_URL
-        value: https://engirent-api.onrender.com/api/v1
-
-  # ─── Next.js Public Website ──────────────────────────────────────────────────
-  - type: web
-    name: engirent-web
-    runtime: node
-    rootDir: client/web
     region: singapore
-    plan: free
-    buildCommand: npm install && npm run build
+    rootDir: server/payment_gateway
+    buildCommand: npm ci && npm run build
     startCommand: npm start
+    healthCheckPath: /health
+    # A code change must never reach the real-money gateway unreviewed:
+    # deploy it by hand (Render dashboard -> Manual Deploy) after sandbox passes.
+    autoDeploy: false
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: NEXT_PUBLIC_API_URL
-        value: https://engirent-api.onrender.com/api/v1
-
-  # ─── Python ML Verification Service ─────────────────────────────────────────
-  - type: web
-    name: engirent-ml
-    runtime: docker
-    dockerfilePath: server/python_server/services/ml/Dockerfile
-    dockerContext: server/python_server/services/ml
-    region: singapore
-    plan: starter
-    healthCheckPath: /
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: ML_API_KEY
-        sync: false                  # Set manually — must match the API's ML_SERVICE_API_KEY
-      - key: ML_ALLOWED_ORIGINS
-        value: ""                    # Server-to-server only; add browser origins if ever needed
+      - key: PAYMENT_ENV
+        value: live
+      - key: NODE_VERSION
+        value: "22"
+      - key: ENDPOINT_GIST_URL
+        value: https://gist.githubusercontent.com/Shaloh69/c9c8b972eb40e09fb42e726668404045/raw/engirent-endpoint.json
+      - key: ALLOW_LIVE
+        sync: false            # type "yes" only when going live (guide 8.7); without it the service refuses to start
+      - key: PAYMONGO_SECRET_KEY
+        sync: false            # the ROTATED sk_live_... key; only here, nowhere else
+      - key: PAYMONGO_WEBHOOK_SECRET
+        sync: false            # whsk_... from the LIVE-mode webhook
+      - key: GATEWAY_TOKEN
+        sync: false            # a DIFFERENT 32+ char value from sandbox
+      - key: PAYMONGO_SOURCE_ACCOUNT_NUMBER
+        sync: false            # the platform's PayMongo wallet, for owner payouts
+      - key: PAYMONGO_SOURCE_ACCOUNT_NAME
+        sync: false

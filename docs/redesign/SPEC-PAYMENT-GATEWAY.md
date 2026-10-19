@@ -166,6 +166,7 @@ Everything here uses the free plan. You need the GitHub account that owns the re
    | `ENDPOINT_GIST_URL` | the raw URL of the `engirent-endpoint.json` gist (the blueprint fills it in) |
 
 4. Click **Apply**. Wait for **Live**, then open `https://engirent-pay-sandbox.onrender.com/health`. It should say `"mode":"sandbox","keyMode":"test"`.
+5. For `engirent-pay-live`, Render asks for the same secrets plus `ALLOW_LIVE`. Until you go live (8.7), leave `ALLOW_LIVE` empty and put any placeholder in the key fields. The service then **refuses to start**: Render shows it as failed, which is correct and costs nothing. Its **Auto-Deploy is off** on purpose: after a code change that passed on sandbox, deploy it with **Manual Deploy → Deploy latest commit**.
 
 ### 8.4 Register the sandbox webhook in PayMongo
 1. PayMongo dashboard, **Test mode** → **Developers → Webhooks → Create webhook**.

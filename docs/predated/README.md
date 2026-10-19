@@ -88,3 +88,12 @@ that target. Flagged here rather than done silently.
 This left `docs/audit/` empty; `Implemented.md` stays at the repo root, which
 is where `docs/redesign/FOLDER-STRUCTURE.md` places it and where the kickoff
 prompt's read list points.
+
+### `deploy/render-2026-08-old-stack.yaml`
+
+- **What it was:** the repo-root `render.yaml` that deployed the whole stack to Render (`engirent-api`, `engirent-admin`, `engirent-web`, and `engirent-ml` on a paid starter plan).
+- **Date it reflects:** August 2026, before the move to the self-hosted server PC (`docs/planning/03-revamp-master.md`).
+- **Superseded by:** the new root `render.yaml` (2026-10-19), which defines only the PayMongo gateway services `engirent-pay-sandbox` and `engirent-pay-live` (`docs/redesign/SPEC-PAYMENT-GATEWAY.md`).
+- **Why moved, not left:** Render's Blueprint flow reads the root `render.yaml`; leaving it there would have offered to re-create all four old services, one of them paid.
+- **Still true:** nothing operational; the env var names show what the API needed at the time.
+

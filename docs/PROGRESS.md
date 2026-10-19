@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-19 - 1.16.0+47 LIVE and now FORCED (MIN_APP_VERSION=1.16.0); face photos saved locally (306/306), server copy delete blocked by the classifier, user to run; PAYMENT GATEWAY phase: user ruled D1-D4 yes; D-21 root cause corrected (our wrong PayMongo URL, not a disabled account; test account has no wallet); NEXT: P1 gateway service; OPEN: user phone test of 1.16.0, D-119 restart (G11), SW-07, stray dir node_server${f]
+[2026-10-19 - PAYMENT GATEWAY P1 DONE (server/payment_gateway, root render.yaml; not deployed: needs the user's Render account, guide = SPEC section 8); 1.16.0+47 live and FORCED; D-21 corrected (our wrong PayMongo URL); NEXT: P2 main API uses the gateway, AFTER a /clear (G5: symptoms 3 and 5 seen); OPEN: user to delete server face_debug folder (classifier refused), user phone test of 1.16.0, D-119 restart (G11), SW-07, stray dir node_server${f]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11416,7 +11416,7 @@ Spec and hosting guide: `docs/redesign/SPEC-PAYMENT-GATEWAY.md`. **No code yet.*
 
 | # | Section | Done when | State |
 |---|---------|-----------|-------|
-| P1 | Gateway service (`server/payment_gateway/`, `render.yaml`): health, checkouts, refunds, webhook verify + forward, mode interlocks, token auth | unit tests, guards mutation-checked | not started |
+| P1 | Gateway service (`server/payment_gateway/`, `render.yaml`): health, checkouts, refunds, webhook verify + forward, mode interlocks, token auth | unit tests, guards mutation-checked | **Done 2026-10-19** (52 tests, 21/21 mutations killed; real sandbox round trip on the server PC) |
 | P2 | Main API uses the gateway; `paymentEnv` column; poller per mode; `/payments/gateway-event` (verify, then re-check with PayMongo); pre-wake | Node tests + payment e2e vs a local sandbox gateway | not started |
 | P3 | `engirent-pay-sandbox` on Render + test-mode webhook | test payment confirms via webhook alone AND via poller alone | not started (needs the user's Render account) |
 | P4 | Restart drills (API restart mid-payment, sleeping gateway, tunnel rotation) | each confirms; timings recorded | not started |
@@ -11434,4 +11434,14 @@ User decisions open: D1 keep the live gateway awake (uses ~744 of 750 free h), D
 - **Server config re-derived (G3):** the installed PayMongo key is TEST, `PAYMENT_MODE=MANUAL`.
 - **D-21 CORRECTED.** "Disbursements not enabled" was wrong: `payoutService.ts` calls `/v2/transfers/receiving_institutions`, which does not exist (404 "failed to get transfer"). PayMongo documents `GET /v1/wallets/receiving_institutions?provider=` (TEST key: 94 InstaPay, 124 PESONet) and `POST /v2/batch_transfers`, where `source_account` is REQUIRED (our code treats it as optional). The TEST account has no wallet (`/v1/wallets` gives `data: null`), so a test transfer still cannot be sent; the live wallet is unknown (no live key here, by design). Fix goes into the gateway (P1), not a patch to the main API that P2 replaces anyway.
 - D1 (keep live awake), D2 (kiosk fallback after 90 s), D3 (live key rotated): yes. Spec section 9 updated.
+
+### 2026-10-19 22:00 — P1 DONE: the payment gateway service
+
+`server/payment_gateway/` (Express + TypeScript, stateless). Endpoints as SPEC §3.3: `/health` (public, no secrets), `/status` (wallet ready?, main API address), checkouts (create / read / expire), refunds, transfers (institutions + send, refused with 409 until a source wallet is configured), `/webhook` (raw-body signature check with ONLY this mode's field: `te` sandbox, `li` live; answers 200 at once, then forwards; a signed event whose livemode does not match the gateway is not forwarded). Forward to `<gist api>/payments/gateway-event` signed HMAC(GATEWAY_TOKEN, `ts.body`); gist cached 5 min, re-read once after a network failure (rotated tunnel); 4xx not retried. Startup interlocks: sandbox needs `sk_test_`, live needs `sk_live_` + `ALLOW_LIVE=yes`, token >= 32 chars, a way to reach the main API.
+**Verification:** 52 tests; **21/21 guard mutations killed** by a failing assertion (3 first came back as compile errors or survivors and were fixed: an empty-secret test was missing; two mutations rewritten type-valid). Built process run locally: refuses a live key in sandbox and live without ALLOW_LIVE (exit 1); health, 401 without token, 400 bad amount, 503 webhook without secret. **Real PayMongo sandbox round trip on the server PC** (gateway on a local port, the TEST key read straight from the server `.env`, never printed): health sandbox/test, walletReady false (matches D-21 finding), 94 InstaPay institutions, a ₱1 test checkout created on checkout.paymongo.com, read back open/₱1/livemode false, expired, read back expired; refund of a non-existent payment -> 502 with PayMongo's own 404; no key in the gateway logs; scratch folder removed.
+**Root `render.yaml` replaced** (only `engirent-pay-sandbox` and `engirent-pay-live`, every secret `sync: false`, live has autoDeploy off); the old whole-stack blueprint moved to `docs/predated/deploy/` with banner + index line (Render's Blueprint flow would otherwise have offered to re-create all four old services, one on a paid plan).
+**Not done / not verified:** nothing deployed to Render (needs the user's account; guide = SPEC §8); the main API does not use the gateway yet (P2); the webhook path has only been tested with signed fixtures, not a real PayMongo delivery (P3).
+
+**G5 six-symptom check at the P1 boundary — TWO SYMPTOMS, so P2 starts after a /clear:**
+1 re-deriving: minor (re-read a few files already read). 2 vaguer summaries: no. **3 losing the rules: YES** — the bash `\$var` remote-path mistake happened a THIRD time (`D:\ENG\gw-check$w`, found and removed) after I had written the lesson down at the second; and one response opened with a stale status line. 4 drifting toward agreement: no (D-21's recorded cause was checked and overturned). **5 batching: YES** — revert, concerns fix, release, plan and P1 in one session while 1.16.0 is still unseen on a phone (G1 debt: the phone test is the user's). 6 skipping verification: no (real sandbox run, live URL checks). **Action:** finish here, record, clear before P2 (playbook §2b "finish the current unit of work, then clear").
 

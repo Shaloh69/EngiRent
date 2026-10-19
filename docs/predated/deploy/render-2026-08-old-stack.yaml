@@ -1,0 +1,108 @@
+# > SUPERSEDED 2026-10-19 — reflects the Render deployment of the WHOLE stack as of
+# > August 2026 (API, admin, website, ML on a PAID starter plan). The stack moved to
+# > the self-hosted server PC (desktop-gklhcri). Kept for history only: it was moved
+# > out of the repo root because Render's "New -> Blueprint" reads the root
+# > render.yaml and would have offered to re-create all four services. The root
+# > render.yaml now holds only the PayMongo gateway (docs/redesign/SPEC-PAYMENT-GATEWAY.md).
+services:
+  # ─── Node.js / Express API ───────────────────────────────────────────────────
+  - type: web
+    name: engirent-api
+    runtime: node
+    rootDir: server/node_server
+    region: singapore
+    plan: free
+    buildCommand: npm install --production=false && npm run build
+    startCommand: npm start
+    preDeployCommand: npx prisma db push && npx prisma db seed
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false                  # Set manually in Render dashboard
+      - key: JWT_SECRET
+        sync: false                  # Set manually in Render dashboard
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: JWT_REFRESH_SECRET
+        sync: false                  # Set manually in Render dashboard
+      - key: JWT_REFRESH_EXPIRE
+        value: 30d
+      - key: KIOSK_SHARED_SECRET
+        sync: false                  # Set manually — must match the Pi's KIOSK_SHARED_SECRET
+      - key: SUPABASE_URL
+        sync: false                  # Set manually in Render dashboard
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false                  # Set manually in Render dashboard
+      - key: SUPABASE_STORAGE_BUCKET
+        value: media
+      - key: ML_SERVICE_URL
+        value: https://engirent-ml.onrender.com
+      - key: ML_SERVICE_API_KEY
+        sync: false                  # Set manually — must match the ML service's ML_API_KEY
+      - key: CLIENT_WEB_URL
+        value: https://engirent-web.onrender.com
+      - key: CLIENT_MOBILE_URL
+        value: https://engirent-web.onrender.com
+      - key: CLIENT_ADMIN_URL
+        value: https://engirent-admin.onrender.com
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+      - key: LOG_LEVEL
+        value: info
+      - key: ADMIN_EMAIL
+        sync: false                  # Set manually in Render dashboard
+      - key: ADMIN_PASSWORD
+        sync: false                  # Set manually in Render dashboard
+      - key: ADMIN_STUDENT_ID
+        sync: false                  # Set manually in Render dashboard (optional)
+
+  # ─── Next.js Admin Console ───────────────────────────────────────────────────
+  - type: web
+    name: engirent-admin
+    runtime: node
+    rootDir: client/admin
+    region: singapore
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://engirent-api.onrender.com/api/v1
+
+  # ─── Next.js Public Website ──────────────────────────────────────────────────
+  - type: web
+    name: engirent-web
+    runtime: node
+    rootDir: client/web
+    region: singapore
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://engirent-api.onrender.com/api/v1
+
+  # ─── Python ML Verification Service ─────────────────────────────────────────
+  - type: web
+    name: engirent-ml
+    runtime: docker
+    dockerfilePath: server/python_server/services/ml/Dockerfile
+    dockerContext: server/python_server/services/ml
+    region: singapore
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: ML_API_KEY
+        sync: false                  # Set manually — must match the API's ML_SERVICE_API_KEY
+      - key: ML_ALLOWED_ORIGINS
+        value: ""                    # Server-to-server only; add browser origins if ever needed
