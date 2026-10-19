@@ -1,4 +1,3 @@
-import { decideFaceReview, listFaceReviews } from "../controllers/faceReviewController";
 import { adminConcern, adminConcerns, adminConfirmPayment, adminDecide, adminPreview } from "../controllers/concernController";
 import { Router } from "express";
 import { body, param } from "express-validator";
@@ -291,20 +290,6 @@ router.post(
 // "verifications" historically; the student-ID queue below is a different
 // thing and the collision hid its absence entirely (mandate §2.11).
 router.get("/verifications", requireAdmin, listVerifications);
-
-// ── Face re-enrolment review (face liveness, ruling 2026-10-15) ────────────
-// Same tier as the ID queue: a reviewer compares a student's photos.
-router.get("/face-reviews", requireStaff, listFaceReviews);
-router.post(
-  "/face-reviews/:id",
-  requireStaff,
-  validate([
-    param("id").isUUID().withMessage("Valid user ID is required"),
-    body("decision").isIn(["APPROVE", "REJECT"]).withMessage("decision must be APPROVE or REJECT"),
-    body("note").optional().isString().isLength({ max: 500 }),
-  ]),
-  decideFaceReview,
-);
 
 // ── Student ID verification (checklist Stage 9 — REVIEWER-eligible) ────────
 router.get("/id-verifications", requireStaff, listIdVerifications);

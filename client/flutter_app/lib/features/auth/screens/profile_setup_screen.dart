@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../../disputes/screens/guardian_screen.dart';
 import 'dart:io';
 import 'package:camera/camera.dart';
@@ -9,7 +10,6 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
 import '../providers/auth_provider.dart';
-import 'face_enrol_screen.dart';
 
 enum _SetupStep { consent, facePhoto, idPhoto, uploading, done }
 
@@ -37,7 +37,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       _parentContactCtrl.text.replaceAll(RegExp(r'\D'), '').length >= 7 &&
       _guardianConsent;
 
-  bool _faceDone = false;
+  File? _faceFile;
   File? _idFile;
   String? _errorMsg;
 
@@ -53,40 +53,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   void _acceptConsent() {
     setState(() => _step = _SetupStep.facePhoto);
-    _runFaceCheck();
+    _initCamera();
   }
 
-  /// Face liveness (2026-10-15): the guided check replaces the single selfie.
-  /// The server saves the template itself; nothing about the face comes back
-  /// to this screen except "saved".
-  Future<void> _runFaceCheck() async {
-    final ok = await Navigator.of(context).push<Object?>(
-      MaterialPageRoute(
-        builder: (_) => FaceEnrolScreen(setup: true, biometricConsent: _consentChecked),
-      ),
-    );
-    if (!mounted) return;
-    if (ok == true) {
-      setState(() {
-        _faceDone = true;
-        _step = _SetupStep.idPhoto;
-        _errorMsg = null;
-      });
-      await _initCamera(rear: true);
-    } else {
-      setState(() => _errorMsg = 'Your face check is not finished yet.');
-    }
-  }
-
-  Future<void> _initCamera({bool rear = false}) async {
+  Future<void> _initCamera() async {
     try {
       _cameras = await availableCameras();
       if (_cameras.isEmpty) return;
-      final cam = _cameras.firstWhere(
-        (c) => c.lensDirection == (rear ? CameraLensDirection.back : CameraLensDirection.front),
+      // Prefer front camera for face, fall back to first
+      final frontCam = _cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => _cameras.first,
       );
-      _camCtrl = CameraController(cam, ResolutionPreset.high, enableAudio: false);
+      _camCtrl = CameraController(frontCam, ResolutionPreset.high, enableAudio: false);
       await _camCtrl!.initialize();
       if (mounted) setState(() => _camReady = true);
     } catch (e) {
@@ -94,12 +73,29 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
+  Future<void> _switchToRearCamera() async {
+    await _camCtrl?.dispose();
+    final rearCam = _cameras.firstWhere(
+      (c) => c.lensDirection == CameraLensDirection.back,
+      orElse: () => _cameras.first,
+    );
+    _camCtrl = CameraController(rearCam, ResolutionPreset.high, enableAudio: false);
+    await _camCtrl!.initialize();
+    if (mounted) setState(() {});
+  }
+
   Future<void> _capture() async {
     if (_camCtrl == null || !_camCtrl!.value.isInitialized) return;
     try {
       final xFile = await _camCtrl!.takePicture();
       final file = File(xFile.path);
-      if (_step == _SetupStep.idPhoto) {
+      if (_step == _SetupStep.facePhoto) {
+        setState(() {
+          _faceFile = file;
+          _step = _SetupStep.idPhoto;
+        });
+        await _switchToRearCamera();
+      } else if (_step == _SetupStep.idPhoto) {
         setState(() {
           _idFile = file;
           _step = _SetupStep.uploading;
@@ -112,31 +108,72 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_faceDone || _idFile == null) return;
+    if (_faceFile == null || _idFile == null) return;
     setState(() => _errorMsg = null);
 
     try {
-      // The face was saved by POST /auth/face/enrol (the guided liveness
-      // check): the server computed and stored the template, so none is sent
-      // from here. A template this client supplied would never be trusted as
-      // a liveness enrolment anyway (completeProfile writes it as version 1).
-
-      // 1. Upload the ID photo.
-      final idResp = await _api.uploadFile('/auth/id-photo', _idFile!, 'file');
-      if (idResp.statusCode != 200) {
+      // 1. Register face encoding — via the Node backend's proxy endpoint,
+      // NOT a direct call to the ML service. The ML service is gated by a
+      // server-to-server API key; that secret must never ship inside this
+      // app's bundle (it would be extractable from the APK), so the backend
+      // holds the key and forwards the request instead.
+      //
+      // This is a hard requirement, not a nice-to-have: unlike the old
+      // behavior (silently continuing with no encoding on any failure), a
+      // failure here now blocks profile completion entirely. A profile
+      // "completed" with no face encoding would silently disable kiosk face
+      // verification for that student with no indication anything was wrong.
+      final faceBytes = await _faceFile!.readAsBytes();
+      if (faceBytes.isEmpty) {
         setState(() {
-          _step = _SetupStep.idPhoto;
-          _errorMsg = 'ID photo upload failed. Check your connection and try again.';
+          _step = _SetupStep.facePhoto;
+          _errorMsg = 'Face photo capture failed (empty file). Please retake it.';
         });
-        await _initCamera(rear: true);
         return;
       }
 
-      // 2. Complete the profile. The backend derives both photo paths from
-      // the authenticated user (never a client-supplied URL).
+      final registerResp = await _api.uploadFile('/auth/register-face', _faceFile!, 'file');
+      if (registerResp.statusCode != 200) {
+        setState(() {
+          _step = _SetupStep.facePhoto;
+          _errorMsg = 'Face registration failed. Please retake your selfie and try again.';
+        });
+        return;
+      }
+      final registerData = jsonDecode(registerResp.body);
+      final mlData = registerData['data'] as Map<String, dynamic>?;
+      if (mlData == null || mlData['success'] != true || mlData['encoding'] == null) {
+        setState(() {
+          _step = _SetupStep.facePhoto;
+          _errorMsg = (mlData?['message'] as String?) ??
+              'Could not extract a face encoding from that photo. Ensure good lighting and try again.';
+        });
+        return;
+      }
+      final encoding = List<double>.from(mlData['encoding']);
+
+      // 2. Upload the ID photo. (The face photo was already stored by
+      // /auth/register-face above — no separate upload needed for it.)
+      final idResp = await _api.uploadFile('/auth/id-photo', _idFile!, 'file');
+      if (idResp.statusCode != 200) {
+        setState(() {
+          _step = _SetupStep.facePhoto;
+          _errorMsg = 'ID photo upload failed. Check your connection and try again.';
+        });
+        return;
+      }
+
+      // 3. Complete profile on Node server. Note: no profileImageUrl/
+      // idImageUrl here — the backend derives both paths itself from the
+      // authenticated user's ID (they were just written by register-face
+      // and id-photo above), rather than trusting a client-supplied URL.
       final completeResp = await _api.post('/auth/profile/complete', {
-        // Required by the backend. Only ever sent because the user already
-        // passed through the mandatory consent screen before any capture.
+        'faceEncoding': encoding,
+        // Required by the backend — completeProfile() rejects the request
+        // without it. Only ever sent because the user already passed through
+        // the mandatory consent screen (_step.consent) before any capture
+        // began; this flag is not a formality, it's what the backend uses as
+        // its record that explicit consent was given.
         'biometricConsent': _consentChecked,
         'parentName': _parentNameCtrl.text.trim(),
         'parentContact': _parentContactCtrl.text.trim(),
@@ -150,17 +187,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         setState(() => _step = _SetupStep.done);
       } else {
         setState(() {
-          _step = _SetupStep.idPhoto;
+          _step = _SetupStep.facePhoto;
           _errorMsg = 'Profile setup failed. Please try again.';
         });
-        await _initCamera(rear: true);
       }
     } catch (e) {
       setState(() {
-        _step = _SetupStep.idPhoto;
+        _step = _SetupStep.facePhoto;
         _errorMsg = 'Error: $e';
       });
-      await _initCamera(rear: true);
     }
   }
 
@@ -179,7 +214,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     // out (same reasoning as the kiosk scanner).
     return switch (_step) {
       _SetupStep.consent => _buildConsent(),
-      _SetupStep.facePhoto => _buildFaceStart(),
+      _SetupStep.facePhoto => _buildCapture(
+          step: 2,
+          title: 'Take a selfie',
+          instruction:
+              'Line your face up inside the oval. Good, even light — no hats, '
+              'sunglasses or masks.',
+          why:
+              'The kiosk matches this photo when you collect or return an item, '
+              'so nobody else can open your locker.',
+          oval: true,
+        ),
       _SetupStep.idPhoto => _buildCapture(
           step: 3,
           title: 'Photograph your student ID',
@@ -341,50 +386,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 
   // ── Steps 2 & 3: capture ────────────────────────────────────────────────────
-
-  Widget _buildFaceStart() {
-    return Scaffold(
-      backgroundColor: const Color(0xFF07100E),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.face_retouching_natural_rounded, size: 56, color: AppColors.primaryOnDark),
-              const SizedBox(height: AppSpacing.lg),
-              const Text(
-                'Check your face',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: Colors.white),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              const Text(
-                'Look at the camera, blink, and turn your head left and right as asked. '
-                'No hats, caps or hoods. Glasses are fine.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13.5, height: 1.5, color: Color(0xFF9FBFB8)),
-              ),
-              if (_errorMsg != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                Text(_errorMsg!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, color: AppColors.error)),
-              ],
-              const SizedBox(height: AppSpacing.xl),
-              ElevatedButton(
-                onPressed: _runFaceCheck,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryOnDark,
-                  foregroundColor: const Color(0xFF052033),
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(borderRadius: AppRadius.button),
-                ),
-                child: const Text('Start'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildCapture({
     required int step,

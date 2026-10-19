@@ -31,8 +31,7 @@ import { verifyAccessToken } from "./utils/jwt";
 // encoding and reference photo down to the kiosk for local comparison. Both
 // became unnecessary on 2026-09-03: the comparison now runs server-side, so
 // the biometric never leaves this process. See faceVerificationService.
-import { faceEnrolmentGate, isKioskActionable, resolveFaceSubject } from "./services/faceVerificationService";
-import { publicChallenge } from "./services/faceLivenessService";
+import { isKioskActionable, resolveFaceSubject } from "./services/faceVerificationService";
 import { runMlVerification } from "./services/mlVerificationService";
 import {
   attachDeepReviewEmitter,
@@ -1278,25 +1277,12 @@ io.on("connection", (socket: Socket) => {
             });
             return;
           }
-          const faceGate = await faceEnrolmentGate(d.renterId);
-          if (faceGate) {
-            socket.emit("kiosk:command", { action: "flow_error", rental_id, message: faceGate.kioskMessage });
-            io.to(`user:${d.renterId}`).emit("kiosk:scan_error", {
-              rentalId: rental_id,
-              code: faceGate.code,
-              message: faceGate.message,
-              kioskId: data.kiosk_id,
-            });
-            return;
-          }
           const session = openKioskSession(rental_id, data.kiosk_id, d.renterId);
           io.to(`user:${d.renterId}`).emit("kiosk:face_required", {
             rentalId: rental_id,
             kioskId: data.kiosk_id,
             expiresAt: session.expiresAt,
             action: "collect_wrong",
-            // Face liveness: the random step order + nonce for this attempt.
-            challenge: publicChallenge(session.challenge),
           });
           socket.emit("kiosk:command", {
             action: "await_phone_verification",
@@ -1417,22 +1403,6 @@ io.on("connection", (socket: Socket) => {
         // Everything downstream of here — verify-face, the door command —
         // trusts this record and nothing the phone sends. See
         // kioskSessionStore.ts.
-        // F2b: an enrolment from before the liveness revamp (or one waiting
-        // for an admin) cannot pass the face step, so say so now, on both
-        // screens, instead of walking the student through the steps first.
-        const faceGate = await faceEnrolmentGate(subject.userId);
-        if (faceGate) {
-          socket.emit("kiosk:command", { action: "flow_error", rental_id, message: faceGate.kioskMessage });
-          io.to(`user:${subject.userId}`).emit("kiosk:scan_error", {
-            rentalId: rental_id,
-            code: faceGate.code,
-            message: faceGate.message,
-            kioskId: data.kiosk_id,
-          });
-          logger.info(`[PI-FLOW]  ${rental_id}: face step refused before it began (${faceGate.code})`);
-          return;
-        }
-
         const session = openKioskSession(
           rental_id,
           data.kiosk_id,
@@ -1442,8 +1412,6 @@ io.on("connection", (socket: Socket) => {
         io.to(`user:${subject.userId}`).emit("kiosk:face_required", {
           rentalId: rental_id,
           kioskId: data.kiosk_id,
-          // Face liveness: the random step order + nonce for this attempt.
-          challenge: publicChallenge(session.challenge),
           // E3.2 / spec 2.3 -- the 120s session countdown. Sent as an ABSOLUTE
           // epoch-ms deadline, not a duration, and that distinction is the
           // whole point: a phone counting down from its own `120` would start

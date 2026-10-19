@@ -35,24 +35,6 @@ const multerConfig = multer({
 /** Accept a single file under the field name `file` */
 export const uploadSingle = multerConfig.single("file");
 
-/**
- * Face liveness (2026-10-15): one frame per step plus the centred frame. The
- * old single `file` field is still ACCEPTED here only so an app from before
- * the revamp gets "update the app" (faceLivenessService.readFaceFrames)
- * instead of multer's "Unexpected field".
- */
-export const uploadFaceFrames = multerConfig.fields([
-  { name: "centre", maxCount: 1 },
-  { name: "blink", maxCount: 1 },
-  { name: "turn_left", maxCount: 1 },
-  { name: "turn_right", maxCount: 1 },
-  // Optional extra candidates for the blink (a blink is ~150 ms; one frame can
-  // miss the closed moment). ML keeps the one with the most closed eyes.
-  { name: "blink2", maxCount: 1 },
-  { name: "blink3", maxCount: 1 },
-  { name: "file", maxCount: 1 },
-]);
-
 /** Accept up to 10 files under the field name `files` */
 export const uploadMultiple = multerConfig.array("files", 10);
 

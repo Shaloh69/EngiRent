@@ -29,7 +29,6 @@ import {
   deleteStoredPath,
   storedFileExists,
   userFacePath,
-  userPendingFacePath,
   userIdPath,
 } from "../services/storageService";
 
@@ -50,10 +49,6 @@ const PROFILE_SELECT = {
   profileImage: true,
   idImageUrl: true,
   profileComplete: true,
-  // Face liveness: the app shows "Update your face with the new system now"
-  // while this is below 2, and "waiting for review" while pendingFaceAt is set.
-  faceEnrolmentVersion: true,
-  pendingFaceAt: true,
   parentName: true,
   parentContact: true,
   guardianConsentAt: true,
@@ -239,12 +234,6 @@ export const login = async (
           parentContact: user.parentContact,
           guardianConsentAt: user.guardianConsentAt,
           restrictedUntilReviewAt: user.restrictedUntilReviewAt,
-          // Face liveness (2026-10-15). Omitted at first, the D-1 pattern again:
-          // every login then read as "enrolment version 1" and the app told
-          // students who had ALREADY updated their face to update it (found by
-          // the user the same evening; the DB had them on version 2).
-          faceEnrolmentVersion: user.faceEnrolmentVersion,
-          pendingFaceAt: user.pendingFaceAt,
         },
         tokens: { accessToken, refreshToken },
       },
@@ -570,19 +559,7 @@ export const completeProfile = async (
     // retake). That check is UX. This one is the guarantee -- per CLAUDE.md,
     // server-side stays authoritative and a client-side check is never the
     // boundary.
-    // Face liveness (2026-10-15): the new app enrols through POST /auth/face/
-    // enrol, which stores a server-computed template (version 2) and sends no
-    // encoding here. Only an app from before the revamp still sends one, and a
-    // template the client supplied is never trusted as a liveness enrolment:
-    // it is written as version 1, which the kiosk refuses until re-enrolled.
-    const current = await prisma.user.findUnique({
-      where: { id: req.user.userId },
-      select: { faceEncoding: true, faceEnrolmentVersion: true },
-    });
-    const livenessEnrolled = !!current?.faceEncoding && (current?.faceEnrolmentVersion ?? 1) >= 2;
-    if (faceEncoding == null && livenessEnrolled) {
-      // fine: the template is already on the server
-    } else if (!Array.isArray(faceEncoding) || faceEncoding.length !== 128) {
+    if (!Array.isArray(faceEncoding) || faceEncoding.length !== 128) {
       throw new ValidationError(
         "faceEncoding is required and must be a 128-element float array. " +
           "Capture a face photo via POST /auth/register-face and submit the " +
@@ -621,7 +598,6 @@ export const completeProfile = async (
               faceEncoding: encryptJson(
                 faceEncoding,
               ) as unknown as Prisma.InputJsonValue,
-              faceEnrolmentVersion: 1,
             }
           : {}),
         profileComplete: true,
@@ -715,7 +691,6 @@ export const deleteAccount = async (
     // record that failed to clear because of a storage error.
     for (const relativePath of [
       userFacePath(req.user.userId),
-      userPendingFacePath(req.user.userId),
       userIdPath(req.user.userId),
     ]) {
       try {
@@ -729,11 +704,6 @@ export const deleteAccount = async (
       where: { id: req.user.userId },
       data: {
         faceEncoding: Prisma.JsonNull,
-        faceEnrolmentVersion: 1,
-        pendingFaceEncoding: Prisma.JsonNull,
-        pendingFaceAt: null,
-        pendingFaceReason: null,
-        pendingFaceDistance: null,
         profileImage: null,
         idImageUrl: null,
         profileComplete: false,

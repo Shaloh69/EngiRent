@@ -3,7 +3,6 @@ import 'dart:async';
 import '../../disputes/dispute_api.dart';
 import '../../disputes/screens/dispute_case_screen.dart';
 import '../../disputes/screens/guardian_screen.dart';
-import '../../auth/screens/face_enrol_screen.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -118,63 +117,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // dialog: a dialog fought the first-run tour for every tap (seen on the
     // emulator 2026-10-11) and was gone before anyone could read it.
     final needsGuardian = context.watch<AuthProvider>().user?.needsGuardian ?? false;
-    // Face liveness (2026-10-15): everyone enrolled before the revamp updates
-    // their face with the new check; until then the kiosk refuses them.
-    final needsFace = context.watch<AuthProvider>().user?.needsFaceUpdate ?? false;
-    final faceReview = context.watch<AuthProvider>().user?.faceUnderReview ?? false;
     return Scaffold(
       body: Column(
         children: [
-          if (needsFace)
-            Material(
-              color: AppColors.primary.withValues(alpha: 0.16),
-              child: SafeArea(
-                bottom: false,
-                child: InkWell(
-                  onTap: () async {
-                    await Navigator.push<Object?>(
-                      context,
-                      MaterialPageRoute(builder: (_) => const FaceEnrolScreen(setup: false)),
-                    );
-                    if (context.mounted) await context.read<AuthProvider>().loadUser();
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 10, 12, 10),
-                    child: Row(children: [
-                      Icon(Icons.face_retouching_natural_rounded, color: AppColors.primary),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Update your face with the new system now. Needed before you can use the kiosk. Tap to start.',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      Icon(Icons.chevron_right_rounded),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          if (faceReview)
-            Material(
-              color: AppColors.warning.withValues(alpha: 0.16),
-              child: const SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 10, 12, 10),
-                  child: Row(children: [
-                    Icon(Icons.hourglass_top_rounded, color: AppColors.warning),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Your new face is waiting for an admin to approve it. You can use the kiosk once it is approved.',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
           if (needsGuardian)
             Material(
               color: AppColors.warning.withValues(alpha: 0.16),

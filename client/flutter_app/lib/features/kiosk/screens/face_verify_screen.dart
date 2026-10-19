@@ -1,29 +1,37 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/liveness/liveness_capture_controller.dart';
-import '../../../core/liveness/liveness_capture_view.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/widgets/loading_primitives.dart';
+import '../../../core/face_coach/coach_avatar.dart';
+import '../../../core/face_coach/coach_ring.dart';
+import '../../../core/face_coach/face_coach_camera.dart';
+import '../../../core/face_coach/face_hint.dart';
 
-/// Identity verification, done on the user's own phone: design mandate
-/// §2.13, and since 2026-10-15 a guided liveness check instead of one photo
-/// (docs/redesign/SPEC-FACE-LIVENESS.md).
+enum _Phase { framing, captured, uploading, exhausted }
+
+/// Identity verification, done on the user's own phone — design mandate
+/// §2.13. Until 2026-09-03 this step happened at the kiosk, on a dedicated
+/// face camera; that camera has been physically removed, and this screen is
+/// what replaced it.
 ///
-/// The server issues the challenge (a random order of blink / turn left / turn
-/// right plus a nonce) when the kiosk session opens, and again after every
-/// failed attempt. This screen only ever *captures*: [LivenessCaptureView]
-/// coaches the student and keeps four frames, they go to
-/// POST /kiosk/verify-face with the nonce, node_server calls the ML service
-/// (which re-checks every step on the frames), and node_server alone opens the
-/// locker. A client that could assert "verified" could open any locker.
+/// This screen only ever *captures*. It never decides anything — the photo
+/// goes to POST /kiosk/verify-face, node_server calls the ML service, and
+/// node_server alone opens the locker. See faceVerificationService.ts's own
+/// header comment for why that split is the entire security model here: a
+/// client that could assert "verified" would be a client that could open any
+/// locker.
 ///
 /// On a real match, the server-side outcome reaches the *kiosk scan* screen
-/// underneath this one via the existing `face:verified` socket event, so this
-/// page's own job on success is just to get out of the way (pop back to it).
-/// Retryable misses are handled here, from the direct HTTP response, so
-/// retrying doesn't flicker the screen underneath.
+/// underneath this one via the existing `face:verified` socket event — that
+/// screen already has success/failure UI wired to it, so this page's own job
+/// on success is just to get out of the way (pop back to it). Retryable
+/// mismatches are handled entirely here, from the direct HTTP response —
+/// deliberately not routed through a socket event, so retrying doesn't
+/// flicker the screen underneath.
 class FaceVerifyScreen extends StatefulWidget {
   final String rentalId;
 
@@ -40,96 +48,141 @@ class FaceVerifyScreen extends StatefulWidget {
   /// local 120 seconds, which would drift and overstate the time left.
   final DateTime? sessionExpiresAt;
 
-  /// The first challenge, from the `kiosk:face_required` event. Null when the
-  /// server did not send one (an old server): the screen then says so.
-  final FaceChallenge? challenge;
-
-  const FaceVerifyScreen({
-    super.key,
-    required this.rentalId,
-    required this.mode,
-    this.kioskId,
-    this.sessionExpiresAt,
-    this.challenge,
-  });
+  const FaceVerifyScreen({super.key, required this.rentalId, required this.mode, this.kioskId, this.sessionExpiresAt});
 
   @override
   State<FaceVerifyScreen> createState() => _FaceVerifyScreenState();
 }
 
-class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
-  final _api = ApiService();
+class _FaceVerifyScreenState extends State<FaceVerifyScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
+  // The one-photo check as before; the camera now also feeds on-phone face
+  // detection that ONLY coaches (ring + guide). It can never block the photo:
+  // see FaceCoachCamera's header.
+  final FaceCoachCamera _coach = FaceCoachCamera();
+  bool get _camReady => _coach.isReady;
+  String? get _cameraError => _coach.error;
 
-  FaceChallenge? _challenge;
-  Key _runKey = UniqueKey();
-  bool _uploading = false;
-  bool _exhausted = false;
+  late final AnimationController _loop = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  late final AnimationController _shake = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
+  bool get _reduceMotion => WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+
+  _Phase _phase = _Phase.framing;
+  File? _shot;
   String? _errorMsg;
-  String? _blockedMsg; // a refusal a retry cannot fix (update your face, etc.)
   int? _attemptsRemaining;
-  int _rejects = 0; // each server refusal shakes the ring red
+
+  final _api = ApiService();
+  late final AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
-    _challenge = widget.challenge;
+    WidgetsBinding.instance.addObserver(this);
+    _coach.addListener(_onCoach);
+    _coach.start();
+    if (!_reduceMotion) _loop.repeat();
+    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+    if (!WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations) {
+      _pulse.repeat(reverse: true);
+    }
   }
 
-  Future<void> _onCaptured(LivenessCapture cap) async {
-    if (_uploading) return;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pulse.dispose();
+    _loop.dispose();
+    _shake.dispose();
+    _coach.removeListener(_onCoach);
+    _coach.dispose();
+    super.dispose();
+  }
+
+  void _onCoach() {
+    if (mounted) setState(() {});
+  }
+
+  /// A refusal (no match, an error): shake the ring red and coach again.
+  void _refused() {
+    if (!mounted) return;
+    if (!_reduceMotion) _shake.forward(from: 0);
+    _coach.resumeCoaching();
+  }
+
+  // ── Lifecycle — a camera page that black-screens after an app switch is
+  // the most common bug in this screen type (design mandate §2.13). ────────
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _coach.onAppPaused();
+    } else if (state == AppLifecycleState.resumed) {
+      _coach.onAppResumed();
+    }
+  }
+
+  // One capture at a time: a quick double tap used to start a second
+  // takePicture before the first had moved the screen out of framing.
+  bool _capturing = false;
+
+  Future<void> _capture() async {
+    if (!_camReady || _capturing || _phase != _Phase.framing) return;
+    _capturing = true;
+    try {
+      final file = await _coach.takePhoto();
+      if (!mounted) return;
+      setState(() {
+        _shot = file;
+        _phase = _Phase.captured;
+      });
+      await _submit();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMsg = 'Capture failed: $e');
+      _refused();
+    } finally {
+      _capturing = false;
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_shot == null) return;
     setState(() {
-      _uploading = true;
+      _phase = _Phase.uploading;
       _errorMsg = null;
     });
+
     try {
-      final resp = await _api.uploadParts(
+      final resp = await _api.uploadFile(
         '/kiosk/verify-face',
-        fields: {'rentalId': widget.rentalId, 'nonce': cap.nonce, 'mirrored': kFramesAreMirrored ? 'true' : 'false'},
-        files: cap.uploadFiles,
-        timeout: const Duration(seconds: 90),
+        _shot!,
+        'file',
+        extraFields: {'rentalId': widget.rentalId},
       );
-      Map<String, dynamic>? body;
-      try {
-        body = jsonDecode(resp.body) as Map<String, dynamic>?;
-      } catch (_) {}
-      final data = body?['data'] as Map<String, dynamic>?;
 
-      // The steps expired or were already used: take the new ones and go again.
-      if (resp.statusCode == 409 && body?['code'] == 'CHALLENGE_EXPIRED') {
-        _next(FaceChallenge.fromJson(data?['challenge']), 'These steps had expired. Please follow the new steps.');
-        return;
-      }
-
-      // Refusals a retry cannot fix: say what to do instead of looping.
-      final code = body?['code'] as String?;
-      if (code == 'FACE_UPDATE_REQUIRED' || code == 'FACE_REVIEW_PENDING' || code == 'APP_UPDATE_REQUIRED') {
-        if (mounted) {
-          setState(() {
-            _uploading = false;
-            _blockedMsg = (body?['error'] as String?) ?? 'Verification is not available for this account right now.';
-          });
-        }
-        return;
-      }
+      final body = jsonDecode(resp.body) as Map<String, dynamic>?;
 
       if (resp.statusCode != 200 || body == null || body['success'] != true) {
-        // The same challenge stands (an outage or a network error is not an
-        // attempt), so the same steps are simply done again.
-        _next(
-          null,
-          (body?['error'] as String?) ??
-              (body?['message'] as String?) ??
-              'Verification failed — check your connection and try again.',
-          restart: true,
-        );
+        if (!mounted) return;
+        setState(() {
+          _phase = _Phase.framing;
+          _shot = null;
+          _errorMsg = (body?['message'] as String?) ?? 'Verification failed — check your connection and try again.';
+        });
+        _refused();
         return;
       }
 
-      if (data?['verified'] == true) {
+      final data = body['data'] as Map<String, dynamic>?;
+      final verified = data?['verified'] == true;
+
+      if (verified) {
         // The kiosk-scan screen underneath already has success/failure UI
         // wired to the same server-side outcome via the `face:verified`
-        // socket event. Dispute v2: hand the server's answer back (what is
-        // owed before a door opens, or why nothing can happen now).
+        // socket event — this page's job ends here.
+        // Dispute v2: hand the server's answer back (what is owed before a
+        // door opens, or why nothing can happen now); everything else
+        // continues through the `face:verified` socket event as before.
         final action = data?['action'];
         if (mounted) {
           Navigator.of(context).pop(
@@ -141,55 +194,44 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
         return;
       }
 
-      if (data?['mustRescan'] == true) {
-        if (mounted) {
-          setState(() {
-            _uploading = false;
-            _exhausted = true;
-            _errorMsg = (body?['message'] as String?) ?? "We couldn't verify your face after several tries.";
-          });
-        }
+      final mustRescan = data?['mustRescan'] == true;
+      final attemptsRemaining = data?['attemptsRemaining'] as int?;
+
+      if (mustRescan) {
+        if (!mounted) return;
+        setState(() {
+          _phase = _Phase.exhausted;
+          _errorMsg = (body['message'] as String?) ?? "We couldn't match your face after several tries.";
+        });
         return;
       }
 
-      _attemptsRemaining = data?['attemptsRemaining'] as int?;
-      _next(
-        FaceChallenge.fromJson(data?['challenge']),
-        (body['message'] as String?) ?? "We couldn't verify your face — please try again.",
-        restart: true,
-      );
-    } catch (_) {
-      _next(null, 'Could not reach the server — check your connection and try again.', restart: true);
-    } finally {
-      // The frames are biometric data: never leave them on the phone.
-      for (final f in cap.frames.values) {
-        try {
-          await f.delete();
-        } catch (_) {}
-      }
+      if (!mounted) return;
+      setState(() {
+        _phase = _Phase.framing;
+        _shot = null;
+        _attemptsRemaining = attemptsRemaining;
+        _errorMsg = (body['message'] as String?) ?? "We couldn't match your face — please try again.";
+      });
+      _refused();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _phase = _Phase.framing;
+        _shot = null;
+        _errorMsg = 'Could not reach the server — check your connection and try again.';
+      });
+      _refused();
     }
-  }
-
-  /// Show [message] and run the check again, on [next] when the server sent a
-  /// new challenge, else on the one we have.
-  void _next(FaceChallenge? next, String? message, {bool restart = false}) {
-    if (!mounted) return;
-    setState(() {
-      _uploading = false;
-      _errorMsg = message;
-      if (message != null) _rejects++;
-      if (next != null) _challenge = next;
-      if (restart) _runKey = UniqueKey();
-    });
   }
 
   // ── Copy ─────────────────────────────────────────────────────────────────────
 
   String get _headline => switch (widget.mode) {
-        'place' => 'Verify to open the drop-off locker',
-        'retrieve' => 'Verify to unlock your item',
-        _ => 'Verify to return your item',
-      };
+    'place' => 'Verify to open the drop-off locker',
+    'retrieve' => 'Verify to unlock your item',
+    _ => 'Verify to return your item',
+  };
 
   // ── Build ────────────────────────────────────────────────────────────────────
 
@@ -226,44 +268,116 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
   }
 
   Widget _buildStage() {
-    if (_exhausted) {
+    if (_phase == _Phase.exhausted) {
       return _ExhaustedPanel(
-        message: _errorMsg ?? "We couldn't verify your face after several tries.",
+        message: _errorMsg ?? "We couldn't match your face after several tries.",
         kioskId: widget.kioskId,
         onRescan: () => Navigator.of(context).pop('rescan'),
       );
     }
-    if (_blockedMsg != null) {
-      return _BlockedPanel(message: _blockedMsg!, onClose: () => Navigator.of(context).pop('rescan'));
+
+    if (_cameraError != null) {
+      return _MessagePanel(icon: Icons.videocam_off_rounded, message: _cameraError!);
     }
-    final c = _challenge;
-    if (c == null) {
-      return const _MessagePanel(
-        icon: Icons.sync_problem_rounded,
-        message: 'The kiosk did not send the steps for this check. Scan its QR code again.',
-      );
-    }
-    return LivenessCaptureView(
-      key: _runKey,
-      challenge: c,
-      onCaptured: _onCaptured,
-      busy: _uploading,
-      busyLabel: 'Verifying…',
-      rejectCount: _rejects,
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: ClipRRect(
+        borderRadius: AppRadius.card,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_camReady && _coach.camera != null)
+              FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _coach.camera!.value.previewSize?.height ?? 1,
+                  height: _coach.camera!.value.previewSize?.width ?? 1,
+                  child: CameraPreview(_coach.camera!),
+                ),
+              )
+            else
+              const ColoredBox(
+                color: Color(0xFF0D1B18),
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryOnDark),
+                  ),
+                ),
+              ),
+            // The reactive ring (design mandate §2.13 state progression):
+            // dim dashes while no face is seen, a breathing glow when ready,
+            // an amber shiver when too far / too close / off centre / several
+            // people, a red shake when the server refuses. Coaching only — the
+            // shutter is never gated on it; a bad photo is caught server-side.
+            AnimatedBuilder(
+              animation: Listenable.merge([_loop, _shake]),
+              builder: (context, _) => CustomPaint(
+                painter: ReactiveRingPainter(
+                  RingStyle(
+                    hint: _phase == _Phase.framing ? _coach.hint : LivenessHint.ready,
+                    stepKey: 'centre',
+                    t: _loop.value,
+                    pass: 0,
+                    fail: _shake.isAnimating ? _shake.value : 0,
+                    reduceMotion: _reduceMotion,
+                  ),
+                ),
+              ),
+            ),
+            if (_phase == _Phase.uploading)
+              Container(
+                color: Colors.black.withValues(alpha: 0.55),
+                child: const Center(
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildFooter() {
-    if (_exhausted || _blockedMsg != null) return const SizedBox.shrink();
+    if (_phase == _Phase.exhausted) return const SizedBox.shrink();
+
+    final String instr;
+    final bool shutterEnabled;
+    switch (_phase) {
+      case _Phase.framing:
+        instr = _cameraError != null
+            ? 'Camera unavailable'
+            : (_camReady ? 'Center your face in the frame' : 'Starting the camera…');
+        shutterEnabled = _camReady && _cameraError == null;
+        break;
+      case _Phase.captured:
+        instr = 'Got it — checking…';
+        shutterEnabled = false;
+        break;
+      case _Phase.uploading:
+        instr = 'Verifying…';
+        shutterEnabled = false;
+        break;
+      case _Phase.exhausted:
+        instr = '';
+        shutterEnabled = false;
+        break;
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_errorMsg != null)
+          if (_errorMsg != null) ...[
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(bottom: AppSpacing.sm),
               padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
                 color: AppColors.error.withValues(alpha: 0.14),
@@ -275,60 +389,82 @@ class _FaceVerifyScreenState extends State<FaceVerifyScreen> {
                   const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
                   const SizedBox(width: AppSpacing.xs),
                   Expanded(
-                    child: Builder(builder: (context) {
-                      final remaining = _attemptsRemaining;
-                      final suffix = remaining != null ? ' ($remaining ${remaining == 1 ? "try" : "tries"} left)' : '';
-                      return Text(
-                        '${_errorMsg!}$suffix',
-                        style: const TextStyle(fontSize: 12.5, height: 1.4, color: Colors.white),
-                      );
-                    }),
+                    child: Builder(
+                      builder: (context) {
+                        final remaining = _attemptsRemaining;
+                        final suffix = remaining != null
+                            ? ' ($remaining ${remaining == 1 ? "try" : "tries"} left)'
+                            : '';
+                        return Text(
+                          '${_errorMsg!}$suffix',
+                          style: const TextStyle(fontSize: 12.5, height: 1.4, color: Colors.white),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
             ),
-          if (_uploading)
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          // E3.2 / spec §1.3: an indeterminate indicator for the round-trip
+          // (duration genuinely unknown, so no percentage), with the session
+          // countdown and the attempt budget beside it. Before this the screen
+          // showed the word "Verifying…" and nothing else, and the 120s
+          // session — the constraint most likely to expire on someone
+          // mid-attempt — was completely invisible to them.
+          if (_phase == _Phase.uploading)
             AppIndeterminateProgress(
-              label: 'Verifying…',
+              label: instr,
               attemptLabel: _attemptsRemaining != null ? 'Attempt ${4 - _attemptsRemaining!} of 4' : null,
-            ),
+            )
+          else if (_phase == _Phase.framing && _camReady)
+            CoachRow(
+              avatar: AnimatedBuilder(
+                animation: _loop,
+                builder: (_, __) => LivenessAvatar(
+                  stepKey: 'centre',
+                  t: _loop.value,
+                  worried: _coach.hint != LivenessHint.ready && _coach.hint != LivenessHint.searching,
+                  reduceMotion: _reduceMotion,
+                ),
+              ),
+              text: coachText(_coach.hint),
+              tone: _coach.hint == LivenessHint.ready
+                  ? CoachTone.good
+                  : (_coach.hint == LivenessHint.searching ? CoachTone.normal : CoachTone.warn),
+            )
+          else
+            Text(instr, style: const TextStyle(fontSize: 13, color: Color(0xFF9FBFB8))),
+          const SizedBox(height: AppSpacing.xs),
           // Renders nothing at all when the server sent no deadline.
           AppSessionCountdown(deadline: widget.sessionExpiresAt),
-        ],
-      ),
-    );
-  }
-}
-
-class _BlockedPanel extends StatelessWidget {
-  final String message;
-  final VoidCallback onClose;
-  const _BlockedPanel({required this.message, required this.onClose});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.face_retouching_natural_rounded, size: 48, color: AppColors.primaryOnDark),
-            const SizedBox(height: AppSpacing.md),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.5)),
-            const SizedBox(height: AppSpacing.lg),
-            ElevatedButton(
-              onPressed: onClose,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryOnDark,
-                foregroundColor: const Color(0xFF052033),
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: AppRadius.button),
+          const SizedBox(height: AppSpacing.sm),
+          Semantics(
+            button: true,
+            enabled: shutterEnabled,
+            label: 'Take the photo',
+            child: GestureDetector(
+              onTap: shutterEnabled ? _capture : null,
+              child: AnimatedOpacity(
+                opacity: shutterEnabled ? 1 : 0.35,
+                duration: AppMotion.fast,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                  ),
+                ),
               ),
-              child: const Text('OK'),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -1,10 +1,9 @@
 /**
  * The login reply is a hand-written field list (not PROFILE_SELECT), and twice
- * now a field the app depends on was left out of it: the verification fields
- * (D-1) and, on 2026-10-15, the face-enrolment fields, which made the app tell
- * students who had ALREADY updated their face to update it after every login.
- *
- * This pins the fields the app's home screen and kiosk flow read.
+ * a field the app depends on was left out of it: the verification fields (D-1)
+ * and, on the face-liveness branch (2026-10-15), the face-enrolment fields. The
+ * app now also loads the full profile right after login, but this pins the
+ * fields the app reads from the login reply itself.
  */
 import { mockDeep, DeepMockProxy, mockReset } from "jest-mock-extended";
 import { PrismaClient } from "@prisma/client";
@@ -33,8 +32,7 @@ function res() {
 
 beforeEach(() => mockReset(prismaMock));
 
-it("the login reply carries the face-enrolment state the app shows the banner from", async () => {
-  const pending = new Date("2026-10-15T13:00:00Z");
+it("the login reply carries the verification state the app reads (D-1)", async () => {
   prismaMock.user.findUnique.mockResolvedValue({
     id: "u1",
     email: "s@x",
@@ -45,8 +43,10 @@ it("the login reply carries the face-enrolment state the app shows the banner fr
     phoneNumber: "0",
     isActive: true,
     role: "STUDENT",
-    faceEnrolmentVersion: 2,
-    pendingFaceAt: pending,
+    verificationStatus: "APPROVED",
+    verificationReason: null,
+    verificationNote: null,
+    profileComplete: true,
     payoutAccountNumber: null,
   } as never);
   prismaMock.user.update.mockResolvedValue({} as never);
@@ -57,9 +57,8 @@ it("the login reply carries the face-enrolment state the app shows the banner fr
 
   expect(next).not.toHaveBeenCalled();
   const user = r.json.mock.calls[0][0].data.user;
-  expect(user.faceEnrolmentVersion).toBe(2);
-  expect(user.pendingFaceAt).toBe(pending);
-  // and the earlier D-1 fields are still there
-  expect(user).toHaveProperty("verificationStatus");
-  expect(user).toHaveProperty("profileComplete");
+  expect(user.verificationStatus).toBe("APPROVED");
+  expect(user).toHaveProperty("verificationReason");
+  expect(user).toHaveProperty("verificationNote");
+  expect(user.profileComplete).toBe(true);
 });

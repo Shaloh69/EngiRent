@@ -24,7 +24,6 @@ import {
   HeartPulse,
   History,
   IdCard,
-  ScanFace,
   LayoutDashboard,
   LogOut,
   MessageSquareWarning,
@@ -61,8 +60,6 @@ const menuItems = [
   // that no ID queue existed (mandate §2.11).
   { name: "Condition checks", icon: CheckCircle2, href: "/verifications" },
   { name: "ID verification", icon: IdCard, href: "/id-verifications" },
-  // Face liveness revamp (2026-10-15): new faces that did not match the old one.
-  { name: "Face updates", icon: ScanFace, href: "/face-reviews" },
   // Checklist Stage 3.3 — before this the feedback endpoint was a
   // write-only hole: students could file reports, but nothing on the admin
   // side could read them.

@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import face_liveness, verification
+from .routers import verification
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
@@ -46,7 +46,6 @@ app.add_middleware(
 )
 
 app.include_router(verification.router, prefix="/api/v1", tags=["verification"])
-app.include_router(face_liveness.router, prefix="/api/v1", tags=["face"])
 
 
 @app.on_event("startup")

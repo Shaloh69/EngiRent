@@ -16,7 +16,7 @@ import { authenticate } from "../middleware/auth";
 import { requireKioskSecret } from "../middleware/kioskAuth";
 import { isKioskTarget } from "../middleware/restriction";
 import { validate } from "../middleware/validation";
-import { uploadFaceFrames, uploadMultiple } from "../middleware/upload";
+import { uploadMultiple, uploadSingle } from "../middleware/upload";
 
 const router = Router();
 
@@ -107,7 +107,7 @@ router.post(
 // Face verification from the phone (protected).
 //
 // Replaces the kiosk's removed face camera — the app captures, this server
-// decides. `uploadFaceFrames` parses the multipart body, so the validator below
+// decides. `uploadSingle` parses the multipart body, so the validator below
 // sees rentalId as an ordinary field. There is deliberately no `token` field
 // here: which kiosk this belongs to comes only from a session the kiosk
 // itself opened after validating the scanned QR (see kioskSessionStore.ts) —
@@ -120,10 +120,7 @@ router.post(
 router.post(
   "/verify-face",
   authenticate,
-  // Face liveness (2026-10-15): four frames (centre, blink, turn_left,
-  // turn_right) + rentalId + nonce. An old app's single `file` is still parsed
-  // so it can be told to update.
-  uploadFaceFrames,
+  uploadSingle,
   validate([
     body("rentalId").custom(isKioskTarget).withMessage("Valid rental ID is required"),
   ]),

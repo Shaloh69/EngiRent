@@ -183,56 +183,6 @@ class Settings(BaseSettings):
     image_fetch_timeout_seconds: float = 5.0
     image_fetch_max_bytes: int = 10_000_000  # 10 MB
 
-    # Face liveness (2026-10-15, docs/redesign/SPEC-FACE-LIVENESS.md). Starting
-    # values from the literature (EAR ~0.25-0.35 open; turns of 20-30 degrees);
-    # NOT yet tuned on real captures. Retune from the fixture run and record
-    # the measured numbers in PROGRESS.md before changing any of these.
-    face_match_max_distance: float = 0.5  # same as the 1-photo check (_dlib_verify)
-    face_same_person_max_distance: float = 0.6  # step frames vs the centre frame
-    # 2026-10-15, from judging 21 real attempts by eye (see PROGRESS.md): dlib's eye
-    # aspect ratio is NOT comparable across people or lighting (a visibly closed eye
-    # read 0.29, a visibly open one 0.16), so there is no absolute "open" or "closed"
-    # level any more. A blink is judged against the person's OWN open eye in the
-    # same attempt: the most-closed candidate must be at most this share of it
-    # (all 18 judged blinks passed at 0.85; the weakest was 0.825).
-    face_ear_open_min: float = 0.12  # only to refuse a centre frame that is plainly shut
-    # First live test 2026-10-15 (two students, 15 attempts): real blink frames read
-    # 0.16-0.20 against open 0.21-0.30; the old 0.19 / 0.75 failed real blinks.
-    face_ear_closed_max: float = 0.30  # sanity cap only: a "blink" candidate above this is open
-    face_ear_closed_ratio_max: float = 0.85
-    # Head turns use the nose-between-the-eyes ratio (geometry.yaw_ratio), not
-    # solvePnP degrees: PnP flipped sign at large turns on real phone frames. On
-    # 81 facing frames |ratio| <= 0.12; on 38 real turn frames |ratio| >= 0.34
-    # except one barely-turned frame at 0.17.
-    face_centre_max_yaw_ratio: float = 0.20  # centre frame faces the camera
-    face_turn_min_yaw_ratio: float = 0.28  # each turn frame, in its own direction
-    # Measured 2026-10-15 on openly licensed Commons photos (eval/wild_faces_report.py,
-    # near-frontal only): 5/5 caps had a hat share of 0.17 or more; the one false
-    # refusal (glasses, forehead fully visible) sat at 0.043. 0.08 splits them.
-    # Few photos, so treat the margin as thin and retune from real phone sessions.
-    face_hat_min_share: float = 0.08  # hat pixels / head region below this: no covering
-    face_forehead_min_skin: float = 0.6  # covering allowed only with the forehead visible
-    face_forehead_band: float = 0.25  # forehead band height, fraction of brow-to-chin
-    face_frame_min_share: float = 0.01  # covering below the eyes on each side
-    face_max_image_side: int = 960  # frames are downscaled to this before detection
-    face_parsing_model: str = "models_face/face_parsing_resnet18.onnx"
-    # Passive anti-spoof (F1b): real - spoof logit must be at least this on the
-    # centre AND blink frames. 0.0 = the model's own p >= 0.5 default; raise it
-    # for fewer spoofs and more false refusals (its docs/LIMITATIONS.md).
-    # Judged on 21 real attempts (2026-10-15): single frames of real faces scored as
-    # low as -5.95 / -2.71, so ONE frame is not trustworthy. The check now takes the
-    # BEST margin over the facing frames (centre + blink candidates): every real
-    # attempt had at least one frame >= -0.22, while a flat photo or screen should
-    # score low on all of them. The attack side is STILL unmeasured (no photo or
-    # screen samples), so -1.0 is a usability call, not a security measurement.
-    face_spoof_min_margin: float = -1.0
-    # The frames the phone sends are NOT mirrored (126 saved frames, judged by eye,
-    # 2026-10-15). The phone's own `mirrored` claim is ignored: two app releases
-    # sent opposite values and a wrong claim turned every good attempt into a
-    # failure. Change this only if a different capture path is ever added.
-    face_frames_mirrored: bool = False
-    face_antispoof_model: str = "models_face/antispoof_minifasv2se_98_20_int8.onnx"
-
     model_config = {"env_prefix": "ML_"}
 
 

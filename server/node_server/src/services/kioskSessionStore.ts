@@ -24,7 +24,6 @@
  */
 
 import logger from "../utils/logger";
-import { newFaceChallenge, nonceMatches, type FaceChallenge } from "./faceLivenessService";
 
 export interface KioskSession {
   kioskId: string;
@@ -32,10 +31,6 @@ export interface KioskSession {
   createdAt: number;
   expiresAt: number;
   attempts: number;
-  /** Face liveness (2026-10-15): the random step order + nonce the phone must
-   *  answer. Re-issued after every failed attempt, so each attempt has its own
-   *  order and a nonce that is good for one try only. */
-  challenge: FaceChallenge;
 }
 
 /** Generous relative to the QR's own 90s TTL — the token was already valid
@@ -69,7 +64,6 @@ export function openKioskSession(
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
     attempts: 0,
-    challenge: newFaceChallenge(),
   };
   sessions.set(rentalId, session);
   // Returns the session so the caller can tell the phone when this deadline
@@ -93,21 +87,6 @@ export function getKioskSession(rentalId: string): KioskSession | undefined {
     return undefined;
   }
   return session;
-}
-
-/** Is `nonce` the session's current challenge nonce? Read-only: the caller
- *  rotates (`rotateFaceChallenge`) once the attempt has been judged. */
-export function faceChallengeMatches(rentalId: string, nonce: unknown): boolean {
-  const session = getKioskSession(rentalId);
-  return !!session && nonceMatches(session.challenge.nonce, nonce);
-}
-
-/** A new order + nonce for the next attempt; the old nonce stops working. */
-export function rotateFaceChallenge(rentalId: string): FaceChallenge | null {
-  const session = getKioskSession(rentalId);
-  if (!session) return null;
-  session.challenge = newFaceChallenge();
-  return session.challenge;
 }
 
 /** A face comparison came back verified=true. Single-use: the same session

@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
-import 'liveness_capture_controller.dart';
+import 'face_hint.dart';
 
 /// The oval you look into (spec F3, 2026-10-15): it tells you what the camera
 /// is seeing and where to look, without words.
@@ -49,10 +49,10 @@ class ReactiveRingPainter extends CustomPainter {
   final RingStyle style;
 
   static Rect ovalFor(Size size) => Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.46),
-        width: size.width * 0.68,
-        height: size.width * 0.68 * 1.3,
-      );
+    center: Offset(size.width / 2, size.height * 0.46),
+    width: size.width * 0.68,
+    height: size.width * 0.68 * 1.3,
+  );
 
   static const _amber = Color(0xFFFFB84D);
   static const _red = Color(0xFFFF6B6B);
@@ -68,7 +68,8 @@ class ReactiveRingPainter extends CustomPainter {
       Paint()..color = const Color(0xFF07100E).withValues(alpha: 0.55),
     );
 
-    final problem = st.hint == LivenessHint.tooFar ||
+    final problem =
+        st.hint == LivenessHint.tooFar ||
         st.hint == LivenessHint.tooClose ||
         st.hint == LivenessHint.offCentre ||
         st.hint == LivenessHint.multiple;
@@ -85,8 +86,8 @@ class ReactiveRingPainter extends CustomPainter {
     final base = st.fail > 0
         ? Color.lerp(AppColors.primaryOnDark, _red, (1 - st.fail).clamp(0.0, 1.0) * 1.0)!
         : problem
-            ? _amber
-            : AppColors.primaryOnDark;
+        ? _amber
+        : AppColors.primaryOnDark;
 
     // Soft glow (breathing when ready; faster for the blink step).
     if (!searching) {
@@ -116,7 +117,11 @@ class ReactiveRingPainter extends CustomPainter {
 
     // Turn steps: a band of light running along the side to turn toward, plus
     // chevrons outside the oval pointing that way.
-    final turn = st.stepKey == 'TURN_LEFT' ? -1.0 : st.stepKey == 'TURN_RIGHT' ? 1.0 : 0.0;
+    final turn = st.stepKey == 'TURN_LEFT'
+        ? -1.0
+        : st.stepKey == 'TURN_RIGHT'
+        ? 1.0
+        : 0.0;
     if (turn != 0 && !searching) {
       _sweep(canvas, oval, turn, st);
       _chevrons(canvas, oval, turn, st);

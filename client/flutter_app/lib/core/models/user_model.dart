@@ -28,17 +28,6 @@ class UserModel {
   /// Set after a second wrong item: suspended until an admin reviews it.
   final String? restrictedUntilReviewAt;
 
-  /// Face liveness (2026-10-15): 2 once the face was enrolled through the
-  /// guided check. Below 2 the kiosk refuses the face step, and the home
-  /// screen asks the student to "Update your face with the new system now".
-  final int faceEnrolmentVersion;
-
-  /// Set while a re-enrolled face waits for an admin.
-  final String? pendingFaceAt;
-
-  bool get needsFaceUpdate => profileComplete && faceEnrolmentVersion < 2 && pendingFaceAt == null;
-  bool get faceUnderReview => pendingFaceAt != null;
-
   bool get needsGuardian =>
       (parentName ?? '').trim().isEmpty || (parentContact ?? '').trim().isEmpty || guardianConsentAt == null;
 
@@ -62,8 +51,6 @@ class UserModel {
     this.parentContact,
     this.guardianConsentAt,
     this.restrictedUntilReviewAt,
-    this.faceEnrolmentVersion = 1,
-    this.pendingFaceAt,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -94,8 +81,6 @@ class UserModel {
       parentContact: json['parentContact'] as String?,
       guardianConsentAt: json['guardianConsentAt'] as String?,
       restrictedUntilReviewAt: json['restrictedUntilReviewAt'] as String?,
-      faceEnrolmentVersion: (json['faceEnrolmentVersion'] as num?)?.toInt() ?? 1,
-      pendingFaceAt: json['pendingFaceAt'] as String?,
     );
   }
 
@@ -121,8 +106,6 @@ class UserModel {
         'parentContact': parentContact,
         'guardianConsentAt': guardianConsentAt,
         'restrictedUntilReviewAt': restrictedUntilReviewAt,
-        'faceEnrolmentVersion': faceEnrolmentVersion,
-        'pendingFaceAt': pendingFaceAt,
       };
 
   String get fullName => '$firstName $lastName';

@@ -88,7 +88,9 @@ class LivenessAvatar extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child: CustomPaint(painter: _AvatarPainter(pose: pose, worried: worried)),
+        child: CustomPaint(
+          painter: _AvatarPainter(pose: pose, worried: worried),
+        ),
       ),
     );
   }
@@ -200,13 +202,7 @@ class _AvatarPainter extends CustomPainter {
 
 /// The mascot with its words: [avatar] [bubble with a tail pointing at it].
 class CoachRow extends StatelessWidget {
-  const CoachRow({
-    super.key,
-    required this.avatar,
-    required this.text,
-    this.stepLabel,
-    this.tone = CoachTone.normal,
-  });
+  const CoachRow({super.key, required this.avatar, required this.text, this.stepLabel, this.tone = CoachTone.normal});
 
   final Widget avatar;
   final String text;
@@ -245,7 +241,12 @@ class CoachRow extends StatelessWidget {
                     Text(stepLabel!, style: const TextStyle(fontSize: 11.5, color: Color(0xFF9FBFB8))),
                   Text(
                     text,
-                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: Colors.white, height: 1.25),
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1.25,
+                    ),
                   ),
                 ],
               ),

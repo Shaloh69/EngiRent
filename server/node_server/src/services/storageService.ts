@@ -104,11 +104,6 @@ export function itemImagePath(batchId: string, filename: string): string {
 export function userFacePath(userId: string): string {
   return `users/${userId}/face.jpg`;
 }
-/** A re-enrolled face waiting for an admin (face liveness, ruling
- *  2026-10-15). Same privacy tier as face.jpg: served only by signed link. */
-export function userPendingFacePath(userId: string): string {
-  return `users/${userId}/face-pending.jpg`;
-}
 export function userIdPath(userId: string): string {
   return `users/${userId}/id.jpg`;
 }

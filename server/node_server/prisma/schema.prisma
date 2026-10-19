@@ -26,10 +26,12 @@ model User {
   faceEncoding Json? // 128-float face_recognition encoding, AES-256-GCM encrypted (see utils/crypto.ts)
   idImageUrl   String? // School ID card photo path (local storage)
 
-  // Face liveness revamp (2026-10-15, SPEC-FACE-LIVENESS.md F2b). 1 = enrolled
-  // from a single still photo (or a template the app supplied); 2 = enrolled
-  // through the server-checked liveness flow. The kiosk face step accepts only
-  // 2: everyone re-enrols through the app's "Update your face" prompt.
+  // Face liveness (2026-10-15): REVERTED on this branch the same evening (the
+  // work lives on branch `face-liveness`). These five columns were already
+  // pushed to the live database; they are kept here, unused, so `prisma db
+  // push` never proposes dropping them (and the data the liveness branch needs
+  // if it comes back). Nothing on this branch reads or writes them.
+  // 1 = single still photo; 2 = enrolled through the liveness flow.
   faceEnrolmentVersion Int @default(1)
   // A re-enrolment that did NOT match the old template (or had none) waits
   // here for an admin (ruling 2026-10-15), after the student re-entered their
