@@ -79,7 +79,11 @@ export function createPayMongo(secretKey: string, http?: AxiosInstance): PayMong
             show_description: true,
             show_line_items: true,
             line_items: [{ currency: "PHP", amount: toCentavos(p.amount), description: p.description, name: p.name, quantity: 1 }],
-            payment_method_types: ["gcash", "paymaya", "card", "brankas_bdo"],
+            // QR Ph is active by default once a live account is activated; the
+            // others appear only when PayMongo shows them Active (Settings ->
+            // Payment Methods). Without "qrph" a newly activated live account
+            // showed "No payment methods are available" (2026-10-21).
+            payment_method_types: ["qrph", "gcash", "paymaya", "card", "brankas_bdo"],
             description: p.description,
             success_url: p.successUrl,
             cancel_url: p.cancelUrl,
