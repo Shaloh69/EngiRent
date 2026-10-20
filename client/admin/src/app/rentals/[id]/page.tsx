@@ -174,10 +174,21 @@ export default function RentalDetailPage() {
                     icon: CalendarDays,
                   },
                   {
-                    label: "Total",
+                    // totalPrice is the RENT (the owner's money); renter fees
+                    // are stored beside it since 2026-10-21.
+                    label: "Rent (owner)",
                     value: peso.format(Number(rental.totalPrice || 0)),
                     icon: Wallet,
                   },
+                  ...(Number(rental.platformFee || 0) + Number(rental.serviceFee || 0) > 0
+                    ? [
+                        {
+                          label: "Renter fees",
+                          value: `${peso.format(Number(rental.platformFee || 0))} platform + ${peso.format(Number(rental.serviceFee || 0))} service = renter paid ${peso.format(Number(rental.totalPrice || 0) + Number(rental.platformFee || 0) + Number(rental.serviceFee || 0))}`,
+                          icon: Wallet,
+                        },
+                      ]
+                    : []),
                 ].map((f) => (
                   <Group key={f.label} gap="sm" wrap="nowrap" align="flex-start">
                     <ThemeIcon size={36} radius="md" variant="light" color={roleColor.brand}>

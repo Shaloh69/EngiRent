@@ -40,6 +40,9 @@ export interface Rental {
   startDate: string;
   endDate: string;
   totalPrice: number;
+  /** Renter fees beside the rent (since 2026-10-21; 0 on older rentals). */
+  platformFee?: number;
+  serviceFee?: number;
   item: {
     id: string;
     title: string;

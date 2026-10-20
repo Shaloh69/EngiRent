@@ -31,6 +31,7 @@ import {
 import api from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { roleColor } from "../theme";
+import RenterFeesCard from "@/components/settings/RenterFeesCard";
 
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -237,6 +238,8 @@ export default function SettingsPage() {
             </SimpleGrid>
           )}
         </Card>
+
+        <RenterFeesCard />
 
         <Card withBorder radius="md" padding="lg">
           <Group gap="sm" mb="md">
