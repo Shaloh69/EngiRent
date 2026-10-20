@@ -28,17 +28,15 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.16.0",
-  buildNumber: 47,
-  fileName: "Engirent_Prerelease47.eda64bd1739319a926f51503eb0bf6a6.apk",
-  released: "2026-10-19",
-  sizeMb: 114.6,
+  version: "1.16.1",
+  buildNumber: 48,
+  fileName: "Engirent_Prerelease48.eda64bd1739319a926f51503eb0bf6a6.apk",
+  released: "2026-10-21",
+  sizeMb: 114.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "The face check is back to a single photo, with the friendly guide and the reacting ring kept; no blinking or head turns",
-    "Fixed a black camera after switching apps and a quick double tap taking two photos",
-    "A damage case you have paid now shows \"Settled\" with the date the payment was confirmed",
-    "Everyone on 1.15.x needs this update to pass the face check",
+    "Fixed \"Missing required fields\" when scanning the kiosk from the Home screen: it now asks which rental the visit is for, or goes straight in when there is only one",
+    "Pay online with card, GCash or Maya through PayMongo; if the payment service can't be reached, you can still pay by GCash and an admin confirms it",
   ],
 };
 

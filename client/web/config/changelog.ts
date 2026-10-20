@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    date: "2026-10-21",
+    version: "1.16.1",
+    tag: "fix",
+    title: "Scanning the kiosk from Home works again; online payments are on",
+    bullets: [
+      "The \"Scan kiosk\" button on the Home screen used to open the scanner without knowing which rental the visit was for, so every scan from it failed with \"Missing required fields\". It now checks your rentals first: with one kiosk step waiting it goes straight to the scanner, with several it asks which one, and with none it says there is nothing to do at the kiosk right now",
+      "Payments now go through PayMongo (card, GCash, Maya or BDO online) and are confirmed automatically, usually within seconds",
+      "If the payment service cannot be reached, you get the GCash instructions instead and an admin confirms the payment, as before",
+    ],
+  },
+  {
     date: "2026-10-19",
     version: "1.16.0",
     tag: "release",

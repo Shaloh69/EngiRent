@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-21 00:31 - PAYMONGO LIVE: PAYMENT_MODE=PAYMONGO, PAYMENT_GATEWAY=live (user "GO LIVE, use the manual for a fallback"); manual GCash = fallback (gateway down/wrong/refusing, or asleep 90 s); owner payouts by staff (no source account); NEXT: the user's first small real payment, watched end to end; emergency stop = PAYMENT_MODE=MANUAL + restart; OPEN: server keep-alive 25-min proof pending, P5 app messages not built, refunds wait for PayMongo settlement, face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 01:43 - PAYMONGO LIVE (PAYMENT_MODE=PAYMONGO, live gateway kept awake by the API; manual GCash fallback); 1.16.1+48 RELEASED (Home "Scan kiosk" picks the rental; four places verified); NOT SEEN ON A PHONE: the first real payment AND 1.16.1 (two unverified changes, G1, user's call); NEXT: user installs 1.16.1, scans from Home, makes a small real payment; emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: P5 app messages, refunds wait for settlement, owner payouts by staff, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11547,4 +11547,14 @@ Rules copied from `rental_detail_screen.dart:837-898` (the page that works): own
 | A1 | `lib/features/kiosk/kiosk_actions.dart`: pure rule function | unit tests, each rule mutation-checked | **Done**: 11 rule tests; 13/13 mutations killed (survivor 'empty user id' got its test) |
 | A2 | Home button: fetch, then 0 -> "Nothing to do at the kiosk right now", 1 -> straight to the scanner, 2+ -> pick a rental | widget test; rendered and looked at | **Done**: 5 widget tests (fetches limit=50; none -> message; one -> straight in; two -> picker; failed request -> message); rendered with a real font and looked at: picker sheet, nothing-to-do snackbar |
 | A3 | `KioskScanScreen` never sends an empty rental (defence for any other caller) | widget test | **Done**: guard moved to `initState` (an empty rental never starts scanning); the render showed "Hand-off didn't complete" + "Scan again", which would loop forever: now its own state "Which rental is this for?" with only "Go back"; pinned by a test, mutation killed. App 109 tests, analyzer clean |
-| A4 | Release 1.16.1+48: APK validated, website release.ts + changelog, AppRelease + LATEST_APP_VERSION + API restart | four places verified live | not started |
+| A4 | Release 1.16.1+48: APK validated, website release.ts + changelog, AppRelease + LATEST_APP_VERSION + API restart | four places verified live | **Done 2026-10-21 01:43** (below) |
+
+### 2026-10-21 01:43 — 1.16.1+48 RELEASED (four places verified through the public URLs); keep-alive proven
+
+- **Keep-alive proof:** after 25 min with no outside requests, the gateway answered in 0.3 s with uptime 2284 s (never slept; Render free sleeps after 15 min).
+- **APK Prerelease48** validated: testzip clean; only the live API host in all 3 ABIs; signer CN=EngiRent 3d113b7d...1868 (same as before); versionCode 48 / 1.16.1; 120,308,813 B; sha256 344c7d3a...4e96 = staging = published copy; the new strings are in libapp.so.
+- **Upload lesson:** the base64-over-stdin push ran 30+ min for 120 MB and was stopped; a raw-stdin PowerShell receiver never sees EOF on this server (3 MB test hung); **`scp` works (120 MB in 14.6 s, hash equal)**. My note that scp uploads are refused is out of date.
+- **Website:** server `release.ts`/`changelog.ts` equal to HEAD before the push (no drift); EngiRentWeb restarted (~110 s, rebuilt itself); `/download` shows 1.16.1; the served JS names `Engirent_Prerelease48`; the APK downloads at full length through the web tunnel.
+- **In-app record:** `AppRelease` 1.16.1/48 (2 highlights); `LATEST_APP_VERSION=1.16.1` (backup `.env.bak-release48-20261021`, no BOM), `MIN_APP_VERSION` stays 1.16.0 (offered, not forced); API restarted after the flow guard; `/app-config` through the API tunnel -> latestVersion 1.16.1. Gist API URL unchanged (no tunnel rotation).
+- **Not verified on a phone:** 1.16.1 itself, and the first real payment.
+**G5 six-symptom check (release boundary): ONE SYMPTOM.** 3 losing the rules: `$_` eaten in an inline ssh command once more (a read-only listing; no harm). 5 batching: two changes now unverified on a phone (go-live + 1.16.1), on the user's explicit request; recorded. Others: no.
