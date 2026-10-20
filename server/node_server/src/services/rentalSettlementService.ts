@@ -198,6 +198,13 @@ export async function finalizeRentalCompletion(
   const itemTitle = rental.item.title;
   const depositTxn = rental.transactions.find((t) => t.type === "SECURITY_DEPOSIT");
   const rentalPaymentTxn = rental.transactions.find((t) => t.type === "RENTAL_PAYMENT");
+  // Renter fees (2026-10-21): the rental payment is rent + platform fee +
+  // service fee; the OWNER is paid the rent only. Both fees are 0 on rentals
+  // booked before then, so their payouts are unchanged.
+  if (rentalPaymentTxn) {
+    const fees = (rental.platformFee ?? 0) + (rental.serviceFee ?? 0);
+    rentalPaymentTxn.amount = Math.max(0, round2(rentalPaymentTxn.amount - fees));
+  }
 
   // ── 1. Renter's security deposit: held for the owner's check, or refunded now ──
   if (depositTxn && opts.holdDeposit) {

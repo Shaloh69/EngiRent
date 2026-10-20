@@ -136,3 +136,25 @@ describe("P2: a PayMongo deposit with NO PayMongo key on this server", () => {
     expect(titles).toContain("Deposit Refund Delayed");
   });
 });
+
+describe("renter fees (2026-10-21): the owner is paid the RENT only", () => {
+  it("₱112 paid (rent 100 + platform 2 + service 10): owner payout ₱100", async () => {
+    const r = { ...rental([DEPOSIT, { ...RENT, amount: 112 }]), platformFee: 2, serviceFee: 10 };
+    db.rental.findUnique.mockResolvedValue(r as never);
+    await finalizeRentalCompletion("r1", { holdDeposit: true });
+    expect(createdTypes().find((d) => d.type === "OWNER_PAYOUT")!.amount).toBe(100);
+  });
+  it("a rental booked before the fees (no fee columns): payout is the whole payment, as before", async () => {
+    // a fresh copy: the settlement adjusts the payment object in place, and an
+    // earlier test in this file has already reduced the shared RENT fixture
+    db.rental.findUnique.mockResolvedValue(rental([{ ...DEPOSIT }, { ...RENT, amount: 90 }]) as never);
+    await finalizeRentalCompletion("r1", { holdDeposit: true });
+    expect(createdTypes().find((d) => d.type === "OWNER_PAYOUT")!.amount).toBe(90);
+  });
+  it("never negative", async () => {
+    const r = { ...rental([DEPOSIT, { ...RENT, amount: 5 }]), platformFee: 2, serviceFee: 10 };
+    db.rental.findUnique.mockResolvedValue(r as never);
+    await finalizeRentalCompletion("r1", { holdDeposit: true });
+    expect(createdTypes().find((d) => d.type === "OWNER_PAYOUT")!.amount).toBe(0);
+  });
+});
