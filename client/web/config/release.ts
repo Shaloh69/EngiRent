@@ -28,15 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.16.1",
-  buildNumber: 48,
-  fileName: "Engirent_Prerelease48.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.16.2",
+  buildNumber: 49,
+  fileName: "Engirent_Prerelease49.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-21",
   sizeMb: 114.7,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Fixed \"Missing required fields\" when scanning the kiosk from the Home screen: it now asks which rental the visit is for, or goes straight in when there is only one",
-    "Pay online with card, GCash or Maya through PayMongo; if the payment service can't be reached, you can still pay by GCash and an admin confirms it",
+    "Payout details: GCash, Maya and the big banks are listed first, and searching \"gcash\" now finds GCash",
+    "For GCash or Maya, your mobile number is the account number; the form now says so",
+    "Scanning the kiosk from the Home screen asks which rental the visit is for (from 1.16.1)",
   ],
 };
 

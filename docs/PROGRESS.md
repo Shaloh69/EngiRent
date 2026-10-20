@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-21 01:43 - PAYMONGO LIVE (PAYMENT_MODE=PAYMONGO, live gateway kept awake by the API; manual GCash fallback); 1.16.1+48 RELEASED (Home "Scan kiosk" picks the rental; four places verified); NOT SEEN ON A PHONE: the first real payment AND 1.16.1 (two unverified changes, G1, user's call); NEXT: user installs 1.16.1, scans from Home, makes a small real payment; emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: P5 app messages, refunds wait for settlement, owner payouts by staff, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 02:05 - PAYMONGO LIVE (live gateway kept awake by the API; manual GCash fallback) BUT live checkouts show "No payment methods": gateway now requests QR Ph (4c7ad5a), WAITING for the user's Render Manual Deploy; 1.16.2+49 RELEASED (payout picker: Popular first, "gcash" finds G-Xchange); NOT SEEN ON A PHONE: a real payment, 1.16.1, 1.16.2; NEXT: earnings wallet (user request, plan + rulings first); emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: dead Glue Gun checkout to expire, P5 messages, refunds wait for settlement, payouts by staff, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11568,4 +11568,8 @@ PayMongo facts (official docs/pricing, 2026-10-21): payouts cost ₱10 per trans
 |---|---------|-----------|-------|
 | B1 | Popular group (GCash, Maya, BDO, BPI, Landbank, Metrobank, UnionBank, Security Bank, RCBC, PNB, GoTyme) at the top of the sheet, by code; friendly names; search also matches "gcash"/"maya" aliases | widget tests, mutation-checked; rendered and looked at | **Done**: `payout_institutions.dart` (popular by code, friendly names, aliases gcash/paymaya/landbank/bdo); 7 tests, 8/8 mutations killed; rendered with the live names: POPULAR section, "gcash" finds GCash, picker shows "GCash (G-Xchange, Inc.)" |
 | B2 | Hint under the picker: most students use GCash or Maya (their mobile number is the account number) | rendered | **Done**: hint under the picker; e-wallet account number asks for the mobile number; both rendered and looked at. App 116 tests |
-| B3 | Release 1.16.2+49 (four places) | verified live | not started |
+| B3 | Release 1.16.2+49 (four places) | verified live | **Done 2026-10-21 02:05** (below) |
+
+### 2026-10-21 02:05 — 1.16.2+49 RELEASED (four places verified through the public URLs)
+
+APK Prerelease49: testzip clean; live host only in 3 ABIs; signer 3d113b7d...1868; versionCode 49 / 1.16.2; 120,374,349 B; sha256 40aedf3c...9bd7 = staging = published; new strings present (the hint containing "…" is stored UTF-16). Uploaded with scp. Website: server config equal to HEAD (1.16.1) before the push; restarted; `/download` shows 1.16.2; served JS names Prerelease49; APK 200 at full length. `AppRelease` 1.16.2/49; `LATEST_APP_VERSION=1.16.2` (backup `.env.bak-release49-20261021`, no BOM), MIN stays 1.16.0; API restarted after the flow guard; `/app-config` -> 1.16.2. Not seen on a phone.

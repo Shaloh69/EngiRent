@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-21",
+    version: "1.16.2",
+    tag: "fix",
+    title: "Easier payout details: GCash, Maya and the big banks first",
+    bullets: [
+      "The list of banks and e-wallets for your payouts now starts with the popular ones: GCash, Maya, BDO, BPI, Landbank, Metrobank, UnionBank, Security Bank, RCBC, PNB and GoTyme",
+      "Searching \"gcash\" or \"paymaya\" now finds them (PayMongo lists GCash under its company name, G-Xchange, Inc.)",
+      "For GCash or Maya the form asks for your mobile number, which is your account number for payouts",
+    ],
+  },
+  {
+    date: "2026-10-21",
     version: "1.16.1",
     tag: "fix",
     title: "Scanning the kiosk from Home works again; online payments are on",
