@@ -45,8 +45,9 @@ function rental(transactions: object[]) {
   };
 }
 
-/** Route the mocked gateway: GET /status -> walletReady; POST /transfers -> a transfer. */
-function gateway(walletReady: boolean | null) {
+/** Route the mocked gateway: GET /status -> walletReady; GET /health -> transfersConfigured; POST /transfers -> a transfer. */
+function gateway(walletReady: boolean | null, transfersConfigured = true) {
+  ax.get.mockResolvedValue({ data: { mode: "sandbox", keyMode: "test", transfersConfigured } } as never);
   ax.request.mockImplementation((async (cfg: any) => {
     if (cfg.url.endsWith("/status")) return { data: { mode: "x", walletReady } };
     if (cfg.url.endsWith("/transfers")) return { data: { transferId: "tr_1", status: "pending" } };
@@ -64,6 +65,7 @@ beforeEach(() => {
   mockReset(db);
   db.$transaction.mockImplementation((async (ops: unknown) => ops) as never);
   ax.request.mockReset();
+  ax.get.mockReset();
   E.PAYMENT_MODE = "PAYMONGO";
   E.PAYMENT_GATEWAY = "sandbox";
   E.PAYMENT_GATEWAY_SANDBOX_URL = "https://pay-sandbox.example";
@@ -92,6 +94,15 @@ describe("owner payout through the gateway", () => {
     await finalizeRentalCompletion("r1");
     expect(urls().some((u) => u.endsWith("/transfers"))).toBe(false);
     expect(payout()).toMatchObject({ status: "PENDING", amount: 90 });
+    expect(payout()!.paymentMethod).toMatch(/staff pay out/);
+  });
+
+  it("a wallet but no source account on the gateway: no transfer, PENDING for staff (the live account on 2026-10-21)", async () => {
+    gateway(true, false);
+    db.rental.findUnique.mockResolvedValue(rental([RENT_SANDBOX]) as never);
+    await finalizeRentalCompletion("r1");
+    expect(urls().some((u) => u.endsWith("/transfers"))).toBe(false);
+    expect(payout()).toMatchObject({ status: "PENDING" });
     expect(payout()!.paymentMethod).toMatch(/staff pay out/);
   });
 
@@ -137,6 +148,7 @@ describe("owner payout through the gateway", () => {
       if (cfg.url.endsWith("/status")) return { data: { walletReady: true } };
       throw { response: { status: 409 } };
     }) as never);
+    ax.get.mockResolvedValue({ data: { transfersConfigured: true } } as never);
     db.rental.findUnique.mockResolvedValue(rental([RENT_SANDBOX]) as never);
     await finalizeRentalCompletion("r1");
     expect(payout()!.status).toBe("FAILED");

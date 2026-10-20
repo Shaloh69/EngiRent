@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-20 - P2 DEPLOYED (live DB +paymentEnv; .env PAYMENT_GATEWAY=live + URL; PAYMENT_MODE still MANUAL); engirent-pay-live on Render UP (mode live, keyMode live, webhook configured 10-21 00:03); ruling D5 LIVE ONLY; WAITING ON USER: PAYMENT_GATEWAY_LIVE_TOKEN in server .env, UptimeRobot, then the explicit yes for PAYMENT_MODE=PAYMONGO (real money); P5 app messages not built; OPEN: face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 - P2 DEPLOYED + LIVE GATEWAY CONNECTED (token in .env, poller polling live; P7 check passed: 1-peso live checkout created + expired unpaid); PAYMENT_MODE still MANUAL; ruling D5 LIVE ONLY; WAITING ON USER: UptimeRobot on /health, then the explicit "go live" for PAYMENT_MODE=PAYMONGO (real money); P5 app messages not built; OPEN: face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11510,6 +11510,13 @@ State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, *
 | D1 | Back up the 13 files + `.env`; copy the 15 P2 files | hashes equal HEAD | **Done**: backup `D:\ENGackup-20261020-p2\` (13 files + .env); 15 pushed, hashes = HEAD (index.ts needed a retry) |
 | D2 | `prisma migrate diff` live DB -> schema: ONLY `ADD paymentEnv` | SQL read | **Done**: only `ALTER TABLE transactions ADD COLUMN paymentEnv VARCHAR(191) NULL` on 127.0.0.1:3307/engirent; live DB has ZERO PayMongo transactions (nothing pre-P2 to strand) |
 | D3 | kiosk-flow guard; stop API (svc-node.bat tree); `db push`; `.env` += PAYMENT_GATEWAY=live, PAYMENT_GATEWAY_LIVE_URL (no BOM, backup); start EngiRentNode | port 5000, /health, admin health card | **Done 2026-10-20 23:54**: no kiosk flow in 15 min; svc-node.bat tree stopped; db push in sync (72 rows intact); `.env` 53->55 lines, no BOM, backup `.env.bak-p2-20261020`; EngiRentNode Running in ~50 s; through the API tunnel: /health ok, /app-config 1.16.0, items 200, unsigned gateway-event 401; poller "manual fallback only; polling gateways: none" (no token yet) |
-| D4 | USER: `PAYMENT_GATEWAY_LIVE_TOKEN` in `.env`; `PAYMONGO_WEBHOOK_SECRET` on Render; UptimeRobot | gateway card ok; webhookConfigured true | waiting on user |
+| D4 | USER: `PAYMENT_GATEWAY_LIVE_TOKEN` in `.env`; `PAYMONGO_WEBHOOK_SECRET` on Render; UptimeRobot | gateway card ok; webhookConfigured true | **Done 2026-10-21 00:24** except UptimeRobot (user): token in `.env` via `D:\ENG\set-gateway-token.ps1` (1 line, 32 chars, backup `.env.bak-token-20261021`); API restarted (no kiosk flow), poller "polling gateways: live" |
 | D5 | `PAYMENT_MODE=PAYMONGO`: real money | user's explicit yes | not asked yet |
 - 2026-10-21 00:03: user created the LIVE PayMongo webhook and set `PAYMONGO_WEBHOOK_SECRET` on Render (manual deploy of the latest commit). `/health` -> `webhookConfigured: true`; an unsigned POST /webhook -> 400 (signature refused, as designed). Not yet seen: a real signed delivery (needs a payment).
+
+### 2026-10-21 00:28 — P7 check PASSED on the live gateway; payout bug found and fixed (deployed)
+
+- **P7 (no money moved):** gateway /health live/live/webhook configured; `/status` accepts the server's token, a wrong token 401; a ₱1 LIVE checkout `cs_4eccc0c961abdd7ad98b8591` created on checkout.paymongo.com, read back open/₱1/livemode true, expired, read back expired. `/status` mainApi = the current API tunnel (gist works).
+- **Bug found by this check (mine, P2.5):** the live account reports `walletReady: true` but the gateway has no source account (`transfersConfigured: false`). `canAutoPayout` looked only at walletReady, so after go-live a payout would have been attempted, refused 409, recorded FAILED and the owner told "payout failed". **Fix:** `walletReady()` now also requires `/health transfersConfigured === true`; else staff payout (PENDING). 2 tests added (client + settlement), 2/2 mutations killed, Node 622 green; deployed (paymentGateway.ts only), API restarted after the flow guard, compiled dist checked for the fix.
+- A process slip, mine, caught by the script's own guard (nothing touched): the restart header was generated with an unescaped `
+` in a Python string, so the token check read a wrong path and refused to restart.

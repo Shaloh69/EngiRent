@@ -96,6 +96,7 @@ export interface GatewayHealth {
   mode: string;
   keyMode: string;
   webhookConfigured?: boolean;
+  transfersConfigured?: boolean;
   version?: string;
   uptimeS?: number;
 }
@@ -181,11 +182,20 @@ export async function institutions(e: PaymentEnv, provider: "instapay" | "pesone
   return out?.data ?? [];
 }
 
-/** True only when the gateway positively reports a PayMongo wallet to send from. Anything else: manual payouts. */
+/**
+ * True only when the gateway can actually SEND a transfer: PayMongo reports a
+ * wallet (/status walletReady) AND the gateway has the source account to send
+ * from (/health transfersConfigured). Anything else: manual (staff) payouts.
+ * Found 2026-10-21 on the live account: walletReady true while the gateway had
+ * no source account, so an automatic payout would have been refused (409) and
+ * the owner told "your payout failed" instead of it waiting for staff.
+ */
 export async function walletReady(e: PaymentEnv): Promise<boolean> {
   try {
     const s = await call<{ walletReady?: boolean | null }>(e, "get", "/status", undefined, 15_000);
-    return s?.walletReady === true;
+    if (s?.walletReady !== true) return false;
+    const h = await health(e, 15_000);
+    return h?.transfersConfigured === true;
   } catch (err) {
     logger.warn(`[GATEWAY] ${e} /status failed: ${(err as Error).message}`);
     return false;

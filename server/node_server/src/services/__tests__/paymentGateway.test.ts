@@ -168,7 +168,13 @@ describe("walletReady: payouts stay manual unless the gateway says true", () => 
     [{}, false],
   ])("%j -> %s", async (data, want) => {
     ax.request.mockResolvedValue({ data });
+    ax.get.mockResolvedValue({ data: { mode: "sandbox", keyMode: "test", transfersConfigured: true } });
     await expect(walletReady("sandbox")).resolves.toBe(want);
+  });
+  it("a wallet but NO source account on the gateway (transfersConfigured false) -> false (live account, 2026-10-21)", async () => {
+    ax.request.mockResolvedValue({ data: { walletReady: true } });
+    ax.get.mockResolvedValue({ data: { mode: "live", keyMode: "live", transfersConfigured: false } });
+    await expect(walletReady("sandbox")).resolves.toBe(false);
   });
   it("an error -> false", async () => {
     ax.request.mockRejectedValue(new Error("down"));
