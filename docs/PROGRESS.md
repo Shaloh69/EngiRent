@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-20 - P2 DEPLOYED (live DB +paymentEnv; .env PAYMENT_GATEWAY=live + URL; PAYMENT_MODE still MANUAL); engirent-pay-live on Render UP (mode live, keyMode live; webhook NOT configured); ruling D5 LIVE ONLY; WAITING ON USER: PAYMENT_GATEWAY_LIVE_TOKEN in server .env, PAYMONGO_WEBHOOK_SECRET on Render, UptimeRobot, then the explicit yes for PAYMENT_MODE=PAYMONGO (real money); P5 app messages not built; OPEN: face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-20 - P2 DEPLOYED (live DB +paymentEnv; .env PAYMENT_GATEWAY=live + URL; PAYMENT_MODE still MANUAL); engirent-pay-live on Render UP (mode live, keyMode live, webhook configured 10-21 00:03); ruling D5 LIVE ONLY; WAITING ON USER: PAYMENT_GATEWAY_LIVE_TOKEN in server .env, UptimeRobot, then the explicit yes for PAYMENT_MODE=PAYMONGO (real money); P5 app messages not built; OPEN: face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11512,3 +11512,4 @@ State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, *
 | D3 | kiosk-flow guard; stop API (svc-node.bat tree); `db push`; `.env` += PAYMENT_GATEWAY=live, PAYMENT_GATEWAY_LIVE_URL (no BOM, backup); start EngiRentNode | port 5000, /health, admin health card | **Done 2026-10-20 23:54**: no kiosk flow in 15 min; svc-node.bat tree stopped; db push in sync (72 rows intact); `.env` 53->55 lines, no BOM, backup `.env.bak-p2-20261020`; EngiRentNode Running in ~50 s; through the API tunnel: /health ok, /app-config 1.16.0, items 200, unsigned gateway-event 401; poller "manual fallback only; polling gateways: none" (no token yet) |
 | D4 | USER: `PAYMENT_GATEWAY_LIVE_TOKEN` in `.env`; `PAYMONGO_WEBHOOK_SECRET` on Render; UptimeRobot | gateway card ok; webhookConfigured true | waiting on user |
 | D5 | `PAYMENT_MODE=PAYMONGO`: real money | user's explicit yes | not asked yet |
+- 2026-10-21 00:03: user created the LIVE PayMongo webhook and set `PAYMONGO_WEBHOOK_SECRET` on Render (manual deploy of the latest commit). `/health` -> `webhookConfigured: true`; an unsigned POST /webhook -> 400 (signature refused, as designed). Not yet seen: a real signed delivery (needs a payment).
