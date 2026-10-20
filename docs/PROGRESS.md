@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-21 02:05 - PAYMONGO LIVE (live gateway kept awake by the API; manual GCash fallback) BUT live checkouts show "No payment methods": gateway now requests QR Ph (4c7ad5a), WAITING for the user's Render Manual Deploy; 1.16.2+49 RELEASED (payout picker: Popular first, "gcash" finds G-Xchange); NOT SEEN ON A PHONE: a real payment, 1.16.1, 1.16.2; NEXT: earnings wallet (user request, plan + rulings first); emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: dead Glue Gun checkout to expire, P5 messages, refunds wait for settlement, payouts by staff, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 02:20 - PAYMONGO LIVE: QR Ph shows on live checkouts (gateway 4c7ad5a deployed by the user); GCash/Maya/Card not yet Active in the live account (user, PayMongo Settings); 1.16.2+49 RELEASED; NOT SEEN ON A PHONE: a real payment, 1.16.1, 1.16.2; NEXT: user's real 1-peso QR Ph payment, then the earnings wallet (rulings: user pays 10, MIN CASH-OUT 100, owner money only, automatic; cash-in = e-money question open); emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: P5 messages, refunds wait for settlement, payouts by staff, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11576,5 +11576,11 @@ APK Prerelease49: testzip clean; live host only in 3 ABIs; signer 3d113b7d...186
 
 ### 2026-10-21 — User request: EARNINGS WALLET. Rulings so far (not built)
 
-User: "create a wallet for each user so that during withdrawals I can cash out and only pay 10 pesos once". Rulings (AskUserQuestion): (1) the USER pays the ₱10 on each cash-out, minimum cash-out ₱50; (2) only OWNER money goes into the balance (rental earnings, damage compensation, wrong-item fees); renters' deposit refunds keep going back to the card/GCash they paid with (PayMongo refund); (3) cash-outs are sent AUTOMATICALLY through the gateway (needs the platform's PayMongo wallet number + name on Render and enough balance there; until then they wait for staff). The user ALSO asked for "a cash-in option" and "pay via the wallet to save on service fee".
+User: "create a wallet for each user so that during withdrawals I can cash out and only pay 10 pesos once". Rulings (AskUserQuestion): (1) the USER pays the ₱10 on each cash-out, minimum cash-out ₱100 (changed from ₱50 by the user 2026-10-21 02:20); (2) only OWNER money goes into the balance (rental earnings, damage compensation, wrong-item fees); renters' deposit refunds keep going back to the card/GCash they paid with (PayMongo refund); (3) cash-outs are sent AUTOMATICALLY through the gateway (needs the platform's PayMongo wallet number + name on Render and enough balance there; until then they wait for staff). The user ALSO asked for "a cash-in option" and "pay via the wallet to save on service fee".
 **Raised to the user before building:** cash-in (top-up) is e-money issuance under BSP Circular 649 as amended by Circular 1166 (EMI licence; one source: ₱100M paid-up capital for a non-bank); paying a rental from an EARNINGS balance is set-off (no new money in), lower risk; cash-in saves little (top-up pays the same PayMongo % fee; only the card's fixed ₱13.39 is saved). Recommendation: earnings wallet + cash-out + pay-with-earnings; no cash-in unless the adviser/school confirms or it runs on test money only. Awaiting the user's choice.
+
+### 2026-10-21 02:20 — QR Ph live on checkouts; stale checkout cleared; wallet minimum changed to ₱100
+
+- User deployed `4c7ad5a` on Render (gateway uptime 177 s at the check). A ₱1 live checkout now offers **QRPH** (it showed "No payment methods" before; GCash/Maya/Card are still not Active in the live account: the user activates them in PayMongo Settings). Test checkout expired, no money moved.
+- The one pending live payment (06052b56, Glue Gun ₱1, its checkout made before the fix): checkout was open -> expired -> the poller marked it **FAILED** at 02:19:56, so the next "Pay" creates a fresh checkout with QR Ph.
+- **Wallet ruling changed (user): minimum cash-out ₱100** (was ₱50). Wallet still not built.
