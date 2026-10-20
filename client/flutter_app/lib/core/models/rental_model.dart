@@ -3,7 +3,13 @@ class RentalModel {
   final String status;
   final DateTime startDate;
   final DateTime endDate;
+  /// The RENT: the owner's price × days (what the owner is paid).
   final double totalPrice;
+  /// Renter fees on top of the rent (2026-10-21; 0 on older rentals).
+  final double platformFee;
+  final double serviceFee;
+  /// Who owns the item (the list view sends it; null if absent).
+  final String? ownerId;
   final double securityDeposit;
   final RentalItem item;
   final DateTime createdAt;
@@ -41,6 +47,9 @@ class RentalModel {
     required this.startDate,
     required this.endDate,
     required this.totalPrice,
+    this.platformFee = 0,
+    this.serviceFee = 0,
+    this.ownerId,
     required this.securityDeposit,
     required this.item,
     required this.createdAt,
@@ -63,6 +72,9 @@ class RentalModel {
       startDate: DateTime.parse(json['startDate']).toLocal(),
       endDate: DateTime.parse(json['endDate']).toLocal(),
       totalPrice: (json['totalPrice'] as num).toDouble(),
+      platformFee: (json['platformFee'] as num?)?.toDouble() ?? 0,
+      serviceFee: (json['serviceFee'] as num?)?.toDouble() ?? 0,
+      ownerId: json['ownerId'] as String?,
       securityDeposit: (json['securityDeposit'] as num).toDouble(),
       item: RentalItem.fromJson(json['item']),
       createdAt: DateTime.parse(json['createdAt']).toLocal(),
@@ -145,6 +157,10 @@ class RentalModel {
   }
 
   bool get isActive => status == 'ACTIVE';
+
+  /// What the renter pays for the rental (rent + platform fee + service fee);
+  /// the rent alone for a rental booked before the fees.
+  double get renterTotal => ((totalPrice + platformFee + serviceFee) * 100).roundToDouble() / 100;
 
   /// D-87d: the deposit is in the locker but nobody has confirmed it yet, so
   /// the renter cannot collect. Deliberately treats a MISSING

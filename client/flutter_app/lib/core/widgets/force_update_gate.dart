@@ -6,6 +6,7 @@ import '../constants/app_colors.dart';
 import '../services/api_service.dart';
 import '../theme/tokens.dart';
 import 'app_widgets.dart';
+import '../services/fee_settings.dart';
 
 /// Checklist Stage 9 — force-update gate, "for an app that moves money and
 /// opens doors". Originally blocked only below `minVersion`; a follow-up
@@ -61,6 +62,8 @@ class _ForceUpdateGateState extends State<ForceUpdateGate> {
       if (resp.statusCode != 200) return;
       final data = jsonDecode(resp.body);
       final config = data['data'] as Map<String, dynamic>?;
+      // Renter fees for showing prices (before any early return below).
+      FeeSettings.instance.apply(config?['fees']);
       final latestVersion = config?['latestVersion'] as String?;
       if (latestVersion == null) return;
 

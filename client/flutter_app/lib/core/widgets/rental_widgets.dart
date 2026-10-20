@@ -8,6 +8,9 @@ import '../models/rental_model.dart';
 import '../theme/design_tokens.g.dart';
 import '../theme/tokens.dart';
 import 'app_widgets.dart';
+import 'package:provider/provider.dart';
+import '../../features/auth/providers/auth_provider.dart';
+import '../services/fee_settings.dart';
 
 /// Rental status → semantic colour.
 ///
@@ -151,14 +154,18 @@ class RentalCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xs),
-                Row(
+                Builder(builder: (context) {
+                  // The owner earns the rent; the renter pays rent + fees.
+                  final me = context.read<AuthProvider>().user?.id;
+                  final mine = me != null && rental.ownerId == me;
+                  return Row(
                   children: [
                     MonoText(
-                      '₱${rental.totalPrice.toStringAsFixed(0)}',
+                      mine ? peso(rental.totalPrice) : peso(rental.renterTotal),
                       size: 14,
                       color: p.primary,
                     ),
-                    Text(' rental',
+                    Text(mine ? ' you earn' : ' rental',
                         style: TextStyle(fontSize: 11, color: p.muted)),
                     const Spacer(),
                     // Days-remaining is the single most useful number on an
@@ -167,7 +174,8 @@ class RentalCard extends StatelessWidget {
                     if (rental.status == 'ACTIVE')
                       _DueChip(endDate: rental.endDate),
                   ],
-                ),
+                );
+                }),
               ],
             ),
           ),

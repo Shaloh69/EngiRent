@@ -16,6 +16,7 @@ import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
 import '../../../core/widgets/video_preview_player.dart';
 import '../models/item_service.dart';
+import '../../../core/services/fee_settings.dart';
 
 /// A slot in the photo strip: either a photo already on the listing (a URL)
 /// or one just picked on this screen (a local file, not yet uploaded).
@@ -1201,6 +1202,15 @@ class _EarningsPreview extends StatelessWidget {
                   ],
                 ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          // Renter fees (2026-10-21): the owner keeps their own price; renters
+          // see it with the platform fee inside, plus a one-time service fee.
+          Text(
+            'You receive your full price. Renters see '
+            '${peso(FeeSettings.instance.shownPerDay(pricePerDay))}/day + '
+            '${peso(FeeSettings.instance.serviceFee)} service fee.',
+            style: TextStyle(fontSize: 11, height: 1.35, color: p.muted),
           ),
         ],
       ),

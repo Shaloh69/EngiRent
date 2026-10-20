@@ -19,6 +19,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../feedback/screens/send_feedback_screen.dart';
 import '../../messages/screens/conversation_screen.dart';
 import '../../reviews/screens/reviews_screen.dart';
+import '../../../core/services/fee_settings.dart';
 
 /// Product detail — rebuilt on the shopping-template pattern (mandate §2.2).
 ///
@@ -253,20 +254,26 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   AppCard(
                     child: Column(
                       children: [
+                        // Renter fees (2026-10-21): the platform fee is
+                        // inside the daily rate; the service fee is once.
                         InfoRow(
                           label: 'Daily rate',
-                          value: '₱${item.pricePerDay.toStringAsFixed(0)}',
+                          value: peso(FeeSettings.instance.shownPerDay(item.pricePerDay)),
                         ),
                         if (item.pricePerWeek != null)
                           InfoRow(
                             label: 'Weekly rate',
-                            value: '₱${item.pricePerWeek!.toStringAsFixed(0)}',
+                            value: peso(FeeSettings.instance.shownPerDay(item.pricePerWeek!)),
                           ),
                         if (item.pricePerMonth != null)
                           InfoRow(
                             label: 'Monthly rate',
-                            value: '₱${item.pricePerMonth!.toStringAsFixed(0)}',
+                            value: peso(FeeSettings.instance.shownPerDay(item.pricePerMonth!)),
                           ),
+                        InfoRow(
+                          label: 'Service fee (once per rental)',
+                          value: peso(FeeSettings.instance.serviceFee),
+                        ),
                         Divider(color: p.border, height: AppSpacing.md),
                         InfoRow(
                           label: 'Security deposit (refundable)',
@@ -284,6 +291,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       const SizedBox(width: AppSpacing.hair + 2),
                       Expanded(
                         child: Text(
+                          'Rates include a ${FeeSettings.instance.platformFeePct.toStringAsFixed(FeeSettings.instance.platformFeePct == FeeSettings.instance.platformFeePct.roundToDouble() ? 0 : 1)}% platform fee. '
                           'Your deposit is held in escrow and returned after the item passes its return check.',
                           style: TextStyle(fontSize: 11.5, color: p.muted),
                         ),
@@ -458,7 +466,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      '₱${item.pricePerDay.toStringAsFixed(0)}',
+                      peso(FeeSettings.instance.shownPerDay(item.pricePerDay)),
                       style: AppTheme.mono(
                           fontSize: 22,
                           fontWeight: FontWeight.w600,
@@ -468,6 +476,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         style: TextStyle(fontSize: 12, color: p.muted)),
                   ],
                 ),
+                Text('+ ${peso(FeeSettings.instance.serviceFee)} service fee',
+                    style: TextStyle(fontSize: 10.5, color: p.muted)),
               ],
             ),
             const SizedBox(width: AppSpacing.md),

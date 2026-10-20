@@ -715,7 +715,10 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                       // Info grid
                       _InfoCard(children: [
                         _InfoGrid(items: [
-                          _InfoItem(icon: Icons.payments_rounded, label: 'Total Price',    value: 'PHP ${_rental!.totalPrice.toStringAsFixed(2)}'),
+                          // Owner: the rent they receive. Renter: rent + fees (2026-10-21).
+                          _viewerIsOwner == true
+                              ? _InfoItem(icon: Icons.payments_rounded, label: 'Rent (you receive)', value: 'PHP ${_rental!.totalPrice.toStringAsFixed(2)}')
+                              : _InfoItem(icon: Icons.payments_rounded, label: 'Total Price', value: 'PHP ${_rental!.renterTotal.toStringAsFixed(2)}'),
                           _InfoItem(icon: Icons.shield_rounded,   label: 'Deposit',        value: 'PHP ${_rental!.securityDeposit.toStringAsFixed(2)}'),
                           _InfoItem(icon: Icons.play_circle_outline, label: 'Start Date',  value: _dateFmt.format(_rental!.startDate)),
                           _InfoItem(icon: Icons.stop_circle_outlined, label: 'End Date',   value: _dateFmt.format(_rental!.endDate)),
@@ -812,7 +815,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                               icon: Icons.payment_rounded,
                               label: _rental!.nextPaymentType == 'SECURITY_DEPOSIT'
                                   ? 'Pay security deposit · PHP ${_rental!.securityDeposit.toStringAsFixed(2)}'
-                                  : 'Pay rental fee · PHP ${_rental!.totalPrice.toStringAsFixed(2)}',
+                                  : 'Pay rental fee · PHP ${_rental!.renterTotal.toStringAsFixed(2)}',
                               gradient: AppColors.accentGradient,
                               onTap: () =>
                                   _initiatePayment(_rental!.nextPaymentType!),

@@ -7,6 +7,7 @@ import '../constants/app_constants.dart';
 import '../models/item_model.dart';
 import '../theme/tokens.dart';
 import 'app_widgets.dart';
+import '../services/fee_settings.dart';
 
 /// Product card — mandate §2.2.
 ///
@@ -99,8 +100,10 @@ class ItemCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.baseline,
                   textBaseline: TextBaseline.alphabetic,
                   children: [
+                    // The renter's daily price: the owner's price + the
+                    // platform fee (renter fees, 2026-10-21).
                     MonoText(
-                      '₱${item.pricePerDay.toStringAsFixed(0)}',
+                      peso(FeeSettings.instance.shownPerDay(item.pricePerDay)),
                       size: 16,
                       weight: FontWeight.w600,
                       color: p.primary,

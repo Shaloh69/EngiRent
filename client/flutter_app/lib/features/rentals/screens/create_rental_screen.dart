@@ -10,6 +10,7 @@ import '../../../core/utils/error_utils.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
+import '../../../core/services/fee_settings.dart';
 
 /// Checkout — mandate §2.2, modelled on the FlutterShop checkout screen.
 ///
@@ -205,8 +206,12 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
     return _endDate!.difference(_startDate!).inDays.clamp(1, 999);
   }
 
-  double get _rentalTotal => _days * widget.item.pricePerDay;
-  double get _grandTotal => _rentalTotal + widget.item.securityDeposit;
+  // Renter fees (2026-10-21): rent + platform fee (inside the daily price)
+  // + service fee once. For display; the server computes the real charge.
+  FeeQuote get _quote => FeeSettings.instance.quote(widget.item.pricePerDay, _days);
+  double get _shownPerDay => FeeSettings.instance.shownPerDay(widget.item.pricePerDay);
+  double get _rentalTotal => _quote.rentWithPlatformFee;
+  double get _grandTotal => _quote.total + widget.item.securityDeposit;
 
   int get _availableLockers =>
       _lockers.where((l) => (l['status'] ?? l['state']) == 'AVAILABLE').length;
@@ -342,9 +347,14 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                 CostRow(
                   label: 'Rental',
                   note: hasDates
-                      ? '₱${widget.item.pricePerDay.toStringAsFixed(0)} × $_days ${_days == 1 ? 'day' : 'days'}'
-                      : '₱${widget.item.pricePerDay.toStringAsFixed(0)} per day',
+                      ? '${peso(_shownPerDay)} × $_days ${_days == 1 ? 'day' : 'days'}'
+                      : '${peso(_shownPerDay)} per day',
                   amount: hasDates ? '₱${_rentalTotal.toStringAsFixed(2)}' : '—',
+                ),
+                CostRow(
+                  label: 'Service fee',
+                  note: 'Once per rental',
+                  amount: '₱${FeeSettings.instance.serviceFee.toStringAsFixed(2)}',
                 ),
                 CostRow(
                   label: 'Security deposit',
@@ -358,6 +368,14 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                   amount: hasDates ? '₱${_grandTotal.toStringAsFixed(2)}' : '—',
                   emphasis: true,
                 ),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.hair),
+                  child: Text(
+                    'The daily rate includes a ${FeeSettings.instance.platformFeePct.toStringAsFixed(FeeSettings.instance.platformFeePct == FeeSettings.instance.platformFeePct.roundToDouble() ? 0 : 1)}% platform fee. '
+                    'The owner receives their own price; the service fee pays for sending it to them.',
+                    style: TextStyle(fontSize: 11, height: 1.35, color: p.muted),
+                  ),
+                ),
                 if (hasDates) ...[
                   const SizedBox(height: AppSpacing.xs),
                   Row(
@@ -368,7 +386,7 @@ class _CreateRentalScreenState extends State<CreateRentalScreen> {
                       Expanded(
                         child: Text(
                           'You get ₱${widget.item.securityDeposit.toStringAsFixed(2)} back — '
-                          'the true cost of this rental is ₱${_rentalTotal.toStringAsFixed(2)}.',
+                          'the true cost of this rental is ₱${_quote.total.toStringAsFixed(2)}.',
                           style: TextStyle(
                               fontSize: 11.5, height: 1.35, color: p.muted),
                         ),
@@ -493,7 +511,7 @@ class _ItemSummary extends StatelessWidget {
                 Row(
                   children: [
                     MonoText(
-                      '₱${item.pricePerDay.toStringAsFixed(0)}',
+                      peso(FeeSettings.instance.shownPerDay(item.pricePerDay)),
                       size: 13,
                       color: p.primary,
                     ),
