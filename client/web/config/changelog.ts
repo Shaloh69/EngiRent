@@ -17,6 +17,19 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     date: "2026-10-21",
+    version: "1.17.0",
+    tag: "release",
+    title: "Clear prices: a 2% platform fee in the daily rate and a ₱10 service fee per rental",
+    bullets: [
+      "An item priced ₱100 a day now shows ₱102/day + ₱10 service fee; one day costs ₱112 in total, three days ₱316",
+      "The service fee is charged once per rental, not per day. It pays for sending the owner their money",
+      "Owners receive exactly the price they set; the listing form shows what renters will see",
+      "The security deposit has no fees and is still refunded after the return check",
+      "This update is required: older versions showed prices without the fees",
+    ],
+  },
+  {
+    date: "2026-10-21",
     version: "1.16.2",
     tag: "fix",
     title: "Easier payout details: GCash, Maya and the big banks first",

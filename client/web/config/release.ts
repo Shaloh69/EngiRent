@@ -28,16 +28,16 @@ export interface AndroidRelease {
 }
 
 export const androidRelease: AndroidRelease = {
-  version: "1.16.2",
-  buildNumber: 49,
-  fileName: "Engirent_Prerelease49.eda64bd1739319a926f51503eb0bf6a6.apk",
+  version: "1.17.0",
+  buildNumber: 50,
+  fileName: "Engirent_Prerelease50.eda64bd1739319a926f51503eb0bf6a6.apk",
   released: "2026-10-21",
-  sizeMb: 114.7,
+  sizeMb: 114.8,
   minAndroid: "8.0 (Oreo)",
   highlights: [
-    "Payout details: GCash, Maya and the big banks are listed first, and searching \"gcash\" now finds GCash",
-    "For GCash or Maya, your mobile number is the account number; the form now says so",
-    "Scanning the kiosk from the Home screen asks which rental the visit is for (from 1.16.1)",
+    "Prices now show what you pay: the daily rate includes a 2% platform fee, plus a ₱10 service fee once per rental",
+    "The checkout lists the rental, the service fee and the deposit separately, with the total before you book",
+    "Owners still receive their own price in full; the service fee pays for sending it to them",
   ],
 };
 
