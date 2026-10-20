@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-19 - PAYMENT GATEWAY P2 DONE (main API uses the gateway; commits a10e078 + next; NOT deployed: live stays PAYMENT_MODE=MANUAL until P3); P1 gateway not on Render yet (user, SPEC section 8); 1.16.0+47 live and FORCED; NEXT: P3 (user creates engirent-pay-sandbox on Render), then deploy P2 + paymentEnv column push; OPEN: user to delete server face_debug folder, user phone test of 1.16.0, D-119 restart (G11), SW-07, stray dir node_server${f, scratch D:\ENG\p2-scratch + DB engirent_p2scratch kept for P4]
+[2026-10-20 - P2 DEPLOYED (live DB +paymentEnv; .env PAYMENT_GATEWAY=live + URL; PAYMENT_MODE still MANUAL); engirent-pay-live on Render UP (mode live, keyMode live; webhook NOT configured); ruling D5 LIVE ONLY; WAITING ON USER: PAYMENT_GATEWAY_LIVE_TOKEN in server .env, PAYMONGO_WEBHOOK_SECRET on Render, UptimeRobot, then the explicit yes for PAYMENT_MODE=PAYMONGO (real money); P5 app messages not built; OPEN: face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11500,3 +11500,15 @@ Out of P2: Render (P3), the app/kiosk wording (P5), deploying any of this to the
 
 - User: "no i wont be using the test keys i want this to only run the live ones." No sandbox service on Render; the user creates `engirent-pay-live` (P7 values: PAYMENT_ENV=live, ALLOW_LIVE=yes, sk_live key, its own GATEWAY_TOKEN, auto-deploy OFF). P3/P4 re-scoped to the live gateway: every test payment is real money (small amounts), and a test payment cannot be refunded until PayMongo settles it. SPEC section 9 D5.
 - `git push origin e0-e1-audit-tests-and-evidence` (user "yes push it"): 71a3de8..1829b00, 158 commits; sweep beforehand found only the `sk_test_SECRETKEYVALUE` test fixture. GitHub now has `server/payment_gateway` + `render.yaml`.
+
+## P2 DEPLOY + LIVE GATEWAY HOOKUP (user 2026-10-20: "check for the app, can I run it now? if not make everything ready"). G2 table, repo-derived
+
+State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, **webhookConfigured false**; server `.env` PAYMENT_MODE=MANUAL, no PAYMENT_GATEWAY* lines, still holds the old TEST PayMongo key (32 chars) + a webhook secret (29); drift check: the 13 server files P2 replaces are byte-equal (CR-normalised) to 773e26b, the 2 new files absent.
+
+| # | Step | Done when | State |
+|---|------|-----------|-------|
+| D1 | Back up the 13 files + `.env`; copy the 15 P2 files | hashes equal HEAD | **Done**: backup `D:\ENGackup-20261020-p2\` (13 files + .env); 15 pushed, hashes = HEAD (index.ts needed a retry) |
+| D2 | `prisma migrate diff` live DB -> schema: ONLY `ADD paymentEnv` | SQL read | **Done**: only `ALTER TABLE transactions ADD COLUMN paymentEnv VARCHAR(191) NULL` on 127.0.0.1:3307/engirent; live DB has ZERO PayMongo transactions (nothing pre-P2 to strand) |
+| D3 | kiosk-flow guard; stop API (svc-node.bat tree); `db push`; `.env` += PAYMENT_GATEWAY=live, PAYMENT_GATEWAY_LIVE_URL (no BOM, backup); start EngiRentNode | port 5000, /health, admin health card | **Done 2026-10-20 23:54**: no kiosk flow in 15 min; svc-node.bat tree stopped; db push in sync (72 rows intact); `.env` 53->55 lines, no BOM, backup `.env.bak-p2-20261020`; EngiRentNode Running in ~50 s; through the API tunnel: /health ok, /app-config 1.16.0, items 200, unsigned gateway-event 401; poller "manual fallback only; polling gateways: none" (no token yet) |
+| D4 | USER: `PAYMENT_GATEWAY_LIVE_TOKEN` in `.env`; `PAYMONGO_WEBHOOK_SECRET` on Render; UptimeRobot | gateway card ok; webhookConfigured true | waiting on user |
+| D5 | `PAYMENT_MODE=PAYMONGO`: real money | user's explicit yes | not asked yet |
