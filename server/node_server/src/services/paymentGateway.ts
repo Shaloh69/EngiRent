@@ -102,10 +102,32 @@ export interface GatewayHealth {
 }
 
 /** GET /health. Throws GatewayWaking when it does not answer within `timeoutMs`. */
+/**
+ * Manual fallback for a sleeping gateway (user 2026-10-21: "use the manual for
+ * a fallback"; same 90 s as the kiosk, D2). The first request that finds the
+ * gateway asleep starts the clock; while it is under 90 s the student is told
+ * "Connecting…" and retries; after that, new payments go to manual GCash until
+ * the gateway answers again (any successful /health resets the clock).
+ */
+export const GATEWAY_WAKE_FALLBACK_MS = 90_000;
+let wakingSince: number | null = null;
+
+/** Note a waking gateway; true once it has been waking for 90 s or more. */
+export function wakingTooLong(now = Date.now()): boolean {
+  if (wakingSince === null) wakingSince = now;
+  return now - wakingSince >= GATEWAY_WAKE_FALLBACK_MS;
+}
+
+/** Test seam. */
+export function _resetWaking(): void {
+  wakingSince = null;
+}
+
 export async function health(e: PaymentEnv, timeoutMs = 8_000): Promise<GatewayHealth> {
   const t = need(e);
   try {
     const res = await axios.get(`${t.url}/health`, { timeout: timeoutMs });
+    wakingSince = null;
     return res.data as GatewayHealth;
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status;

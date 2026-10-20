@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-21 - P2 DEPLOYED + LIVE GATEWAY CONNECTED (token in .env, poller polling live; P7 check passed: 1-peso live checkout created + expired unpaid); PAYMENT_MODE still MANUAL; ruling D5 LIVE ONLY; WAITING ON USER: UptimeRobot on /health, then the explicit "go live" for PAYMENT_MODE=PAYMONGO (real money); P5 app messages not built; OPEN: face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 00:31 - PAYMONGO LIVE: PAYMENT_MODE=PAYMONGO, PAYMENT_GATEWAY=live (user "GO LIVE, use the manual for a fallback"); manual GCash = fallback (gateway down/wrong/refusing, or asleep 90 s); owner payouts by staff (no source account); NEXT: the user's first small real payment, watched end to end; emergency stop = PAYMENT_MODE=MANUAL + restart; OPEN: UptimeRobot (unconfirmed), P5 app messages not built, refunds wait for PayMongo settlement, face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11511,7 +11511,9 @@ State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, *
 | D2 | `prisma migrate diff` live DB -> schema: ONLY `ADD paymentEnv` | SQL read | **Done**: only `ALTER TABLE transactions ADD COLUMN paymentEnv VARCHAR(191) NULL` on 127.0.0.1:3307/engirent; live DB has ZERO PayMongo transactions (nothing pre-P2 to strand) |
 | D3 | kiosk-flow guard; stop API (svc-node.bat tree); `db push`; `.env` += PAYMENT_GATEWAY=live, PAYMENT_GATEWAY_LIVE_URL (no BOM, backup); start EngiRentNode | port 5000, /health, admin health card | **Done 2026-10-20 23:54**: no kiosk flow in 15 min; svc-node.bat tree stopped; db push in sync (72 rows intact); `.env` 53->55 lines, no BOM, backup `.env.bak-p2-20261020`; EngiRentNode Running in ~50 s; through the API tunnel: /health ok, /app-config 1.16.0, items 200, unsigned gateway-event 401; poller "manual fallback only; polling gateways: none" (no token yet) |
 | D4 | USER: `PAYMENT_GATEWAY_LIVE_TOKEN` in `.env`; `PAYMONGO_WEBHOOK_SECRET` on Render; UptimeRobot | gateway card ok; webhookConfigured true | **Done 2026-10-21 00:24** except UptimeRobot (user): token in `.env` via `D:\ENG\set-gateway-token.ps1` (1 line, 32 chars, backup `.env.bak-token-20261021`); API restarted (no kiosk flow), poller "polling gateways: live" |
-| D5 | `PAYMENT_MODE=PAYMONGO`: real money | user's explicit yes | not asked yet |
+| D5 | `PAYMENT_MODE=PAYMONGO`: real money | user's explicit yes | **user 2026-10-21: "GO LIVE, use the manual for a fallback"** |
+| D6 | Manual fallback for a sleeping gateway in the APP too (kiosk already: D2): still waking 90 s after first seen asleep -> manual GCash instructions, not "Connecting…" forever | tests + mutation | **Done**: `wakingTooLong()` (clock starts at the first asleep /health, reset by any successful /health); createPayment 503 under 90 s, manual after; 4/4 mutations killed; Node 623 |
+| D7 | Flip `PAYMENT_MODE=PAYMONGO` (backup, no BOM), restart after the flow guard; poller says new payments on the live gateway | log + tunnel checks | **Done 2026-10-21 00:31**: backup `.env.bak-golive-20261021`, one line changed, 56 lines, no BOM; restart after the flow guard; log "new payments: live gateway; polling gateways: live"; tunnel: health ok, items 200, POST /payments unauth 401; gateway live/live/webhook configured |
 - 2026-10-21 00:03: user created the LIVE PayMongo webhook and set `PAYMONGO_WEBHOOK_SECRET` on Render (manual deploy of the latest commit). `/health` -> `webhookConfigured: true`; an unsigned POST /webhook -> 400 (signature refused, as designed). Not yet seen: a real signed delivery (needs a payment).
 
 ### 2026-10-21 00:28 — P7 check PASSED on the live gateway; payout bug found and fixed (deployed)
@@ -11520,3 +11522,9 @@ State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, *
 - **Bug found by this check (mine, P2.5):** the live account reports `walletReady: true` but the gateway has no source account (`transfersConfigured: false`). `canAutoPayout` looked only at walletReady, so after go-live a payout would have been attempted, refused 409, recorded FAILED and the owner told "payout failed". **Fix:** `walletReady()` now also requires `/health transfersConfigured === true`; else staff payout (PENDING). 2 tests added (client + settlement), 2/2 mutations killed, Node 622 green; deployed (paymentGateway.ts only), API restarted after the flow guard, compiled dist checked for the fix.
 - A process slip, mine, caught by the script's own guard (nothing touched): the restart header was generated with an unescaped `
 ` in a Python string, so the token check read a wrong path and refused to restart.
+
+### 2026-10-21 00:31 — WENT LIVE (user: "GO LIVE, use the manual for a fallback")
+
+`PAYMENT_MODE=PAYMONGO` on the server; new payments go to `engirent-pay-live` (real money). Manual GCash fallback covers: gateway unreachable / wrong mode / PayMongo refusing the checkout (as before), and NEW: gateway still asleep 90 s after first seen asleep (D6). Kiosk dispute fee: same 90 s rule (D2). Not yet seen: a real payment through the app on a phone, a real signed webhook delivery, the 90 s fallback on a phone. UptimeRobot not confirmed (gateway uptime 427 s at 00:31).
+**G5 six-symptom check (go-live boundary): ONE SYMPTOM.** 3 losing the rules: the unescaped-`
+` Python path bug recurred once more today (caught by the script guard). Others: no. Action: remote scripts are now generated with `chr(92)` paths or written whole with the Write tool.

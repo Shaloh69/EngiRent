@@ -16,6 +16,7 @@ jest.mock("axios"); // avoid any real network call to PayMongo
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import prisma from "../../config/database";
 import { createPayment, confirmPayment, createRefund, refundPayment } from "../paymentController";
+import { _resetWaking } from "../../services/paymentGateway";
 import { AuthRequest } from "../../middleware/auth";
 import env from "../../config/env";
 import crypto from "crypto";
@@ -630,6 +631,7 @@ describe("createPayment — through the payment gateway (P2)", () => {
   });
 
   it("a sleeping gateway: 503 with the 'Connecting…' copy, and NO transaction recorded", async () => {
+    _resetWaking();
     (axios.get as jest.Mock).mockRejectedValue(Object.assign(new Error("timeout"), { code: "ECONNABORTED" }));
     const { res, payload } = await pay();
     expect(res.status).toHaveBeenCalledWith(503);
@@ -637,6 +639,31 @@ describe("createPayment — through the payment gateway (P2)", () => {
     expect(payload.message).toMatch(/^Connecting to the payment service/);
     expect(prismaMock.transaction.create).not.toHaveBeenCalled();
     expect(axios.request).not.toHaveBeenCalled();
+  });
+
+  it("asleep for 90 s or more: the manual GCash fallback (user 2026-10-21), and a wake resets the clock", async () => {
+    _resetWaking();
+    const t0 = 1_800_000_000_000;
+    const now = jest.spyOn(Date, "now");
+    (axios.get as jest.Mock).mockRejectedValue(Object.assign(new Error("timeout"), { code: "ECONNABORTED" }));
+    now.mockReturnValue(t0);
+    expect((await pay()).res.status).toHaveBeenCalledWith(503); // first seen asleep: Connecting…
+    now.mockReturnValue(t0 + 89_000);
+    expect((await pay()).res.status).toHaveBeenCalledWith(503); // still under 90 s
+    now.mockReturnValue(t0 + 91_000);
+    const late = await pay();
+    expect(late.payload.data.paymentMode).toBe("MANUAL");
+    expect(late.payload.data.instructions.amount).toBe(5000);
+    expect(axios.request).not.toHaveBeenCalled();
+    // it wakes: the clock resets, so the next nap starts at "Connecting…" again
+    (axios.get as jest.Mock).mockResolvedValueOnce({ data: { mode: "sandbox", keyMode: "test" } });
+    (axios.request as jest.Mock).mockRejectedValueOnce({ response: { status: 502 } });
+    prismaMock.transaction.findFirst.mockResolvedValue(null as never);
+    await pay();
+    now.mockReturnValue(t0 + 200_000);
+    expect((await pay()).res.status).toHaveBeenCalledWith(503);
+    now.mockRestore();
+    _resetWaking();
   });
 
   it("a gateway reporting the wrong mode: fails closed (no checkout), manual fallback", async () => {

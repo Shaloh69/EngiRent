@@ -18,6 +18,7 @@ import {
   envOf,
   GatewayUnavailable,
   GatewayWaking,
+  wakingTooLong,
   refund as gatewayRefund,
   verifyGatewayEvent,
   WAKING_MESSAGE,
@@ -215,7 +216,9 @@ export const createPayment = async (
         await assertGatewayMode(gw);
         gatewayOk = true;
       } catch (gwErr) {
-        if (gwErr instanceof GatewayWaking) {
+        // Asleep: "Connecting…" while it wakes (up to 90 s), then the manual
+        // GCash fallback (user 2026-10-21).
+        if (gwErr instanceof GatewayWaking && !wakingTooLong()) {
           res.status(503).json({
             success: false,
             code: "PAYMENT_SERVICE_WAKING",
@@ -224,7 +227,11 @@ export const createPayment = async (
           });
           return;
         }
-        logger.error(`[PAYMENT] ${(gwErr as Error).message} Using the manual fallback.`);
+        logger.error(
+          gwErr instanceof GatewayWaking
+            ? "[PAYMENT] The payment gateway has not woken for 90 s. Using the manual fallback."
+            : `[PAYMENT] ${(gwErr as Error).message} Using the manual fallback.`,
+        );
       }
     }
 
