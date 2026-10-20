@@ -9,6 +9,7 @@ import {
 import logger from "../utils/logger";
 import { notifyAdmins } from "../services/adminRoom";
 import { wake as wakePaymentGateway } from "../services/paymentGateway";
+import { getFees, quote, r2 } from "../services/pricing";
 import {
   findOverlappingRentals,
   recomputeItemAvailability,
@@ -93,7 +94,12 @@ export const createRental = async (
       pickup = parsed;
     }
 
-    const totalPrice = days * item.pricePerDay;
+    // Renter fees (2026-10-21, services/pricing.ts): totalPrice stays the RENT
+    // (the owner's money); the platform fee and the service fee are stored
+    // with the booking, so a later change to the fee settings never changes
+    // what this rental costs.
+    const priced = quote(item.pricePerDay, days, await getFees());
+    const totalPrice = priced.rent;
 
     // Create rental
     const rental = await prisma.rental.create({
@@ -104,6 +110,8 @@ export const createRental = async (
         startDate: start,
         endDate: end,
         totalPrice,
+        platformFee: priced.platformFee,
+        serviceFee: priced.serviceFee,
         securityDeposit: item.securityDeposit,
         status: "PENDING",
         pickupDate: pickup,
@@ -647,14 +655,20 @@ export const extendRental = async (
     const newDays = Math.ceil(
       (newEnd.getTime() - rental.startDate.getTime()) / (1000 * 60 * 60 * 24),
     );
-    const newTotalPrice = newDays * rental.item.pricePerDay;
-    const priceDelta = newTotalPrice - rental.totalPrice;
+    const newTotalPrice = r2(newDays * rental.item.pricePerDay);
+    const priceDelta = r2(newTotalPrice - rental.totalPrice);
     const extending = newEnd > rental.endDate;
+    // The platform fee follows the rent at the rate this rental was booked
+    // with (0 for rentals booked before 2026-10-21); the service fee is once
+    // per rental and does not change.
+    const bookedRate = rental.totalPrice > 0 ? rental.platformFee / rental.totalPrice : 0;
+    const newPlatformFee = r2(newTotalPrice * bookedRate);
+    const extensionPlatformFee = r2(Math.max(0, newPlatformFee - rental.platformFee));
 
     await prisma.$transaction(async (tx) => {
       await tx.rental.update({
         where: { id },
-        data: { endDate: newEnd, totalPrice: newTotalPrice },
+        data: { endDate: newEnd, totalPrice: newTotalPrice, platformFee: newPlatformFee },
       });
       if (extending && priceDelta > 0) {
         await tx.transaction.create({
@@ -662,7 +676,8 @@ export const extendRental = async (
             rentalId: id,
             userId: rental.renterId,
             type: "EXTENSION_FEE",
-            amount: priceDelta,
+            amount: r2(priceDelta + extensionPlatformFee),
+            paymentDetails: { rent: priceDelta, platformFee: extensionPlatformFee } as never,
             status: "COMPLETED",
             paidAt: new Date(),
             paymentMethod: "Held Deposit Deduction",

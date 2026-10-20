@@ -166,9 +166,12 @@ export const createPayment = async (
     // a client-supplied amount is never trusted for anything that moves
     // money. (Previously `amount` came straight from req.body; a renter
     // could pay ₱1 for a ₱5,000 rental.)
+    // RENTAL_PAYMENT = rent + the renter fees stored on the booking
+    // (platform fee + service fee, 2026-10-21; both 0 on older rentals). The
+    // deposit carries no fees.
     const parsedAmount =
       type === "RENTAL_PAYMENT"
-        ? Number(rental.totalPrice)
+        ? Math.round((Number(rental.totalPrice) + Number(rental.platformFee ?? 0) + Number(rental.serviceFee ?? 0)) * 100) / 100
         : Number(rental.securityDeposit);
 
     if (!(parsedAmount > 0)) {
