@@ -244,6 +244,10 @@ model Rental {
 
   // Pricing
   totalPrice      Float
+  /// Renter fees on top of the rent (totalPrice stays the RENT, the owner's
+  /// money). 0 for rentals booked before 2026-10-21, so they are unchanged.
+  platformFee     Float  @default(0)
+  serviceFee      Float  @default(0)
   securityDeposit Float
 
   // Kiosk integration
@@ -815,6 +819,19 @@ model Locker {
 }
 
 // KioskConfig model - Per-kiosk timing and hardware configuration
+/// Renter fees (user ruling 2026-10-21; services/pricing.ts). One row, id 1;
+/// until an admin saves it the defaults apply (2% platform fee, ₱10 service
+/// fee). Applies to NEW bookings: each rental keeps the fees it was booked with.
+model FeeConfig {
+  id             Int      @id @default(1)
+  platformFeePct Float    @default(2)
+  serviceFee     Float    @default(10)
+  updatedById    String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("fee_config")
+}
+
 model KioskConfig {
   id        String   @id @default(uuid())
   kioskId   String   @unique

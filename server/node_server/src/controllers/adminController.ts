@@ -38,6 +38,7 @@ import { openDispute } from "../services/disputeService";
 import { plainVerdict } from "../services/aiVerdictSummary";
 import { markTransactionFailed, markTransactionPaid } from "../services/paymentConfirmationService";
 import { describeGateway } from "../services/paymentGateway";
+import { getFees, MAX_PLATFORM_FEE_PCT, MAX_SERVICE_FEE, saveFees, validateFees } from "../services/pricing";
 import { sendCsv } from "../utils/csv";
 
 // ─── Dashboard stats ───────────────────────────────────────────────────────
@@ -2901,6 +2902,31 @@ export const getLatestKioskSnapshot = async (
     const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? sinceRaw : undefined;
     const snapshot = getLatestAdminSnapshot(lockerNumber, since);
     res.json({ success: true, data: { snapshot, serverTime: Date.now() } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Renter fees (user ruling 2026-10-21; services/pricing.ts) ──────────────
+/** GET /admin/fees */
+export const getFeeSettings = async (_req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    res.json({ success: true, data: { fees: await getFees(), limits: { maxPlatformFeePct: MAX_PLATFORM_FEE_PCT, maxServiceFee: MAX_SERVICE_FEE } } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** PUT /admin/fees {platformFeePct, serviceFee}. Applies to NEW bookings only. */
+export const updateFeeSettings = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const parsed = validateFees(req.body ?? {});
+    if (typeof parsed === "string") throw new ValidationError(parsed);
+    const before = await getFees();
+    const fees = await saveFees(parsed, req.user!.userId);
+    await recordAudit(req, { action: "fees.update", targetType: "fee_config", targetId: "1", metadata: { before, after: fees } });
+    logger.info(`Admin ${req.user!.userId} set fees: ${JSON.stringify(before)} -> ${JSON.stringify(fees)}`);
+    res.json({ success: true, message: "Fees saved. They apply to new bookings.", data: { fees } });
   } catch (error) {
     next(error);
   }

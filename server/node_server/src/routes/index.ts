@@ -13,6 +13,7 @@ import reviewRoutes from "./reviewRoutes";
 import feedbackRoutes from "./feedbackRoutes";
 import disputeRoutes from "./disputeRoutes";
 import concernRoutes from "./concernRoutes";
+import { getFees } from "../services/pricing";
 
 const router = Router();
 
@@ -67,6 +68,9 @@ router.get("/app-config", async (_req, res, next) => {
         // actual, working distribution path.
         downloadUrl: `${env.CLIENT_WEB_URL}/downloading`,
         highlights: (release?.highlights as string[] | undefined) ?? [],
+        // Renter fees for showing prices ("₱102/day + ₱10 service fee"); the
+        // server computes every charge itself (services/pricing.ts).
+        fees: await getFees(),
         // First name + last initial only — same privacy bar as everywhere
         // else a student's name surfaces outside their own account (e.g.
         // reviews), not a full name or any contact detail.

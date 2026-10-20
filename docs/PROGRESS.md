@@ -11600,7 +11600,7 @@ Card 60 days partial ok; GCash 180 days partial ok; Maya 12 months partial ok (f
 
 | # | Section | Done when | State |
 |---|---------|-----------|-------|
-| F1 | `services/pricing.ts` (pure: rent, platform fee, service fee, total, per-day display) + `FeeConfig` single row (ADD-only model; defaults 2 / 10) + fees in `/app-config` + admin GET/PUT | unit tests, mutation-checked | not started |
+| F1 | `services/pricing.ts` (pure: rent, platform fee, service fee, total, per-day display) + `FeeConfig` single row (ADD-only model; defaults 2 / 10) + fees in `/app-config` + admin GET/PUT | unit tests, mutation-checked | **Done**: `pricing.ts` (user's examples are the tests: ₱102/day, 1 day ₱112, 3 days ₱316, ₱1 -> ₱11.02); `FeeConfig` model; `/app-config` `fees`; `GET/PUT /admin/fees` (validated 0-20% / ₱0-100, audited). 15 tests; 15/15 mutations killed (2 compile-error mutations rewritten) |
 | F2 | Rental: ADD `platformFee`, `serviceFee` (default 0, so old rentals unchanged); createRental stores them; createPayment charges rent + fees; extendRental adds 2% of the extra rent | tests, mutation-checked | not started |
 | F3 | Owner payout = rent only (payment minus the rental's fees); refunds unchanged (wrong-item full refund returns everything paid) | tests, mutation-checked | not started |
 | F4 | Admin: "Fees" setting card; rental pages show rent / platform fee / service fee | tsc + rendered | not started |

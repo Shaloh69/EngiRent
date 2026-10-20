@@ -40,6 +40,8 @@ import {
   listAuditLog,
   getUserDetail,
   bulkModerateItems,
+  getFeeSettings,
+  updateFeeSettings,
 } from "../controllers/adminController";
 import { getConversationForAdmin } from "../controllers/messageController";
 import {
@@ -393,6 +395,10 @@ router.get("/reports", requireAdmin, getReports);
 
 // ── System health (PC-side software Components Check) ─────────────────────
 router.get("/health", requireAdmin, getSystemHealth);
+
+// ── Renter fees (platform % + service fee; new bookings only) ──────────────
+router.get("/fees", requireAdmin, getFeeSettings);
+router.put("/fees", requireAdmin, updateFeeSettings);
 
 // ── Kiosk management ──────────────────────────────────────────────────────
 router.get("/kiosks/events", requireAdmin, kioskEventStream); // SSE — must be before :kioskId routes
