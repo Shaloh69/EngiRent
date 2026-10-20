@@ -48,6 +48,12 @@ class KioskScanScreen extends StatefulWidget {
     this.disputeId,
   });
 
+  /// Shown when the screen is opened without a rental (2026-10-21): the kiosk
+  /// visit must name its rental, and the server refuses a scan without one
+  /// ("Missing required fields").
+  static const noRentalMessage = 'Open the rental first, then use its kiosk button, so the kiosk '
+      'knows which item this visit is for.';
+
   @override
   State<KioskScanScreen> createState() => _KioskScanScreenState();
 }
@@ -101,6 +107,10 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.rentalId.isEmpty) {
+      _phase = _Phase.failed;
+      _errorMessage = KioskScanScreen.noRentalMessage;
+    }
     final sock = SocketService.instance;
     _subs.add(sock.onFaceVerified.listen(_onFaceVerified));
     _subs.add(sock.onFaceFailed.listen(_onFaceFailed));
@@ -390,6 +400,8 @@ class _KioskScanScreenState extends State<KioskScanScreen>
   /// its waiting text with no answer. Now the link is checked (and rebuilt
   /// with a fresh token) first, and a dead link is said out loud.
   Future<void> _sendScan(String raw) async {
+    // Never send a scan without its rental (also stopped in initState).
+    if (widget.rentalId.isEmpty) return;
     final ok = await context.read<AuthProvider>().ensureSocketConnected();
     if (!mounted || _phase != _Phase.waiting) return;
     if (!ok) {
@@ -981,6 +993,16 @@ class _KioskScanScreenState extends State<KioskScanScreen>
                 : 'Close the door when you\'re done — the kiosk confirms automatically.',
             primaryLabel: 'Done',
             onPrimary: () => Navigator.pop(context, true),
+          ),
+        // Opened without a rental: nothing was attempted, and scanning again
+        // cannot help (it would only send the same visit without its rental).
+        _Phase.failed when widget.rentalId.isEmpty => _buildResult(
+            icon: Icons.info_outline_rounded,
+            color: AppColors.accent,
+            title: 'Which rental is this for?',
+            body: _errorMessage,
+            primaryLabel: 'Go back',
+            onPrimary: () => Navigator.pop(context, false),
           ),
         _Phase.failed => _buildResult(
             icon: Icons.error_outline_rounded,

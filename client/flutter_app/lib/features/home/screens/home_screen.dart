@@ -38,6 +38,7 @@ import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../payments/screens/payout_details_screen.dart';
 import '../../payments/screens/transaction_history_screen.dart';
 import '../../rentals/models/rental_service.dart';
+import '../../kiosk/kiosk_actions.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -456,8 +457,10 @@ class _HomeTabState extends State<_HomeTab> {
                             icon: Icons.qr_code_scanner_rounded,
                             label: l10n.scanKiosk,
                             color: AppColors.accent,
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/kiosk/scan'),
+                            // Works out which rental the visit is for first
+                            // (opening the scanner with no rental made every
+                            // scan fail "Missing required fields").
+                            onTap: () => openKioskFromHome(context),
                           ),
                         ),
                       ),

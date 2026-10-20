@@ -11537,3 +11537,14 @@ State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, *
 
 User: "when i scan the qr in the kiosk i get the missing fields". `home_screen.dart:460` opens `/kiosk/scan` with NO arguments; `main.dart:263-269` turns the missing `rentalId` into `''`; `kiosk_scan_screen.dart:404` sends `app:kiosk_scan` with `rentalId: ''`; the API answers `kiosk:scan_error "Missing required fields"` (`index.ts:1560-1566`, unchanged by P2: `git diff 773e26b -- src/index.ts` touches only the raw-body hook and the keep-alive). The button dates from the first app commit (83493ca). Scanning from a rental's own page (`rental_detail_screen.dart:457`) passes the rental and works. The API log before 00:37 was overwritten by tonight's restarts, so the exact scan is not in it; no scan since 00:37.
 Fix needs an app release (all four places), and the go-live is still unverified on a phone (G1): proposed to the user, not built.
+
+## APP FIX: Home "Scan kiosk" (user 2026-10-21: "app update please"). G2 table, repo-derived. G1: knowingly stacked on the unseen go-live (user's call)
+
+Rules copied from `rental_detail_screen.dart:837-898` (the page that works): owner + AWAITING_DEPOSIT -> place; renter + DEPOSITED + verificationStatus APPROVED -> retrieve; renter + ACTIVE -> return; owner + releasedAt set, retrievedAt null -> retrieve (collect). Roles from the list's own `ownerId`/`renterId` (`GET /rentals` returns every rental column; the model's `item.owner` is absent there). The list defaults to 10 rows: ask `limit=50`.
+
+| # | Section | Done when | State |
+|---|---------|-----------|-------|
+| A1 | `lib/features/kiosk/kiosk_actions.dart`: pure rule function | unit tests, each rule mutation-checked | **Done**: 11 rule tests; 13/13 mutations killed (survivor 'empty user id' got its test) |
+| A2 | Home button: fetch, then 0 -> "Nothing to do at the kiosk right now", 1 -> straight to the scanner, 2+ -> pick a rental | widget test; rendered and looked at | **Done**: 5 widget tests (fetches limit=50; none -> message; one -> straight in; two -> picker; failed request -> message); rendered with a real font and looked at: picker sheet, nothing-to-do snackbar |
+| A3 | `KioskScanScreen` never sends an empty rental (defence for any other caller) | widget test | **Done**: guard moved to `initState` (an empty rental never starts scanning); the render showed "Hand-off didn't complete" + "Scan again", which would loop forever: now its own state "Which rental is this for?" with only "Go back"; pinned by a test, mutation killed. App 109 tests, analyzer clean |
+| A4 | Release 1.16.1+48: APK validated, website release.ts + changelog, AppRelease + LATEST_APP_VERSION + API restart | four places verified live | not started |
