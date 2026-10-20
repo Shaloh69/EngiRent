@@ -9,15 +9,9 @@ import '../../../core/utils/toast_utils.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/widgets/form_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../payout_institutions.dart';
 
-class _Institution {
-  final String providerCode;
-  final String name;
-  const _Institution(this.providerCode, this.name);
-
-  @override
-  String toString() => name;
-}
+typedef _Institution = PayoutInstitution;
 
 /// Collects where a user's rental earnings and security-deposit refunds go —
 /// a real PayMongo Disbursement destination (bank account or e-wallet).
@@ -25,14 +19,17 @@ class _Institution {
 /// once someone actually lists an item, and a rental simply can't pay them
 /// out until this is set (see server's rentalSettlementService.ts).
 class PayoutDetailsScreen extends StatefulWidget {
-  const PayoutDetailsScreen({super.key});
+  const PayoutDetailsScreen({super.key, this.api});
+
+  /// Test seam; the app uses a fresh ApiService.
+  final ApiService? api;
 
   @override
   State<PayoutDetailsScreen> createState() => _PayoutDetailsScreenState();
 }
 
 class _PayoutDetailsScreenState extends State<PayoutDetailsScreen> {
-  final _api = ApiService();
+  late final ApiService _api = widget.api ?? ApiService();
   final _formKey = GlobalKey<FormState>();
   final _accountNameController = TextEditingController();
   final _accountNumberController = TextEditingController();
@@ -221,7 +218,7 @@ class _PayoutDetailsScreenState extends State<PayoutDetailsScreen> {
                 else
                   AppPickerField(
                     label: 'Bank or e-wallet',
-                    value: _selectedInstitution?.name ?? '',
+                    value: _selectedInstitution == null ? '' : payoutLabel(_selectedInstitution!),
                     hasValue: _selectedInstitution != null,
                     placeholder: _institutions.isEmpty
                         ? 'Couldn\'t load the list — tap to retry'
@@ -237,6 +234,15 @@ class _PayoutDetailsScreenState extends State<PayoutDetailsScreen> {
                         : null,
                     onTap: _pickInstitution,
                   ),
+                if (!_loadingInstitutions && _selectedInstitution == null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: AppSpacing.xs),
+                    child: Text(
+                      'Most students use GCash or Maya: pick it, then enter your '
+                      'mobile number (09…) as the account number.',
+                      style: TextStyle(fontSize: 11.5, height: 1.35, color: p.muted),
+                    ),
+                  ),
                 AppField(
                   label: 'Account holder name',
                   controller: _accountNameController,
@@ -251,7 +257,10 @@ class _PayoutDetailsScreenState extends State<PayoutDetailsScreen> {
                   label: 'Account number',
                   controller: _accountNumberController,
                   keyboardType: TextInputType.number,
-                  hint: 'Digits only',
+                  hint: _selectedInstitution != null &&
+                          eWalletCodes.contains(_selectedInstitution!.providerCode)
+                      ? 'Your mobile number, e.g. 09171234567'
+                      : 'Digits only',
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Required';
@@ -380,11 +389,34 @@ class _InstitutionSheetState extends State<_InstitutionSheet> {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.of(context);
-    final matches = _query.isEmpty
-        ? widget.institutions
-        : widget.institutions
-            .where((i) => i.name.toLowerCase().contains(_query.toLowerCase()))
-            .toList();
+    final arranged = arrangePayoutInstitutions(widget.institutions, _query);
+    final popular = arranged.popular;
+    final rest = arranged.rest;
+    final rows = <Widget>[];
+    Widget header(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 4),
+          child: Text(t, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.muted, letterSpacing: 0.4)),
+        );
+    Widget tile(_Institution inst) {
+      final friendly = popularPayoutLabels[inst.providerCode];
+      return ListTile(
+        dense: true,
+        title: Text(friendly ?? inst.name, style: TextStyle(fontSize: 13.5, color: p.ink)),
+        subtitle: friendly == null
+            ? MonoText(inst.providerCode, size: 10.5, weight: FontWeight.w400, color: p.muted)
+            : Text(inst.name, style: TextStyle(fontSize: 11, color: p.muted)),
+        onTap: () => Navigator.pop(context, inst),
+      );
+    }
+    if (popular.isNotEmpty) {
+      rows.add(header('POPULAR'));
+      rows.addAll(popular.map(tile));
+    }
+    if (rest.isNotEmpty) {
+      rows.add(header(popular.isEmpty ? 'BANKS AND E-WALLETS' : 'ALL OTHER BANKS AND E-WALLETS'));
+      rows.addAll(rest.map(tile));
+    }
+    final matches = [...popular, ...rest];
 
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
@@ -431,29 +463,10 @@ class _InstitutionSheetState extends State<_InstitutionSheet> {
                       title: 'No match',
                       body: 'No institution matches "$_query".',
                     )
-                  : ListView.separated(
+                  : ListView(
                       controller: scrollController,
                       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                      itemCount: matches.length,
-                      separatorBuilder: (_, __) =>
-                          Divider(height: 1, color: p.border),
-                      itemBuilder: (context, i) {
-                        final inst = matches[i];
-                        return ListTile(
-                          dense: true,
-                          title: Text(
-                            inst.name,
-                            style: TextStyle(fontSize: 13.5, color: p.ink),
-                          ),
-                          subtitle: MonoText(
-                            inst.providerCode,
-                            size: 10.5,
-                            weight: FontWeight.w400,
-                            color: p.muted,
-                          ),
-                          onTap: () => Navigator.pop(context, inst),
-                        );
-                      },
+                      children: rows,
                     ),
             ),
           ],

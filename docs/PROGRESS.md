@@ -11558,3 +11558,14 @@ Rules copied from `rental_detail_screen.dart:837-898` (the page that works): own
 - **In-app record:** `AppRelease` 1.16.1/48 (2 highlights); `LATEST_APP_VERSION=1.16.1` (backup `.env.bak-release48-20261021`, no BOM), `MIN_APP_VERSION` stays 1.16.0 (offered, not forced); API restarted after the flow guard; `/app-config` through the API tunnel -> latestVersion 1.16.1. Gist API URL unchanged (no tunnel rotation).
 - **Not verified on a phone:** 1.16.1 itself, and the first real payment.
 **G5 six-symptom check (release boundary): ONE SYMPTOM.** 3 losing the rules: `$_` eaten in an inline ssh command once more (a read-only listing; no harm). 5 batching: two changes now unverified on a phone (go-live + 1.16.1), on the user's explicit request; recorded. Others: no.
+
+## APP: payout destination picker (user 2026-10-21: "do the payout list"; "it outputs so much banks"). G2 table, repo-derived
+
+Live list via the gateway (2026-10-21): InstaPay 94, PESONet 124 institutions. **GCash is listed as "G-Xchange, Inc." (GXCHPHM2XXX)** on InstaPay, so searching "gcash" finds nothing; Maya appears twice: e-wallet "Maya Philippines, Inc." (PAPHPHM1XXX) and "MAYA BANK, INC" (MYDBPHM2XXX instapay / MYYAPHM2XXX pesonet). Popular group keyed by provider code (stable), with friendly names.
+PayMongo facts (official docs/pricing, 2026-10-21): payouts cost ₱10 per transfer (InstaPay or PESONet), one free transfer per week; no fee-free path. Receiving: QR Ph 1.34%, GCash 2.23%, Maya 1.79%, card 3.125% + ₱13.39. Automatic payouts need the platform wallet (source account) on Render: user. Fee bearer: asked, user asked for a no-fee path (none exists): still open.
+
+| # | Section | Done when | State |
+|---|---------|-----------|-------|
+| B1 | Popular group (GCash, Maya, BDO, BPI, Landbank, Metrobank, UnionBank, Security Bank, RCBC, PNB, GoTyme) at the top of the sheet, by code; friendly names; search also matches "gcash"/"maya" aliases | widget tests, mutation-checked; rendered and looked at | **Done**: `payout_institutions.dart` (popular by code, friendly names, aliases gcash/paymaya/landbank/bdo); 7 tests, 8/8 mutations killed; rendered with the live names: POPULAR section, "gcash" finds GCash, picker shows "GCash (G-Xchange, Inc.)" |
+| B2 | Hint under the picker: most students use GCash or Maya (their mobile number is the account number) | rendered | **Done**: hint under the picker; e-wallet account number asks for the mobile number; both rendered and looked at. App 116 tests |
+| B3 | Release 1.16.2+49 (four places) | verified live | not started |
