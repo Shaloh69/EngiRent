@@ -9,6 +9,8 @@ import {
   activeEnv,
   assertGatewayMode,
   describeGateway,
+  startGatewayKeepAlive,
+  KEEP_AWAKE_MS,
   envOf,
   GatewayUnavailable,
   GatewayWaking,
@@ -262,5 +264,31 @@ describe("describeGateway (admin system health, P2.8)", () => {
     E.PAYMENT_MODE = "MANUAL";
     await expect(describeGateway()).resolves.toMatchObject({ detail: expect.stringMatching(/remove it/) });
     E.PAYMONGO_SECRET_KEY = k;
+  });
+});
+
+describe("startGatewayKeepAlive (the server is the uptime monitor, 2026-10-21)", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+  const pings = () => ax.get.mock.calls.filter((c) => String(c[0]).endsWith("/health")).length;
+
+  it("pings the active gateway at once and then every 10 minutes, under the 15-minute sleep", () => {
+    ax.get.mockReturnValue(new Promise(() => undefined) as never);
+    const t = startGatewayKeepAlive();
+    expect(pings()).toBe(1);
+    jest.advanceTimersByTime(KEEP_AWAKE_MS);
+    expect(pings()).toBe(2);
+    jest.advanceTimersByTime(KEEP_AWAKE_MS * 2);
+    expect(pings()).toBe(4);
+    expect(KEEP_AWAKE_MS).toBeLessThan(15 * 60_000);
+    clearInterval(t);
+  });
+  it("re-reads the mode each tick: nothing is pinged under the MANUAL kill switch", () => {
+    ax.get.mockReturnValue(new Promise(() => undefined) as never);
+    const t = startGatewayKeepAlive();
+    E.PAYMENT_MODE = "MANUAL";
+    jest.advanceTimersByTime(KEEP_AWAKE_MS * 3);
+    expect(pings()).toBe(1);
+    clearInterval(t);
   });
 });

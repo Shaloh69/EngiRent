@@ -83,6 +83,7 @@ import {
   wrongItemDropForCommand,
 } from "./services/disputeWrongItemService";
 import { startPaymentPoller } from "./services/paymentPoller";
+import { startGatewayKeepAlive } from "./services/paymentGateway";
 import {
   sendItemReadyForClaim,
   sendReturnOverdue,
@@ -1886,6 +1887,8 @@ const startServer = async (): Promise<void> => {
     // Ruling 6: PayMongo payments are confirmed by asking PayMongo, not by a
     // webhook the rotating tunnel cannot receive.
     startPaymentPoller(io);
+    // The server keeps the payment gateway awake (user 2026-10-21).
+    startGatewayKeepAlive();
 
     httpServer.listen(PORT, "0.0.0.0", () => {
       logger.info(`

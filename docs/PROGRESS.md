@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-21 00:31 - PAYMONGO LIVE: PAYMENT_MODE=PAYMONGO, PAYMENT_GATEWAY=live (user "GO LIVE, use the manual for a fallback"); manual GCash = fallback (gateway down/wrong/refusing, or asleep 90 s); owner payouts by staff (no source account); NEXT: the user's first small real payment, watched end to end; emergency stop = PAYMENT_MODE=MANUAL + restart; OPEN: UptimeRobot (unconfirmed), P5 app messages not built, refunds wait for PayMongo settlement, face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 00:31 - PAYMONGO LIVE: PAYMENT_MODE=PAYMONGO, PAYMENT_GATEWAY=live (user "GO LIVE, use the manual for a fallback"); manual GCash = fallback (gateway down/wrong/refusing, or asleep 90 s); owner payouts by staff (no source account); NEXT: the user's first small real payment, watched end to end; emergency stop = PAYMENT_MODE=MANUAL + restart; OPEN: server keep-alive 25-min proof pending, P5 app messages not built, refunds wait for PayMongo settlement, face_debug delete, 1.16.0 phone test, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11528,3 +11528,7 @@ State re-derived today: `engirent-pay-live` /health = mode live, keyMode live, *
 `PAYMENT_MODE=PAYMONGO` on the server; new payments go to `engirent-pay-live` (real money). Manual GCash fallback covers: gateway unreachable / wrong mode / PayMongo refusing the checkout (as before), and NEW: gateway still asleep 90 s after first seen asleep (D6). Kiosk dispute fee: same 90 s rule (D2). Not yet seen: a real payment through the app on a phone, a real signed webhook delivery, the 90 s fallback on a phone. UptimeRobot not confirmed (gateway uptime 427 s at 00:31).
 **G5 six-symptom check (go-live boundary): ONE SYMPTOM.** 3 losing the rules: the unescaped-`
 ` Python path bug recurred once more today (caught by the script guard). Others: no. Action: remote scripts are now generated with `chr(92)` paths or written whole with the Write tool.
+
+### 2026-10-21 00:37 — The server keeps the gateway awake (user: "use the server as the uptime"; replaces UptimeRobot, D1)
+
+`startGatewayKeepAlive()` (paymentGateway.ts, started in index.ts next to the poller): a `/health` to the ACTIVE gateway at start and every 10 min (Render free sleeps after 15); re-reads the mode each tick, so under MANUAL nothing is pinged. 2 tests, 4/4 mutations killed (no interval, no first ping, 20-min interval, mode frozen at start), Node 625. Deployed (paymentGateway.ts + index.ts), restarted after the flow guard, dist checked. Limit: it only runs while the API runs, which is also the only time a payment can start. **Proof pending:** gateway still awake after 25 min with no outside requests.

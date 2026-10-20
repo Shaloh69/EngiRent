@@ -291,3 +291,20 @@ export async function describeGateway(timeoutMs = 5_000): Promise<{ ok: boolean;
     return { ok: false, detail: `${(err as Error).message}${leftover}` };
   }
 }
+
+/**
+ * Keep the gateway awake from this server (user 2026-10-21: "use the server as
+ * the uptime", instead of an outside monitor; SPEC D1). A free Render service
+ * sleeps after 15 min without requests; a /health every 10 min keeps it up
+ * while new payments use it. Each tick re-reads the mode, so under
+ * PAYMENT_MODE=MANUAL nothing is pinged (no free hours spent). It only works
+ * while this API runs, which is also the only time a payment can start.
+ */
+export const KEEP_AWAKE_MS = 10 * 60_000;
+
+export function startGatewayKeepAlive(intervalMs = KEEP_AWAKE_MS): NodeJS.Timeout {
+  wake();
+  const t = setInterval(() => wake(), intervalMs);
+  t.unref?.();
+  return t;
+}
