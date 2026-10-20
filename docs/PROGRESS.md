@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-21 02:20 - PAYMONGO LIVE: QR Ph shows on live checkouts (gateway 4c7ad5a deployed by the user); GCash/Maya/Card not yet Active in the live account (user, PayMongo Settings); 1.16.2+49 RELEASED; NOT SEEN ON A PHONE: a real payment, 1.16.1, 1.16.2; NEXT: user's real 1-peso QR Ph payment, then the earnings wallet (rulings: user pays 10, MIN CASH-OUT 100, owner money only, automatic; cash-in = e-money question open); emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: P5 messages, refunds wait for settlement, payouts by staff, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
+[2026-10-21 02:30 - PAYMONGO LIVE: QR Ph shows on live checkouts; GCash/Maya/Card not yet Active in the live account (user, PayMongo Settings); 1.16.2+49 RELEASED; WALLET DROPPED (user); NOT SEEN ON A PHONE: a real payment, 1.16.1, 1.16.2; NEXT: user's real 1-peso QR Ph payment; offered: one checkout for rent + deposit (saves a second receiving fee); emergency stop = PAYMENT_MODE=MANUAL + API restart; OPEN: P5 messages, refunds wait for settlement, payouts by staff (0 fees until a source account is set), face_debug delete, D-119 (G11), SW-07, stray dir node_server${f, scratch p2-scratch kept]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
@@ -11584,3 +11584,7 @@ User: "create a wallet for each user so that during withdrawals I can cash out a
 - User deployed `4c7ad5a` on Render (gateway uptime 177 s at the check). A ₱1 live checkout now offers **QRPH** (it showed "No payment methods" before; GCash/Maya/Card are still not Active in the live account: the user activates them in PayMongo Settings). Test checkout expired, no money moved.
 - The one pending live payment (06052b56, Glue Gun ₱1, its checkout made before the fix): checkout was open -> expired -> the poller marked it **FAILED** at 02:19:56, so the next "Pay" creates a fresh checkout with QR Ph.
 - **Wallet ruling changed (user): minimum cash-out ₱100** (was ₱50). Wallet still not built.
+
+### 2026-10-21 02:30 — WALLET DROPPED (user: "remove the wallet"); fee count per rental answered
+
+Re-derived from the code: the only PayMongo TRANSFER (₱10) is the owner payout (`rentalSettlementService.ts:259`, rent + dispute fees combined, one transfer). Deposit refunds and defect rent refunds are PayMongo REFUNDS (`rentalSettlementService.ts:112`, `:406`, `concernService.ts:694`), not transfers: no ₱10 (PayMongo keeps the original payment fee on a refund). Damage compensation: staff pay-out. So at most ₱10 per rental, and ₱0 today (no source account: payouts are staff). Not ₱20 as the user assumed. Receiving fees apply per checkout, and rent and deposit are two checkouts (card: ₱13.39 fixed twice): offered to merge them into one checkout; not asked to build yet.
