@@ -11,7 +11,7 @@
 
 ## STATUS LINE (paste at the top of every response)
 ```
-[2026-10-26 - SERVER REBOOTED 19:15: ML/web/admin restarted, tunnels rotated, gist updated; API (Node) NOT STARTED: waits for the user's yes (G11: 4 unacknowledged drops, bays 1-4); PAYMONGO REMOVED (.env MANUAL, keys deleted); NEXT: phase MANUAL MONEY (plan below, rulings in), after a /clear; renter fees stay (10% + 10 set in Settings); 1.17.0 forced; OPEN: rotation release 1.17.1 owed (rule), extension rent not paid to owners, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f]
+[2026-10-26 - SERVER REBOOTED 19:15: ML/web/admin restarted, tunnels rotated, gist updated; API started 21:03 on the user's yes (manual mode; kiosk not reconnected yet, nothing moved); PAYMONGO REMOVED (.env MANUAL, keys deleted); NEXT: phase MANUAL MONEY (plan below, rulings in), after a /clear; renter fees stay (10% + 10 set in Settings); 1.17.0 forced; OPEN: rotation release 1.17.1 owed (rule), extension rent not paid to owners, face_debug delete, D-119 (G11), SW-07, stray dir node_server${f]
 ```
 
 ### 2026-09-07 — E2.1 + PAYMENT FLOW verified on screen; G1 debt → 0; E2 substantially COMPLETE
